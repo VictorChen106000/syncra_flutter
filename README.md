@@ -1,7 +1,7 @@
 # syncra
 
 A new Flutter project.
-<img width="500" height="500" alt="image" src="https://github.com/user-attachments/assets/d1244a19-f14f-42de-9558-1e1a3e1f267f" />
+<img width="500" height="800" alt="image" src="https://github.com/user-attachments/assets/d1244a19-f14f-42de-9558-1e1a3e1f267f" />
 
 
 ## Getting Started
