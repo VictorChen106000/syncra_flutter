@@ -1,6 +1,8 @@
 # syncra
 
 A new Flutter project.
+<img width="846" height="1556" alt="image" src="https://github.com/user-attachments/assets/d1244a19-f14f-42de-9558-1e1a3e1f267f" />
+
 
 ## Getting Started
 
