@@ -8,7 +8,7 @@ class MockAgentSteps {
     "Agent Decision: Invoking Tailor Tool to highlight Design Systems.",
     "Tool Call: DraftColdEmail(context='Mention mobile app launch')",
   ];
-
+  //hrr headafdf
   static const List<String> quickReplies = [
     'Find me a UX role at a startup & draft outreach',
     'Improve my resume',
