@@ -12,6 +12,7 @@ import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/notification_bell.dart';
 import '../../../shared/widgets/section_title.dart';
+import '../../auth/state/auth_controller.dart';
 import '../../resumes/presentation/widgets/resume_attachment_chips.dart';
 import '../../resumes/presentation/widgets/select_resumes_bottom_sheet.dart';
 import '../../resumes/state/resume_controller.dart';
@@ -53,26 +54,34 @@ class _DashboardHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        const CircleAvatar(
-          radius: 24,
-          backgroundColor: AppColors.ink,
-          child: Text('D', style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.w900)),
-        ),
-        const SizedBox(width: 12),
-        const Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Daryn', style: TextStyle(color: AppColors.ink, fontSize: 20, fontWeight: FontWeight.w900)),
-              SizedBox(height: 3),
-              Text(AppStrings.dashboardGreetingRole, style: TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w800)),
-            ],
-          ),
-        ),
-        const NotificationBell(),
-      ],
+    return Consumer<AuthController>(
+      builder: (context, authController, _) {
+        final user = authController.appUser;
+        final displayName = user?.displayName ?? 'User';
+        final initial = user?.initial ?? 'U';
+
+        return Row(
+          children: [
+            CircleAvatar(
+              radius: 24,
+              backgroundColor: AppColors.ink,
+              child: Text(initial, style: const TextStyle(color: AppColors.accent, fontWeight: FontWeight.w900)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(displayName, style: const TextStyle(color: AppColors.ink, fontSize: 20, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 3),
+                  const Text(AppStrings.dashboardGreetingRole, style: TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w800)),
+                ],
+              ),
+            ),
+            const NotificationBell(),
+          ],
+        );
+      },
     );
   }
 }
