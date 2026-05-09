@@ -10,6 +10,7 @@ import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/notification_bell.dart';
 import '../../../shared/widgets/section_title.dart';
+import '../../auth/state/auth_controller.dart';
 import '../../resumes/state/resume_controller.dart';
 
 class ProfilePage extends StatelessWidget {
@@ -41,11 +42,17 @@ class ProfilePage extends StatelessWidget {
           const SectionTitle(title: AppStrings.preferences),
           const _PreferenceSection(),
           const SizedBox(height: 24),
-          TextButton.icon(
-            onPressed: () => context.go(RouteNames.login),
-            icon: const Icon(Icons.logout_rounded),
-            label: const Text('Sign Out'),
-            style: TextButton.styleFrom(foregroundColor: AppColors.ink),
+          Consumer<AuthController>(
+            builder: (context, authController, _) {
+              return TextButton.icon(
+                onPressed: authController.isLoading
+                    ? null
+                    : () => authController.signOut(),
+                icon: const Icon(Icons.logout_rounded),
+                label: Text(authController.isLoading ? 'Signing out...' : 'Sign Out'),
+                style: TextButton.styleFrom(foregroundColor: AppColors.ink),
+              );
+            },
           ),
         ],
       ),
@@ -58,33 +65,46 @@ class _ProfileHeaderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const AppCard(
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 28,
-            backgroundColor: AppColors.ink,
-            child: Text('D', style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.w900, fontSize: 20)),
-          ),
-          SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Daryn', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-                SizedBox(height: 4),
-                Row(
+    return Consumer<AuthController>(
+      builder: (context, authController, _) {
+        final user = authController.appUser;
+        final displayName = user?.displayName ?? 'User';
+        final initial = user?.initial ?? 'U';
+        final email = user?.email ?? '';
+
+        return AppCard(
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: AppColors.ink,
+                child: Text(initial, style: const TextStyle(color: AppColors.accent, fontWeight: FontWeight.w900, fontSize: 20)),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CircleAvatar(radius: 4, backgroundColor: AppColors.accent),
-                    SizedBox(width: 7),
-                    Text('Agent Active', style: TextStyle(color: AppColors.textMuted, fontSize: 13, fontWeight: FontWeight.w800)),
+                    Text(displayName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                    if (email.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(email, style: const TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w600)),
+                    ],
+                    const SizedBox(height: 4),
+                    const Row(
+                      children: [
+                        CircleAvatar(radius: 4, backgroundColor: AppColors.accent),
+                        SizedBox(width: 7),
+                        Text('Agent Active', style: TextStyle(color: AppColors.textMuted, fontSize: 13, fontWeight: FontWeight.w800)),
+                      ],
+                    ),
                   ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
