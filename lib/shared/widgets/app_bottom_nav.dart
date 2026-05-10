@@ -42,7 +42,7 @@ class AppBottomNav extends StatelessWidget {
         borderRadius: BorderRadius.circular(34),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity( 0.20),
+            color: Colors.black.withValues(alpha: 0.20),
             blurRadius: 30,
             offset: const Offset(0, 8),
           ),
@@ -52,60 +52,72 @@ class AppBottomNav extends StatelessWidget {
         children: items.map((item) {
           final isActive = activeTab == item.tab;
           return Expanded(
-            child: Center(
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 260),
-                curve: Curves.easeOutCubic,
-                decoration: BoxDecoration(
-                  color: isActive ? AppColors.accent : Colors.transparent,
-                  borderRadius: BorderRadius.circular(28),
-                  boxShadow: isActive
-                      ? [
-                          BoxShadow(
-                            color: AppColors.accent.withOpacity( 0.40),
-                            blurRadius: 12,
-                          ),
-                        ]
-                      : null,
-                ),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(28),
-                  onTap: () => context.go(item.route),
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: isActive ? 18 : 14,
-                      vertical: 14,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return Center(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 260),
+                    curve: Curves.easeOutCubic,
+                    constraints: BoxConstraints(maxWidth: constraints.maxWidth),
+                    decoration: BoxDecoration(
+                      color: isActive ? AppColors.accent : Colors.transparent,
+                      borderRadius: BorderRadius.circular(28),
+                      boxShadow: isActive
+                          ? [
+                              BoxShadow(
+                                color: AppColors.accent.withValues(alpha: 0.40),
+                                blurRadius: 12,
+                              ),
+                            ]
+                          : null,
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          item.icon,
-                          size: 24,
-                          color: isActive ? AppColors.ink : AppColors.navInactive,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(28),
+                      onTap: () => context.go(item.route),
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isActive ? 14 : 12,
+                          vertical: 14,
                         ),
-                        AnimatedSize(
-                          duration: const Duration(milliseconds: 220),
-                          curve: Curves.easeOutCubic,
-                          child: isActive
-                              ? Padding(
-                                  padding: const EdgeInsets.only(left: 8),
-                                  child: Text(
-                                    item.label,
-                                    style: const TextStyle(
-                                      color: AppColors.ink,
-                                      fontSize: 13.5,
-                                      fontWeight: FontWeight.w800,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              item.icon,
+                              size: 24,
+                              color: isActive
+                                  ? AppColors.ink
+                                  : AppColors.navInactive,
+                            ),
+                            if (isActive)
+                              Flexible(
+                                child: AnimatedSize(
+                                  duration: const Duration(milliseconds: 220),
+                                  curve: Curves.easeOutCubic,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(left: 8),
+                                    child: Text(
+                                      item.label,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      softWrap: false,
+                                      style: const TextStyle(
+                                        color: AppColors.ink,
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w800,
+                                      ),
                                     ),
                                   ),
-                                )
-                              : const SizedBox.shrink(),
+                                ),
+                              ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
           );
         }).toList(),
