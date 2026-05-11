@@ -71,7 +71,7 @@ class SelectResumesBottomSheet extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: AppColors.surface,
                             borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: AppColors.ink.withOpacity( 0.28), style: BorderStyle.solid),
+                            border: Border.all(color: AppColors.ink.withValues(alpha: 0.28), style: BorderStyle.solid),
                           ),
                           child: const Row(
                             children: [

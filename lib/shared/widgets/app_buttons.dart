@@ -9,6 +9,7 @@ class AppPrimaryButton extends StatelessWidget {
     required this.label,
     required this.onPressed,
     this.icon,
+    this.iconLeading = false,
     this.backgroundColor = AppColors.ink,
     this.foregroundColor = Colors.white,
   });
@@ -16,6 +17,7 @@ class AppPrimaryButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
   final Widget? icon;
+  final bool iconLeading;
   final Color backgroundColor;
   final Color foregroundColor;
 
@@ -30,12 +32,17 @@ class AppPrimaryButton extends StatelessWidget {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
         ),
+        textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
-          if (icon != null) ...[
+          if (iconLeading && icon != null) ...[
+            icon!,
+            const SizedBox(width: 8),
+          ],
+          Text(label),
+          if (!iconLeading && icon != null) ...[
             const SizedBox(width: 8),
             icon!,
           ],
@@ -69,6 +76,7 @@ class AppSecondaryButton extends StatelessWidget {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
         ),
+        textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -77,7 +85,47 @@ class AppSecondaryButton extends StatelessWidget {
             icon!,
             const SizedBox(width: 8),
           ],
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+          Text(label),
+        ],
+      ),
+    );
+  }
+}
+
+/// Lime accent CTA — used in onboarding confirmations and "Auto-Fix" modal.
+class AppAccentButton extends StatelessWidget {
+  const AppAccentButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.icon,
+  });
+
+  final String label;
+  final VoidCallback? onPressed;
+  final Widget? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton(
+      onPressed: onPressed,
+      style: FilledButton.styleFrom(
+        minimumSize: const Size.fromHeight(56),
+        backgroundColor: AppColors.accent,
+        foregroundColor: AppColors.ink,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
+        ),
+        textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (icon != null) ...[
+            icon!,
+            const SizedBox(width: 8),
+          ],
+          Text(label),
         ],
       ),
     );

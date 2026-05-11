@@ -1,6 +1,6 @@
 enum ChatSender { ai, user }
 
-enum ChatMessageType { text, terminal, resultCards }
+enum ChatMessageType { text, resultCards }
 
 class ChatAttachment {
   const ChatAttachment({

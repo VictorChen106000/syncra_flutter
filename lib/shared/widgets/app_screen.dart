@@ -11,17 +11,19 @@ class AppScreen extends StatelessWidget {
     this.showBottomNav = false,
     this.activeTab = BottomNavTab.home,
     this.extendBehindBottomNav = false,
+    this.backgroundColor = AppColors.scaffold,
   });
 
   final Widget child;
   final bool showBottomNav;
   final BottomNavTab activeTab;
   final bool extendBehindBottomNav;
+  final Color backgroundColor;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.scaffold,
+      backgroundColor: backgroundColor,
       body: SafeArea(
         bottom: false,
         child: Stack(
@@ -29,7 +31,9 @@ class AppScreen extends StatelessWidget {
             Positioned.fill(
               child: Padding(
                 padding: EdgeInsets.only(
-                  bottom: showBottomNav && !extendBehindBottomNav ? 104 : 0,
+                  bottom: showBottomNav && !extendBehindBottomNav
+                      ? AppConstants.bottomNavHeight + AppConstants.bottomNavInset + 16
+                      : 0,
                 ),
                 child: child,
               ),
@@ -38,7 +42,7 @@ class AppScreen extends StatelessWidget {
               Positioned(
                 left: AppConstants.screenHorizontalPadding,
                 right: AppConstants.screenHorizontalPadding,
-                bottom: 24,
+                bottom: AppConstants.bottomNavInset,
                 child: AppBottomNav(activeTab: activeTab),
               ),
           ],

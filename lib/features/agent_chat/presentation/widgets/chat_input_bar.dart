@@ -19,6 +19,12 @@ class ChatInputBar extends StatefulWidget {
 class _ChatInputBarState extends State<ChatInputBar> {
   final TextEditingController _textController = TextEditingController();
 
+  @override
+  void dispose() {
+    _textController.dispose();
+    super.dispose();
+  }
+
   void _send(BuildContext context) {
     final resumeController = context.read<ResumeController>();
     final attachments = resumeController.selectedResumes
@@ -38,24 +44,18 @@ class _ChatInputBarState extends State<ChatInputBar> {
       builder: (context, resumeController, chatController, _) {
         return Container(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                AppColors.scaffold.withOpacity( 0.10),
-                AppColors.scaffold,
-              ],
-            ),
-          ),
+          color: AppColors.scaffold,
           child: Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity( 0.76),
+              color: Colors.white.withValues(alpha: 0.78),
               borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.40),
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity( 0.12),
+                  color: Colors.black.withValues(alpha: 0.12),
                   blurRadius: 40,
                   offset: const Offset(0, 12),
                 ),
@@ -70,27 +70,78 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 ),
                 Row(
                   children: [
-                    IconButton(
-                      onPressed: chatController.isTyping ? null : () => SelectResumesBottomSheet.show(context),
-                      icon: const Icon(Icons.add_rounded),
-                      style: IconButton.styleFrom(backgroundColor: AppColors.scaffold),
+                    InkResponse(
+                      onTap: chatController.isTyping
+                          ? null
+                          : () => SelectResumesBottomSheet.show(context),
+                      radius: 24,
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: AppColors.scaffold,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        alignment: Alignment.center,
+                        child: Icon(
+                          Icons.add_rounded,
+                          color: chatController.isTyping
+                              ? AppColors.textSoft
+                              : AppColors.ink,
+                          size: 20,
+                        ),
+                      ),
                     ),
+                    const SizedBox(width: 6),
                     Expanded(
                       child: TextField(
                         controller: _textController,
                         enabled: !chatController.isTyping,
                         onSubmitted: (_) => _send(context),
+                        style: const TextStyle(
+                          color: AppColors.ink,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 14,
+                        ),
                         decoration: InputDecoration(
-                          hintText: chatController.isTyping ? 'Syncra is executing plan...' : AppStrings.askSyncra,
-                          hintStyle: const TextStyle(color: AppColors.textSoft, fontWeight: FontWeight.w600),
+                          hintText: chatController.isTyping
+                              ? 'Syncra is executing plan...'
+                              : AppStrings.askSyncra,
+                          hintStyle: const TextStyle(
+                            color: AppColors.textSoft,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 14,
+                          ),
+                          contentPadding:
+                              const EdgeInsets.symmetric(horizontal: 6),
                           border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
                         ),
                       ),
                     ),
-                    IconButton(
-                      onPressed: chatController.isTyping ? null : () => _send(context),
-                      icon: const Icon(Icons.send_rounded, color: Colors.white, size: 18),
-                      style: IconButton.styleFrom(backgroundColor: AppColors.ink),
+                    InkResponse(
+                      onTap: chatController.isTyping
+                          ? null
+                          : () => _send(context),
+                      radius: 24,
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: AppColors.ink,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        alignment: Alignment.center,
+                        child: Icon(
+                          Icons.send_rounded,
+                          color: Colors.white.withValues(
+                            alpha: chatController.isTyping ? 0.4 : 1,
+                          ),
+                          size: 16,
+                        ),
+                      ),
                     ),
                   ],
                 ),

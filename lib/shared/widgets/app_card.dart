@@ -7,10 +7,13 @@ class AppCard extends StatelessWidget {
   const AppCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(20),
+    this.padding = const EdgeInsets.all(AppConstants.cardPadding),
     this.margin,
     this.onTap,
     this.backgroundColor = AppColors.surface,
+    this.radius = AppConstants.cardRadius,
+    this.showBorder = true,
+    this.showShadow = true,
   });
 
   final Widget child;
@@ -18,6 +21,9 @@ class AppCard extends StatelessWidget {
   final EdgeInsetsGeometry? margin;
   final VoidCallback? onTap;
   final Color backgroundColor;
+  final double radius;
+  final bool showBorder;
+  final bool showShadow;
 
   @override
   Widget build(BuildContext context) {
@@ -26,25 +32,31 @@ class AppCard extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         color: backgroundColor,
-        borderRadius: BorderRadius.circular(AppConstants.cardRadius),
-        border: Border.all(color: AppColors.border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity( 0.035),
-            blurRadius: 22,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(radius),
+        border: showBorder ? Border.all(color: AppColors.border) : null,
+        boxShadow: showShadow
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
+                ),
+              ]
+            : null,
       ),
       child: child,
     );
 
     if (onTap == null) return card;
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(AppConstants.cardRadius),
-      onTap: onTap,
-      child: card,
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(radius),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(radius),
+        onTap: onTap,
+        child: card,
+      ),
     );
   }
 }

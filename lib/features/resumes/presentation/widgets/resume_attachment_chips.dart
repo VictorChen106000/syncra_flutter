@@ -27,14 +27,14 @@ class ResumeAttachmentChips extends StatelessWidget {
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.only(left: 4, right: 4, bottom: 4),
           itemCount: resumes.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          separatorBuilder: (context, _) => const SizedBox(width: 8),
           itemBuilder: (context, index) {
             final resume = resumes[index];
             return Container(
               constraints: const BoxConstraints(maxWidth: 170),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
               decoration: BoxDecoration(
-                color: AppColors.accent.withOpacity( 0.20),
+                color: AppColors.accent.withValues(alpha: 0.20),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: AppColors.accent),
               ),
