@@ -36,13 +36,8 @@ class AgentChatController extends ChangeNotifier {
     _isTyping = true;
     notifyListeners();
 
-    _timers.add(Timer(const Duration(milliseconds: 650), () {
+    _timers.add(Timer(const Duration(milliseconds: 1600), () {
       _isTyping = false;
-      _messages.add(const ChatMessage(sender: ChatSender.ai, type: ChatMessageType.terminal));
-      notifyListeners();
-    }));
-
-    _timers.add(Timer(const Duration(milliseconds: 2600), () {
       _messages.add(
         const ChatMessage(
           sender: ChatSender.ai,

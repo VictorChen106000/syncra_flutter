@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -6,12 +7,13 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
+import '../../../data/mock/mock_notifications.dart';
 import '../../../shared/animations/agent_pulse_icon.dart';
 import '../../../shared/widgets/app_bottom_nav.dart';
-import '../../../shared/widgets/app_card.dart';
+import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
-import '../../../shared/widgets/notification_bell.dart';
 import '../../../shared/widgets/section_title.dart';
+import '../../../shared/widgets/step_pill.dart';
 import '../../resumes/presentation/widgets/resume_attachment_chips.dart';
 import '../../resumes/presentation/widgets/select_resumes_bottom_sheet.dart';
 import '../../resumes/state/resume_controller.dart';
@@ -31,31 +33,19 @@ class DashboardPage extends StatelessWidget {
           Positioned.fill(
             child: Column(
               children: [
-                Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.scaffold,
-                    border: Border(
-                      bottom: BorderSide(
-                        color: AppColors.border.withValues(alpha: 0.50),
-                      ),
-                    ),
-                  ),
-                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
-                  child: const Column(
-                    children: [
-                      _DashboardHeader(),
-                      SizedBox(height: 14),
-                      _AgentLiveBanner(),
-                    ],
-                  ),
-                ),
+                _DashboardHeader(),
                 Expanded(
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 180),
+                    padding: const EdgeInsets.fromLTRB(
+                      AppConstants.screenHorizontalPadding,
+                      20,
+                      AppConstants.screenHorizontalPadding,
+                      200,
+                    ),
                     children: const [
                       _ApprovalPipelineCard(),
-                      SizedBox(height: 30),
-                      SectionTitle(title: AppStrings.agentThoughtStream),
+                      SizedBox(height: 28),
+                      _RecentActivityHeader(),
                       AgentActivityFeed(),
                     ],
                   ),
@@ -71,134 +61,57 @@ class DashboardPage extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Dashboard header — profile avatar + name + notifications
+// Sticky header — avatar + name + bell, agent live banner sits below as bottom slot
 // ---------------------------------------------------------------------------
 
 class _DashboardHeader extends StatelessWidget {
-  const _DashboardHeader();
-
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        // Profile avatar with pulsing active ring
-        SizedBox(
-          width: 52,
-          height: 52,
-          child: Stack(
-            children: [
-              // Outer pulsing ring
-              Positioned.fill(
-                child: _PulsingRing(),
-              ),
-              // Avatar
-              Positioned.fill(
-                child: Padding(
-                  padding: const EdgeInsets.all(3),
-                  child: CircleAvatar(
-                    backgroundColor: AppColors.ink,
-                    child: const Text(
-                      'D',
-                      style: TextStyle(
-                        color: AppColors.accent,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 18,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
-        const Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Daryn',
-                style: TextStyle(
-                  color: AppColors.ink,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.3,
-                ),
-              ),
-              SizedBox(height: 3),
-              Text(
-                AppStrings.dashboardGreetingRole,
-                style: TextStyle(
-                  color: AppColors.textMuted,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const NotificationBell(),
-      ],
+    return AppHeader.home(
+      avatar: const _Avatar(initial: 'D'),
+      name: 'Daryn',
+      role: AppStrings.dashboardGreetingRole,
+      unreadCount: MockNotifications.unreadCount,
+      onBellTap: () => context.go(RouteNames.notifications),
+      bottom: const _AgentLiveBanner(),
     );
   }
 }
 
-// ---------------------------------------------------------------------------
-// Pulsing ring around avatar (reused on Profile too)
-// ---------------------------------------------------------------------------
+class _Avatar extends StatelessWidget {
+  const _Avatar({required this.initial});
 
-class _PulsingRing extends StatefulWidget {
-  @override
-  State<_PulsingRing> createState() => _PulsingRingState();
-}
-
-class _PulsingRingState extends State<_PulsingRing>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  late final Animation<double> _scale;
-  late final Animation<double> _opacity;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1800),
-    )..repeat();
-    _scale = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
-    );
-    _opacity = Tween<double>(begin: 0.6, end: 0.0).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeIn),
-    );
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
+  final String initial;
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (context, _) => Transform.scale(
-        scale: _scale.value,
-        child: Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: AppColors.accent.withValues(alpha: _opacity.value),
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: AppColors.ink,
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
+        ],
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: const TextStyle(
+          color: AppColors.accent,
+          fontWeight: FontWeight.w900,
+          fontSize: 20,
         ),
       ),
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// Agent live banner
-// ---------------------------------------------------------------------------
 
 class _AgentLiveBanner extends StatelessWidget {
   const _AgentLiveBanner();
@@ -212,7 +125,7 @@ class _AgentLiveBanner extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: AppColors.accent.withValues(alpha: 0.12),
+            color: AppColors.accent.withValues(alpha: 0.10),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -220,33 +133,29 @@ class _AgentLiveBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Pulsing glow container
           SizedBox(
-            width: 36,
-            height: 36,
+            width: 34,
+            height: 34,
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // Outer ping circle
-                TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0.6, end: 1.1),
-                  duration: const Duration(milliseconds: 1400),
-                  curve: Curves.easeInOut,
-                  builder: (_, v, _) => Transform.scale(
-                    scale: v,
-                    child: Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: AppColors.accent
-                            .withValues(alpha: 0.15 * (1.1 - v) / 0.5),
-                      ),
-                    ),
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.accent.withValues(alpha: 0.10),
                   ),
-                  onEnd: () {},
-                ),
-                const AgentPulseIcon(size: 20),
+                )
+                    .animate(onPlay: (c) => c.repeat(reverse: true))
+                    .scale(
+                      duration: 1500.ms,
+                      begin: const Offset(0.85, 0.85),
+                      end: const Offset(1.15, 1.15),
+                      curve: Curves.easeInOut,
+                    )
+                    .fadeIn(),
+                const AgentPulseIcon(size: 18),
               ],
             ),
           ),
@@ -254,17 +163,18 @@ class _AgentLiveBanner extends StatelessWidget {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  AppStrings.agentLive,
+                  AppStrings.agentLive.toUpperCase(),
                   style: TextStyle(
                     color: AppColors.accent.withValues(alpha: 0.70),
                     fontSize: 9,
                     fontWeight: FontWeight.w900,
-                    letterSpacing: 1.4,
+                    letterSpacing: 1.6,
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 3),
                 Text(
                   AppStrings.activeTask,
                   overflow: TextOverflow.ellipsis,
@@ -284,7 +194,7 @@ class _AgentLiveBanner extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Approval pipeline card with properly overlapping company avatars
+// Approval pipeline card
 // ---------------------------------------------------------------------------
 
 class _ApprovalPipelineCard extends StatelessWidget {
@@ -292,110 +202,143 @@ class _ApprovalPipelineCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const companies = ['B', 'T', 'L', 'V'];
-    const avatarSize = 36.0;
-    const overlapOffset = 10.0;
-    final stackWidth = avatarSize + (companies.length - 1) * (avatarSize - overlapOffset);
-
     return Column(
       children: [
         SectionTitle(
           title: AppStrings.approvalPipeline,
-          trailing: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-            decoration: BoxDecoration(
-              color: AppColors.accent,
-              borderRadius: BorderRadius.circular(99),
-            ),
-            child: const Text(
-              '4 Pending',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-                color: AppColors.ink,
-              ),
-            ),
-          ),
+          trailing: const StepPill(label: '4 Pending', accent: true),
         ),
-        AppCard(
-          onTap: () => context.go(RouteNames.jobs),
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+        Material(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(28),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(28),
+            onTap: () => context.go(RouteNames.jobs),
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: AppColors.border),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Overlapping avatar stack
-                  SizedBox(
-                    width: stackWidth,
-                    height: avatarSize,
-                    child: Stack(
-                      children: List.generate(companies.length, (i) {
-                        return Positioned(
-                          left: i * (avatarSize - overlapOffset),
-                          child: Container(
-                            width: avatarSize,
-                            height: avatarSize,
-                            decoration: BoxDecoration(
-                              color: AppColors.accent,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2),
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              companies[i],
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w900,
-                                fontSize: 13,
-                                color: AppColors.ink,
-                              ),
-                            ),
-                          ),
-                        );
-                      }),
+                  Row(
+                    children: [
+                      const _OverlappingAvatars(initials: ['B', 'T', 'L', 'V']),
+                      const Spacer(),
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: const BoxDecoration(
+                          color: AppColors.ink,
+                          shape: BoxShape.circle,
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          Icons.arrow_forward_rounded,
+                          color: AppColors.accent,
+                          size: 18,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    AppStrings.reviewApplications,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.ink,
+                      letterSpacing: -0.3,
                     ),
                   ),
-                  const Spacer(),
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: const BoxDecoration(
-                      color: AppColors.ink,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.arrow_forward_rounded,
-                      color: AppColors.accent,
-                      size: 20,
+                  const SizedBox(height: 6),
+                  const Text(
+                    AppStrings.reviewApplicationsBody,
+                    style: TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 13,
+                      height: 1.5,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              const Text(
-                AppStrings.reviewApplications,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.ink,
-                  letterSpacing: -0.3,
-                ),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                AppStrings.reviewApplicationsBody,
-                style: TextStyle(
-                  color: AppColors.textMuted,
-                  fontSize: 13,
-                  height: 1.5,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ],
     );
+  }
+}
+
+class _OverlappingAvatars extends StatelessWidget {
+  const _OverlappingAvatars({required this.initials});
+
+  final List<String> initials;
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 36.0;
+    const overlap = 10.0;
+    final width = size + (initials.length - 1) * (size - overlap);
+    return SizedBox(
+      width: width,
+      height: size,
+      child: Stack(
+        children: List.generate(initials.length, (i) {
+          return Positioned(
+            left: i * (size - overlap),
+            child: Container(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                color: AppColors.accent,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 4,
+                  ),
+                ],
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                initials[i],
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 13,
+                  color: AppColors.ink,
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Recent activity header
+// ---------------------------------------------------------------------------
+
+class _RecentActivityHeader extends StatelessWidget {
+  const _RecentActivityHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SectionTitle(title: AppStrings.recentActivity);
   }
 }
 
@@ -413,13 +356,15 @@ class _FloatingAgentInput extends StatelessWidget {
         return Positioned(
           left: AppConstants.screenHorizontalPadding,
           right: AppConstants.screenHorizontalPadding,
-          bottom: 118,
+          bottom: AppConstants.floatingInputBottom,
           child: Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.76),
+              color: Colors.white.withValues(alpha: 0.78),
               borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: Colors.transparent, width: 1.5),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.40),
+              ),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.12),
@@ -437,40 +382,59 @@ class _FloatingAgentInput extends StatelessWidget {
                 ),
                 Row(
                   children: [
-                    IconButton(
-                      onPressed: () => SelectResumesBottomSheet.show(context),
-                      icon: const Icon(Icons.add_rounded),
-                      style: IconButton.styleFrom(
-                        backgroundColor: AppColors.scaffold,
-                        shape: RoundedRectangleBorder(
+                    InkResponse(
+                      onTap: () => SelectResumesBottomSheet.show(context),
+                      radius: 24,
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: AppColors.scaffold,
                           borderRadius: BorderRadius.circular(14),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          Icons.add_rounded,
+                          color: AppColors.ink,
+                          size: 20,
                         ),
                       ),
                     ),
+                    const SizedBox(width: 6),
                     Expanded(
                       child: GestureDetector(
                         onTap: () => context.go(RouteNames.agentChat),
-                        child: const Text(
-                          AppStrings.askSyncra,
-                          style: TextStyle(
-                            color: AppColors.textSoft,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
+                        behavior: HitTestBehavior.opaque,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          child: Text(
+                            resumeController.selectedResumes.isNotEmpty
+                                ? AppStrings.askAgentAboutContext
+                                : AppStrings.askSyncra,
+                            style: const TextStyle(
+                              color: AppColors.textSoft,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                    IconButton(
-                      onPressed: () => context.go(RouteNames.agentChat),
-                      icon: const Icon(
-                        Icons.send_rounded,
-                        color: Colors.white,
-                        size: 18,
-                      ),
-                      style: IconButton.styleFrom(
-                        backgroundColor: AppColors.ink,
-                        shape: RoundedRectangleBorder(
+                    InkResponse(
+                      onTap: () => context.go(RouteNames.agentChat),
+                      radius: 24,
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: AppColors.ink,
                           borderRadius: BorderRadius.circular(14),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          Icons.send_rounded,
+                          color: Colors.white,
+                          size: 16,
                         ),
                       ),
                     ),

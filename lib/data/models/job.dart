@@ -1,5 +1,29 @@
 enum JobCategory { ready, inputNeeded, exploration }
 
+enum JobStatus { drafting, submitted, viewed, replied, interview, offer, rejected }
+
+extension JobStatusLabel on JobStatus {
+  String get label => switch (this) {
+        JobStatus.drafting => 'Drafting',
+        JobStatus.submitted => 'Submitted',
+        JobStatus.viewed => 'Viewed',
+        JobStatus.replied => 'Replied',
+        JobStatus.interview => 'Interview',
+        JobStatus.offer => 'Offer',
+        JobStatus.rejected => 'Rejected',
+      };
+
+  int get stage => switch (this) {
+        JobStatus.drafting => 0,
+        JobStatus.submitted => 1,
+        JobStatus.viewed => 2,
+        JobStatus.replied => 3,
+        JobStatus.interview => 4,
+        JobStatus.offer => 5,
+        JobStatus.rejected => -1,
+      };
+}
+
 class Job {
   const Job({
     required this.id,

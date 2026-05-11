@@ -59,7 +59,7 @@ class _PulsePainter extends CustomPainter {
     canvas.clipRect(Rect.fromLTWH(0, 0, revealWidth, size.height));
 
     final glowPaint = Paint()
-      ..color = AppColors.accent.withOpacity( 0.35)
+      ..color = AppColors.accent.withValues(alpha: 0.35)
       ..strokeWidth = 6
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round

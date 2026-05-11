@@ -16,12 +16,21 @@ class AppTheme {
         secondary: AppColors.accent,
         surface: AppColors.surface,
       ),
+      splashFactory: InkRipple.splashFactory,
+      visualDensity: VisualDensity.standard,
     );
 
     final inter = GoogleFonts.interTextTheme(base.textTheme);
 
     return base.copyWith(
       textTheme: inter.copyWith(
+        displayLarge: inter.displayLarge?.copyWith(
+          color: AppColors.ink,
+          fontSize: 44,
+          fontWeight: FontWeight.w900,
+          height: 1.05,
+          letterSpacing: -1.4,
+        ),
         headlineLarge: inter.headlineLarge?.copyWith(
           color: AppColors.ink,
           fontSize: 32,
@@ -46,10 +55,16 @@ class AppTheme {
           fontSize: 16,
           fontWeight: FontWeight.w800,
         ),
+        bodyLarge: inter.bodyLarge?.copyWith(
+          color: AppColors.ink,
+          fontSize: 14.5,
+          height: 1.55,
+          fontWeight: FontWeight.w500,
+        ),
         bodyMedium: inter.bodyMedium?.copyWith(
           color: AppColors.textMuted,
-          fontSize: 14,
-          height: 1.45,
+          fontSize: 13,
+          height: 1.5,
           fontWeight: FontWeight.w500,
         ),
         labelLarge: inter.labelLarge?.copyWith(
