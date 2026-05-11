@@ -47,6 +47,7 @@ class _JobsPageState extends State<JobsPage> {
     return AppScreen(
       showBottomNav: true,
       activeTab: BottomNavTab.agent,
+      extendBehindBottomNav: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

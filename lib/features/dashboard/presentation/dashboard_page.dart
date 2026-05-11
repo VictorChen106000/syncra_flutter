@@ -15,10 +15,10 @@ import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/section_title.dart';
 import '../../../shared/widgets/step_pill.dart';
 import '../../auth/state/auth_controller.dart';
+import '../../agent_chat/state/agent_chat_controller.dart';
 import '../../resumes/presentation/widgets/resume_attachment_chips.dart';
 import '../../resumes/presentation/widgets/select_resumes_bottom_sheet.dart';
 import '../../resumes/state/resume_controller.dart';
-import 'widgets/agent_activity_feed.dart';
 
 class DashboardPage extends StatelessWidget {
   const DashboardPage({super.key});
@@ -41,20 +41,17 @@ class DashboardPage extends StatelessWidget {
                       AppConstants.screenHorizontalPadding,
                       20,
                       AppConstants.screenHorizontalPadding,
-                      200,
+                      340,
                     ),
                     children: const [
                       _ApprovalPipelineCard(),
-                      SizedBox(height: 28),
-                      _RecentActivityHeader(),
-                      AgentActivityFeed(),
                     ],
                   ),
                 ),
               ],
             ),
           ),
-          const _FloatingAgentInput(),
+          const _FloatingAgentArea(),
         ],
       ),
     );
@@ -336,118 +333,294 @@ class _OverlappingAvatars extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Recent activity header
+// Floating agent area — prompt preview cards stacked above the input bar
 // ---------------------------------------------------------------------------
 
-class _RecentActivityHeader extends StatelessWidget {
-  const _RecentActivityHeader();
+class _FloatingAgentArea extends StatelessWidget {
+  const _FloatingAgentArea();
 
   @override
   Widget build(BuildContext context) {
-    return const SectionTitle(title: AppStrings.recentActivity);
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: AppConstants.floatingInputBottom,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: const [
+          _PromptSuggestions(),
+          SizedBox(height: 14),
+          Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: AppConstants.screenHorizontalPadding,
+            ),
+            child: _AgentInputBar(),
+          ),
+        ],
+      ),
+    );
   }
 }
 
 // ---------------------------------------------------------------------------
-// Floating AI input bar
+// Prompt suggestion preview cards
 // ---------------------------------------------------------------------------
 
-class _FloatingAgentInput extends StatelessWidget {
-  const _FloatingAgentInput();
+class _PromptSuggestions extends StatelessWidget {
+  const _PromptSuggestions();
+
+  static const _items = <_PromptSuggestionData>[
+    _PromptSuggestionData(
+      icon: Icons.travel_explore_rounded,
+      kicker: 'DISCOVER',
+      prompt: 'Find UX roles at AI startups hiring this week',
+    ),
+    _PromptSuggestionData(
+      icon: Icons.auto_awesome_rounded,
+      kicker: 'TAILOR',
+      prompt: 'Tailor my resume for the role I just saved',
+    ),
+    _PromptSuggestionData(
+      icon: Icons.mail_outline_rounded,
+      kicker: 'OUTREACH',
+      prompt: 'Draft a cold outreach to the hiring manager',
+    ),
+    _PromptSuggestionData(
+      icon: Icons.insights_rounded,
+      kicker: 'STRATEGY',
+      prompt: 'What roles match my current trajectory?',
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 140,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppConstants.screenHorizontalPadding,
+        ),
+        itemCount: _items.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 12),
+        itemBuilder: (context, i) {
+          return _PromptSuggestionCard(data: _items[i])
+              .animate(delay: (i * 70).ms)
+              .fadeIn(duration: 320.ms)
+              .moveY(begin: 12, end: 0, curve: Curves.easeOutCubic);
+        },
+      ),
+    );
+  }
+}
+
+class _PromptSuggestionData {
+  const _PromptSuggestionData({
+    required this.icon,
+    required this.kicker,
+    required this.prompt,
+  });
+
+  final IconData icon;
+  final String kicker;
+  final String prompt;
+}
+
+class _PromptSuggestionCard extends StatelessWidget {
+  const _PromptSuggestionCard({required this.data});
+
+  final _PromptSuggestionData data;
+
+  void _onTap(BuildContext context) {
+    context.read<AgentChatController>().sendPrompt(prompt: data.prompt);
+    context.go(RouteNames.agentChat);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _onTap(context),
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          width: 230,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: AppColors.border),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 28,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: AppColors.ink,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      data.icon,
+                      color: AppColors.accent,
+                      size: 18,
+                    ),
+                  ),
+                  const Spacer(),
+                  Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: AppColors.scaffold,
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.north_east_rounded,
+                      size: 14,
+                      color: AppColors.ink,
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              Text(
+                data.kicker,
+                style: const TextStyle(
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.6,
+                  color: AppColors.textMuted,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                data.prompt,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.ink,
+                  letterSpacing: -0.2,
+                  height: 1.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Glass AI input bar
+// ---------------------------------------------------------------------------
+
+class _AgentInputBar extends StatelessWidget {
+  const _AgentInputBar();
 
   @override
   Widget build(BuildContext context) {
     return Consumer<ResumeController>(
       builder: (context, resumeController, _) {
-        return Positioned(
-          left: AppConstants.screenHorizontalPadding,
-          right: AppConstants.screenHorizontalPadding,
-          bottom: AppConstants.floatingInputBottom,
-          child: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.78),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.40),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.12),
-                  blurRadius: 40,
-                  offset: const Offset(0, 12),
-                ),
-              ],
+        return Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.78),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.40),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ResumeAttachmentChips(
-                  resumes: resumeController.selectedResumes,
-                  onRemove: resumeController.removeSelectedResume,
-                ),
-                Row(
-                  children: [
-                    InkResponse(
-                      onTap: () => SelectResumesBottomSheet.show(context),
-                      radius: 24,
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: AppColors.scaffold,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        alignment: Alignment.center,
-                        child: const Icon(
-                          Icons.add_rounded,
-                          color: AppColors.ink,
-                          size: 20,
-                        ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 40,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ResumeAttachmentChips(
+                resumes: resumeController.selectedResumes,
+                onRemove: resumeController.removeSelectedResume,
+              ),
+              Row(
+                children: [
+                  InkResponse(
+                    onTap: () => SelectResumesBottomSheet.show(context),
+                    radius: 24,
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: AppColors.scaffold,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.add_rounded,
+                        color: AppColors.ink,
+                        size: 20,
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => context.go(RouteNames.agentChat),
-                        behavior: HitTestBehavior.opaque,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 6),
-                          child: Text(
-                            resumeController.selectedResumes.isNotEmpty
-                                ? AppStrings.askAgentAboutContext
-                                : AppStrings.askSyncra,
-                            style: const TextStyle(
-                              color: AppColors.textSoft,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                            ),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => context.go(RouteNames.agentChat),
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        child: Text(
+                          resumeController.selectedResumes.isNotEmpty
+                              ? AppStrings.askAgentAboutContext
+                              : AppStrings.askSyncra,
+                          style: const TextStyle(
+                            color: AppColors.textSoft,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
                           ),
                         ),
                       ),
                     ),
-                    InkResponse(
-                      onTap: () => context.go(RouteNames.agentChat),
-                      radius: 24,
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: AppColors.ink,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        alignment: Alignment.center,
-                        child: const Icon(
-                          Icons.send_rounded,
-                          color: Colors.white,
-                          size: 16,
-                        ),
+                  ),
+                  InkResponse(
+                    onTap: () => context.go(RouteNames.agentChat),
+                    radius: 24,
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: AppColors.ink,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.send_rounded,
+                        color: Colors.white,
+                        size: 16,
                       ),
                     ),
-                  ],
-                ),
-              ],
-            ),
+                  ),
+                ],
+              ),
+            ],
           ),
         );
       },

@@ -22,6 +22,7 @@ class ProfilePage extends StatelessWidget {
     return AppScreen(
       showBottomNav: true,
       activeTab: BottomNavTab.profile,
+      extendBehindBottomNav: true,
       child: Column(
         children: [
           AppHeader.tab(title: AppStrings.profileTitle),
@@ -31,7 +32,7 @@ class ProfilePage extends StatelessWidget {
                 AppConstants.screenHorizontalPadding,
                 20,
                 AppConstants.screenHorizontalPadding,
-                40,
+                140,
               ),
               children: const [
                 _ProfileHeaderCard(),

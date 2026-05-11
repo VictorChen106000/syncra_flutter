@@ -174,12 +174,7 @@ class AppHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(
-        color: AppColors.scaffold,
-        border: Border(
-          bottom: BorderSide(color: AppColors.border.withValues(alpha: 0.50)),
-        ),
-      ),
+      color: AppColors.scaffold,
       padding: EdgeInsets.fromLTRB(
         AppConstants.screenHorizontalPadding,
         topPadding,
