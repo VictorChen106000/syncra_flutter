@@ -27,7 +27,7 @@ class ResumeAttachmentChips extends StatelessWidget {
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.only(left: 4, right: 4, bottom: 4),
           itemCount: resumes.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          separatorBuilder: (context, _) => const SizedBox(width: 8),
           itemBuilder: (context, index) {
             final resume = resumes[index];
             return Container(

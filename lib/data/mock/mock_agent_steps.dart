@@ -21,18 +21,28 @@ class MockAgentSteps {
       'detail': 'Scanning LinkedIn for remote React roles...',
       'status': 'active',
       'time': 'just now',
+      'undoable': 'false',
     },
     {
       'tool': 'MatchAnalyzer',
       'detail': 'Score 95% for TechFlow role. Tailoring resume...',
       'status': 'done',
       'time': '2m ago',
+      'undoable': 'true',
     },
     {
       'tool': 'GmailTool',
       'detail': 'Waiting for approval to send Linear outreach.',
       'status': 'waiting',
       'time': '5m ago',
+      'undoable': 'false',
+    },
+    {
+      'tool': 'PortfolioParser',
+      'detail': 'Extracted 3 new projects from your Figma files.',
+      'status': 'done',
+      'time': '1h ago',
+      'undoable': 'true',
     },
   ];
 }

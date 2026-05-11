@@ -37,7 +37,7 @@ class _ResumeListsPageState extends State<ResumeListsPage> {
                   padding: const EdgeInsets.fromLTRB(20, 18, 24, 14),
                   child: Row(
                     children: [
-                      AppBackButton(onPressed: () => context.go(RouteNames.login)),
+                      AppBackButton(onPressed: () => context.go(RouteNames.profile)),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(

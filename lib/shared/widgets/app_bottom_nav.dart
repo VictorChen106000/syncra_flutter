@@ -23,8 +23,8 @@ class AppBottomNav extends StatelessWidget {
       _BottomNavItem(
         tab: BottomNavTab.agent,
         label: 'Agent',
-        icon: Icons.auto_awesome_rounded,
-        route: RouteNames.agentChat,
+        icon: Icons.work_outline_rounded,
+        route: RouteNames.jobs,
       ),
       _BottomNavItem(
         tab: BottomNavTab.profile,

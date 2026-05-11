@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../constants/app_colors.dart';
 
@@ -6,7 +7,7 @@ class AppTheme {
   const AppTheme._();
 
   static ThemeData get lightTheme {
-    return ThemeData(
+    final base = ThemeData(
       useMaterial3: true,
       scaffoldBackgroundColor: AppColors.scaffold,
       colorScheme: ColorScheme.fromSeed(
@@ -15,43 +16,56 @@ class AppTheme {
         secondary: AppColors.accent,
         surface: AppColors.surface,
       ),
-      fontFamily: 'Roboto',
-      textTheme: const TextTheme(
-        headlineLarge: TextStyle(
+    );
+
+    final inter = GoogleFonts.interTextTheme(base.textTheme);
+
+    return base.copyWith(
+      textTheme: inter.copyWith(
+        headlineLarge: inter.headlineLarge?.copyWith(
           color: AppColors.ink,
           fontSize: 32,
           fontWeight: FontWeight.w900,
           height: 1.05,
           letterSpacing: -1.2,
         ),
-        headlineMedium: TextStyle(
+        headlineMedium: inter.headlineMedium?.copyWith(
           color: AppColors.ink,
           fontSize: 26,
           fontWeight: FontWeight.w800,
           letterSpacing: -0.6,
         ),
-        titleLarge: TextStyle(
+        titleLarge: inter.titleLarge?.copyWith(
           color: AppColors.ink,
           fontSize: 20,
           fontWeight: FontWeight.w800,
           letterSpacing: -0.3,
         ),
-        titleMedium: TextStyle(
+        titleMedium: inter.titleMedium?.copyWith(
           color: AppColors.ink,
           fontSize: 16,
           fontWeight: FontWeight.w800,
         ),
-        bodyMedium: TextStyle(
+        bodyMedium: inter.bodyMedium?.copyWith(
           color: AppColors.textMuted,
           fontSize: 14,
           height: 1.45,
           fontWeight: FontWeight.w500,
         ),
-        labelLarge: TextStyle(
+        labelLarge: inter.labelLarge?.copyWith(
           color: AppColors.ink,
           fontSize: 14,
           fontWeight: FontWeight.w800,
         ),
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected) ? AppColors.accent : Colors.white,
+        ),
+        trackColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected) ? AppColors.ink : AppColors.border,
+        ),
+        trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
       ),
     );
   }

@@ -151,7 +151,7 @@ class _QuickReplies extends StatelessWidget {
                 labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
               );
             },
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            separatorBuilder: (context, _) => const SizedBox(width: 8),
             itemCount: MockAgentSteps.quickReplies.length,
           ),
         );
@@ -165,25 +165,87 @@ class _TypingBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
+    return Row(
       children: [
-        CircleAvatar(
+        const CircleAvatar(
           radius: 14,
           backgroundColor: AppColors.ink,
           child: Icon(Icons.star_rounded, color: AppColors.accent, size: 15),
         ),
-        SizedBox(width: 9),
-        DecoratedBox(
-          decoration: BoxDecoration(
+        const SizedBox(width: 9),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: const BoxDecoration(
             color: AppColors.surface,
             borderRadius: BorderRadius.all(Radius.circular(22)),
           ),
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-            child: Text('•••', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-          ),
+          child: const _BouncingDots(),
         ),
       ],
+    );
+  }
+}
+
+class _BouncingDots extends StatefulWidget {
+  const _BouncingDots();
+
+  @override
+  State<_BouncingDots> createState() => _BouncingDotsState();
+}
+
+class _BouncingDotsState extends State<_BouncingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Animation<double> _offsetFor(int index) => TweenSequence<double>([
+        TweenSequenceItem(tween: Tween(begin: 0, end: -5), weight: 25),
+        TweenSequenceItem(tween: Tween(begin: -5, end: 0), weight: 25),
+        TweenSequenceItem(tween: ConstantTween(0), weight: 50),
+      ]).animate(
+        CurvedAnimation(
+          parent: _ctrl,
+          curve: Interval(index * 0.18, index * 0.18 + 0.55, curve: Curves.easeInOut),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, _) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: List.generate(3, (i) {
+          return Padding(
+            padding: EdgeInsets.only(right: i < 2 ? 5 : 0),
+            child: Transform.translate(
+              offset: Offset(0, _offsetFor(i).value),
+              child: Container(
+                width: 7,
+                height: 7,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.ink,
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
     );
   }
 }
@@ -201,6 +263,7 @@ class _ResultCards extends StatelessWidget {
             icon: Icons.description_rounded,
             title: 'Linear_UX_Resume_v4.pdf',
             subtitle: 'Tailored • 92% Match',
+            subtitleBadge: true,
             trailing: Icons.search_rounded,
           ),
           const SizedBox(height: 10),
@@ -222,12 +285,14 @@ class _ResultCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.trailing,
+    this.subtitleBadge = false,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
   final IconData trailing;
+  final bool subtitleBadge;
 
   @override
   Widget build(BuildContext context) {
@@ -249,7 +314,16 @@ class _ResultCard extends StatelessWidget {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900)),
               const SizedBox(height: 4),
-              Text(subtitle, style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+              subtitleBadge
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppColors.accent,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(subtitle, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.ink)),
+                    )
+                  : Text(subtitle, style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
             ]),
           ),
           Icon(trailing, size: 20),

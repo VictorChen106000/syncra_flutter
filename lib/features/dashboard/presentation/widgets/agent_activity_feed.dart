@@ -55,14 +55,23 @@ class AgentActivityFeed extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      activity['tool'] ?? '',
-                      style: TextStyle(
-                        color: AppColors.ink.withOpacity( 0.40),
-                        fontSize: 10,
-                        letterSpacing: 1.1,
-                        fontWeight: FontWeight.w900,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          activity['tool'] ?? '',
+                          style: TextStyle(
+                            color: AppColors.ink.withValues(alpha: 0.40),
+                            fontSize: 10,
+                            letterSpacing: 1.1,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        Text(
+                          activity['time'] ?? '',
+                          style: const TextStyle(color: AppColors.textSoft, fontSize: 9, fontWeight: FontWeight.w700),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 3),
                     Text(
@@ -74,12 +83,27 @@ class AgentActivityFeed extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
+                    if (activity['status'] == 'done' && activity['undoable'] == 'true') ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.undo_rounded, size: 12, color: AppColors.ink),
+                            SizedBox(width: 5),
+                            Text('Undo Action', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.ink)),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
-              ),
-              Text(
-                activity['time'] ?? '',
-                style: const TextStyle(color: AppColors.textSoft, fontSize: 10, fontWeight: FontWeight.w700),
               ),
             ],
           ),
