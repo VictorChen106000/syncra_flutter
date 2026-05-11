@@ -14,6 +14,7 @@ import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/section_title.dart';
 import '../../../shared/widgets/step_pill.dart';
+import '../../auth/state/auth_controller.dart';
 import '../../resumes/presentation/widgets/resume_attachment_chips.dart';
 import '../../resumes/presentation/widgets/select_resumes_bottom_sheet.dart';
 import '../../resumes/state/resume_controller.dart';
@@ -67,13 +68,18 @@ class DashboardPage extends StatelessWidget {
 class _DashboardHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return AppHeader.home(
-      avatar: const _Avatar(initial: 'D'),
-      name: 'Daryn',
-      role: AppStrings.dashboardGreetingRole,
-      unreadCount: MockNotifications.unreadCount,
-      onBellTap: () => context.go(RouteNames.notifications),
-      bottom: const _AgentLiveBanner(),
+    return Consumer<AuthController>(
+      builder: (context, auth, _) {
+        final user = auth.appUser;
+        return AppHeader.home(
+          avatar: _Avatar(initial: user?.initial ?? 'D'),
+          name: user?.displayName ?? 'Daryn',
+          role: AppStrings.dashboardGreetingRole,
+          unreadCount: MockNotifications.unreadCount,
+          onBellTap: () => context.go(RouteNames.notifications),
+          bottom: const _AgentLiveBanner(),
+        );
+      },
     );
   }
 }

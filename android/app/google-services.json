@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "812957418121",
+    "project_id": "syncra-signlogin",
+    "storage_bucket": "syncra-signlogin.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:812957418121:android:8fc60c5030b7a93cce3c58",
+        "android_client_info": {
+          "package_name": "com.example.syncra"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "812957418121-fjbgekr4qbsr7smalg6spmv7ppcrn1c4.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.syncra",
+            "certificate_hash": "ace3ddd6fb99d98f477bdf514a2febd11b4e6a9d"
+          }
+        },
+        {
+          "client_id": "812957418121-1dplhji4oeo61mp928okei3c52ddmma5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDazABtqDFMWnSbno3O7o9ORXUiCWOs8dk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "812957418121-1dplhji4oeo61mp928okei3c52ddmma5.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "812957418121-6m7jk45riilursjqg43fpv1p4ountgg6.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.syncra"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
