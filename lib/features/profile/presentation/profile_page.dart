@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
@@ -74,6 +75,7 @@ class _ProfileHeaderCard extends StatelessWidget {
         final displayName = user?.displayName ?? 'Daryn';
         final initial = user?.initial ?? 'D';
         final email = user?.email ?? '';
+        final photoUrl = user?.photoUrl;
 
         return Container(
           padding: const EdgeInsets.all(20),
@@ -91,22 +93,9 @@ class _ProfileHeaderCard extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: const BoxDecoration(
-                  color: AppColors.ink,
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  initial,
-                  style: const TextStyle(
-                    color: AppColors.accent,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 22,
-                  ),
-                ),
+              _ProfileAvatar(
+                photoUrl: photoUrl,
+                initial: initial,
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -155,6 +144,44 @@ class _ProfileHeaderCard extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _ProfileAvatar extends StatelessWidget {
+  const _ProfileAvatar({required this.photoUrl, required this.initial});
+
+  final String? photoUrl;
+  final String initial;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasNetworkPhoto = photoUrl != null && photoUrl!.isNotEmpty;
+    final ImageProvider image = hasNetworkPhoto
+        ? NetworkImage(photoUrl!)
+        : const AssetImage(AppAssets.profileImage);
+
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        color: AppColors.ink,
+        shape: BoxShape.circle,
+        image: DecorationImage(
+          image: image,
+          fit: BoxFit.cover,
+          onError: (_, _) {},
+        ),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: const TextStyle(
+          color: Colors.transparent,
+          fontWeight: FontWeight.w900,
+          fontSize: 22,
+        ),
+      ),
     );
   }
 }

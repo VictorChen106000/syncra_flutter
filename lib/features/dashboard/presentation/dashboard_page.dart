@@ -3,12 +3,12 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
 import '../../../data/mock/mock_notifications.dart';
-import '../../../shared/animations/agent_pulse_icon.dart';
 import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
@@ -69,7 +69,7 @@ class _DashboardHeader extends StatelessWidget {
       builder: (context, auth, _) {
         final user = auth.appUser;
         return AppHeader.home(
-          avatar: _Avatar(initial: user?.initial ?? 'D'),
+          avatar: _Avatar(photoUrl: user?.photoUrl),
           name: user?.displayName ?? 'Daryn',
           role: AppStrings.dashboardGreetingRole,
           unreadCount: MockNotifications.unreadCount,
@@ -82,12 +82,17 @@ class _DashboardHeader extends StatelessWidget {
 }
 
 class _Avatar extends StatelessWidget {
-  const _Avatar({required this.initial});
+  const _Avatar({required this.photoUrl});
 
-  final String initial;
+  final String? photoUrl;
 
   @override
   Widget build(BuildContext context) {
+    final hasNetworkPhoto = photoUrl != null && photoUrl!.isNotEmpty;
+    final ImageProvider image = hasNetworkPhoto
+        ? NetworkImage(photoUrl!)
+        : const AssetImage(AppAssets.profileImage);
+
     return Container(
       width: 48,
       height: 48,
@@ -95,6 +100,11 @@ class _Avatar extends StatelessWidget {
         shape: BoxShape.circle,
         color: AppColors.ink,
         border: Border.all(color: Colors.white, width: 2),
+        image: DecorationImage(
+          image: image,
+          fit: BoxFit.cover,
+          onError: (_, _) {},
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.06),
@@ -102,15 +112,6 @@ class _Avatar extends StatelessWidget {
             offset: const Offset(0, 2),
           ),
         ],
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        initial,
-        style: const TextStyle(
-          color: AppColors.accent,
-          fontWeight: FontWeight.w900,
-          fontSize: 20,
-        ),
       ),
     );
   }
@@ -121,73 +122,77 @@ class _AgentLiveBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppColors.ink,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.accent.withValues(alpha: 0.10),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+    return Row(
+      children: [
+        const _LiveDot(),
+        const SizedBox(width: 8),
+        Text(
+          AppStrings.agentLive.toUpperCase(),
+          style: const TextStyle(
+            color: AppColors.ink,
+            fontSize: 10,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.6,
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 34,
-            height: 34,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.accent.withValues(alpha: 0.10),
-                  ),
-                )
-                    .animate(onPlay: (c) => c.repeat(reverse: true))
-                    .scale(
-                      duration: 1500.ms,
-                      begin: const Offset(0.85, 0.85),
-                      end: const Offset(1.15, 1.15),
-                      curve: Curves.easeInOut,
-                    )
-                    .fadeIn(),
-                const AgentPulseIcon(size: 18),
-              ],
+        ),
+        const SizedBox(width: 8),
+        Container(
+          width: 3,
+          height: 3,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.textMuted.withValues(alpha: 0.6),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            AppStrings.activeTask,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: -0.1,
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  AppStrings.agentLive.toUpperCase(),
-                  style: TextStyle(
-                    color: AppColors.accent.withValues(alpha: 0.70),
-                    fontSize: 9,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.6,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  AppStrings.activeTask,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+        ),
+      ],
+    );
+  }
+}
+
+class _LiveDot extends StatelessWidget {
+  const _LiveDot();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 8,
+      height: 8,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.accentBright.withValues(alpha: 0.55),
+            ),
+          )
+              .animate(onPlay: (c) => c.repeat())
+              .scale(
+                duration: 1400.ms,
+                begin: const Offset(0.6, 0.6),
+                end: const Offset(1.8, 1.8),
+                curve: Curves.easeOut,
+              )
+              .fadeOut(duration: 1400.ms),
+          Container(
+            width: 6,
+            height: 6,
+            decoration: const BoxDecoration(
+              color: AppColors.accentBright,
+              shape: BoxShape.circle,
             ),
           ),
         ],

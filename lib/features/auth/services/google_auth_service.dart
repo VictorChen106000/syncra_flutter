@@ -56,7 +56,12 @@ class GoogleAuthService {
 
   /// Signs out of both Google and Firebase.
   Future<void> signOut() async {
-    await GoogleSignIn.instance.disconnect();
+    try {
+      await GoogleSignIn.instance.signOut();
+    } catch (_) {
+      // Ignore — user may not be connected to Google (e.g. session restored
+      // from Firebase only). Firebase sign-out below is what actually matters.
+    }
     await _firebaseAuth.signOut();
   }
 }

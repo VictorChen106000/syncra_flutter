@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
 import '../state/auth_controller.dart';
@@ -101,31 +102,9 @@ class _LoginBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Positioned.fill(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomCenter,
-            colors: [
-              const Color(0xFF312E81),
-              const Color(0xFF581C87),
-              AppColors.ink.withValues(alpha: 0.98),
-            ],
-          ),
-        ),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.transparent,
-                AppColors.ink.withValues(alpha: 0.72),
-                AppColors.ink,
-              ],
-            ),
-          ),
-        ),
+      child: Image.asset(
+        AppAssets.loginBackground,
+        fit: BoxFit.cover,
       ),
     );
   }
