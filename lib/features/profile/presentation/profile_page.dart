@@ -392,18 +392,6 @@ class _IntegrationSectionState extends State<_IntegrationSection> {
       subtitle: 'Allow Agent to draft outreach and parse rejections',
       active: true,
     ),
-    const _Integration(
-      icon: Icons.business_center_outlined,
-      title: 'LinkedIn Data',
-      subtitle: 'Keep AI Profile automatically synced',
-      active: true,
-    ),
-    const _Integration(
-      icon: Icons.draw_outlined,
-      title: 'Portfolio Access',
-      subtitle: 'Allow Agent to pull context from your projects',
-      active: false,
-    ),
   ];
 
   void _toggle(int i) {
