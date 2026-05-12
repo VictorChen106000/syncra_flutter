@@ -35,8 +35,8 @@ class GoogleAuthService {
   /// Returns the [AppUser] on success, or `null` if the user cancelled.
   Future<AppUser?> signInWithGoogle() async {
     // Trigger the Google Sign-In flow using the v7 API.
-    final GoogleSignInAccount? googleUser =
-        await GoogleSignIn.instance.authenticate();
+    final GoogleSignInAccount googleUser = await GoogleSignIn.instance
+        .authenticate();
     if (googleUser == null) return null; // User cancelled
 
     // In v7, `authentication` is a property (not a Future) and only has `idToken`.
@@ -48,15 +48,20 @@ class GoogleAuthService {
     );
 
     // Sign in to Firebase with the Google credential.
-    final UserCredential userCredential =
-        await _firebaseAuth.signInWithCredential(credential);
+    final UserCredential userCredential = await _firebaseAuth
+        .signInWithCredential(credential);
 
     return userToAppUser(userCredential.user);
   }
 
   /// Signs out of both Google and Firebase.
   Future<void> signOut() async {
-    await GoogleSignIn.instance.disconnect();
+    try {
+      await GoogleSignIn.instance.signOut();
+    } catch (_) {
+      // Ignore — user may not be connected to Google (e.g. session restored
+      // from Firebase only). Firebase sign-out below is what actually matters.
+    }
     await _firebaseAuth.signOut();
   }
 }

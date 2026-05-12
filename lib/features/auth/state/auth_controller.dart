@@ -85,12 +85,14 @@ class AuthController extends ChangeNotifier {
       if (_appUser != null && !_appUser!.isGuest) {
         await _authService.signOut();
       }
-      _appUser = null;
       _error = null;
     } catch (e) {
       _error = 'Sign-out failed. Please try again.';
       debugPrint('Sign-Out Error: $e');
     } finally {
+      // Always clear local state so the router redirects to login,
+      // even if the underlying Firebase/Google call threw.
+      _appUser = null;
       _isLoading = false;
       notifyListeners();
     }
