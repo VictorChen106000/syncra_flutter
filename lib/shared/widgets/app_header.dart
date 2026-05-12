@@ -32,7 +32,7 @@ class AppHeader extends StatelessWidget {
     return AppHeader._(
       leading: avatar,
       titleWidget: Padding(
-        padding: const EdgeInsets.only(left: 12),
+        padding: const EdgeInsets.only(left: 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -41,10 +41,10 @@ class AppHeader extends StatelessWidget {
               name,
               style: const TextStyle(
                 color: AppColors.ink,
-                fontSize: 20,
+                fontSize: 24,
                 fontWeight: FontWeight.w900,
-                letterSpacing: -0.3,
-                height: 1,
+                letterSpacing: -0.5,
+                height: 1.05,
               ),
             ),
             const SizedBox(height: 4),
@@ -52,8 +52,9 @@ class AppHeader extends StatelessWidget {
               role,
               style: const TextStyle(
                 color: AppColors.textMuted,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.1,
               ),
             ),
           ],
@@ -64,7 +65,8 @@ class AppHeader extends StatelessWidget {
         showDot: unreadCount > 0,
       ),
       bottom: bottom,
-      bottomPadding: bottom == null ? 16 : 14,
+      topPadding: 18,
+      bottomPadding: bottom == null ? 18 : 16,
     );
   }
 

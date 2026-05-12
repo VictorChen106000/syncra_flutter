@@ -21,6 +21,7 @@ import '../../features/resumes/models/resume_file.dart';
 import '../../features/resumes/presentation/resume_lists_page.dart';
 import '../../features/resumes/presentation/resume_preview_page.dart';
 import '../../features/tracker/presentation/tracker_page.dart';
+import '../../shared/widgets/app_shell_scaffold.dart';
 import 'route_names.dart';
 
 class AppRouter {
@@ -95,22 +96,43 @@ class AppRouter {
           },
         ),
         GoRoute(
-          path: RouteNames.dashboard,
-          pageBuilder: (context, state) =>
-              _fadePage(state, const DashboardPage()),
-        ),
-        GoRoute(
           path: RouteNames.agentChat,
           pageBuilder: (context, state) =>
               _fadePage(state, const AiChatbotPage()),
         ),
-        GoRoute(
-          path: RouteNames.profile,
-          pageBuilder: (context, state) => _fadePage(state, const ProfilePage()),
-        ),
-        GoRoute(
-          path: RouteNames.jobs,
-          pageBuilder: (context, state) => _fadePage(state, const JobsPage()),
+        StatefulShellRoute.indexedStack(
+          builder: (context, state, navigationShell) =>
+              AppShellScaffold(navigationShell: navigationShell),
+          branches: [
+            // Branch order must match AppShellScaffold._indexToTab.
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
+                  path: RouteNames.dashboard,
+                  pageBuilder: (context, state) =>
+                      _fadePage(state, const DashboardPage()),
+                ),
+              ],
+            ),
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
+                  path: RouteNames.jobs,
+                  pageBuilder: (context, state) =>
+                      _fadePage(state, const JobsPage()),
+                ),
+              ],
+            ),
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
+                  path: RouteNames.profile,
+                  pageBuilder: (context, state) =>
+                      _fadePage(state, const ProfilePage()),
+                ),
+              ],
+            ),
+          ],
         ),
         GoRoute(
           path: RouteNames.tracker,

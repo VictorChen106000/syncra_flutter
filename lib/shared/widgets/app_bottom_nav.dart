@@ -9,9 +9,14 @@ import '../../core/router/route_names.dart';
 enum BottomNavTab { home, agent, profile }
 
 class AppBottomNav extends StatefulWidget {
-  const AppBottomNav({super.key, required this.activeTab});
+  const AppBottomNav({super.key, required this.activeTab, this.onTap});
 
   final BottomNavTab activeTab;
+
+  /// When provided, called instead of routing via [GoRouter.go]. The shell
+  /// scaffold uses this so taps go through [StatefulNavigationShell.goBranch]
+  /// and preserve each branch's state.
+  final ValueChanged<BottomNavTab>? onTap;
 
   @override
   State<AppBottomNav> createState() => _AppBottomNavState();
@@ -57,7 +62,7 @@ class _AppBottomNavState extends State<AppBottomNav> {
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 420),
+      duration: const Duration(milliseconds: 900),
       curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
         color: AppColors.navBackground,
@@ -94,7 +99,14 @@ class _AppBottomNavState extends State<AppBottomNav> {
                       borderRadius: BorderRadius.circular(28),
                       child: InkWell(
                         borderRadius: BorderRadius.circular(28),
-                        onTap: () => context.go(item.route),
+                        onTap: () {
+                          final onTap = widget.onTap;
+                          if (onTap != null) {
+                            onTap(item.tab);
+                          } else {
+                            context.go(item.route);
+                          }
+                        },
                         onLongPress: item.tab == BottomNavTab.agent
                             ? _toggleAgentDemo
                             : null,
@@ -124,11 +136,11 @@ class _AppBottomNavState extends State<AppBottomNav> {
                                     child: ScaleTransition(
                                       scale: Tween<double>(begin: 0.78, end: 1)
                                           .animate(
-                                        CurvedAnimation(
-                                          parent: animation,
-                                          curve: Curves.easeOutBack,
-                                        ),
-                                      ),
+                                            CurvedAnimation(
+                                              parent: animation,
+                                              curve: Curves.easeOutBack,
+                                            ),
+                                          ),
                                       child: child,
                                     ),
                                   );
@@ -149,8 +161,7 @@ class _AppBottomNavState extends State<AppBottomNav> {
                                   alignment: Alignment.centerLeft,
                                   widthFactor: isActive ? 1 : 0,
                                   child: AnimatedSlide(
-                                    duration:
-                                        const Duration(milliseconds: 420),
+                                    duration: const Duration(milliseconds: 420),
                                     curve: Curves.easeOutCubic,
                                     offset: isActive
                                         ? Offset.zero
@@ -200,47 +211,52 @@ class _AgentStatusStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(left: 6, right: 6, top: 4, bottom: 10),
-      child: Row(
-        children: [
-          const _PulsingDot(),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              status,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.1,
+          padding: const EdgeInsets.only(left: 6, right: 6, top: 4, bottom: 10),
+          child: Row(
+            children: [
+              const _PulsingDot(),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  status,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.1,
+                  ),
+                ),
               ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.accent.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Text(
-              'LIVE',
-              style: TextStyle(
-                color: AppColors.accent,
-                fontSize: 9.5,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.6,
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  'LIVE',
+                  style: TextStyle(
+                    color: AppColors.accent,
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.6,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
-    )
+        )
         .animate()
         .fadeIn(duration: 240.ms, curve: Curves.easeOut)
-        .slideY(begin: -0.25, end: 0, duration: 320.ms, curve: Curves.easeOutCubic);
+        .slideY(
+          begin: -0.25,
+          end: 0,
+          duration: 320.ms,
+          curve: Curves.easeOutCubic,
+        );
   }
 }
 
@@ -256,11 +272,11 @@ class _PulsingDot extends StatelessWidget {
         alignment: Alignment.center,
         children: [
           Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.accent.withValues(alpha: 0.45),
-            ),
-          )
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.accent.withValues(alpha: 0.45),
+                ),
+              )
               .animate(onPlay: (c) => c.repeat())
               .scale(
                 duration: 1300.ms,
