@@ -54,4 +54,6 @@ RUN echo "\\documentclass{article}\\begin{document}warmup\\end{document}" > /tmp
  && rm -f /tmp/warm.* /tmp/warm.pdf
 
 EXPOSE 8000
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# On Railway, FIREBASE_CREDENTIALS_B64 holds the base64-encoded service-account JSON.
+# Decode it to disk on startup and point FIREBASE_CREDENTIALS_PATH at it.
+CMD ["sh", "-c", "if [ -n \"$FIREBASE_CREDENTIALS_B64\" ]; then echo \"$FIREBASE_CREDENTIALS_B64\" | base64 -d > /app/firebase_credentials.json && export FIREBASE_CREDENTIALS_PATH=/app/firebase_credentials.json; fi; exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
