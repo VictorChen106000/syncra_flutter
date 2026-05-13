@@ -7,7 +7,7 @@ from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, status
 from firebase_admin import exceptions as fb_exc
-from google.cloud.firestore import AsyncTransaction, SERVER_TIMESTAMP
+from google.cloud.firestore import SERVER_TIMESTAMP
 
 from app.firebase import db, verify_id_token
 from app.schemas import User
@@ -55,29 +55,16 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 def rate_limit(endpoint_key: str, daily_cap: int):
     """Dependency factory: per-user daily cap on LLM-heavy endpoints.
 
-    Counters at users/{uid}/usage/{YYYY-MM-DD}. Increments via Firestore transaction.
+    Counters at users/{uid}/usage/{YYYY-MM-DD}. Non-transactional read-then-write — under
+    concurrent calls we may lose a tick at the boundary, which is fine for a soft cap.
     """
 
     async def _check(user: CurrentUser) -> None:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        client = db()
-        ref = client.collection("users").document(user.id).collection("usage").document(today)
-
-        @client.transactional  # type: ignore[misc]
-        async def _txn(tx: AsyncTransaction) -> int:
-            snap = await ref.get(transaction=tx)
-            current = (snap.to_dict() or {}).get(endpoint_key, 0) if snap.exists else 0
-            if current >= daily_cap:
-                return current
-            tx.set(
-                ref,
-                {endpoint_key: current + 1, "updated_at": SERVER_TIMESTAMP},
-                merge=True,
-            )
-            return current + 1
-
-        new_count = await _txn(client.transaction())
-        if new_count > daily_cap:
+        ref = db().collection("users").document(user.id).collection("usage").document(today)
+        snap = await ref.get()
+        current = (snap.to_dict() or {}).get(endpoint_key, 0) if snap.exists else 0
+        if current >= daily_cap:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail={
@@ -86,5 +73,9 @@ def rate_limit(endpoint_key: str, daily_cap: int):
                     "status_code": 429,
                 },
             )
+        await ref.set(
+            {endpoint_key: current + 1, "updated_at": SERVER_TIMESTAMP},
+            merge=True,
+        )
 
     return _check

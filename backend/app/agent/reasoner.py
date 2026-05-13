@@ -70,15 +70,16 @@ def _humanize_age(hours: float) -> str:
 
 
 async def _load_active_resume(uid: str) -> ResumeJSON | None:
-    """Most recent manual resume's parsed ResumeJSON, per Firestore layout."""
+    """Pick a manual resume's parsed ResumeJSON. Sort newest-first in Python to avoid
+    needing a composite Firestore index (single-field filters only)."""
     coll = db().collection("users").document(uid).collection("resumes")
-    q = coll.where("source", "==", "manual").order_by("uploaded_at", direction="DESCENDING").limit(1)
-    async for resume_doc in q.stream():
+    docs = [d async for d in coll.where("source", "==", "manual").stream()]
+    docs.sort(key=lambda d: (d.to_dict() or {}).get("uploaded_at", ""), reverse=True)
+    for resume_doc in docs:
         parsed = await resume_doc.reference.collection("parsed").document("parsed").get()
         if not parsed.exists:
             continue
-        data = parsed.to_dict() or {}
-        return ResumeJSON.model_validate(data)
+        return ResumeJSON.model_validate(parsed.to_dict() or {})
     return None
 
 
@@ -126,60 +127,68 @@ async def _match_one(
 
 
 async def run_brief(uid: str, brief_id: str, role_query: str, limit: int = _DEFAULT_LIMIT) -> None:
-    """Background task. Updates `users/{uid}/briefs/{brief_id}` throughout."""
-    await _update_brief(uid, brief_id, status="running", progress=BriefProgress().model_dump())
+    """Background task. Updates `users/{uid}/briefs/{brief_id}` throughout.
 
-    resume = await _load_active_resume(uid)
-    if resume is None:
-        await _update_brief(
-            uid,
-            brief_id,
-            status="error",
-            error="No active resume found. Upload one before running a brief.",
-        )
-        return
-
+    Wrapped in a top-level try/except so ANY crash flips the brief to status=error.
+    Without this, an unhandled exception leaves the brief stuck on "running" forever
+    and the frontend polls indefinitely.
+    """
     try:
-        jobs = await sources.search(query=role_query, limit=limit)
-    except Exception as e:  # noqa: BLE001
-        log.exception("reasoner.sources_failed err=%s", e)
-        await _update_brief(uid, brief_id, status="error", error=f"Job search failed: {e}")
-        return
+        await _update_brief(uid, brief_id, status="running", progress=BriefProgress().model_dump())
 
-    total = len(jobs)
-    await _update_brief(uid, brief_id, progress=BriefProgress(current=0, total=total).model_dump())
-
-    sem = asyncio.Semaphore(_MATCH_CONCURRENCY)
-    tasks = [asyncio.create_task(_match_one(sem, resume, job)) for job in jobs]
-
-    results: list[tuple[Job, MatchVerdict]] = []
-    completed = 0
-    for coro in asyncio.as_completed(tasks):
-        result = await coro
-        completed += 1
-        if result is not None:
-            results.append(result)
-        if completed % 3 == 0 or completed == total:
+        resume = await _load_active_resume(uid)
+        if resume is None:
             await _update_brief(
                 uid,
                 brief_id,
-                progress=BriefProgress(current=completed, total=total).model_dump(),
+                status="error",
+                error="No active resume found. Upload one before running a brief.",
             )
+            return
 
-    # Sort by internal score (highest first) so the pipeline reads best-to-worst.
-    results.sort(key=lambda r: r[1].match_score, reverse=True)
+        jobs = await sources.search(query=role_query, limit=limit)
+        total = len(jobs)
+        await _update_brief(
+            uid, brief_id, progress=BriefProgress(current=0, total=total).model_dump()
+        )
 
-    for job, verdict in results:
-        await _write_pipeline_card(uid, job, verdict)
+        sem = asyncio.Semaphore(_MATCH_CONCURRENCY)
+        tasks = [asyncio.create_task(_match_one(sem, resume, job)) for job in jobs]
 
-    await _update_brief(
-        uid,
-        brief_id,
-        status="done",
-        card_count=len(results),
-        progress=BriefProgress(current=total, total=total).model_dump(),
-    )
-    await db().collection("users").document(uid).set({"last_brief_at": _now()}, merge=True)
+        results: list[tuple[Job, MatchVerdict]] = []
+        completed = 0
+        for coro in asyncio.as_completed(tasks):
+            result = await coro
+            completed += 1
+            if result is not None:
+                results.append(result)
+            if completed % 3 == 0 or completed == total:
+                await _update_brief(
+                    uid,
+                    brief_id,
+                    progress=BriefProgress(current=completed, total=total).model_dump(),
+                )
+
+        # Sort by internal score (highest first) so the pipeline reads best-to-worst.
+        results.sort(key=lambda r: r[1].match_score, reverse=True)
+
+        for job, verdict in results:
+            await _write_pipeline_card(uid, job, verdict)
+
+        await _update_brief(
+            uid,
+            brief_id,
+            status="done",
+            card_count=len(results),
+            progress=BriefProgress(current=total, total=total).model_dump(),
+        )
+        await db().collection("users").document(uid).set({"last_brief_at": _now()}, merge=True)
+    except Exception as e:  # noqa: BLE001
+        log.exception("reasoner.run_brief_failed brief=%s err=%s", brief_id, e)
+        try:
+            await _update_brief(uid, brief_id, status="error", error=str(e))
+        except Exception:  # noqa: BLE001
+            log.exception("reasoner.failed_to_record_error brief=%s", brief_id)
 
 
 async def create_brief(uid: str) -> Brief:
