@@ -1,23 +1,25 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../models/app_user.dart';
 
-/// Wraps [GoogleSignIn] and [FirebaseAuth] into a single service.
+/// Wraps Google Sign-In and FirebaseAuth into a single service.
 class GoogleAuthService {
   GoogleAuthService() : _firebaseAuth = FirebaseAuth.instance;
 
   final FirebaseAuth _firebaseAuth;
 
-  /// Stream that emits whenever auth state changes (sign-in / sign-out).
+  /// Stream that emits whenever auth state changes.
   Stream<User?> get authStateChanges => _firebaseAuth.authStateChanges();
 
-  /// The currently signed-in Firebase user, or `null`.
+  /// The currently signed-in Firebase user, or null.
   User? get currentFirebaseUser => _firebaseAuth.currentUser;
 
-  /// Converts [User] to [AppUser].
+  /// Converts Firebase [User] to [AppUser].
   AppUser? userToAppUser(User? user) {
     if (user == null) return null;
+
     return AppUser(
       uid: user.uid,
       displayName: user.displayName ?? 'User',
@@ -26,41 +28,54 @@ class GoogleAuthService {
     );
   }
 
-  /// Initializes the GoogleSignIn plugin. Must be called once at app startup.
+  /// Initializes GoogleSignIn.
+  ///
+  /// On web, we do not initialize google_sign_in because web login will use
+  /// FirebaseAuth.signInWithPopup instead.
   static Future<void> initialize() async {
-    await GoogleSignIn.instance.initialize();
+    if (!kIsWeb) {
+      await GoogleSignIn.instance.initialize();
+    }
   }
 
-  /// Triggers Google account picker → signs into Firebase.
-  /// Returns the [AppUser] on success, or `null` if the user cancelled.
+  /// Triggers Google sign-in and signs into Firebase.
   Future<AppUser?> signInWithGoogle() async {
-    // Trigger the Google Sign-In flow using the v7 API.
-    final GoogleSignInAccount googleUser = await GoogleSignIn.instance
-        .authenticate(); // User cancelled
+    if (kIsWeb) {
+      final googleProvider = GoogleAuthProvider()
+        ..addScope('email')
+        ..addScope('profile');
 
-    // In v7, `authentication` is a property (not a Future) and only has `idToken`.
+      final UserCredential userCredential =
+          await _firebaseAuth.signInWithPopup(googleProvider);
+
+      return userToAppUser(userCredential.user);
+    }
+
+    final GoogleSignInAccount googleUser =
+        await GoogleSignIn.instance.authenticate();
+
     final GoogleSignInAuthentication googleAuth = googleUser.authentication;
 
-    // Create a Firebase credential from the Google ID token.
     final OAuthCredential credential = GoogleAuthProvider.credential(
       idToken: googleAuth.idToken,
     );
 
-    // Sign in to Firebase with the Google credential.
-    final UserCredential userCredential = await _firebaseAuth
-        .signInWithCredential(credential);
+    final UserCredential userCredential =
+        await _firebaseAuth.signInWithCredential(credential);
 
     return userToAppUser(userCredential.user);
   }
 
   /// Signs out of both Google and Firebase.
   Future<void> signOut() async {
-    try {
-      await GoogleSignIn.instance.signOut();
-    } catch (_) {
-      // Ignore — user may not be connected to Google (e.g. session restored
-      // from Firebase only). Firebase sign-out below is what actually matters.
+    if (!kIsWeb) {
+      try {
+        await GoogleSignIn.instance.signOut();
+      } catch (_) {
+        // Ignore. Firebase sign-out below is what actually matters.
+      }
     }
+
     await _firebaseAuth.signOut();
   }
 }
