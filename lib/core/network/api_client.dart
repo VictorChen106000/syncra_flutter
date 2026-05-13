@@ -3,6 +3,7 @@
 
 
 class ApiClient {
+  static const String railwayBaseUrl = 'syncraflutter-production.up.railway.app';
   ApiClient({required this.baseUrl, this.token});
 
   final String baseUrl;
