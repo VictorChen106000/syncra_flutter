@@ -50,7 +50,6 @@ class Resume(_Base):
     mime_type: str
     uploaded_at: datetime
     source: ResumeSource
-    storage_url: str
     parent_resume_id: str | None = None
     tailored_for_job_id: str | None = None
 

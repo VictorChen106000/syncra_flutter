@@ -36,8 +36,7 @@ class GoogleAuthService {
   Future<AppUser?> signInWithGoogle() async {
     // Trigger the Google Sign-In flow using the v7 API.
     final GoogleSignInAccount googleUser = await GoogleSignIn.instance
-        .authenticate();
-    if (googleUser == null) return null; // User cancelled
+        .authenticate(); // User cancelled
 
     // In v7, `authentication` is a property (not a Future) and only has `idToken`.
     final GoogleSignInAuthentication googleAuth = googleUser.authentication;
