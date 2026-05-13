@@ -1,6 +1,6 @@
 # Syncra API Contract
 
-**Status:** Draft v0.3 — MVP scope locked
+**Status:** Draft v0.4 — MVP scope locked
 **Demo target:** June 16, 2026
 **Owners:** Backend (A, B, C) + Frontend
 **Last updated:** 2026-05-13
@@ -215,7 +215,6 @@ Per-user, per-job agent decision. Powers the dashboard "Approval Pipeline" + job
   "user_id": "...",
   "job": { "/* Job, denormalized snapshot */": "..." },
   "category": "ready | input_needed | exploration",
-  "match_score": 94,
   "agent_action": "Proactive Intercept",
   "agent_justification": "Binance posted this 15 mins ago...",
   "matched_skills": ["UX Design", "Figma"],
@@ -226,6 +225,19 @@ Per-user, per-job agent decision. Powers the dashboard "Approval Pipeline" + job
   "status": "pending | approved | dismissed"
 }
 ```
+
+**Tier semantics (`category`):** LinkedIn-style qualitative match, no numerical score in the
+public shape. UI may render these as e.g. "Strong match" / "Partial match" / "Stretch match".
+
+| category | When the matcher uses it | Suggested UI label |
+|---|---|---|
+| `ready` | Resume meets the JD's must-haves; at most one minor gap. | "Strong match — all key qualifications met" |
+| `input_needed` | Real fit but 1-3 missing skills the user may be able to bridge. | "Partial match — review missing skills" |
+| `exploration` | Adjacent/stretch fit; worth a look but expect gaps. | "Stretch match — worth exploring" |
+
+**Internal scoring:** `jobs/matcher.py` computes a private 0-100 integer used by
+`agent/reasoner.py` only for sort-order when writing cards. It is **never** stored on the card
+document or returned in API responses.
 
 ### Application
 
@@ -371,6 +383,10 @@ Use Haiku for matching (called 20+ times per brief). Reserve Opus/Sonnet for the
 
 ## Changelog
 
+- **v0.4 (2026-05-13)** — Dropped `PipelineCard.match_score` from the public schema. Job
+  matching is tier-based only (`category`: `ready` / `input_needed` / `exploration`),
+  LinkedIn-style. Matcher still computes an internal 0-100 score for sort-order in
+  `reasoner.py`; never surfaced.
 - **v0.3 (2026-05-13)** — Dropped Firebase Cloud Storage. `Resume.storage_url` removed. Added
   `GET /resumes/{id}/download` to re-render PDFs on demand. Originals discarded after parsing.
   Project stays on Firebase Spark (free) plan.

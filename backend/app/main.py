@@ -39,17 +39,17 @@ def create_app() -> FastAPI:
 
     from app.auth import router as auth_router
     from app.applications.router import router as applications_router
+    from app.jobs.router import router as jobs_router
+    from app.agent.router import router as agent_router
 
     app.include_router(auth_router, prefix=settings.api_prefix)
     app.include_router(applications_router, prefix=settings.api_prefix)
+    app.include_router(jobs_router, prefix=settings.api_prefix)
+    app.include_router(agent_router, prefix=settings.api_prefix)
 
-    # Mounted as A and B ship their routers:
+    # Mounted as A ships their router:
     # from app.resumes.router import router as resumes_router      # Person A
-    # from app.jobs.router import router as jobs_router            # Person B
-    # from app.agent.router import router as agent_router          # Person B
     # app.include_router(resumes_router, prefix=settings.api_prefix)
-    # app.include_router(jobs_router, prefix=settings.api_prefix)
-    # app.include_router(agent_router, prefix=settings.api_prefix)
 
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
