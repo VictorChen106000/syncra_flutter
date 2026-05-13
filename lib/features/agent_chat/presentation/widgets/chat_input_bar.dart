@@ -42,24 +42,17 @@ class _ChatInputBarState extends State<ChatInputBar> {
   Widget build(BuildContext context) {
     return Consumer2<ResumeController, AgentChatController>(
       builder: (context, resumeController, chatController, _) {
+        final isTyping = chatController.isTyping;
+        final hasText = _textController.text.trim().isNotEmpty;
         return Container(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
           color: AppColors.scaffold,
           child: Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.78),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.40),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.12),
-                  blurRadius: 40,
-                  offset: const Offset(0, 12),
-                ),
-              ],
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: AppColors.border),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -69,79 +62,56 @@ class _ChatInputBarState extends State<ChatInputBar> {
                   onRemove: resumeController.removeSelectedResume,
                 ),
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    InkResponse(
-                      onTap: chatController.isTyping
+                    _IconButton(
+                      icon: Icons.add_rounded,
+                      onTap: isTyping
                           ? null
                           : () => SelectResumesBottomSheet.show(context),
-                      radius: 24,
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: AppColors.scaffold,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        alignment: Alignment.center,
-                        child: Icon(
-                          Icons.add_rounded,
-                          color: chatController.isTyping
-                              ? AppColors.textSoft
-                              : AppColors.ink,
-                          size: 20,
-                        ),
-                      ),
                     ),
                     const SizedBox(width: 6),
                     Expanded(
-                      child: TextField(
-                        controller: _textController,
-                        enabled: !chatController.isTyping,
-                        onSubmitted: (_) => _send(context),
-                        style: const TextStyle(
-                          color: AppColors.ink,
-                          fontWeight: FontWeight.w500,
-                          fontSize: 14,
-                        ),
-                        decoration: InputDecoration(
-                          hintText: chatController.isTyping
-                              ? 'Syncra is executing plan...'
-                              : AppStrings.askSyncra,
-                          hintStyle: const TextStyle(
-                            color: AppColors.textSoft,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        child: TextField(
+                          controller: _textController,
+                          enabled: !isTyping,
+                          maxLines: 5,
+                          minLines: 1,
+                          textInputAction: TextInputAction.send,
+                          onChanged: (_) => setState(() {}),
+                          onSubmitted: (_) => _send(context),
+                          style: const TextStyle(
+                            color: AppColors.ink,
                             fontWeight: FontWeight.w500,
-                            fontSize: 14,
+                            fontSize: 15,
+                            height: 1.35,
                           ),
-                          contentPadding:
-                              const EdgeInsets.symmetric(horizontal: 6),
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          disabledBorder: InputBorder.none,
+                          decoration: InputDecoration(
+                            hintText: isTyping
+                                ? 'Syncra is thinking…'
+                                : AppStrings.askSyncra,
+                            hintStyle: const TextStyle(
+                              color: AppColors.textSoft,
+                              fontWeight: FontWeight.w500,
+                              fontSize: 15,
+                            ),
+                            isDense: true,
+                            contentPadding:
+                                const EdgeInsets.symmetric(horizontal: 4),
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            disabledBorder: InputBorder.none,
+                          ),
                         ),
                       ),
                     ),
-                    InkResponse(
-                      onTap: chatController.isTyping
-                          ? null
-                          : () => _send(context),
-                      radius: 24,
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: AppColors.ink,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        alignment: Alignment.center,
-                        child: Icon(
-                          Icons.send_rounded,
-                          color: Colors.white.withValues(
-                            alpha: chatController.isTyping ? 0.4 : 1,
-                          ),
-                          size: 16,
-                        ),
-                      ),
+                    const SizedBox(width: 4),
+                    _SendButton(
+                      enabled: !isTyping && hasText,
+                      onTap: () => _send(context),
                     ),
                   ],
                 ),
@@ -150,6 +120,67 @@ class _ChatInputBarState extends State<ChatInputBar> {
           ),
         );
       },
+    );
+  }
+}
+
+class _IconButton extends StatelessWidget {
+  const _IconButton({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          width: 38,
+          height: 38,
+          child: Icon(
+            icon,
+            color: enabled ? AppColors.ink : AppColors.textSoft,
+            size: 20,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SendButton extends StatelessWidget {
+  const _SendButton({required this.enabled, required this.onTap});
+
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 180),
+      opacity: enabled ? 1 : 0.45,
+      child: Material(
+        color: enabled ? AppColors.ink : AppColors.border,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: BorderRadius.circular(12),
+          child: const SizedBox(
+            width: 38,
+            height: 38,
+            child: Icon(
+              Icons.arrow_upward_rounded,
+              color: Colors.white,
+              size: 18,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

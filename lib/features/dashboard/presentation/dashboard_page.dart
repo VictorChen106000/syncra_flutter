@@ -26,7 +26,7 @@ class DashboardPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AppScreen(
-      showBottomNav: true,
+      showBottomNav: false,
       activeTab: BottomNavTab.home,
       extendBehindBottomNav: true,
       child: Stack(
@@ -39,9 +39,9 @@ class DashboardPage extends StatelessWidget {
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(
                       AppConstants.screenHorizontalPadding,
-                      20,
+                      AppConstants.screenTopPadding,
                       AppConstants.screenHorizontalPadding,
-                      340,
+                      320,
                     ),
                     children: const [
                       _ApprovalPipelineCard(),
@@ -94,8 +94,8 @@ class _Avatar extends StatelessWidget {
         : const AssetImage(AppAssets.profileImage);
 
     return Container(
-      width: 48,
-      height: 48,
+      width: 56,
+      height: 56,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: AppColors.ink,
@@ -107,9 +107,9 @@ class _Avatar extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -130,9 +130,9 @@ class _AgentLiveBanner extends StatelessWidget {
           AppStrings.agentLive.toUpperCase(),
           style: const TextStyle(
             color: AppColors.ink,
-            fontSize: 10,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1.6,
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.4,
           ),
         ),
         const SizedBox(width: 8),
@@ -153,7 +153,6 @@ class _AgentLiveBanner extends StatelessWidget {
               color: AppColors.textMuted,
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              letterSpacing: -0.1,
             ),
           ),
         ),
@@ -218,15 +217,16 @@ class _ApprovalPipelineCard extends StatelessWidget {
         ),
         Material(
           color: AppColors.surface,
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(AppConstants.largeCardRadius),
           child: InkWell(
-            borderRadius: BorderRadius.circular(28),
+            borderRadius: BorderRadius.circular(AppConstants.largeCardRadius),
             onTap: () => context.go(RouteNames.jobs),
             child: Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(AppConstants.cardPadding),
               decoration: BoxDecoration(
                 color: AppColors.surface,
-                borderRadius: BorderRadius.circular(28),
+                borderRadius:
+                    BorderRadius.circular(AppConstants.largeCardRadius),
                 border: Border.all(color: AppColors.border),
                 boxShadow: [
                   BoxShadow(
@@ -259,23 +259,24 @@ class _ApprovalPipelineCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 16),
                   const Text(
                     AppStrings.reviewApplications,
                     style: TextStyle(
                       fontSize: 18,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w800,
                       color: AppColors.ink,
-                      letterSpacing: -0.3,
+                      letterSpacing: -0.2,
+                      height: 1.25,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   const Text(
                     AppStrings.reviewApplicationsBody,
                     style: TextStyle(
                       color: AppColors.textMuted,
-                      fontSize: 13,
-                      height: 1.5,
+                      fontSize: 14,
+                      height: 1.45,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -354,7 +355,7 @@ class _FloatingAgentArea extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: const [
           _PromptSuggestions(),
-          SizedBox(height: 14),
+          SizedBox(height: AppConstants.smallGap),
           Padding(
             padding: EdgeInsets.symmetric(
               horizontal: AppConstants.screenHorizontalPadding,
@@ -504,13 +505,13 @@ class _PromptSuggestionCard extends StatelessWidget {
               Text(
                 data.kicker,
                 style: const TextStyle(
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.6,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.4,
                   color: AppColors.textMuted,
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
               Text(
                 data.prompt,
                 maxLines: 2,
@@ -520,7 +521,7 @@ class _PromptSuggestionCard extends StatelessWidget {
                   fontWeight: FontWeight.w800,
                   color: AppColors.ink,
                   letterSpacing: -0.2,
-                  height: 1.3,
+                  height: 1.35,
                 ),
               ),
             ],
@@ -585,7 +586,7 @@ class _AgentInputBar extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: GestureDetector(
                       onTap: () => context.go(RouteNames.agentChat),

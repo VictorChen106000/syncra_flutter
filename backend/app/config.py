@@ -20,7 +20,6 @@ class Settings(BaseSettings):
     env: Literal["dev", "staging", "prod"] = "dev"
 
     firebase_credentials_path: str
-    firebase_storage_bucket: str
 
     anthropic_api_key: str
     rapidapi_key: str

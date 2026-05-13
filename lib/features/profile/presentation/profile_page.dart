@@ -21,7 +21,7 @@ class ProfilePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AppScreen(
-      showBottomNav: true,
+      showBottomNav: false,
       activeTab: BottomNavTab.profile,
       extendBehindBottomNav: true,
       child: Column(
@@ -78,10 +78,10 @@ class _ProfileHeaderCard extends StatelessWidget {
         final photoUrl = user?.photoUrl;
 
         return Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(AppConstants.cardPadding),
           decoration: BoxDecoration(
             color: AppColors.surface,
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(AppConstants.cardRadius),
             border: Border.all(color: AppColors.border),
             boxShadow: [
               BoxShadow(
@@ -106,10 +106,13 @@ class _ProfileHeaderCard extends StatelessWidget {
                       displayName,
                       style: const TextStyle(
                         fontSize: 18,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: FontWeight.w800,
                         letterSpacing: -0.2,
+                        height: 1.2,
                         color: AppColors.ink,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     if (email.isNotEmpty) ...[
                       const SizedBox(height: 2),
@@ -117,12 +120,14 @@ class _ProfileHeaderCard extends StatelessWidget {
                         email,
                         style: const TextStyle(
                           color: AppColors.textMuted,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 8),
                     const Row(
                       children: [
                         _PulsingActiveDot(),
@@ -131,8 +136,9 @@ class _ProfileHeaderCard extends StatelessWidget {
                           'Agent Active',
                           style: TextStyle(
                             color: AppColors.textMuted,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.1,
                           ),
                         ),
                       ],
@@ -164,22 +170,31 @@ class _ProfileAvatar extends StatelessWidget {
     return Container(
       width: 56,
       height: 56,
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: AppColors.ink,
         shape: BoxShape.circle,
-        image: DecorationImage(
-          image: image,
-          fit: BoxFit.cover,
-          onError: (_, _) {},
-        ),
       ),
-      alignment: Alignment.center,
-      child: Text(
-        initial,
-        style: const TextStyle(
-          color: Colors.transparent,
-          fontWeight: FontWeight.w900,
-          fontSize: 22,
+      child: ClipOval(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Fallback initial — visible only if the image fails to load.
+            Center(
+              child: Text(
+                initial,
+                style: const TextStyle(
+                  color: AppColors.accent,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 22,
+                ),
+              ),
+            ),
+            Image(
+              image: image,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => const SizedBox.shrink(),
+            ),
+          ],
         ),
       ),
     );
@@ -298,7 +313,7 @@ class _AutonomySectionState extends State<_AutonomySection> {
                             _options[i].$1,
                             style: TextStyle(
                               fontSize: 12,
-                              fontWeight: FontWeight.w900,
+                              fontWeight: FontWeight.w800,
                               color: active ? Colors.white : AppColors.textMuted,
                             ),
                           ),
@@ -318,7 +333,7 @@ class _AutonomySectionState extends State<_AutonomySection> {
               key: ValueKey(_level),
               style: const TextStyle(
                 color: AppColors.textMuted,
-                fontSize: 12.5,
+                fontSize: 13,
                 height: 1.5,
                 fontWeight: FontWeight.w500,
               ),
@@ -392,18 +407,6 @@ class _IntegrationSectionState extends State<_IntegrationSection> {
       subtitle: 'Allow Agent to draft outreach and parse rejections',
       active: true,
     ),
-    const _Integration(
-      icon: Icons.business_center_outlined,
-      title: 'LinkedIn Data',
-      subtitle: 'Keep AI Profile automatically synced',
-      active: true,
-    ),
-    const _Integration(
-      icon: Icons.draw_outlined,
-      title: 'Portfolio Access',
-      subtitle: 'Allow Agent to pull context from your projects',
-      active: false,
-    ),
   ];
 
   void _toggle(int i) {
@@ -463,18 +466,18 @@ class _IntegrationTile extends StatelessWidget {
                 Text(
                   integration.title,
                   style: const TextStyle(
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                     fontSize: 14,
                     color: AppColors.ink,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 4),
                 Text(
                   integration.subtitle,
                   style: const TextStyle(
-                    fontSize: 11,
+                    fontSize: 12,
                     color: AppColors.textMuted,
-                    height: 1.4,
+                    height: 1.45,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -596,6 +599,7 @@ class _SettingsTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isTappable = onTap != null;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -623,7 +627,7 @@ class _SettingsTile extends StatelessWidget {
                 child: Text(
                   title,
                   style: const TextStyle(
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                     fontSize: 14,
                     color: AppColors.ink,
                   ),
@@ -634,17 +638,18 @@ class _SettingsTile extends StatelessWidget {
                   '$count',
                   style: const TextStyle(
                     color: AppColors.textMuted,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: 6),
               ],
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: AppColors.border,
-                size: 20,
-              ),
+              if (isTappable)
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.border,
+                  size: 20,
+                ),
             ],
           ),
         ),
@@ -702,35 +707,51 @@ class _GroupedDivider extends StatelessWidget {
 class _SignOutButton extends StatelessWidget {
   const _SignOutButton();
 
+  static const Color _danger = Color(0xFFD64545);
+
   @override
   Widget build(BuildContext context) {
     return Consumer<AuthController>(
       builder: (context, auth, _) {
         final loading = auth.isLoading;
         return Material(
-          color: AppColors.scaffold,
-          borderRadius: BorderRadius.circular(18),
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
           child: InkWell(
             onTap: loading ? null : () => auth.signOut(),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 16),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: AppColors.border),
+                color: _danger.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
+                border: Border.all(
+                  color: _danger.withValues(alpha: 0.22),
+                ),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.logout_rounded, size: 16, color: AppColors.ink),
-                  const SizedBox(width: 8),
+                  if (loading)
+                    const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation(_danger),
+                      ),
+                    )
+                  else
+                    const Icon(Icons.logout_rounded, size: 16, color: _danger),
+                  const SizedBox(width: 10),
                   Text(
-                    loading ? 'Signing out...' : AppStrings.signOut,
+                    loading ? 'Signing out…' : AppStrings.signOut,
                     style: const TextStyle(
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       fontSize: 14,
-                      color: AppColors.ink,
+                      color: _danger,
+                      letterSpacing: 0.1,
                     ),
                   ),
                 ],
