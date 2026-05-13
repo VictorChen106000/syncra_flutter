@@ -111,11 +111,16 @@ class Job(_Base):
 
 
 class PipelineCard(_Base):
+    """Public shape. `match_score` is intentionally absent — see api-contract.md §2.
+
+    The matcher computes an internal 0-100 score for sorting in reasoner.py only;
+    it is never written to Firestore nor returned in API responses.
+    """
+
     id: str
     user_id: str
     job: Job
     category: PipelineCategory
-    match_score: int = Field(ge=0, le=100)
     agent_action: str
     agent_justification: str
     matched_skills: list[str] = Field(default_factory=list)
