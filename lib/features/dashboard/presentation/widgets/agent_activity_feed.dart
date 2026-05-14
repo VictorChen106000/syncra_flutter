@@ -1,18 +1,59 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/constants/app_colors.dart';
-import '../../../../data/mock/mock_agent_steps.dart';
+import '../../../agent/state/passive_agent_controller.dart';
 
 class AgentActivityFeed extends StatelessWidget {
   const AgentActivityFeed({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: MockAgentSteps.activityFeed.map((activity) {
-        return _ActivityRow(activity: activity);
-      }).toList(),
+    return Consumer<PassiveAgentController>(
+      builder: (context, controller, _) {
+        final steps = controller.activity;
+        if (steps.isEmpty) {
+          return const _EmptyFeed();
+        }
+        return Column(
+          children: [
+            for (final activity in steps) _ActivityRow(activity: activity),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _EmptyFeed extends StatelessWidget {
+  const _EmptyFeed();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.bolt_outlined, color: AppColors.textMuted, size: 20),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Agent is idle. Run a brief to see activity here.',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textMuted,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -20,12 +61,12 @@ class AgentActivityFeed extends StatelessWidget {
 class _ActivityRow extends StatelessWidget {
   const _ActivityRow({required this.activity});
 
-  final Map<String, String> activity;
+  final AgentActivityStep activity;
 
   @override
   Widget build(BuildContext context) {
-    final status = activity['status'] ?? 'done';
-    final undoable = activity['undoable'] == 'true';
+    final status = activity.status;
+    final undoable = activity.undoable;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
@@ -64,7 +105,7 @@ class _ActivityRow extends StatelessWidget {
                           children: [
                             Expanded(
                               child: Text(
-                                activity['tool'] ?? '',
+                                activity.tool,
                                 style: TextStyle(
                                   color: AppColors.ink.withValues(alpha: 0.40),
                                   fontSize: 10,
@@ -75,7 +116,7 @@ class _ActivityRow extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              activity['time'] ?? '',
+                              _relative(activity.createdAt),
                               style: const TextStyle(
                                 color: AppColors.textSoft,
                                 fontSize: 9,
@@ -86,7 +127,7 @@ class _ActivityRow extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          activity['detail'] ?? '',
+                          activity.detail,
                           style: const TextStyle(
                             color: AppColors.ink,
                             fontSize: 12,
@@ -108,6 +149,15 @@ class _ActivityRow extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _relative(DateTime ts) {
+    final diff = DateTime.now().difference(ts);
+    if (diff.inSeconds < 30) return 'just now';
+    if (diff.inMinutes < 1) return '${diff.inSeconds}s ago';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
   }
 }
 

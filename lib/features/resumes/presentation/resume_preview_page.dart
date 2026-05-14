@@ -1,15 +1,53 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/router/route_names.dart';
 import '../../../shared/widgets/app_back_button.dart';
 import '../models/resume_file.dart';
+import '../state/resume_controller.dart';
 
 class ResumePreviewPage extends StatelessWidget {
   const ResumePreviewPage({super.key, this.resume});
 
   final ResumeFile? resume;
+
+  void _confirmDelete(BuildContext context, ResumeFile r) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Delete resume?'),
+        content: Text('${r.name} will be removed from your uploads.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () {
+              Navigator.of(dialogCtx).pop();
+              context.read<ResumeController>().deleteResume(r.id);
+              ScaffoldMessenger.of(context)
+                ..clearSnackBars()
+                ..showSnackBar(
+                  SnackBar(
+                    behavior: SnackBarBehavior.floating,
+                    content: Text('${r.name} deleted'),
+                  ),
+                );
+              context.go(RouteNames.resumes);
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +57,6 @@ class ResumePreviewPage extends StatelessWidget {
         bottom: false,
         child: Stack(
           children: [
-            // Header
             Positioned(
               left: 0,
               right: 0,
@@ -52,7 +89,7 @@ class ResumePreviewPage extends StatelessWidget {
                         ),
                         child: IconButton(
                           padding: EdgeInsets.zero,
-                          onPressed: () => context.go(RouteNames.resumes),
+                          onPressed: () => _confirmDelete(context, resume!),
                           icon: const Icon(
                             Icons.delete_outline_rounded,
                             color: AppColors.textMuted,
@@ -64,16 +101,12 @@ class ResumePreviewPage extends StatelessWidget {
                 ),
               ),
             ),
-
-            // Preview body
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 80, 20, 100),
               child: resume == null
                   ? _EmptyPreview()
-                  : _ResumePaperPreview(resume: resume!),
+                  : _ResumePreviewBody(resume: resume!),
             ),
-
-            // Bottom pill with filename
             if (resume != null)
               Positioned(
                 left: 24,
@@ -123,10 +156,42 @@ class ResumePreviewPage extends StatelessWidget {
   }
 }
 
-/// Placeholder PDF-like preview — we can't render real PDFs without an extra
-/// package, so we draw a clean "paper" surface with the resume metadata.
-class _ResumePaperPreview extends StatelessWidget {
-  const _ResumePaperPreview({required this.resume});
+/// Renders the actual PDF when bytes/path are available; falls back to a
+/// metadata placeholder for DOC/DOCX or seeded mock files.
+class _ResumePreviewBody extends StatelessWidget {
+  const _ResumePreviewBody({required this.resume});
+
+  final ResumeFile resume;
+
+  @override
+  Widget build(BuildContext context) {
+    if (resume.isPdf && (resume.bytes != null || resume.path != null)) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 30,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: resume.bytes != null
+              ? SfPdfViewer.memory(resume.bytes!)
+              : SfPdfViewer.file(File(resume.path!)),
+        ),
+      );
+    }
+    return _MetadataPaperPreview(resume: resume);
+  }
+}
+
+class _MetadataPaperPreview extends StatelessWidget {
+  const _MetadataPaperPreview({required this.resume});
 
   final ResumeFile resume;
 
@@ -160,7 +225,7 @@ class _ResumePaperPreview extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             const Text(
-              'Generated preview · Powered by Syncra AI',
+              'Document preview · open the file to view its contents',
               style: TextStyle(
                 color: AppColors.textMuted,
                 fontSize: 12,
@@ -169,24 +234,13 @@ class _ResumePaperPreview extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             const _PreviewSection(
-              title: 'PROFILE SUMMARY',
+              title: 'FILE INFO',
               body:
-                  'Frontend & UX candidate with experience in AI product prototyping, responsive React interfaces, and user-centered design workflows.',
+                  'Live PDF preview is only available for files uploaded from this device. For DOC/DOCX or seeded examples, open them in your system viewer.',
             ),
-            const _PreviewSection(
-              title: 'SKILLS',
-              body:
-                  'React · JavaScript · TypeScript · Tailwind CSS · Figma · UI/UX Design · Prompt Engineering',
-            ),
-            const _PreviewSection(
-              title: 'EXPERIENCE',
-              body:
-                  'Built an AI Career Copilot prototype with resume upload, chatbot, and job matching flows. Optimized for tailored applications.',
-            ),
-            const _PreviewSection(
-              title: 'EDUCATION',
-              body:
-                  'International Business student with cross-disciplinary work in software, design, and product.',
+            _PreviewSection(
+              title: 'FORMAT',
+              body: resume.type,
             ),
           ],
         ),

@@ -8,17 +8,19 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
-import '../../../data/mock/mock_notifications.dart';
 import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/section_title.dart';
 import '../../../shared/widgets/step_pill.dart';
+import '../../agent/presentation/widgets/passive_agent_card.dart';
 import '../../auth/state/auth_controller.dart';
 import '../../agent_chat/state/agent_chat_controller.dart';
+import '../../notifications/state/notifications_controller.dart';
 import '../../resumes/presentation/widgets/resume_attachment_chips.dart';
 import '../../resumes/presentation/widgets/select_resumes_bottom_sheet.dart';
 import '../../resumes/state/resume_controller.dart';
+import 'widgets/agent_activity_feed.dart';
 
 class DashboardPage extends StatelessWidget {
   const DashboardPage({super.key});
@@ -44,7 +46,12 @@ class DashboardPage extends StatelessWidget {
                       320,
                     ),
                     children: const [
+                      PassiveAgentCard(),
+                      SizedBox(height: 20),
                       _ApprovalPipelineCard(),
+                      SizedBox(height: 20),
+                      SectionTitle(title: AppStrings.recentActivity),
+                      AgentActivityFeed(),
                     ],
                   ),
                 ),
@@ -65,14 +72,14 @@ class DashboardPage extends StatelessWidget {
 class _DashboardHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Consumer<AuthController>(
-      builder: (context, auth, _) {
+    return Consumer2<AuthController, NotificationsController>(
+      builder: (context, auth, notifications, _) {
         final user = auth.appUser;
         return AppHeader.home(
           avatar: _Avatar(photoUrl: user?.photoUrl),
           name: user?.displayName ?? 'Daryn',
           role: AppStrings.dashboardGreetingRole,
-          unreadCount: MockNotifications.unreadCount,
+          unreadCount: notifications.unreadCount,
           onBellTap: () => context.go(RouteNames.notifications),
           bottom: const _AgentLiveBanner(),
         );

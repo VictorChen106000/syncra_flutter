@@ -11,15 +11,54 @@ import '../../../shared/widgets/app_buttons.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/step_pill.dart';
+import 'widgets/tailor_edit_sheet.dart';
 
-class TailorPage extends StatelessWidget {
+class TailorPage extends StatefulWidget {
   const TailorPage({super.key, this.job});
 
   final Job? job;
 
   @override
+  State<TailorPage> createState() => _TailorPageState();
+}
+
+class _TailorPageState extends State<TailorPage> {
+  static const _initialRewrite =
+      'Designed and built a responsive AI career prototype with React, Figma workflows, and user-centered job matching features.';
+  static const _initialKeywords = [
+    'Responsive design',
+    'AI workflow',
+    'Job matching',
+  ];
+
+  String _rewrite = _initialRewrite;
+  List<String> _keywords = List.of(_initialKeywords);
+
+  Future<void> _openEditSheet() async {
+    final result = await TailorEditSheet.show(
+      context,
+      initialBody: _rewrite,
+      initialKeywords: _keywords,
+    );
+    if (result == null) return;
+    setState(() {
+      _rewrite = result.body.isEmpty ? _rewrite : result.body;
+      _keywords = result.keywords;
+    });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        const SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text('Edits saved to draft'),
+        ),
+      );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final j = job ?? MockJobs.all.first;
+    final j = widget.job ?? MockJobs.all.first;
 
     return Scaffold(
       backgroundColor: AppColors.scaffold,
@@ -68,10 +107,10 @@ class TailorPage extends StatelessWidget {
                   const SizedBox(height: 12),
                   AppCard(
                     backgroundColor: AppColors.softSurface,
-                    child: const Column(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           AppStrings.after,
                           style: TextStyle(
                             fontSize: 14,
@@ -79,10 +118,10 @@ class TailorPage extends StatelessWidget {
                             color: AppColors.ink,
                           ),
                         ),
-                        SizedBox(height: 10),
+                        const SizedBox(height: 10),
                         Text(
-                          'Designed and built a responsive AI career prototype with React, Figma workflows, and user-centered job matching features.',
-                          style: TextStyle(
+                          _rewrite,
+                          style: const TextStyle(
                             color: AppColors.ink,
                             fontSize: 13.5,
                             height: 1.55,
@@ -93,11 +132,11 @@ class TailorPage extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  const AppCard(
+                  AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           AppStrings.keywordsAdded,
                           style: TextStyle(
                             fontSize: 14,
@@ -105,14 +144,12 @@ class TailorPage extends StatelessWidget {
                             color: AppColors.ink,
                           ),
                         ),
-                        SizedBox(height: 12),
+                        const SizedBox(height: 12),
                         Wrap(
                           spacing: 8,
                           runSpacing: 8,
                           children: [
-                            StepPill(label: 'Responsive design'),
-                            StepPill(label: 'AI workflow'),
-                            StepPill(label: 'Job matching'),
+                            for (final kw in _keywords) StepPill(label: kw),
                           ],
                         ),
                       ],
@@ -127,7 +164,7 @@ class TailorPage extends StatelessWidget {
                   const SizedBox(height: 12),
                   AppSecondaryButton(
                     label: AppStrings.editChanges,
-                    onPressed: () {},
+                    onPressed: _openEditSheet,
                   ),
                   const SizedBox(height: 8),
                   Center(

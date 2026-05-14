@@ -21,9 +21,41 @@ class ResumeListsPage extends StatefulWidget {
 
 class _ResumeListsPageState extends State<ResumeListsPage> {
   int _tabIndex = 0;
+  ResumeController? _boundController;
 
   void _openPreview(ResumeFile resume) {
     context.go(RouteNames.resumePreview, extra: resume);
+  }
+
+  void _onControllerChanged() {
+    final result = _boundController?.consumeLastAction();
+    if (result == null || !mounted) return;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: result.isError ? AppColors.danger : null,
+          content: Text(result.message),
+        ),
+      );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final controller = context.read<ResumeController>();
+    if (!identical(_boundController, controller)) {
+      _boundController?.removeListener(_onControllerChanged);
+      _boundController = controller;
+      controller.addListener(_onControllerChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    _boundController?.removeListener(_onControllerChanged);
+    super.dispose();
   }
 
   @override

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
@@ -8,6 +9,7 @@ import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
 import '../../../data/mock/mock_notifications.dart';
 import '../../../shared/widgets/app_header.dart';
+import '../state/notifications_controller.dart';
 
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
@@ -17,59 +19,232 @@ class NotificationsPage extends StatefulWidget {
 }
 
 class _NotificationsPageState extends State<NotificationsPage> {
-  late List<AppNotification> _items = List.of(MockNotifications.all);
+  NotificationsController? _bound;
 
-  void _markAllRead() {
-    setState(() {
-      _items = _items
-          .map((n) => AppNotification(
-                id: n.id,
-                kind: n.kind,
-                title: n.title,
-                body: n.body,
-                timestamp: n.timestamp,
-                actionLabel: n.actionLabel,
-                unread: false,
-              ))
-          .toList();
-    });
+  void _onMessage() {
+    final msg = _bound?.consumeMessage();
+    if (msg == null || !mounted) return;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text(msg),
+        ),
+      );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final c = context.read<NotificationsController>();
+    if (!identical(c, _bound)) {
+      _bound?.removeListener(_onMessage);
+      _bound = c;
+      c.addListener(_onMessage);
+    }
+  }
+
+  @override
+  void dispose() {
+    _bound?.removeListener(_onMessage);
+    super.dispose();
+  }
+
+  void _handleTap(BuildContext context, AppNotification n) {
+    context.read<NotificationsController>().markRead(n.id);
+    final route = switch (n.kind) {
+      NotificationKind.intercept => RouteNames.jobs,
+      NotificationKind.reply => RouteNames.agentChat,
+      NotificationKind.drafted => RouteNames.jobs,
+      NotificationKind.undo => RouteNames.jobs,
+      NotificationKind.match => RouteNames.jobs,
+    };
+    context.go(route);
   }
 
   @override
   Widget build(BuildContext context) {
-    final hasUnread = _items.any((n) => n.unread);
     return Scaffold(
       backgroundColor: AppColors.scaffold,
       body: SafeArea(
         bottom: false,
-        child: Column(
-          children: [
-            AppHeader.page(
-              title: AppStrings.notificationsTitle,
-              onBack: () => context.go(RouteNames.dashboard),
-              trailing: hasUnread
-                  ? _ReadAllChip(onTap: _markAllRead)
-                  : null,
-            ),
-            Expanded(
-              child: ListView.separated(
-                padding: const EdgeInsets.fromLTRB(
-                  AppConstants.screenHorizontalPadding,
-                  16,
-                  AppConstants.screenHorizontalPadding,
-                  40,
+        child: Consumer<NotificationsController>(
+          builder: (context, controller, _) {
+            final hasUnread = controller.unreadCount > 0;
+            final items = controller.filtered;
+            return Column(
+              children: [
+                AppHeader.page(
+                  title: AppStrings.notificationsTitle,
+                  onBack: () => context.go(RouteNames.dashboard),
+                  trailing: hasUnread
+                      ? _ReadAllChip(onTap: controller.markAllRead)
+                      : null,
                 ),
-                itemCount: _items.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 10),
-                itemBuilder: (context, i) {
-                  return _NotificationCard(notification: _items[i])
-                      .animate(delay: (i * 50).ms)
-                      .fadeIn()
-                      .moveY(begin: 8, end: 0);
-                },
-              ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppConstants.screenHorizontalPadding,
+                    8,
+                    AppConstants.screenHorizontalPadding,
+                    8,
+                  ),
+                  child: _FilterTabs(
+                    filter: controller.filter,
+                    unreadCount: controller.unreadCount,
+                    onChanged: controller.setFilter,
+                  ),
+                ),
+                Expanded(
+                  child: items.isEmpty
+                      ? const _EmptyState()
+                      : ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(
+                            AppConstants.screenHorizontalPadding,
+                            8,
+                            AppConstants.screenHorizontalPadding,
+                            40,
+                          ),
+                          itemCount: items.length,
+                          separatorBuilder: (_, _) =>
+                              const SizedBox(height: 10),
+                          itemBuilder: (context, i) {
+                            final n = items[i];
+                            return _NotificationCard(
+                              notification: n,
+                              onTap: () => _handleTap(context, n),
+                              onAction: () => _handleTap(context, n),
+                              onMarkRead: () =>
+                                  controller.markRead(n.id),
+                            )
+                                .animate(delay: (i * 50).ms)
+                                .fadeIn()
+                                .moveY(begin: 8, end: 0);
+                          },
+                        ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterTabs extends StatelessWidget {
+  const _FilterTabs({
+    required this.filter,
+    required this.unreadCount,
+    required this.onChanged,
+  });
+
+  final NotificationsFilter filter;
+  final int unreadCount;
+  final ValueChanged<NotificationsFilter> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _TabChip(
+          label: 'All',
+          active: filter == NotificationsFilter.all,
+          onTap: () => onChanged(NotificationsFilter.all),
+        ),
+        const SizedBox(width: 8),
+        _TabChip(
+          label: unreadCount > 0 ? 'Unread · $unreadCount' : 'Unread',
+          active: filter == NotificationsFilter.unread,
+          onTap: () => onChanged(NotificationsFilter.unread),
+        ),
+      ],
+    );
+  }
+}
+
+class _TabChip extends StatelessWidget {
+  const _TabChip({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: active ? AppColors.ink : AppColors.surface,
+      borderRadius: BorderRadius.circular(99),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(99),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(99),
+            border: Border.all(
+              color: active ? AppColors.ink : AppColors.border,
             ),
-          ],
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w800,
+              color: active ? Colors.white : AppColors.ink,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.notifications_none_rounded,
+                  size: 28, color: AppColors.textMuted),
+              SizedBox(height: 10),
+              Text(
+                'You\'re all caught up',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.ink,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                'New agent actions and replies will appear here.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textMuted,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -111,9 +286,17 @@ class _ReadAllChip extends StatelessWidget {
 }
 
 class _NotificationCard extends StatelessWidget {
-  const _NotificationCard({required this.notification});
+  const _NotificationCard({
+    required this.notification,
+    required this.onTap,
+    required this.onAction,
+    required this.onMarkRead,
+  });
 
   final AppNotification notification;
+  final VoidCallback onTap;
+  final VoidCallback onAction;
+  final VoidCallback onMarkRead;
 
   (IconData, Color, Color) get _icon => switch (notification.kind) {
         NotificationKind.intercept => (
@@ -146,105 +329,120 @@ class _NotificationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (icon, bg, fg) = _icon;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: notification.unread
-              ? AppColors.ink.withValues(alpha: 0.15)
-              : AppColors.border.withValues(alpha: 0.60),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: bg,
-              borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: notification.unread
+                  ? AppColors.ink.withValues(alpha: 0.15)
+                  : AppColors.border.withValues(alpha: 0.60),
             ),
-            alignment: Alignment.center,
-            child: Icon(icon, size: 18, color: fg),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: bg,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: Icon(icon, size: 18, color: fg),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Text(
-                        notification.title,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.ink,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            notification.title,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.ink,
+                            ),
+                          ),
                         ),
-                      ),
+                        if (notification.unread)
+                          InkResponse(
+                            onTap: onMarkRead,
+                            radius: 14,
+                            child: Container(
+                              width: 10,
+                              height: 10,
+                              decoration: const BoxDecoration(
+                                color: AppColors.danger,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                    if (notification.unread)
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: AppColors.danger,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  notification.body,
-                  style: const TextStyle(
-                    fontSize: 12.5,
-                    color: AppColors.textMuted,
-                    height: 1.45,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
+                    const SizedBox(height: 4),
                     Text(
-                      notification.timestamp,
+                      notification.body,
                       style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textSoft,
+                        fontSize: 12.5,
+                        color: AppColors.textMuted,
+                        height: 1.45,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
-                    if (notification.actionLabel != null) ...[
-                      const SizedBox(width: 12),
-                      _InlineAction(label: notification.actionLabel!),
-                    ],
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Text(
+                          notification.timestamp,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textSoft,
+                          ),
+                        ),
+                        if (notification.actionLabel != null) ...[
+                          const SizedBox(width: 12),
+                          _InlineAction(
+                            label: notification.actionLabel!,
+                            onTap: onAction,
+                          ),
+                        ],
+                      ],
+                    ),
                   ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
 class _InlineAction extends StatelessWidget {
-  const _InlineAction({required this.label});
+  const _InlineAction({required this.label, required this.onTap});
 
   final String label;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -252,7 +450,7 @@ class _InlineAction extends StatelessWidget {
       color: Colors.transparent,
       borderRadius: BorderRadius.circular(99),
       child: InkWell(
-        onTap: () {},
+        onTap: onTap,
         borderRadius: BorderRadius.circular(99),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

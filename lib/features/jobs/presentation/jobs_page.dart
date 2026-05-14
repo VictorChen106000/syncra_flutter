@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
@@ -11,6 +12,8 @@ import '../../../data/models/job.dart';
 import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
+import '../state/jobs_controller.dart';
+import 'widgets/job_action_sheet.dart';
 
 class JobsPage extends StatefulWidget {
   const JobsPage({super.key});
@@ -23,16 +26,47 @@ class _JobsPageState extends State<JobsPage> {
   int _tabIndex = 0;
   String _query = '';
   _Filter _filter = _Filter.all;
-  final Set<String> _dismissedIds = {};
+  JobsController? _bound;
 
-  List<Job> get _filteredQueue {
+  void _onJobsMessage() {
+    final msg = _bound?.consumeMessage();
+    if (msg == null || !mounted) return;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+          content: Text(msg),
+        ),
+      );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final c = context.read<JobsController>();
+    if (!identical(c, _bound)) {
+      _bound?.removeListener(_onJobsMessage);
+      _bound = c;
+      c.addListener(_onJobsMessage);
+    }
+  }
+
+  @override
+  void dispose() {
+    _bound?.removeListener(_onJobsMessage);
+    super.dispose();
+  }
+
+  List<Job> _filteredQueue(JobsController controller) {
     final all = [
       ...MockJobs.ready,
       ...MockJobs.inputNeeded,
       ...MockJobs.exploration,
     ];
     return all.where((j) {
-      if (_dismissedIds.contains(j.id)) return false;
+      if (controller.isDismissed(j.id)) return false;
       final matchesFilter = switch (_filter) {
         _Filter.all => true,
         _Filter.ready => j.category == JobCategory.ready,
@@ -49,7 +83,8 @@ class _JobsPageState extends State<JobsPage> {
   }
 
   void _dismiss(Job job) {
-    setState(() => _dismissedIds.add(job.id));
+    final controller = context.read<JobsController>();
+    controller.dismiss(job.id, label: job.company);
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(
@@ -59,8 +94,7 @@ class _JobsPageState extends State<JobsPage> {
           content: Text('${job.company} dismissed'),
           action: SnackBarAction(
             label: 'Undo',
-            onPressed: () =>
-                setState(() => _dismissedIds.remove(job.id)),
+            onPressed: () => controller.undismiss(job.id),
           ),
         ),
       );
@@ -68,39 +102,45 @@ class _JobsPageState extends State<JobsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return AppScreen(
-      showBottomNav: false,
-      activeTab: BottomNavTab.agent,
-      extendBehindBottomNav: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AppHeader.tab(
-            title: AppStrings.agentPipeline,
-            bottom: _TabSwitcher(
-              selectedIndex: _tabIndex,
-              labels: const [AppStrings.reviewQueue, AppStrings.history],
-              onChanged: (i) => setState(() => _tabIndex = i),
-            ),
+    return Consumer<JobsController>(
+      builder: (context, controller, _) {
+        final jobs = _filteredQueue(controller);
+        return AppScreen(
+          showBottomNav: false,
+          activeTab: BottomNavTab.agent,
+          extendBehindBottomNav: true,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AppHeader.tab(
+                title: AppStrings.agentPipeline,
+                bottom: _TabSwitcher(
+                  selectedIndex: _tabIndex,
+                  labels: const [AppStrings.reviewQueue, AppStrings.history],
+                  onChanged: (i) => setState(() => _tabIndex = i),
+                ),
+              ),
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  child: _tabIndex == 0
+                      ? _ReviewQueueTab(
+                          key: const ValueKey('queue'),
+                          query: _query,
+                          filter: _filter,
+                          jobs: jobs,
+                          onQueryChanged: (q) => setState(() => _query = q),
+                          onFilterChanged: (f) => setState(() => _filter = f),
+                          onDismiss: _dismiss,
+                          onMore: (job) => JobActionSheet.show(context, job),
+                        )
+                      : const _HistoryTab(key: ValueKey('history')),
+                ),
+              ),
+            ],
           ),
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              child: _tabIndex == 0
-                  ? _ReviewQueueTab(
-                      key: const ValueKey('queue'),
-                      query: _query,
-                      filter: _filter,
-                      jobs: _filteredQueue,
-                      onQueryChanged: (q) => setState(() => _query = q),
-                      onFilterChanged: (f) => setState(() => _filter = f),
-                      onDismiss: _dismiss,
-                    )
-                  : const _HistoryTab(key: ValueKey('history')),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -192,6 +232,7 @@ class _ReviewQueueTab extends StatelessWidget {
     required this.onQueryChanged,
     required this.onFilterChanged,
     required this.onDismiss,
+    required this.onMore,
   });
 
   final String query;
@@ -200,6 +241,7 @@ class _ReviewQueueTab extends StatelessWidget {
   final ValueChanged<String> onQueryChanged;
   final ValueChanged<_Filter> onFilterChanged;
   final ValueChanged<Job> onDismiss;
+  final ValueChanged<Job> onMore;
 
   @override
   Widget build(BuildContext context) {
@@ -227,6 +269,7 @@ class _ReviewQueueTab extends StatelessWidget {
               key: ValueKey(job.id),
               job: job,
               onDismiss: () => onDismiss(job),
+              onMore: () => onMore(job),
             )
                 .animate(delay: (entry.key * 60).ms)
                 .fadeIn()
@@ -564,10 +607,16 @@ class _EmptyResults extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _JobCard extends StatefulWidget {
-  const _JobCard({super.key, required this.job, required this.onDismiss});
+  const _JobCard({
+    super.key,
+    required this.job,
+    required this.onDismiss,
+    required this.onMore,
+  });
 
   final Job job;
   final VoidCallback onDismiss;
+  final VoidCallback onMore;
 
   @override
   State<_JobCard> createState() => _JobCardState();
@@ -851,7 +900,10 @@ class _JobCardState extends State<_JobCard> {
                 _SecondaryAction(
                   isIconOnly: job.category == JobCategory.ready,
                   label: _secondaryLabel,
-                  onTap: widget.onDismiss,
+                  onTap: job.category == JobCategory.ready
+                      ? widget.onMore
+                      : widget.onDismiss,
+                  onLongPress: widget.onMore,
                 ),
               ],
             ),
@@ -867,11 +919,13 @@ class _SecondaryAction extends StatelessWidget {
     required this.isIconOnly,
     required this.label,
     required this.onTap,
+    required this.onLongPress,
   });
 
   final bool isIconOnly;
   final String label;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -880,6 +934,7 @@ class _SecondaryAction extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: EdgeInsets.symmetric(
@@ -888,7 +943,7 @@ class _SecondaryAction extends StatelessWidget {
           ),
           child: isIconOnly
               ? const Icon(
-                  Icons.delete_outline_rounded,
+                  Icons.more_horiz_rounded,
                   size: 20,
                   color: AppColors.textMuted,
                 )

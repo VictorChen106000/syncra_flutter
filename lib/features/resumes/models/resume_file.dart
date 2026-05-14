@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 enum ResumeSource {
   manual,
   syncraAi,
@@ -13,6 +15,7 @@ class ResumeFile {
     required this.uploadedAt,
     required this.source,
     this.path,
+    this.bytes,
   });
 
   final String id;
@@ -22,6 +25,7 @@ class ResumeFile {
   final DateTime uploadedAt;
   final ResumeSource source;
   final String? path;
+  final Uint8List? bytes;
 
   bool get isPdf => type == 'application/pdf' || name.toLowerCase().endsWith('.pdf');
 }
