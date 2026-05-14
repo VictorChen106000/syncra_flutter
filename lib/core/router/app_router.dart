@@ -8,6 +8,7 @@ import '../../features/auth/presentation/morning_brief_page.dart';
 import '../../features/auth/presentation/onboarding_page.dart';
 import '../../features/auth/presentation/signup_page.dart';
 import '../../features/auth/presentation/splash_page.dart';
+import '../../features/agent/state/passive_agent_controller.dart';
 import '../../features/auth/state/auth_controller.dart';
 import '../../features/dashboard/presentation/dashboard_page.dart';
 import '../../features/jobs/presentation/job_detail_page.dart';
@@ -34,8 +35,13 @@ class AppRouter {
   /// Creates a [GoRouter] that redirects based on auth state.
   ///
   /// The [authController] is used to check sign-in status and trigger
-  /// refreshes when the auth state changes.
-  static GoRouter router(AuthController authController) {
+  /// refreshes when the auth state changes. The [passiveAgent] controller
+  /// is consulted to decide whether to send a fresh sign-in to the
+  /// morning brief before the dashboard.
+  static GoRouter router(
+    AuthController authController,
+    PassiveAgentController passiveAgent,
+  ) {
     return GoRouter(
       initialLocation: RouteNames.splash,
       refreshListenable: authController,
@@ -52,9 +58,13 @@ class AppRouter {
           return RouteNames.login;
         }
 
-        // Signed in but sitting on login/signup → go to dashboard.
-        if (isSignedIn && (loc == RouteNames.login || loc == RouteNames.signup)) {
-          return RouteNames.dashboard;
+        // Signed in but sitting on login/signup → morning brief on first
+        // sign-in this session, then straight to dashboard.
+        if (isSignedIn &&
+            (loc == RouteNames.login || loc == RouteNames.signup)) {
+          return passiveAgent.morningBriefShown
+              ? RouteNames.dashboard
+              : RouteNames.morningBrief;
         }
 
         return null;

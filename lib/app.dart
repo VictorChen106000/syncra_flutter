@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import 'core/router/app_router.dart';
@@ -26,16 +27,36 @@ class SyncraApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => JobsController()),
         ChangeNotifierProvider(create: (_) => PassiveAgentController()),
       ],
-      child: Consumer<AuthController>(
-        builder: (context, authController, _) {
-          return MaterialApp.router(
-            debugShowCheckedModeBanner: false,
-            title: 'Syncra',
-            theme: AppTheme.lightTheme,
-            routerConfig: AppRouter.router(authController),
-          );
-        },
-      ),
+      child: const _SyncraAppShell(),
+    );
+  }
+}
+
+/// Builds the [GoRouter] exactly once so navigation state survives across
+/// controller rebuilds. The router itself listens on the auth controller
+/// for refreshes; the redirect reads the passive agent controller's
+/// session flag synchronously on every navigation.
+class _SyncraAppShell extends StatefulWidget {
+  const _SyncraAppShell();
+
+  @override
+  State<_SyncraAppShell> createState() => _SyncraAppShellState();
+}
+
+class _SyncraAppShellState extends State<_SyncraAppShell> {
+  GoRouter? _router;
+
+  @override
+  Widget build(BuildContext context) {
+    _router ??= AppRouter.router(
+      context.read<AuthController>(),
+      context.read<PassiveAgentController>(),
+    );
+    return MaterialApp.router(
+      debugShowCheckedModeBanner: false,
+      title: 'Syncra',
+      theme: AppTheme.lightTheme,
+      routerConfig: _router!,
     );
   }
 }
