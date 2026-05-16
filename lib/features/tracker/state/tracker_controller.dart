@@ -1,14 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
-import '../../../data/mock/mock_tracked_applications.dart';
+import '../../../data/firestore/applications_repository.dart';
 import '../../../data/models/job.dart';
+import '../../../data/models/tracked_application.dart';
+import '../../auth/state/auth_controller.dart';
 
-/// Either "All" or a specific status used to filter the tracker list.
 class TrackerFilter {
   const TrackerFilter.all() : status = null;
   const TrackerFilter.status(JobStatus s) : status = s;
 
-  /// `null` when "All", otherwise the status the user is filtering by.
   final JobStatus? status;
 
   bool get isAll => status == null;
@@ -23,9 +25,21 @@ class TrackerFilter {
 }
 
 class TrackerController extends ChangeNotifier {
-  TrackerController() : _items = List.of(MockTrackedApplications.all);
+  TrackerController({
+    required AuthController auth,
+    ApplicationsRepository? repository,
+  })  : _auth = auth,
+        _repository = repository ?? ApplicationsRepository() {
+    _auth.addListener(_onAuthChanged);
+    _bindToCurrentUser();
+  }
 
-  final List<TrackedApplication> _items;
+  final AuthController _auth;
+  final ApplicationsRepository _repository;
+
+  StreamSubscription<List<TrackedApplication>>? _subscription;
+  String? _boundUid;
+  List<TrackedApplication> _items = const [];
   TrackerFilter _filter = const TrackerFilter.all();
   String? _lastMessage;
 
@@ -49,31 +63,69 @@ class TrackerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateStatus(String jobId, JobStatus status) {
-    final idx = _items.indexWhere((a) => a.job.id == jobId);
-    if (idx == -1) return;
-    final next = _items[idx].copyWith(
-      status: status,
-      lastUpdate: 'Just now',
+  Future<void> updateStatus(String applicationId, JobStatus status) async {
+    final uid = _auth.appUser?.uid;
+    if (uid == null || _auth.appUser!.isGuest) return;
+    final current = _items.firstWhere(
+      (a) => a.id == applicationId,
+      orElse: () => _items.isEmpty
+          ? throw StateError('No application $applicationId')
+          : _items.first,
     );
-    _items[idx] = next;
-    _lastMessage = '${next.job.company}: status set to ${status.label}';
+    await _repository.updateStatus(uid, applicationId, status);
+    _lastMessage = '${current.job.company}: status set to ${status.label}';
     notifyListeners();
   }
 
-  void addNote(String jobId, String body) {
+  Future<void> addNote(String applicationId, String body) async {
+    final uid = _auth.appUser?.uid;
+    if (uid == null || _auth.appUser!.isGuest) return;
     final trimmed = body.trim();
     if (trimmed.isEmpty) return;
-    final idx = _items.indexWhere((a) => a.job.id == jobId);
-    if (idx == -1) return;
-    final current = _items[idx];
-    final notes = List<TrackedApplicationNote>.from(current.notes)
-      ..insert(
-        0,
-        TrackedApplicationNote(body: trimmed, createdAt: DateTime.now()),
-      );
-    _items[idx] = current.copyWith(notes: notes, lastUpdate: 'Just now');
+    final current = _items.firstWhere(
+      (a) => a.id == applicationId,
+      orElse: () => _items.first,
+    );
+    await _repository.addNote(uid, applicationId, trimmed);
     _lastMessage = 'Note added to ${current.job.company}';
     notifyListeners();
+  }
+
+  void _onAuthChanged() {
+    final nextUid = _auth.appUser?.uid;
+    final guest = _auth.appUser?.isGuest ?? true;
+    if (nextUid == _boundUid && !(guest && _subscription != null)) return;
+    _bindToCurrentUser();
+  }
+
+  void _bindToCurrentUser() {
+    _subscription?.cancel();
+    _subscription = null;
+    _items = const [];
+
+    final user = _auth.appUser;
+    if (user == null || user.isGuest) {
+      _boundUid = null;
+      notifyListeners();
+      return;
+    }
+
+    _boundUid = user.uid;
+    _subscription = _repository.watchApplications(user.uid).listen(
+      (apps) {
+        _items = apps;
+        notifyListeners();
+      },
+      onError: (Object e) {
+        debugPrint('applications stream error: $e');
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _auth.removeListener(_onAuthChanged);
+    _subscription?.cancel();
+    super.dispose();
   }
 }

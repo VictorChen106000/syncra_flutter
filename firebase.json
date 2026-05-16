@@ -1,1 +1,28 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"syncra-signlogin","appId":"1:812957418121:android:8fc60c5030b7a93cce3c58","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"syncra-signlogin","configurations":{"android":"1:812957418121:android:8fc60c5030b7a93cce3c58","ios":"1:812957418121:ios:02b07b0e92164d0ace3c58","macos":"1:812957418121:ios:02b07b0e92164d0ace3c58","web":"1:812957418121:web:d29cf078cd6a1e20ce3c58","windows":"1:812957418121:web:cf837bd5f2aacc4ace3c58"}}}}}}
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "syncra-signlogin",
+          "appId": "1:812957418121:android:8fc60c5030b7a93cce3c58",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "syncra-signlogin",
+          "configurations": {
+            "android": "1:812957418121:android:8fc60c5030b7a93cce3c58",
+            "ios": "1:812957418121:ios:02b07b0e92164d0ace3c58",
+            "macos": "1:812957418121:ios:02b07b0e92164d0ace3c58",
+            "web": "1:812957418121:web:d29cf078cd6a1e20ce3c58",
+            "windows": "1:812957418121:web:cf837bd5f2aacc4ace3c58"
+          }
+        }
+      }
+    }
+  }
+}

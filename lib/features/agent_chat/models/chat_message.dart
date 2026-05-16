@@ -1,6 +1,4 @@
-enum ChatSender { ai, user }
-
-enum ChatMessageType { text, resultCards }
+import 'agent_block.dart';
 
 class ChatAttachment {
   const ChatAttachment({
@@ -12,16 +10,32 @@ class ChatAttachment {
   final String name;
 }
 
-class ChatMessage {
-  const ChatMessage({
-    required this.sender,
-    required this.type,
-    this.text = '',
+/// A single entry in the chat transcript. Either a [UserMessage] (what the
+/// user typed) or an [AgentTurn] (the agent's streamed response composed of
+/// one or more [AgentBlock]s).
+sealed class ChatItem {
+  ChatItem({required this.id});
+  final String id;
+}
+
+class UserMessage extends ChatItem {
+  UserMessage({
+    required super.id,
+    required this.text,
     this.attachments = const [],
   });
 
-  final ChatSender sender;
-  final ChatMessageType type;
   final String text;
   final List<ChatAttachment> attachments;
+}
+
+class AgentTurn extends ChatItem {
+  AgentTurn({
+    required super.id,
+    List<AgentBlock>? blocks,
+    this.isStreaming = true,
+  }) : blocks = blocks ?? <AgentBlock>[];
+
+  final List<AgentBlock> blocks;
+  bool isStreaming;
 }

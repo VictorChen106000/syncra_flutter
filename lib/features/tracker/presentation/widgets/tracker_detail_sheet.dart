@@ -3,8 +3,8 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../core/constants/app_colors.dart';
-import '../../../../data/mock/mock_tracked_applications.dart';
 import '../../../../data/models/job.dart';
+import '../../../../data/models/tracked_application.dart';
 import '../../state/tracker_controller.dart';
 
 class TrackerDetailSheet extends StatefulWidget {
@@ -37,7 +37,7 @@ class _TrackerDetailSheetState extends State<TrackerDetailSheet> {
   void _submitNote(TrackerController controller) {
     final text = _noteCtrl.text.trim();
     if (text.isEmpty) return;
-    controller.addNote(widget.application.job.id, text);
+    controller.addNote(widget.application.id, text);
     _noteCtrl.clear();
     FocusScope.of(context).unfocus();
   }
@@ -49,7 +49,7 @@ class _TrackerDetailSheetState extends State<TrackerDetailSheet> {
         // Use the latest snapshot from the controller so the sheet reflects
         // status/note updates without dismissing.
         final app = controller.items.firstWhere(
-          (a) => a.job.id == widget.application.job.id,
+          (a) => a.id == widget.application.id,
           orElse: () => widget.application,
         );
         final viewport = MediaQuery.of(context);
@@ -106,7 +106,7 @@ class _TrackerDetailSheetState extends State<TrackerDetailSheet> {
                   const SizedBox(height: 10),
                   _StatusPicker(
                     current: app.status,
-                    onChanged: (s) => controller.updateStatus(app.job.id, s),
+                    onChanged: (s) => controller.updateStatus(app.id, s),
                   ),
                   const SizedBox(height: 20),
                   _SectionHeader(label: 'NOTES'),

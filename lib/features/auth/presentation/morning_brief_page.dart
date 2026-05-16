@@ -57,22 +57,23 @@ class _MorningBriefPageState extends State<MorningBriefPage> {
           Positioned(
             top: MediaQuery.sizeOf(context).height * 0.18,
             right: -100,
-            child: Container(
-              width: 360,
-              height: 360,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.accent.withValues(alpha: 0.20),
-              ),
-            )
-                .animate(onPlay: (c) => c.repeat(reverse: true))
-                .scale(
-                  duration: 4.seconds,
-                  begin: const Offset(1, 1),
-                  end: const Offset(1.15, 1.15),
-                  curve: Curves.easeInOut,
-                )
-                .fadeIn(duration: 1.seconds),
+            child:
+                Container(
+                      width: 360,
+                      height: 360,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.accent.withValues(alpha: 0.20),
+                      ),
+                    )
+                    .animate(onPlay: (c) => c.repeat(reverse: true))
+                    .scale(
+                      duration: 4.seconds,
+                      begin: const Offset(1, 1),
+                      end: const Offset(1.15, 1.15),
+                      curve: Curves.easeInOut,
+                    )
+                    .fadeIn(duration: 1.seconds),
           ),
           SafeArea(
             child: Padding(
@@ -101,15 +102,15 @@ class _MorningBriefPageState extends State<MorningBriefPage> {
                       ),
                       const Spacer(),
                       Text(
-                        '${AppStrings.goodMorning}\n$firstName.',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 40,
-                          fontWeight: FontWeight.w900,
-                          height: 1.1,
-                          letterSpacing: -1.4,
-                        ),
-                      )
+                            '${AppStrings.goodMorning}\n$firstName.',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 40,
+                              fontWeight: FontWeight.w900,
+                              height: 1.1,
+                              letterSpacing: -1.4,
+                            ),
+                          )
                           .animate()
                           .fadeIn(duration: 600.ms)
                           .moveY(begin: 14, end: 0),
@@ -119,9 +120,7 @@ class _MorningBriefPageState extends State<MorningBriefPage> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Expanded(
-                            child: _BriefStatusLine(agent: agent),
-                          ),
+                          Expanded(child: _BriefStatusLine(agent: agent)),
                           const SizedBox(width: 12),
                           _NextButton(onTap: _continue)
                               .animate(delay: 700.ms)
@@ -153,7 +152,9 @@ class _LiveBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = isLive ? 'CLAUDE HAIKU · LIVE' : 'DEMO MODE';
-    final color = isLive ? AppColors.accent : Colors.white.withValues(alpha: 0.40);
+    final color = isLive
+        ? AppColors.accent
+        : Colors.white.withValues(alpha: 0.40);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
@@ -167,10 +168,7 @@ class _LiveBadge extends StatelessWidget {
           Container(
             width: 6,
             height: 6,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: color,
-            ),
+            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
           ),
           const SizedBox(width: 6),
           Text(
@@ -315,15 +313,15 @@ class _MatchBody extends StatelessWidget {
         ).animate(delay: 200.ms).fadeIn().moveY(begin: 8, end: 0),
         const SizedBox(height: 12),
         Text(
-          '${job.matchScore}%',
-          style: const TextStyle(
-            color: AppColors.accent,
-            fontSize: 72,
-            fontWeight: FontWeight.w900,
-            height: 1.05,
-            letterSpacing: -3,
-          ),
-        )
+              '${job.matchScore}%',
+              style: const TextStyle(
+                color: AppColors.accent,
+                fontSize: 72,
+                fontWeight: FontWeight.w900,
+                height: 1.05,
+                letterSpacing: -3,
+              ),
+            )
             .animate(delay: 350.ms)
             .scale(
               begin: const Offset(0.9, 0.9),
@@ -371,8 +369,11 @@ class _ErrorBody extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.error_outline_rounded,
-                  color: Colors.white, size: 18),
+              const Icon(
+                Icons.error_outline_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
               const SizedBox(width: 8),
               Text(
                 'Brief failed',

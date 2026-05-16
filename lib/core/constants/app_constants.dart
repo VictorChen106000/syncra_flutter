@@ -21,8 +21,8 @@ class AppConstants {
   static const double pillRadius = 99;
 
   // Component sizes
-  static const double bottomNavHeight = 68;
+  static const double bottomNavHeight = 74;
   static const double bottomNavInset = 24;
-  static const double floatingInputBottom = 118;
+  static const double floatingInputBottom = 100;
   static const double headerHeight = 88;
 }

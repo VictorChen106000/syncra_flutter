@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -33,11 +35,52 @@ class AppShellScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     final activeTab = _indexToTab[navigationShell.currentIndex];
 
+    // Height of the blurred fade region behind the floating nav. Tall enough
+    // that scrolled content softens before reaching the pills.
+    const scrimHeight =
+        AppConstants.bottomNavHeight + AppConstants.bottomNavInset + 56;
+
     return Scaffold(
       backgroundColor: AppColors.scaffold,
       body: Stack(
         children: [
           Positioned.fill(child: navigationShell),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: scrimHeight,
+            child: IgnorePointer(
+              child: ClipRect(
+                child: ShaderMask(
+                  blendMode: BlendMode.dstIn,
+                  shaderCallback: (rect) {
+                    return const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.transparent, Colors.black],
+                      stops: [0.0, 0.55],
+                    ).createShader(rect);
+                  },
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            AppColors.scaffold.withValues(alpha: 0.0),
+                            AppColors.scaffold.withValues(alpha: 0.6),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
           Positioned(
             left: AppConstants.screenHorizontalPadding,
             right: AppConstants.screenHorizontalPadding,

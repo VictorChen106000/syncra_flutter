@@ -165,7 +165,7 @@ class _ResumePreviewBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (resume.isPdf && (resume.bytes != null || resume.path != null)) {
+    if (resume.isPdf && resume.isAvailableLocally) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(20),
         child: Container(

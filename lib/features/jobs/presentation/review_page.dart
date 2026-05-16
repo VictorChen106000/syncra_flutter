@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
@@ -11,6 +12,7 @@ import '../../../data/models/job.dart';
 import '../../../shared/widgets/app_buttons.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_header.dart';
+import '../state/jobs_controller.dart';
 
 class ReviewPage extends StatefulWidget {
   const ReviewPage({super.key, this.job});
@@ -38,6 +40,8 @@ class _ReviewPageState extends State<ReviewPage> {
     if (action == _InterceptAction.autoFix) {
       await _showResolving(job);
     }
+    if (!mounted) return;
+    await context.read<JobsController>().approveByJobId(job.id);
     if (mounted) {
       context.go(RouteNames.submitted, extra: job);
     }

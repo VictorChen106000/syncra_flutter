@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -8,19 +11,17 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
+import '../../../data/mock/mock_agent_service.dart';
 import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
-import '../../../shared/widgets/section_title.dart';
-import '../../../shared/widgets/step_pill.dart';
-import '../../agent/presentation/widgets/passive_agent_card.dart';
+import '../../agent/state/passive_agent_controller.dart';
 import '../../auth/state/auth_controller.dart';
 import '../../agent_chat/state/agent_chat_controller.dart';
 import '../../notifications/state/notifications_controller.dart';
 import '../../resumes/presentation/widgets/resume_attachment_chips.dart';
 import '../../resumes/presentation/widgets/select_resumes_bottom_sheet.dart';
 import '../../resumes/state/resume_controller.dart';
-import 'widgets/agent_activity_feed.dart';
 
 class DashboardPage extends StatelessWidget {
   const DashboardPage({super.key});
@@ -37,23 +38,14 @@ class DashboardPage extends StatelessWidget {
             child: Column(
               children: [
                 _DashboardHeader(),
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppConstants.screenHorizontalPadding,
-                      AppConstants.screenTopPadding,
-                      AppConstants.screenHorizontalPadding,
-                      320,
-                    ),
-                    children: const [
-                      PassiveAgentCard(),
-                      SizedBox(height: 20),
-                      _ApprovalPipelineCard(),
-                      SizedBox(height: 20),
-                      SectionTitle(title: AppStrings.recentActivity),
-                      AgentActivityFeed(),
-                    ],
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    AppConstants.screenHorizontalPadding,
+                    AppConstants.screenTopPadding,
+                    AppConstants.screenHorizontalPadding,
+                    0,
                   ),
+                  child: _AgentCardStack(),
                 ),
               ],
             ),
@@ -208,138 +200,369 @@ class _LiveDot extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Approval pipeline card
+// Agent fan-stack — Brief Ready + Approval Pipeline + Strategic, tappable
 // ---------------------------------------------------------------------------
 
-class _ApprovalPipelineCard extends StatelessWidget {
-  const _ApprovalPipelineCard();
+class _AgentCardStack extends StatefulWidget {
+  const _AgentCardStack();
+
+  @override
+  State<_AgentCardStack> createState() => _AgentCardStackState();
+}
+
+class _AgentCardStackState extends State<_AgentCardStack> {
+  static const double _maxCardWidth = 320;
+  static const double _cardHeight = 180;
+  static const double _stackHeight = 270;
+  static const double _cardLeftInset = 6;
+  // Right-side breathing room reserved for the fanned second card so it never
+  // crosses the screen edge.
+  static const double _fanRightMargin = 44;
+  static const Duration _animDuration = Duration(milliseconds: 550);
+
+  bool _expanded = false;
+  bool _prevExpanded = false;
+  final List<int> _order = [0, 1];
+  List<int> _prevOrder = [0, 1];
+  int _version = 0;
+
+  void _animate(VoidCallback mutate) {
+    setState(() {
+      _prevExpanded = _expanded;
+      _prevOrder = List<int>.from(_order);
+      mutate();
+      _version++;
+    });
+  }
+
+  void _onCardTap(int cardIdx) {
+    HapticFeedback.selectionClick();
+    if (!_expanded) {
+      _animate(() => _expanded = true);
+      return;
+    }
+    final slot = _order.indexOf(cardIdx);
+    if (slot == 0) {
+      _animate(() => _expanded = false);
+    } else {
+      _animate(() {
+        _order.remove(cardIdx);
+        _order.insert(0, cardIdx);
+      });
+    }
+  }
+
+  void _onOutsideTap() {
+    if (!_expanded) return;
+    HapticFeedback.selectionClick();
+    _animate(() => _expanded = false);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        SectionTitle(
-          title: AppStrings.approvalPipeline,
-          trailing: const StepPill(label: '4 Pending', accent: true),
-        ),
-        Material(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(AppConstants.largeCardRadius),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(AppConstants.largeCardRadius),
-            onTap: () => context.go(RouteNames.jobs),
-            child: Container(
-              padding: const EdgeInsets.all(AppConstants.cardPadding),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius:
-                    BorderRadius.circular(AppConstants.largeCardRadius),
-                border: Border.all(color: AppColors.border),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 20,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
+    return Consumer<PassiveAgentController>(
+      builder: (context, controller, _) {
+        final cards = <_StackCardData>[
+          _StackCardData(
+            title: 'Brief Ready',
+            kicker: 'Passive Agent',
+            count: controller.readyCount,
+            background: AppColors.accent,
+            foreground: AppColors.ink,
+            icon: Icons.bolt_rounded,
+            route: RouteNames.jobs,
+          ),
+          _StackCardData(
+            title: 'Approval Pipeline',
+            kicker: 'Pending Review',
+            count: 4,
+            background: AppColors.surface,
+            foreground: AppColors.ink,
+            icon: Icons.work_outline_rounded,
+            route: RouteNames.jobs,
+          ),
+        ];
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 14),
+              child: Text(
+                _expanded
+                    ? 'TAP A CARD TO BRING IT FRONT · TAP FRONT TO COLLAPSE'
+                    : 'TAP THE STACK TO POP OUT',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.4,
+                  color: AppColors.textMuted,
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const _OverlappingAvatars(initials: ['B', 'T', 'L', 'V']),
-                      const Spacer(),
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: const BoxDecoration(
-                          color: AppColors.ink,
-                          shape: BoxShape.circle,
-                        ),
-                        alignment: Alignment.center,
-                        child: const Icon(
-                          Icons.arrow_forward_rounded,
-                          color: AppColors.accent,
-                          size: 18,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    AppStrings.reviewApplications,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.ink,
-                      letterSpacing: -0.2,
-                      height: 1.25,
+            ),
+            GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: _expanded ? _onOutsideTap : null,
+              child: SizedBox(
+                    height: _stackHeight,
+                    width: double.infinity,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        // Fit the card so its right edge — plus the fan-out
+                        // shift of the second card — never exceeds the
+                        // available width.
+                        final cardWidth = math.min(
+                          _maxCardWidth,
+                          constraints.maxWidth -
+                              _cardLeftInset -
+                              _fanRightMargin,
+                        );
+                        return TweenAnimationBuilder<double>(
+                          key: ValueKey(_version),
+                          tween: Tween(begin: 0, end: 1),
+                          duration: _animDuration,
+                          curve: Curves.easeOutCubic,
+                          builder: (context, t, _) {
+                            // Paint back-to-front so the new front card sits on top.
+                            final paintOrder = _order.reversed.toList();
+                            return Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                for (final cardIdx in paintOrder)
+                                  _buildCard(cards[cardIdx], cardIdx, t, cardWidth),
+                              ],
+                            );
+                          },
+                        );
+                      },
                     ),
+                  )
+                  .animate()
+                  .shake(
+                    delay: 900.ms,
+                    duration: 650.ms,
+                    hz: 3,
+                    rotation: 0.018,
                   ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    AppStrings.reviewApplicationsBody,
-                    style: TextStyle(
-                      color: AppColors.textMuted,
-                      fontSize: 14,
-                      height: 1.45,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  double _lerp(double a, double b, double t) => a + (b - a) * t;
+
+  Widget _buildCard(_StackCardData data, int cardIdx, double t, double cardWidth) {
+    final prevSlot = _prevOrder.indexOf(cardIdx).toDouble();
+    final newSlot = _order.indexOf(cardIdx).toDouble();
+    final slot = _lerp(prevSlot, newSlot, t);
+
+    final prevExpand = _prevExpanded ? 1.0 : 0.0;
+    final newExpand = _expanded ? 1.0 : 0.0;
+    final expand = _lerp(prevExpand, newExpand, t);
+
+    // Collapsed: tight stack, second card peeks bottom-right with a small tilt.
+    final collapsedRot = slot * 6.0;
+    final collapsedX = slot * 16.0;
+    final collapsedY = slot * 14.0;
+
+    // Expanded: fan to the right and down — the second card splays sideways
+    // and drops so its kicker/title shows below the front card's top edge.
+    final expandedRot = -4.0 + slot * 10.0;
+    final expandedX = slot * 36.0;
+    final expandedY = slot * 32.0;
+
+    final rotDeg = _lerp(collapsedRot, expandedRot, expand);
+    final tx = _lerp(collapsedX, expandedX, expand);
+    final ty = _lerp(collapsedY, expandedY, expand);
+
+    return Positioned(
+      left: _cardLeftInset,
+      top: 40,
+      child: Transform.translate(
+        offset: Offset(tx, ty),
+        child: Transform.rotate(
+          angle: rotDeg * math.pi / 180,
+          alignment: Alignment.bottomLeft,
+          origin: const Offset(28, -24),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _onCardTap(cardIdx),
+            child: _StackCard(
+              data: data,
+              width: cardWidth,
+              height: _cardHeight,
+              showAction: _expanded,
             ),
           ),
         ),
-      ],
+      ),
     );
   }
 }
 
-class _OverlappingAvatars extends StatelessWidget {
-  const _OverlappingAvatars({required this.initials});
+class _StackCardData {
+  const _StackCardData({
+    required this.title,
+    required this.kicker,
+    required this.count,
+    required this.background,
+    required this.foreground,
+    required this.icon,
+    required this.route,
+  });
 
-  final List<String> initials;
+  final String title;
+  final String kicker;
+  final int count;
+  final Color background;
+  final Color foreground;
+  final IconData icon;
+  final String route;
+}
+
+class _StackCard extends StatelessWidget {
+  const _StackCard({
+    required this.data,
+    required this.width,
+    required this.height,
+    required this.showAction,
+  });
+
+  final _StackCardData data;
+  final double width;
+  final double height;
+  final bool showAction;
 
   @override
   Widget build(BuildContext context) {
-    const size = 36.0;
-    const overlap = 10.0;
-    final width = size + (initials.length - 1) * (size - overlap);
-    return SizedBox(
+    final fg = data.foreground;
+    return Container(
       width: width,
-      height: size,
-      child: Stack(
-        children: List.generate(initials.length, (i) {
-          return Positioned(
-            left: i * (size - overlap),
-            child: Container(
-              width: size,
-              height: size,
-              decoration: BoxDecoration(
-                color: AppColors.accent,
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 4,
-                  ),
-                ],
+      height: height,
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      decoration: BoxDecoration(
+        color: data.background,
+        borderRadius: BorderRadius.circular(AppConstants.largeCardRadius),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.14),
+            blurRadius: 32,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: fg.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: Icon(data.icon, color: fg, size: 20),
               ),
-              alignment: Alignment.center,
-              child: Text(
-                initials[i],
-                style: const TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 13,
-                  color: AppColors.ink,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      data.kicker.toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.6,
+                        color: fg.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-          );
-        }),
+              Text(
+                '${data.count}',
+                style: TextStyle(
+                  fontSize: 34,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                  letterSpacing: -1.2,
+                  color: fg,
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Text(
+                  data.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.4,
+                    height: 1.05,
+                    color: fg,
+                  ),
+                ),
+              ),
+              AnimatedSlide(
+                offset: showAction ? Offset.zero : const Offset(0.3, 0),
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeOutCubic,
+                child: AnimatedOpacity(
+                  opacity: showAction ? 1 : 0,
+                  duration: const Duration(milliseconds: 220),
+                  child: Material(
+                    color: fg.withValues(alpha: 0.10),
+                    shape: const StadiumBorder(),
+                    child: InkWell(
+                      customBorder: const StadiumBorder(),
+                      onTap: showAction ? () => context.go(data.route) : null,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Open',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 12,
+                                color: fg,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.arrow_forward_rounded,
+                              size: 14,
+                              color: fg,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -386,22 +609,22 @@ class _PromptSuggestions extends StatelessWidget {
     _PromptSuggestionData(
       icon: Icons.travel_explore_rounded,
       kicker: 'DISCOVER',
-      prompt: 'Find UX roles at AI startups hiring this week',
+      prompt: MockAgentService.discoverPrompt,
     ),
     _PromptSuggestionData(
       icon: Icons.auto_awesome_rounded,
       kicker: 'TAILOR',
-      prompt: 'Tailor my resume for the role I just saved',
+      prompt: MockAgentService.tailorPrompt,
     ),
     _PromptSuggestionData(
       icon: Icons.mail_outline_rounded,
       kicker: 'OUTREACH',
-      prompt: 'Draft a cold outreach to the hiring manager',
+      prompt: MockAgentService.outreachPrompt,
     ),
     _PromptSuggestionData(
       icon: Icons.insights_rounded,
       kicker: 'STRATEGY',
-      prompt: 'What roles match my current trajectory?',
+      prompt: MockAgentService.strategyPrompt,
     ),
   ];
 

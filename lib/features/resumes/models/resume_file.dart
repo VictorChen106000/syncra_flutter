@@ -2,7 +2,6 @@ import 'dart:typed_data';
 
 enum ResumeSource {
   manual,
-  syncraAi,
   tailored,
 }
 
@@ -24,8 +23,19 @@ class ResumeFile {
   final String type;
   final DateTime uploadedAt;
   final ResumeSource source;
+
+  /// Absolute path to the PDF on this device, under the app's documents
+  /// directory. May be `null` if the resume was uploaded from a different
+  /// device (the Firestore metadata exists, the local file doesn't).
   final String? path;
+
+  /// In-memory bytes — set immediately after upload so the preview screen
+  /// can render without a disk round-trip. Subsequent loads use `path`.
   final Uint8List? bytes;
 
-  bool get isPdf => type == 'application/pdf' || name.toLowerCase().endsWith('.pdf');
+  bool get isPdf =>
+      type == 'application/pdf' || name.toLowerCase().endsWith('.pdf');
+
+  bool get isAvailableLocally =>
+      bytes != null || (path != null && path!.isNotEmpty);
 }

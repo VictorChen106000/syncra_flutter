@@ -60,11 +60,7 @@ class _JobsPageState extends State<JobsPage> {
   }
 
   List<Job> _filteredQueue(JobsController controller) {
-    final all = [
-      ...MockJobs.ready,
-      ...MockJobs.inputNeeded,
-      ...MockJobs.exploration,
-    ];
+    final all = controller.pendingJobs;
     return all.where((j) {
       if (controller.isDismissed(j.id)) return false;
       final matchesFilter = switch (_filter) {

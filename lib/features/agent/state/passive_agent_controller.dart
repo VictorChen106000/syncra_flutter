@@ -2,9 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../data/firestore/jobs_repository.dart';
+import '../../../data/firestore/pipeline_repository.dart';
 import '../../../data/mock/mock_agent_steps.dart';
 import '../../../data/mock/mock_jobs.dart';
 import '../../../data/models/job.dart';
+import '../../auth/state/auth_controller.dart';
 import '../data/fake_resume.dart';
 import '../services/anthropic_service.dart';
 
@@ -32,12 +35,22 @@ class AgentActivityStep {
 }
 
 class PassiveAgentController extends ChangeNotifier {
-  PassiveAgentController({AnthropicService? service})
-      : _service = service ?? AnthropicService() {
+  PassiveAgentController({
+    AuthController? auth,
+    AnthropicService? service,
+    JobsRepository? jobsRepository,
+    PipelineRepository? pipelineRepository,
+  })  : _auth = auth,
+        _service = service ?? AnthropicService(),
+        _jobsRepository = jobsRepository ?? JobsRepository(),
+        _pipelineRepository = pipelineRepository ?? PipelineRepository() {
     _seedFromMocks();
   }
 
+  final AuthController? _auth;
   final AnthropicService _service;
+  final JobsRepository _jobsRepository;
+  final PipelineRepository _pipelineRepository;
 
   AgentBriefStatus _status = AgentBriefStatus.idle;
   DateTime? _lastBriefAt;
@@ -112,18 +125,31 @@ class PassiveAgentController extends ChangeNotifier {
     _briefId = 'brief_${DateTime.now().millisecondsSinceEpoch}';
     _status = AgentBriefStatus.scanning;
     _lastError = null;
+    notifyListeners();
+
+    // 1. Pull candidate jobs from Firestore. Fall back to mocks if empty.
+    List<Job> candidates = const [];
+    try {
+      candidates = await _jobsRepository.fetchAll();
+    } catch (e) {
+      debugPrint('jobs fetch failed: $e');
+    }
+    if (candidates.isEmpty) {
+      candidates = List.of(MockJobs.all);
+    }
+
     _activity.insert(
       0,
       AgentActivityStep(
-        tool: 'JobScraperAPI',
-        detail: 'Scanning ${MockJobs.all.length} candidate roles…',
+        tool: 'Firestore',
+        detail: 'Scanning ${candidates.length} candidate roles…',
         status: 'active',
         createdAt: DateTime.now(),
       ),
     );
     notifyListeners();
 
-    await Future.delayed(const Duration(milliseconds: 700));
+    await Future.delayed(const Duration(milliseconds: 400));
     _markFirstActivityDone();
     _status = AgentBriefStatus.matching;
     _activity.insert(
@@ -143,16 +169,38 @@ class PassiveAgentController extends ChangeNotifier {
       if (_service.hasApiKey) {
         final results = await _service.scoreJobs(
           resume: kFakeResumeJson,
-          jobs: MockJobs.all,
+          jobs: candidates,
         );
         if (results != null) {
-          _pipeline = _applyResults(MockJobs.all, results);
+          _pipeline = _applyResults(candidates, results);
         } else {
-          _pipeline = List.of(MockJobs.all);
+          _pipeline = List.of(candidates);
         }
       } else {
         await Future.delayed(const Duration(milliseconds: 900));
-        _pipeline = List.of(MockJobs.all);
+        _pipeline = List.of(candidates);
+      }
+
+      // 2. Persist scored cards into Firestore so the jobs page sees them.
+      final uid = _auth?.appUser?.uid;
+      final isGuest = _auth?.appUser?.isGuest ?? true;
+      if (uid != null && !isGuest && _pipeline.isNotEmpty) {
+        for (final j in _pipeline) {
+          try {
+            await _pipelineRepository.createCard(
+              uid: uid,
+              job: j,
+              category: j.category,
+              matchScore: j.matchScore,
+              agentAction: j.agentAction,
+              agentJustification: j.agentJustification,
+              matchedSkills: j.skills,
+              missingSkills: j.missingSkills,
+            );
+          } catch (e) {
+            debugPrint('pipeline card write failed: $e');
+          }
+        }
       }
 
       _lastBriefAt = DateTime.now();

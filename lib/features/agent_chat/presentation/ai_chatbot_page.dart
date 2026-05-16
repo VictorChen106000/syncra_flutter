@@ -4,11 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
-import '../../../shared/widgets/app_header.dart';
+import '../../../data/mock/mock_agent_service.dart';
 import '../models/chat_message.dart';
 import '../state/agent_chat_controller.dart';
+import 'widgets/agent_turn_view.dart';
 import 'widgets/chat_input_bar.dart';
 import 'widgets/chat_message_bubble.dart';
 
@@ -21,11 +21,23 @@ class AiChatbotPage extends StatefulWidget {
 
 class _AiChatbotPageState extends State<AiChatbotPage> {
   final ScrollController _scrollController = ScrollController();
+  AgentChatController? _controller;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    context.watch<AgentChatController>();
+    final controller = context.read<AgentChatController>();
+    if (!identical(controller, _controller)) {
+      _controller?.removeListener(_onControllerChanged);
+      _controller = controller;
+      _controller!.addListener(_onControllerChanged);
+      _scheduleScrollToBottom();
+    }
+  }
+
+  void _onControllerChanged() => _scheduleScrollToBottom();
+
+  void _scheduleScrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
   }
 
@@ -39,9 +51,16 @@ class _AiChatbotPageState extends State<AiChatbotPage> {
   }
 
   @override
+  void dispose() {
+    _controller?.removeListener(_onControllerChanged);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.scaffold,
+      backgroundColor: AppColors.surface,
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -50,22 +69,30 @@ class _AiChatbotPageState extends State<AiChatbotPage> {
             Expanded(
               child: Consumer<AgentChatController>(
                 builder: (context, controller, _) {
+                  // Empty/intro state — only the initial greeting turn exists
+                  // and the user hasn't sent anything yet.
+                  final onlyInitial = controller.items.length == 1 &&
+                      controller.items.first is AgentTurn;
+                  if (onlyInitial) {
+                    return _EmptyState(
+                      onPromptTap: (text) =>
+                          controller.sendPrompt(prompt: text),
+                    );
+                  }
                   return ListView(
                     controller: _scrollController,
-                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
                     children: [
-                      for (final message in controller.messages)
-                        if (message.type == ChatMessageType.resultCards)
-                          const _ResultCards()
-                        else
-                          ChatMessageBubble(message: message),
-                      if (controller.isTyping) const _TypingBubble(),
+                      for (final item in controller.items)
+                        switch (item) {
+                          UserMessage() => UserMessageView(message: item),
+                          AgentTurn() => AgentTurnView(turn: item),
+                        },
                     ],
                   );
                 },
               ),
             ),
-            const _QuickReplies(),
             const ChatInputBar(),
           ],
         ),
@@ -75,7 +102,7 @@ class _AiChatbotPageState extends State<AiChatbotPage> {
 }
 
 // ---------------------------------------------------------------------------
-// Header
+// Header — minimal Claude-style top bar: back + centered title + new chat
 // ---------------------------------------------------------------------------
 
 class _ChatHeader extends StatelessWidget {
@@ -85,273 +112,250 @@ class _ChatHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<AgentChatController>(
       builder: (context, controller, _) {
-        return AppHeader.page(
-          title: controller.isTyping
-              ? AppStrings.chatTypingTitle
-              : AppStrings.chatTitle,
-          kicker: 'Syncra Agent',
-          onBack: () => context.go(RouteNames.dashboard),
-          trailing: _LiveDot(active: controller.isTyping),
-        );
-      },
-    );
-  }
-}
-
-class _LiveDot extends StatelessWidget {
-  const _LiveDot({required this.active});
-
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 10,
-      height: 10,
-      decoration: BoxDecoration(
-        color: active ? AppColors.accent : AppColors.border,
-        shape: BoxShape.circle,
-        boxShadow: active
-            ? [
-                BoxShadow(
-                  color: AppColors.accent.withValues(alpha: 0.40),
-                  blurRadius: 8,
-                  spreadRadius: 2,
-                ),
-              ]
-            : null,
-      ),
-    )
-        .animate(
-          onPlay: active ? (c) => c.repeat(reverse: true) : null,
-          autoPlay: active,
-        )
-        .fadeIn(duration: 400.ms)
-        .then()
-        .fadeOut(duration: 400.ms);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Quick replies
-// ---------------------------------------------------------------------------
-
-class _QuickReplies extends StatelessWidget {
-  const _QuickReplies();
-
-  @override
-  Widget build(BuildContext context) {
-    return Consumer<AgentChatController>(
-      builder: (context, controller, _) {
-        const replies = [
-          'Find me a UX role at a startup & draft outreach',
-          'Improve my resume',
-          'Find internships',
-        ];
-        return SizedBox(
-          height: 52,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-            itemBuilder: (context, index) {
-              final text = replies[index];
-              return Material(
-                color: Colors.white.withValues(alpha: 0.60),
-                borderRadius: BorderRadius.circular(99),
-                child: InkWell(
-                  onTap: controller.isTyping
-                      ? null
-                      : () => controller.sendPrompt(prompt: text),
-                  borderRadius: BorderRadius.circular(99),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(99),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.auto_awesome_rounded,
-                          size: 14,
+        return Container(
+          padding: const EdgeInsets.fromLTRB(8, 10, 12, 10),
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            border: Border(
+              bottom: BorderSide(color: AppColors.border, width: 0.6),
+            ),
+          ),
+          child: Row(
+            children: [
+              _IconBtn(
+                icon: Icons.arrow_back_ios_new_rounded,
+                onTap: () => context.go(RouteNames.dashboard),
+              ),
+              Expanded(
+                child: Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 22,
+                        height: 22,
+                        decoration: const BoxDecoration(
                           color: AppColors.ink,
+                          shape: BoxShape.circle,
                         ),
-                        const SizedBox(width: 6),
-                        Text(
-                          text,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.ink,
-                          ),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          Icons.auto_awesome_rounded,
+                          color: AppColors.accent,
+                          size: 12,
                         ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Syncra',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.ink,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      const Icon(
+                        Icons.expand_more_rounded,
+                        size: 16,
+                        color: AppColors.textMuted,
+                      ),
+                      if (controller.isStreaming) ...[
+                        const SizedBox(width: 10),
+                        const _LiveDot(),
                       ],
-                    ),
+                    ],
                   ),
                 ),
-              );
-            },
-            separatorBuilder: (context, _) => const SizedBox(width: 8),
-            itemCount: replies.length,
-          ),
-        );
-      },
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Typing bubble
-// ---------------------------------------------------------------------------
-
-class _TypingBubble extends StatelessWidget {
-  const _TypingBubble();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 22,
-                height: 22,
-                decoration: const BoxDecoration(
-                  color: AppColors.ink,
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: const Icon(
-                  Icons.auto_awesome_rounded,
-                  color: AppColors.accent,
-                  size: 12,
-                ),
               ),
-              const SizedBox(width: 8),
-              const Text(
-                'Syncra',
-                style: TextStyle(
-                  color: AppColors.ink,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.1,
-                ),
+              _IconBtn(
+                icon: Icons.edit_square,
+                onTap: () {},
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          const Padding(
-            padding: EdgeInsets.only(left: 30, top: 4),
-            child: _BouncingDots(),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BouncingDots extends StatelessWidget {
-  const _BouncingDots();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(3, (i) {
-        return Padding(
-          padding: EdgeInsets.only(right: i < 2 ? 6 : 0),
-          child: Container(
-            width: 7,
-            height: 7,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.textMuted.withValues(alpha: 0.6),
-            ),
-          )
-              .animate(
-                onPlay: (c) => c.repeat(),
-                delay: (i * 180).ms,
-              )
-              .moveY(begin: 0, end: -3, duration: 380.ms, curve: Curves.easeOut)
-              .then()
-              .moveY(begin: -3, end: 0, duration: 380.ms, curve: Curves.easeIn),
         );
-      }),
+      },
     );
   }
 }
 
-// ---------------------------------------------------------------------------
-// Result cards (after agent reply)
-// ---------------------------------------------------------------------------
-
-class _ResultCards extends StatelessWidget {
-  const _ResultCards();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 30, bottom: 28),
-      child: Column(
-        children: [
-          _ResultCard(
-            icon: Icons.description_rounded,
-            title: 'Linear_UX_Resume_v4.pdf',
-            badge: 'Tailored · 92% Match',
-            trailing: Icons.search_rounded,
-            onTap: () {},
-          ),
-          const SizedBox(height: 10),
-          _ResultCard(
-            icon: Icons.mail_outline_rounded,
-            title: 'Draft: Linear Outreach',
-            subtitle: 'Includes recent news context',
-            trailing: Icons.chevron_right_rounded,
-            onTap: () {},
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ResultCard extends StatelessWidget {
-  const _ResultCard({
-    required this.icon,
-    required this.title,
-    this.subtitle,
-    this.badge,
-    required this.trailing,
-    required this.onTap,
-  });
-
+class _IconBtn extends StatelessWidget {
+  const _IconBtn({required this.icon, required this.onTap});
   final IconData icon;
-  final String title;
-  final String? subtitle;
-  final String? badge;
-  final IconData trailing;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.surface,
-      borderRadius: BorderRadius.circular(14),
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(99),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(99),
+        child: SizedBox(
+          width: 40,
+          height: 40,
+          child: Icon(icon, size: 18, color: AppColors.ink),
+        ),
+      ),
+    );
+  }
+}
+
+class _LiveDot extends StatelessWidget {
+  const _LiveDot();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(
+        color: AppColors.accentBright,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.accentBright.withValues(alpha: 0.45),
+            blurRadius: 6,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+    )
+        .animate(onPlay: (c) => c.repeat(reverse: true))
+        .fadeIn(duration: 500.ms)
+        .then()
+        .fadeOut(duration: 500.ms);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Empty state — centered greeting + suggested prompt cards
+// ---------------------------------------------------------------------------
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({required this.onPromptTap});
+
+  final void Function(String prompt) onPromptTap;
+
+  @override
+  Widget build(BuildContext context) {
+    const prompts = MockAgentService.dashboardPrompts;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 60, 24, 24),
+      children: [
+        // Sparkle mark
+        Center(
+          child: Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: AppColors.ink,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.ink.withValues(alpha: 0.12),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.auto_awesome_rounded,
+              color: AppColors.accent,
+              size: 26,
+            ),
+          ),
+        )
+            .animate()
+            .fadeIn(duration: 380.ms)
+            .scale(begin: const Offset(0.85, 0.85), end: const Offset(1, 1)),
+        const SizedBox(height: 22),
+        const Text(
+          'How can I help today?',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 26,
+            fontWeight: FontWeight.w800,
+            color: AppColors.ink,
+            letterSpacing: -0.6,
+            height: 1.1,
+          ),
+        ).animate(delay: 80.ms).fadeIn(duration: 380.ms).moveY(
+              begin: 8,
+              end: 0,
+              duration: 380.ms,
+              curve: Curves.easeOutCubic,
+            ),
+        const SizedBox(height: 8),
+        Text(
+          'Find roles, tailor resumes, or draft outreach — I can take it from here.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: AppColors.textMuted,
+            height: 1.45,
+          ),
+        ).animate(delay: 160.ms).fadeIn(duration: 380.ms),
+        const SizedBox(height: 36),
+        // Prompt cards
+        for (var i = 0; i < prompts.length; i++) ...[
+          _PromptCard(
+            text: prompts[i],
+            icon: _promptIcons[i % _promptIcons.length],
+            onTap: () => onPromptTap(prompts[i]),
+          )
+              .animate(delay: (220 + i * 70).ms)
+              .fadeIn(duration: 360.ms)
+              .moveY(
+                begin: 10,
+                end: 0,
+                duration: 360.ms,
+                curve: Curves.easeOutCubic,
+              ),
+          if (i < prompts.length - 1) const SizedBox(height: 10),
+        ],
+      ],
+    );
+  }
+
+  static const List<IconData> _promptIcons = [
+    Icons.travel_explore_rounded,
+    Icons.auto_awesome_rounded,
+    Icons.mail_outline_rounded,
+    Icons.insights_rounded,
+  ];
+}
+
+class _PromptCard extends StatelessWidget {
+  const _PromptCard({
+    required this.text,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String text;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.softSurface,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.border),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.border.withValues(alpha: 0.7)),
           ),
           child: Row(
             children: [
@@ -359,44 +363,32 @@ class _ResultCard extends StatelessWidget {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: AppColors.scaffold,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.border),
                 ),
                 alignment: Alignment.center,
-                child: Icon(icon, color: AppColors.ink, size: 16),
+                child: Icon(icon, size: 16, color: AppColors.ink),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: AppColors.ink,
-                        letterSpacing: -0.1,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      badge ?? subtitle ?? '',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.textMuted,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  text,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.ink,
+                    letterSpacing: -0.15,
+                    height: 1.35,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
-              Icon(trailing, size: 18, color: AppColors.textMuted),
+              const Icon(
+                Icons.arrow_forward_rounded,
+                size: 16,
+                color: AppColors.textSoft,
+              ),
             ],
           ),
         ),

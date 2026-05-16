@@ -46,7 +46,6 @@ class AppStrings {
   static const String reviewApplications = 'Review Applications';
   static const String reviewApplicationsBody =
       "I've tailored 3 resumes and drafted outreach emails. They are waiting for your approval.";
-  static const String recentActivity = 'Recent Activity';
   static const String pending = 'Pending';
 
   // Chat

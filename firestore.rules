@@ -1,0 +1,38 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // Global jobs cache. Any signed-in user can read; only the user that
+    // discovered a job (or an admin via console) can write it. For a class
+    // demo we allow any signed-in user to write into jobs/ since the
+    // client is doing the JSearch sync.
+    match /jobs/{jobId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    // User profile + all per-user subcollections.
+    match /users/{uid} {
+      allow read, write: if isOwner(uid);
+
+      match /{subcollection}/{docId} {
+        allow read, write: if isOwner(uid);
+      }
+
+      // Allow one level of nesting under subcollections (e.g.
+      // conversations/{convId}/messages/{msgId}).
+      match /{subcollection}/{docId}/{nested}/{nestedId} {
+        allow read, write: if isOwner(uid);
+      }
+    }
+  }
+}

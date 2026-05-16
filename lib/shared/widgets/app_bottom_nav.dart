@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/constants/app_colors.dart';
-import '../../core/constants/app_constants.dart';
 import '../../core/router/route_names.dart';
 
 enum BottomNavTab { home, agent, profile }
 
-class AppBottomNav extends StatefulWidget {
+class AppBottomNav extends StatelessWidget {
   const AppBottomNav({super.key, required this.activeTab, this.onTap});
 
   final BottomNavTab activeTab;
@@ -17,16 +16,6 @@ class AppBottomNav extends StatefulWidget {
   /// scaffold uses this so taps go through [StatefulNavigationShell.goBranch]
   /// and preserve each branch's state.
   final ValueChanged<BottomNavTab>? onTap;
-
-  @override
-  State<AppBottomNav> createState() => _AppBottomNavState();
-}
-
-class _AppBottomNavState extends State<AppBottomNav> {
-  // Demo flag: toggled by long-pressing the Agent tab.
-  // Replace with real AgentController state when the stream lands.
-  bool _agentWorking = false;
-  String _agentStatus = 'Tailoring resume…';
 
   static const _items = <_BottomNavItem>[
     _BottomNavItem(
@@ -52,248 +41,195 @@ class _AppBottomNavState extends State<AppBottomNav> {
     ),
   ];
 
-  void _toggleAgentDemo() {
-    setState(() {
-      _agentWorking = !_agentWorking;
-      _agentStatus = _agentWorking ? 'Tailoring resume…' : '';
-    });
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (var i = 0; i < _items.length; i++) ...[
+          if (i > 0) const SizedBox(width: 12),
+          _NavPill(
+            item: _items[i],
+            isActive: activeTab == _items[i].tab,
+            onTap: () {
+              final cb = onTap;
+              if (cb != null) {
+                cb(_items[i].tab);
+              } else {
+                context.go(_items[i].route);
+              }
+            },
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _NavPill extends StatefulWidget {
+  const _NavPill({
+    required this.item,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  final _BottomNavItem item;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  @override
+  State<_NavPill> createState() => _NavPillState();
+}
+
+class _NavPillState extends State<_NavPill>
+    with SingleTickerProviderStateMixin {
+  // One master duration/curve for every secondary animation on tap.
+  static const Duration _shapeDuration = Duration(milliseconds: 320);
+  static const Curve _shapeCurve = Curves.easeOutCubic;
+
+  late final AnimationController _pulseController;
+  late final Animation<double> _pulse;
+
+  // Measured width of the inner pill; drives the sibling-push translation
+  // so it tracks the pill's real size instead of a magic constant.
+  final GlobalKey _pillKey = GlobalKey();
+  double _pillWidth = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    );
+    // Continuous squash-and-settle: peak at 1.06, no mid-sequence jump.
+    _pulse = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(
+          begin: 1.0,
+          end: 1.06,
+        ).chain(CurveTween(curve: Curves.easeOutCubic)),
+        weight: 40,
+      ),
+      TweenSequenceItem(
+        tween: Tween(
+          begin: 1.06,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeOutCubic)),
+        weight: 60,
+      ),
+    ]).animate(_pulseController);
+  }
+
+  void _measurePill() {
+    final box = _pillKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    final w = box.size.width;
+    if ((w - _pillWidth).abs() > 0.5) {
+      setState(() => _pillWidth = w);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _NavPill oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Only pulse when this pill becomes active — never on deactivation.
+    if (widget.isActive && !oldWidget.isActive) {
+      _pulseController.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  void _handleTap() {
+    HapticFeedback.selectionClick();
+    widget.onTap();
   }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 900),
-      curve: Curves.easeOutCubic,
-      decoration: BoxDecoration(
-        color: AppColors.navBackground,
-        borderRadius: BorderRadius.circular(34),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.22),
-            blurRadius: 30,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AnimatedSize(
-            duration: const Duration(milliseconds: 420),
-            curve: Curves.easeOutCubic,
-            alignment: Alignment.topCenter,
-            child: _agentWorking
-                ? _AgentStatusStrip(status: _agentStatus)
-                : const SizedBox(width: double.infinity, height: 0),
-          ),
-          SizedBox(
-            height: AppConstants.bottomNavHeight - 16,
+    final activeColor = AppColors.accentBright;
+    final isActive = widget.isActive;
+    final item = widget.item;
+
+    // Re-measure after each layout so _pillWidth tracks the real pill width
+    // (including the label expansion when isActive flips).
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measurePill());
+
+    return AnimatedBuilder(
+      animation: _pulse,
+      builder: (context, child) {
+        final scale = _pulse.value;
+        // Push siblings outward by exactly the amount the scaled pill grew
+        // on each side, so neighbours track the pill instead of over- or
+        // under-shooting against a magic constant.
+        final pushPx = (scale - 1.0) * _pillWidth / 2;
+        return Padding(
+          padding: EdgeInsets.symmetric(horizontal: pushPx),
+          child: Transform.scale(scale: scale, child: child),
+        );
+      },
+      child: Material(
+        key: _pillKey,
+        color: AppColors.ink,
+        borderRadius: BorderRadius.circular(31),
+        shadowColor: Colors.black.withValues(alpha: 0.32),
+        elevation: 8,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(31),
+          onTap: _handleTap,
+          child: AnimatedContainer(
+            duration: _shapeDuration,
+            curve: _shapeCurve,
+            height: 62,
+            padding: EdgeInsets.symmetric(horizontal: isActive ? 22 : 18),
             child: Row(
-              children: _items.map((item) {
-                final isActive = widget.activeTab == item.tab;
-                return Expanded(
-                  child: Center(
-                    child: Material(
-                      color: Colors.transparent,
-                      borderRadius: BorderRadius.circular(28),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(28),
-                        onTap: () {
-                          final onTap = widget.onTap;
-                          if (onTap != null) {
-                            onTap(item.tab);
-                          } else {
-                            context.go(item.route);
-                          }
-                        },
-                        onLongPress: item.tab == BottomNavTab.agent
-                            ? _toggleAgentDemo
-                            : null,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 420),
-                          curve: Curves.easeOutCubic,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isActive
-                                ? AppColors.accent
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(28),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 320),
-                                switchInCurve: Curves.easeOutCubic,
-                                switchOutCurve: Curves.easeInCubic,
-                                transitionBuilder: (child, animation) {
-                                  return FadeTransition(
-                                    opacity: animation,
-                                    child: ScaleTransition(
-                                      scale: Tween<double>(begin: 0.78, end: 1)
-                                          .animate(
-                                            CurvedAnimation(
-                                              parent: animation,
-                                              curve: Curves.easeOutBack,
-                                            ),
-                                          ),
-                                      child: child,
-                                    ),
-                                  );
-                                },
-                                child: Icon(
-                                  isActive ? item.icon : item.outlineIcon,
-                                  key: ValueKey<bool>(isActive),
-                                  size: 22,
-                                  color: isActive
-                                      ? AppColors.ink
-                                      : AppColors.navInactive,
-                                ),
-                              ),
-                              ClipRect(
-                                child: AnimatedAlign(
-                                  duration: const Duration(milliseconds: 420),
-                                  curve: Curves.easeOutCubic,
-                                  alignment: Alignment.centerLeft,
-                                  widthFactor: isActive ? 1 : 0,
-                                  child: AnimatedSlide(
-                                    duration: const Duration(milliseconds: 420),
-                                    curve: Curves.easeOutCubic,
-                                    offset: isActive
-                                        ? Offset.zero
-                                        : const Offset(-0.25, 0),
-                                    child: AnimatedOpacity(
-                                      duration: const Duration(
-                                        milliseconds: 320,
-                                      ),
-                                      curve: Curves.easeOutCubic,
-                                      opacity: isActive ? 1 : 0,
-                                      child: Padding(
-                                        padding: const EdgeInsets.only(left: 8),
-                                        child: Text(
-                                          item.label,
-                                          style: const TextStyle(
-                                            color: AppColors.ink,
-                                            fontSize: 13.5,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedSwitcher(
+                  duration: _shapeDuration,
+                  switchInCurve: _shapeCurve,
+                  switchOutCurve: _shapeCurve,
+                  child: Icon(
+                    isActive ? item.icon : item.outlineIcon,
+                    key: ValueKey<bool>(isActive),
+                    size: 26,
+                    color: isActive ? activeColor : AppColors.surface,
+                  ),
+                ),
+                ClipRect(
+                  child: AnimatedAlign(
+                    duration: _shapeDuration,
+                    curve: _shapeCurve,
+                    alignment: Alignment.centerLeft,
+                    widthFactor: isActive ? 1 : 0,
+                    child: AnimatedOpacity(
+                      duration: _shapeDuration,
+                      curve: _shapeCurve,
+                      opacity: isActive ? 1 : 0,
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Text(
+                          item.label,
+                          style: TextStyle(
+                            color: activeColor,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: -0.1,
                           ),
                         ),
                       ),
                     ),
                   ),
-                );
-              }).toList(),
+                ),
+              ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AgentStatusStrip extends StatelessWidget {
-  const _AgentStatusStrip({required this.status});
-
-  final String status;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-          padding: const EdgeInsets.only(left: 6, right: 6, top: 4, bottom: 10),
-          child: Row(
-            children: [
-              const _PulsingDot(),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  status,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.1,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.accent.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Text(
-                  'LIVE',
-                  style: TextStyle(
-                    color: AppColors.accent,
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.6,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        )
-        .animate()
-        .fadeIn(duration: 240.ms, curve: Curves.easeOut)
-        .slideY(
-          begin: -0.25,
-          end: 0,
-          duration: 320.ms,
-          curve: Curves.easeOutCubic,
-        );
-  }
-}
-
-class _PulsingDot extends StatelessWidget {
-  const _PulsingDot();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 12,
-      height: 12,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.accent.withValues(alpha: 0.45),
-                ),
-              )
-              .animate(onPlay: (c) => c.repeat())
-              .scale(
-                duration: 1300.ms,
-                begin: const Offset(0.4, 0.4),
-                end: const Offset(1.7, 1.7),
-                curve: Curves.easeOut,
-              )
-              .fadeOut(duration: 1300.ms),
-          Container(
-            width: 8,
-            height: 8,
-            decoration: const BoxDecoration(
-              color: AppColors.accent,
-              shape: BoxShape.circle,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

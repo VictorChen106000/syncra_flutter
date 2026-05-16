@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../data/firestore/user_repository.dart';
 import '../models/app_user.dart';
 import '../services/google_auth_service.dart';
 
@@ -9,20 +10,24 @@ import '../services/google_auth_service.dart';
 ///
 /// Provides [appUser], [isSignedIn], [isLoading], and [error] to consumers.
 class AuthController extends ChangeNotifier {
-  AuthController() : _authService = GoogleAuthService() {
-    // Listen to Firebase auth state changes so we stay in sync
-    // (e.g., if the token expires or user signs out from another device).
-    _authSubscription = _authService.authStateChanges.listen((firebaseUser) {
+  AuthController({UserRepository? userRepository})
+      : _authService = GoogleAuthService(),
+        _userRepository = userRepository ?? UserRepository() {
+    _authSubscription = _authService.authStateChanges.listen((firebaseUser) async {
       if (firebaseUser != null) {
         _appUser = _authService.userToAppUser(firebaseUser);
+        notifyListeners();
+        try {
+          await _userRepository.ensureUserDoc(firebaseUser);
+        } catch (e) {
+          debugPrint('ensureUserDoc failed: $e');
+        }
       } else if (_appUser != null && !_appUser!.isGuest) {
-        // Only clear if it was a real (non-guest) user that signed out.
         _appUser = null;
+        notifyListeners();
       }
-      notifyListeners();
     });
 
-    // Check if there's already a signed-in user from a previous session.
     final existingUser = _authService.currentFirebaseUser;
     if (existingUser != null) {
       _appUser = _authService.userToAppUser(existingUser);
@@ -30,6 +35,7 @@ class AuthController extends ChangeNotifier {
   }
 
   final GoogleAuthService _authService;
+  final UserRepository _userRepository;
   StreamSubscription? _authSubscription;
 
   AppUser? _appUser;
