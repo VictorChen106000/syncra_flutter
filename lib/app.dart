@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
-import 'data/mock/mock_agent_service.dart';
+import 'fixtures/mock_agent_service.dart';
 import 'features/agent/state/passive_agent_controller.dart';
 import 'features/agent_chat/services/agent_service.dart';
 import 'features/agent_chat/services/anthropic_chat_service.dart';
@@ -15,7 +15,7 @@ import 'features/auth/state/auth_controller.dart';
 import 'features/jobs/state/jobs_controller.dart';
 import 'features/notifications/state/notifications_controller.dart';
 import 'features/resumes/state/resume_controller.dart';
-import 'features/tracker/state/tracker_controller.dart';
+import 'features/applications/state/applications_controller.dart';
 
 AgentService _buildAgentService() {
   final registry = ToolRegistry();
@@ -44,12 +44,12 @@ class SyncraApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => AgentChatController(service: _buildAgentService()),
         ),
-        ChangeNotifierProxyProvider<AuthController, TrackerController>(
-          create: (context) => TrackerController(
+        ChangeNotifierProxyProvider<AuthController, ApplicationsController>(
+          create: (context) => ApplicationsController(
             auth: context.read<AuthController>(),
           ),
           update: (_, _, previous) =>
-              previous ?? TrackerController(auth: AuthController()),
+              previous ?? ApplicationsController(auth: AuthController()),
         ),
         ChangeNotifierProvider(create: (_) => NotificationsController()),
         ChangeNotifierProxyProvider<AuthController, JobsController>(

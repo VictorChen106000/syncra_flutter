@@ -16,6 +16,6 @@ class RouteNames {
   static const String tailor = '/jobs/tailor';
   static const String review = '/jobs/review';
   static const String submitted = '/jobs/submitted';
-  static const String tracker = '/tracker';
+  static const String applications = '/applications';
   static const String notifications = '/notifications';
 }

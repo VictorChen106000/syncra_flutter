@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import '../../../data/mock/mock_notifications.dart';
+import '../../../fixtures/mock_notifications.dart';
 
 enum NotificationsFilter { all, unread }
 

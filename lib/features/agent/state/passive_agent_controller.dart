@@ -4,8 +4,8 @@ import 'package:flutter/foundation.dart';
 
 import '../../../data/firestore/jobs_repository.dart';
 import '../../../data/firestore/pipeline_repository.dart';
-import '../../../data/mock/mock_agent_steps.dart';
-import '../../../data/mock/mock_jobs.dart';
+import '../../../fixtures/mock_agent_steps.dart';
+import '../../../fixtures/mock_jobs.dart';
 import '../../../data/models/job.dart';
 import '../../auth/state/auth_controller.dart';
 import '../data/fake_resume.dart';

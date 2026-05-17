@@ -1,4 +1,4 @@
-import '../../features/resumes/models/resume_file.dart';
+import '../features/resumes/models/resume_file.dart';
 
 class MockResumes {
   const MockResumes._();

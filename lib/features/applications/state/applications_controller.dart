@@ -7,9 +7,9 @@ import '../../../data/models/job.dart';
 import '../../../data/models/tracked_application.dart';
 import '../../auth/state/auth_controller.dart';
 
-class TrackerFilter {
-  const TrackerFilter.all() : status = null;
-  const TrackerFilter.status(JobStatus s) : status = s;
+class ApplicationsFilter {
+  const ApplicationsFilter.all() : status = null;
+  const ApplicationsFilter.status(JobStatus s) : status = s;
 
   final JobStatus? status;
 
@@ -18,14 +18,14 @@ class TrackerFilter {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is TrackerFilter && other.status == status;
+      other is ApplicationsFilter && other.status == status;
 
   @override
   int get hashCode => status.hashCode;
 }
 
-class TrackerController extends ChangeNotifier {
-  TrackerController({
+class ApplicationsController extends ChangeNotifier {
+  ApplicationsController({
     required AuthController auth,
     ApplicationsRepository? repository,
   })  : _auth = auth,
@@ -40,10 +40,10 @@ class TrackerController extends ChangeNotifier {
   StreamSubscription<List<TrackedApplication>>? _subscription;
   String? _boundUid;
   List<TrackedApplication> _items = const [];
-  TrackerFilter _filter = const TrackerFilter.all();
+  ApplicationsFilter _filter = const ApplicationsFilter.all();
   String? _lastMessage;
 
-  TrackerFilter get filter => _filter;
+  ApplicationsFilter get filter => _filter;
   List<TrackedApplication> get items => List.unmodifiable(_items);
 
   String? consumeMessage() {
@@ -58,7 +58,7 @@ class TrackerController extends ChangeNotifier {
     return _items.where((a) => a.status == s).toList();
   }
 
-  void setFilter(TrackerFilter f) {
+  void setFilter(ApplicationsFilter f) {
     _filter = f;
     notifyListeners();
   }

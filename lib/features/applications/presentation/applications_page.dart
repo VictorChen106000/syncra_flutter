@@ -10,18 +10,18 @@ import '../../../core/router/route_names.dart';
 import '../../../data/models/tracked_application.dart';
 import '../../../data/models/job.dart';
 import '../../../shared/widgets/app_header.dart';
-import '../state/tracker_controller.dart';
-import 'widgets/tracker_detail_sheet.dart';
+import '../state/applications_controller.dart';
+import 'widgets/application_detail_sheet.dart';
 
-class TrackerPage extends StatefulWidget {
-  const TrackerPage({super.key});
+class ApplicationsPage extends StatefulWidget {
+  const ApplicationsPage({super.key});
 
   @override
-  State<TrackerPage> createState() => _TrackerPageState();
+  State<ApplicationsPage> createState() => _ApplicationsPageState();
 }
 
-class _TrackerPageState extends State<TrackerPage> {
-  TrackerController? _bound;
+class _ApplicationsPageState extends State<ApplicationsPage> {
+  ApplicationsController? _bound;
 
   void _onMessage() {
     final msg = _bound?.consumeMessage();
@@ -39,7 +39,7 @@ class _TrackerPageState extends State<TrackerPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final c = context.read<TrackerController>();
+    final c = context.read<ApplicationsController>();
     if (!identical(c, _bound)) {
       _bound?.removeListener(_onMessage);
       _bound = c;
@@ -59,14 +59,14 @@ class _TrackerPageState extends State<TrackerPage> {
       backgroundColor: AppColors.scaffold,
       body: SafeArea(
         bottom: false,
-        child: Consumer<TrackerController>(
+        child: Consumer<ApplicationsController>(
           builder: (context, controller, _) {
             final apps = controller.filtered;
             final all = controller.items;
             return Column(
               children: [
                 AppHeader.page(
-                  title: AppStrings.trackerTitle,
+                  title: AppStrings.applicationsTitle,
                   onBack: () => context.go(RouteNames.dashboard),
                 ),
                 Expanded(
@@ -81,7 +81,7 @@ class _TrackerPageState extends State<TrackerPage> {
                       _SummaryStrip(apps: all),
                       const SizedBox(height: 20),
                       Text(
-                        AppStrings.trackerSubtitle,
+                        AppStrings.applicationsSubtitle,
                         style: const TextStyle(
                           color: AppColors.textMuted,
                           fontSize: 13,
@@ -101,7 +101,7 @@ class _TrackerPageState extends State<TrackerPage> {
                         ...apps.asMap().entries.map(
                               (entry) => _TrackerCard(
                                 app: entry.value,
-                                onTap: () => TrackerDetailSheet.show(
+                                onTap: () => ApplicationDetailSheet.show(
                                   context,
                                   entry.value,
                                 ),
@@ -211,8 +211,8 @@ class _SummaryTile extends StatelessWidget {
 class _FilterChipsRow extends StatelessWidget {
   const _FilterChipsRow({required this.active, required this.onChanged});
 
-  final TrackerFilter active;
-  final ValueChanged<TrackerFilter> onChanged;
+  final ApplicationsFilter active;
+  final ValueChanged<ApplicationsFilter> onChanged;
 
   static const _statuses = [
     JobStatus.submitted,
@@ -237,14 +237,14 @@ class _FilterChipsRow extends StatelessWidget {
             return _FilterChip(
               label: 'All',
               active: active.isAll,
-              onTap: () => onChanged(const TrackerFilter.all()),
+              onTap: () => onChanged(const ApplicationsFilter.all()),
             );
           }
           final status = _statuses[i - 1];
           return _FilterChip(
             label: status.label,
             active: active.status == status,
-            onTap: () => onChanged(TrackerFilter.status(status)),
+            onTap: () => onChanged(ApplicationsFilter.status(status)),
           );
         },
       ),

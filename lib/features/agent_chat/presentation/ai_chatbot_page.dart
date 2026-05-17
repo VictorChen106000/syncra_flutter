@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/router/route_names.dart';
-import '../../../data/mock/mock_agent_service.dart';
+import '../../../fixtures/mock_agent_service.dart';
 import '../models/chat_message.dart';
 import '../state/agent_chat_controller.dart';
 import 'widgets/agent_turn_view.dart';

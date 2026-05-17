@@ -371,7 +371,7 @@ class _CareerPipelineSection extends StatelessWidget {
               iconActive: true,
               title: 'Application Tracker',
               count: 5,
-              onTap: () => context.go(RouteNames.tracker),
+              onTap: () => context.go(RouteNames.applications),
             ),
             const _GroupedDivider(),
             _SettingsTile(

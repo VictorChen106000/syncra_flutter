@@ -64,10 +64,10 @@ class AppStrings {
       'Completed actions and timeline history.';
   static const String searchJobsHint = 'Search roles, companies…';
 
-  // Tracker
-  static const String trackerTitle = 'Tracker';
-  static const String trackerSubtitle =
-      'Status of every application the agent submitted.';
+  // Applications (was Tracker — merged tracker + history into one page)
+  static const String applicationsTitle = 'Applications';
+  static const String applicationsSubtitle =
+      'Every application the agent has filed. Filter by status to find what needs attention.';
 
   // Notifications
   static const String notificationsTitle = 'Notifications';
