@@ -2,7 +2,12 @@
 
 **For:** the 5-person team (3 backend + 2 frontend)
 **Demo day:** June 16, 2026 (~30 days out)
-**Last updated:** 2026-05-16
+**Last updated:** 2026-05-17
+
+> **Changes since 2026-05-16 — read before you start your track:**
+> - **Resume tailoring is now a "PR diff," not a wholesale rewrite.** `tailor_resume` proposes a list of targeted edits; the user accepts/rejects each one like a GitHub pull request. Only after the user applies does a tailored PDF get rendered. Touches B1, B3, FE1, FE2.
+> - **Morning brief no longer auto-fires every 24h.** That design was burning Claude tokens on every app open. The brief is now opt-in (off by default) and user-triggered via a dashboard CTA. Touches B3 + FE1.
+> - **FE1 migrates `provider` → `flutter_riverpod`** with strict immutable state. Required to make the diff viewer's accept/reject UX work without race conditions.
 
 This is the single doc your team needs. Print it, export it to PDF
 (VSCode → "Markdown PDF" extension or Typora), share it however you want.
@@ -221,47 +226,90 @@ takes whatever isn't claimed plus the integrator role.
 
 ---
 
-### Track 1 — Backend: Resume Pipeline (B1)
+### Track 1 — Backend: Resume Diff Pipeline (B1)
 
 **You own**
 - [lib/features/resumes/](../lib/features/resumes/) — every service, model, repository
 - [lib/data/firestore/resumes_repository.dart](../lib/data/firestore/resumes_repository.dart)
-- The `read_resume` and `tailor_resume` tool implementations in [builtin_tools.dart](../lib/features/agent_chat/tools/builtin_tools.dart) (~lines 122-400)
+- The `read_resume`, **rewritten `tailor_resume`**, and **new `apply_resume_edits`** tool implementations in [builtin_tools.dart](../lib/features/agent_chat/tools/builtin_tools.dart)
 
 **Why it matters**
-The "tailor my resume for this job" loop is the headline demo moment. Your code
-takes a real PDF the user uploaded, extracts the text, asks Claude to rewrite
-bullets emphasizing the right keywords, and renders a new PDF through our fixed
-template. Without it, the agent can talk about resumes but can't produce one.
+The headline demo moment is no longer "the agent rewrites your resume." It's
+**"the agent proposes a set of targeted edits, and the user reviews each one
+like a GitHub pull request."** Your code is the engine: `tailor_resume`
+produces structured `ProposedEdit` records (target path, original text,
+proposed text, reason) — and *nothing else*. Only after the user accepts a
+subset (in FE2's diff viewer) does `apply_resume_edits` build a fresh
+`ResumeJSON` and render the tailored PDF. **The original resume is never
+mutated.**
 
 **Build order**
-1. **Verify the existing pipeline end-to-end** — upload a real PDF resume, then
-   open the chat and ask the agent to tailor it for one of the seeded jobs.
-   Watch the orchestrator run. Fix anything that breaks.
-2. **Scanned-PDF edge case** — if `PdfTextExtractor` returns an empty string,
+1. **Add a `ProposedEdit` model** in `lib/features/resumes/models/proposed_edit.dart`:
+   ```dart
+   class ProposedEdit {
+     final String targetPath;   // e.g. "experience[0].bullets[2]"
+     final String originalText;
+     final String proposedText;
+     final String reason;       // one sentence — why this helps for this job
+   }
+   ```
+   Path syntax must match what `read_resume` returns in `ResumeJSON` so paths
+   round-trip cleanly. Pin the grammar with a unit test before B3 starts
+   prompting against it.
+
+2. **Rewrite [resume_tailor_service.dart](../lib/features/resumes/services/resume_tailor_service.dart)** — instead of generating a new `ResumeJSON`, prompt Claude to return a JSON array of
+   `ProposedEdit` records. Hard rules enforced post-response:
+   - Every `original_text` must match the current resume verbatim (drop edits that don't).
+   - `proposed_text` may rephrase but never invent experience, dates, or metrics.
+   - 3–8 edits per call max. Keep the change footprint small so reviews stay tractable.
+
+3. **New service: `resume_diff_service.dart`** — pure function
+   `applyEdits(ResumeJSON original, List<ProposedEdit> accepted) → ResumeJSON`.
+   Walks each `targetPath`, swaps `originalText` → `proposedText`. Deterministic
+   and stateless — **FE1's controller will call this synchronously on every
+   accept/reject in the diff viewer**, so it must not touch I/O.
+
+4. **Tool `tailor_resume`** now returns `{ proposed_edits: [...] }`. **No PDF,
+   no Firestore write.** This tool's role is purely *propose*. (~150 LOC
+   simplification vs. the v1.2 orchestrator.)
+
+5. **New tool `apply_resume_edits`** — input `{ resume_id, accepted_edits[] }`.
+   This is the tool that does the render: builds V2 `ResumeJSON` via
+   `resume_diff_service`, runs through [pdf_template.dart](../lib/features/resumes/services/pdf_template.dart),
+   saves local file + Firestore doc with `source='tailored'`, returns
+   `{ tailored_resume_id }`. **Only this tool produces a new resume document.**
+
+6. **Scanned-PDF edge case** — if `PdfTextExtractor` returns an empty string,
    surface a friendly "this PDF looks like a scan — please upload a text PDF"
    error to the chat instead of falling back to the sample resume.
-3. **Parser retry** — if Claude returns malformed JSON for `parseResume`,
-   retry once with a stricter prompt before giving up. (~10 lines in
-   [resume_parser_service.dart](../lib/features/resumes/services/resume_parser_service.dart))
-4. **Cascade-delete tailored resumes** — when the user deletes a manual resume,
+
+7. **Parser retry** — if Claude returns malformed JSON for `parseResume` *or*
+   `tailor_resume`'s edit array, retry once with a stricter prompt before giving up.
+
+8. **Cascade-delete tailored resumes** — when the user deletes a manual resume,
    also delete its tailored children. Wire up in `ResumeController.deleteResume`.
-5. **(Stretch)** A "Tailor history" UI showing original PDF + each tailored
-   variant grouped together on the resume list page.
+
+9. **(Stretch)** "Edit history" UI showing original PDF + each
+   apply_resume_edits result grouped together on the resume list page.
 
 **You're done when**
-- Upload a real resume → tap a "ready" pipeline card → review_page → approve →
-  a tailored PDF appears in the resume list within ~15 seconds.
-- Opening that tailored PDF shows real bullets emphasizing the target job's
-  keywords, in the fixed template.
-- Deleting the parent resume cleans up tailored children too.
+- Upload a real resume → trigger tailoring → `tailor_resume` returns 3–8
+  `ProposedEdit` records in chat within ~10s; every `original_text` exists
+  verbatim in the resume.
+- After the user accepts some edits and FE2 calls `apply_resume_edits`, a
+  tailored PDF appears in the resume list within ~5s.
+- That tailored PDF reflects **only** the accepted edits — rejected ones leave
+  the original text intact.
+- Deleting the parent resume cleans up tailored children.
 
 **Dependencies**
-- None blocking — the foundation is in place.
-- Other tracks depend on you for `read_resume` / `tailor_resume` to actually
-  work end-to-end.
+- You depend on **B3** for the prompt that produces high-quality `ProposedEdit` arrays.
+- **FE1 + FE2 depend on you** for the `ProposedEdit` model and `resume_diff_service` to power the diff viewer.
 
 **Common pitfalls**
+- Don't render any PDF inside `tailor_resume`. Render only inside `apply_resume_edits`.
+- Don't mutate the original `ResumeJSON` anywhere — `resume_diff_service.applyEdits` must return a fresh object.
+- `target_path` parsing is fiddly (bracket indices vs. dotted keys). Lock the grammar in a test.
 - Don't add `firebase_storage` back. Local-cache only.
 - Don't change the PDF template layout without team vote — consistency is a feature.
 - Don't add new fields to `resume_json` without updating [api-contract.md §2.4](./api-contract.md).
@@ -336,134 +384,215 @@ been drafting fake emails until now.
 **You own**
 - [lib/features/agent_chat/services/anthropic_chat_service.dart](../lib/features/agent_chat/services/anthropic_chat_service.dart) — the tool-use loop
 - [lib/features/agent_chat/tools/anthropic_tool_calls.dart](../lib/features/agent_chat/tools/anthropic_tool_calls.dart) — paraphrase + draft email prompts
-- [lib/features/agent_chat/tools/builtin_tools.dart](../lib/features/agent_chat/tools/builtin_tools.dart) — system prompt + tool descriptions (the "personality")
+- [lib/features/agent_chat/tools/builtin_tools.dart](../lib/features/agent_chat/tools/builtin_tools.dart) — system prompt + tool descriptions
 - [lib/features/agent/services/anthropic_service.dart](../lib/features/agent/services/anthropic_service.dart) — brief reasoner / job matcher
-- [lib/features/agent/state/passive_agent_controller.dart](../lib/features/agent/state/passive_agent_controller.dart) — brief lifecycle
+- [lib/features/agent/state/passive_agent_controller.dart](../lib/features/agent/state/passive_agent_controller.dart) — **now a user-triggered callable, not a scheduler (see §8)**
 
 **Why it matters**
-The loop works — but how *well* it works depends on prompt quality, tool
-description clarity, and how the agent handles edge cases (ambiguous user
-intent, partial tool failures, hitting the loop limit). The difference between
-"impressive demo" and "hung up agent" lives in your code.
+Two big shifts since v1.2 that touch every prompt you own:
+
+1. **Tailoring is now a diff, not a rewrite.** Your prompts must teach Claude
+   to propose small, targeted edits — not rewrite whole sections. The whole
+   accept/reject UX only works if the model emits surgical changes the user
+   can reason about one at a time.
+2. **The morning brief no longer auto-fires.** It was burning Claude tokens on
+   every app open. The passive controller becomes a callable invoked by an
+   explicit user tap from the dashboard (FE1 owns the button).
 
 **Build order**
 1. **Run 10 demo prompts end-to-end** with the current setup. Log every Claude
-   turn (tool calls, text). Identify failure patterns.
-2. **Tune the system prompt** in `anthropic_chat_service.dart` (constant `_system`).
-   Right now it's basic — make it teach Claude to *prefer* calling tools over
-   guessing, and to use `ask_user` when stuck.
-3. **Tune tool descriptions** in `builtin_tools.dart`. Each tool's `description:`
-   is what Claude reads when picking. Make them tight, behavioral, and clear
-   about when *not* to use the tool.
-4. **Improve `ask_user` UX from the agent side** — when the agent calls
-   `ask_user`, often it should also provide 2-3 suggestions. Bake that into the
-   tool description ("Always provide 2-3 suggestions unless the question is
-   genuinely open-ended").
-5. **Loop safety nets** — current limit is 8 iterations. Add better recovery
-   messages when the loop terminates because of repeated tool failures (not
-   just iteration cap).
-6. **Brief reasoner quality** — tune the `_systemPrompt` in `anthropic_service.dart`
-   so categorizations are sharper (fewer "exploration" defaults).
-7. **NEW: implement `save_to_pipeline` tool** in [builtin_tools.dart](../lib/features/agent_chat/tools/builtin_tools.dart) — see [api-contract.md §2.6b](./api-contract.md). Lets the agent persist pipeline cards instead of `PassiveAgentController` bypassing the tool registry.
-7a. **NEW: implement `remember_fact` tool** + `users/{uid}/learned_facts/`
+   turn. Identify failure patterns.
+
+2. **Tighten the `tailor_resume` prompt** in [anthropic_tool_calls.dart](../lib/features/agent_chat/tools/anthropic_tool_calls.dart). The model must:
+   - Return JSON only: `{ "proposed_edits": [ { target_path, original_text, proposed_text, reason } ] }`
+   - Quote `original_text` **verbatim** from the resume — B1 validates by string match and drops mismatches.
+   - Propose 3–8 edits max, prioritized by relevance to the JD.
+   - Never invent experience, employers, dates, metrics.
+   - Prefer rewriting individual bullets over full-section rewrites.
+   - Keep each `reason` to one sentence: *"Aligns with the JD's emphasis on growth metrics."*
+
+3. **Tune the system prompt** in `anthropic_chat_service.dart`. Add: *"When
+   tailoring a resume, you propose changes — you never overwrite. The user
+   reviews every edit before it lands."* Also: prefer tools over guessing,
+   use `ask_user` when stuck.
+
+4. **Tool descriptions** in [builtin_tools.dart](../lib/features/agent_chat/tools/builtin_tools.dart) — Claude reads these to pick:
+   - `tailor_resume`: *"Proposes targeted edits to the resume. Does not modify the resume. The user reviews each edit in a diff viewer before applying."*
+   - `apply_resume_edits`: *"Call only after the user has reviewed proposed edits. Input is the subset the user accepted in the diff viewer."*
+   - Make every other tool description tight, behavioral, and clear about when **not** to use.
+
+5. **Loop sequencing — critical.** After `tailor_resume` returns
+   `proposed_edits`, Claude must **stop and wait** — do not auto-call
+   `apply_resume_edits` or `draft_email`. The user reviews via FE2's diff
+   viewer; FE2 calls `apply_resume_edits` directly with the accepted subset;
+   the resulting `tailored_resume_id` is fed back into the conversation as a
+   synthetic tool result. Only then does Claude proceed to `draft_email`.
+
+6. **`ask_user` from the agent side** — provide 2–3 suggestion chips unless
+   the question is genuinely open-ended. Bake into the tool description.
+
+7. **Loop safety nets** — `_maxLoopIterations` stays at 8. Add better recovery
+   messages when the loop terminates because of repeated tool failures, not
+   just iteration cap.
+
+8. **Refactor `PassiveAgentController.runBrief()`** — the morning-brief change:
+   - **Remove the 24h auto-fire** on app open. Delete the timer / app-resume hook entirely.
+   - Expose `runBrief()` as a pure callable that FE1's "Run today's brief" button invokes.
+   - Internally, call `AnthropicChatService.runAgent` with a canned brief prompt — same code path as user-typed prompts. Locks in the "one agent, two triggers" model where both triggers are now explicit user taps.
+   - Persist `last_brief_at` for the dashboard's "Last brief: 2h ago" label, but **never read it to decide whether to auto-fire**.
+
+9. **Implement `save_to_pipeline` tool** — see [api-contract.md §2.6b](./api-contract.md). Lets `runBrief()` persist pipeline cards through the tool registry instead of bypassing it.
+
+10. **Implement `remember_fact` tool** + `users/{uid}/learned_facts/`
     collection — see [api-contract.md §2.6a](./api-contract.md). When the user
     answers an `ask_user`, the agent persists the answer. Future tailoring
     reads `learned_facts` via `read_resume` (extend that tool to include them).
-    Strong demo moment: "the agent learns about you across sessions." ~3h.
-8. **NEW: refactor `PassiveAgentController.runBrief()`** to call
-   `AnthropicChatService.runAgent` with a canned brief prompt instead of
-   calling `AnthropicService.scoreJobs` directly. This locks in the "one agent,
-   two triggers" model (see [api-contract.md §1](./api-contract.md)). ~2-3h.
-9. **Event-stream subscription** for FE2's notifications inbox — expose the
-   agent's event stream above the chat controller so both the chat UI and the
-   notifications page can subscribe.
+    Strong demo moment. ~3h.
+
+11. **Brief reasoner quality** — tune `_systemPrompt` in `anthropic_service.dart`
+    so categorizations are sharper (fewer "exploration" defaults).
+
+12. **Event-stream subscription** for FE2's notifications inbox — expose the
+    agent's event stream above the chat controller so both the chat UI and the
+    notifications page can subscribe.
 
 **You're done when**
-- Vague prompts ("help me find a job") trigger appropriate `ask_user` calls
-  with helpful suggestion chips, not random tool fires.
-- Specific prompts ("apply to a UX role at Linear using my latest resume")
-  produce the full chain — search → read_resume → match → tailor → draft —
-  with minimal user friction.
-- When a tool fails (e.g. JSearch returns 0 results), the agent acknowledges
-  cleanly and asks the user what to try next, instead of looping or going silent.
+- `tailor_resume` returns 3–8 `ProposedEdit` records, each with a verbatim `original_text`, on every test prompt. No full-section rewrites slip through.
+- After `tailor_resume` fires, the agent waits — it does not auto-call `draft_email` until the user has resolved the diff viewer.
+- Tapping FE1's "Run today's brief" button produces the same brief flow that auto-fired in v1.2, but **only on explicit tap** — nothing runs on app launch.
+- Vague prompts trigger `ask_user` with suggestion chips, not random tool fires.
+- Specific prompts produce search → read_resume → match → tailor (propose edits) → wait → apply → draft chain.
 
 **Dependencies**
-- You depend on B1 + B2 for the underlying tools to actually do real work.
-- FE2 surfaces your output, so coordinate with them on what the `text` blocks
-  look like (avoid markdown if FE2 hasn't shipped markdown support yet — they
-  haven't).
+- **B1** owns the `ProposedEdit` model + `apply_resume_edits` executor. Agree on the schema in week 1.
+- **FE2** owns the diff viewer + the trigger that calls `apply_resume_edits`. Agree on how the resulting tool_result is fed back into the agent loop.
+- **FE1** owns the dashboard "Run today's brief" button + the morning-brief settings toggle.
 
 **Common pitfalls**
-- Don't tune by feel alone — keep a list of 10 canonical demo prompts and
-  test each prompt before and after every prompt change.
+- Don't let Claude call `apply_resume_edits` itself. That tool is user-triggered via UI only.
+- Don't let the `tailor_resume` prompt drift back to full-section rewrites. Test for it weekly with a regression prompt set.
+- Don't re-introduce the 24h auto-fire as a "small convenience." It's a token-cost regression.
 - Don't add new tools without updating [api-contract.md §2](./api-contract.md).
 - Don't increase `_maxLoopIterations` past 10 without thinking about cost.
 
 ---
 
-### Track 4 — Frontend: Shell & Onboarding (FE1)
+### Track 4 — Frontend: Shell, State, Onboarding, Applications (FE1)
 
 **You own**
 - [lib/core/router/](../lib/core/router/) — navigation
-- [lib/app.dart](../lib/app.dart) — provider tree (touch carefully — coordinate
-  with B3 when adding new controllers)
+- [lib/app.dart](../lib/app.dart) — **state container, now a Riverpod `ProviderScope`** (touch carefully — coordinate with B3 on the chat/passive controllers)
 - [lib/features/auth/](../lib/features/auth/) — sign-in, splash, onboarding
-- [lib/features/dashboard/](../lib/features/dashboard/) — landing screen
-- [lib/features/profile/](../lib/features/profile/) — needs to become a real settings page
-- [lib/features/applications/presentation/](../lib/features/applications/presentation/) — Applications UI (was tracker, mostly done, may need polish)
+- [lib/features/dashboard/](../lib/features/dashboard/) — landing screen + **"Run today's brief" CTA**
+- [lib/features/profile/](../lib/features/profile/) — settings page (autonomy slider, morning-brief toggle, sign out)
+- [lib/features/applications/presentation/](../lib/features/applications/presentation/) — Applications UI
 - [lib/shared/widgets/](../lib/shared/widgets/) — design system
 - Build configuration — `--dart-define` recipes, README setup section
 - Firebase project config — when Track 2 adds Gmail scope, you coordinate
 
 **Why it matters**
-The shell is what makes the app feel like a *product* and not a demo. Empty
-states, smooth navigation, consistent typography, a clear onboarding that
-captures the user's preferences (autonomy level, role) — that's all you. The
-agent is the headline, but the shell is what people feel.
+Two structural shifts since v1.2 sit on your desk:
+
+1. **Migrate `provider` → `flutter_riverpod` with strict immutable state.**
+   Required to make the diff-viewer's accept/reject UX work cleanly: the
+   `ResumeController` must hold the original `ResumeJSON` (V1) and a
+   separately-derived proposed `ResumeJSON` (V2) at the same time, and FE2
+   needs to render either one without race conditions. The legacy `provider`
+   pattern of mutating a single controller in place won't survive this.
+2. **Kill the 24h auto-brief.** It was burning Claude tokens on every app
+   open. Replace with an opt-in setting + an explicit dashboard CTA.
+
+Beyond that: the shell is what makes the app feel like a *product*. Empty
+states, smooth navigation, an onboarding that captures real data — that's all you.
 
 **Build order**
-1. **Onboarding capture** — add screens that capture `autonomy_level`
-   (`'suggest' | 'ask_first' | 'auto_apply'`) and `role` (free-text e.g. "Senior
-   UX Designer"). Persist both to `users/{uid}` via `UserRepository.update`
-   (you may need to add a method). The brief reasoner already reads `role`.
-2. **Dashboard prompt entry** — a prominent "What would you like the agent to
-   do?" input on the dashboard that deep-links to the chat with the message
-   pre-filled. This is the agent's main entry point.
-3. **Settings page** — replace [lib/features/profile/presentation/profile_page.dart](../lib/features/profile/presentation/profile_page.dart)
-   with a real settings page: autonomy slider, sign out, delete account.
-4. **Empty states** everywhere — first-time user with no resume, no jobs in
-   pipeline, no applications on the Applications page. Each empty state should explain how
-   to get started AND offer a one-tap action (e.g. "Open the chat").
-4a. **NEW: Activity-log refactor of the Applications page.** Drop the
-    multi-stage status enum (viewed/replied/interview/offer/rejected) — see
-    [api-contract.md §3](./api-contract.md). New fields: `drafted_at`,
-    `sent_at`, `got_reply` (user-flippable bool), `follow_up_at`, `notes`.
-    Rebuild [applications_page.dart](../lib/features/applications/presentation/applications_page.dart)
-    to render as a date-sorted activity log with a "Got a reply" switch on each
-    entry. Filter chips become `All / Drafts / Sent / Replied`. Coordinate with
-    [ApplicationsController](../lib/features/applications/state/applications_controller.dart) +
-    [ApplicationsRepository](../lib/data/firestore/applications_repository.dart). ~4-5h.
-5. **Build config doc** — a README section listing every `--dart-define` flag,
+
+1. **Migrate `provider` → `flutter_riverpod` in one PR.** Add `flutter_riverpod`
+   to pubspec, remove `provider`. Convert each controller (`AuthController`,
+   `ResumeController`, `ApplicationsController`, `JobsController`,
+   `NotificationsController`, `AgentChatController`, `PassiveAgentController`)
+   to a Riverpod `Notifier<T>` with an **immutable** state class. Replace
+   `Consumer<X>` / `context.read<X>()` with `ref.watch(xProvider)` /
+   `ref.read(xProvider.notifier)`. Coordinate the merge with B3 — they touch
+   the chat controller heavily.
+
+2. **`ResumeController` state shape — the load-bearing change for the diff viewer:**
+   ```dart
+   class ResumeState {
+     final ResumeJSON? original;          // V1 — never mutated
+     final ResumeJSON? proposed;          // V2 — original with accepted edits applied
+     final List<ProposedEdit> pending;    // not yet accepted or rejected
+     final Set<String> acceptedPaths;     // target_paths the user has accepted
+   }
+   ```
+   - `acceptEdit(edit)` → add to `acceptedPaths`, recompute `proposed` by calling B1's `resume_diff_service.applyEdits(original, acceptedSubset)`. Emit a new `ResumeState` (no in-place mutation).
+   - `rejectEdit(edit)` → remove from `pending`, leave `proposed` unchanged.
+   - `clearProposal()` → reset `pending`, `acceptedPaths`, `proposed` (called when user navigates away or starts a new tailor).
+   - The controller **never overwrites `original`**. Even after `apply_resume_edits` renders the tailored PDF, that's a *new* Firestore resume doc with `source='tailored'`; the original stays put.
+
+3. **Onboarding capture — actually persist this time.** Capture `role`
+   (free-text e.g. "Senior UX Designer") and write to `users/{uid}` via a new
+   `UserRepository.update()` method. The brief reasoner already reads `role`.
+   **Do not capture `autonomy_level` in onboarding** — defer to Settings. The
+   user has no context to choose it yet, and getting it wrong here is worse
+   than leaving it at the default.
+
+4. **Dashboard "Run today's brief" CTA** — a prominent button or card that
+   calls `ref.read(passiveAgentProvider.notifier).runBrief()`. Show last-run
+   timestamp ("Last brief: 2 hours ago") so the user knows whether to tap
+   again. **Do not auto-fire on app open.** This is the v1.2 → v1.3 fix that
+   protects token spend.
+
+5. **Dashboard prompt entry** — a prominent input that, on send, dispatches the
+   prompt to the chat controller AND navigates to chat. Today the dashboard
+   "send" button just teleports without sending the text — fix this when you
+   touch it.
+
+6. **Settings page** — replace [lib/features/profile/presentation/profile_page.dart](../lib/features/profile/presentation/profile_page.dart) with a real one:
+   - **Autonomy slider** — `suggest` / `ask_first` / `auto_apply`, default `ask_first`.
+   - **Morning brief toggle** — off by default. When on, dashboard shows a stronger "Today's brief is ready" prompt; still requires a tap to fire.
+   - Sign out, delete account.
+   - Persist all settings to `users/{uid}` via `UserRepository.update()`.
+
+7. **Activity-log refactor of the Applications page** — drop the multi-stage
+   status enum (viewed/replied/interview/offer/rejected) per
+   [api-contract.md §3](./api-contract.md). New fields: `drafted_at`,
+   `sent_at`, `got_reply` (user-flippable bool), `follow_up_at`, `notes`.
+   Rebuild [applications_page.dart](../lib/features/applications/presentation/applications_page.dart)
+   as a date-sorted activity log with a "Got a reply" switch per entry. Filter
+   chips become `All / Drafts / Sent / Replied`. Coordinate with
+   [ApplicationsController](../lib/features/applications/state/applications_controller.dart) and
+   [ApplicationsRepository](../lib/data/firestore/applications_repository.dart). ~4–5h.
+
+8. **Empty states everywhere** — first-time user with no resume, no jobs in
+   pipeline, no applications. Each empty state explains how to start AND
+   offers a one-tap action.
+
+9. **Build config doc** — a README section listing every `--dart-define` flag,
    where each key comes from, and a single `flutter run` command that has them
-   all. Save your friends 30 minutes each.
-6. **Polish loop** — animations, snackbar consistency, error styling. Bug-bash
-   week.
+   all.
+
+10. **Polish loop** — animations, snackbar consistency, error styling.
 
 **You're done when**
-- A brand new user can: sign in → onboard → land on dashboard with a prompt
-  entry → tap chat → see the agent ask a sensible first question.
-- Settings page exists, autonomy is editable, sign out works on all platforms.
-- Every screen with a list has a beautiful empty state.
+- All controllers are Riverpod `Notifier`s returning immutable state; the `provider` package is removed from pubspec.
+- `ResumeController` holds V1 and V2 simultaneously; FE2's diff viewer can render either without flicker.
+- A brand-new user: signs in → captures role → lands on dashboard → sees "Run today's brief" CTA that does nothing until tapped → onboarding does not silently spend Claude tokens.
+- Settings page exists; morning-brief toggle and autonomy slider both work and persist.
+- Applications page renders as a date-sorted activity log.
 - README has a working "how to run this app" section.
 
 **Dependencies**
-- Coordinate with B2 on adding the Gmail OAuth scope to Google Sign-In config.
-- Coordinate with FE2 on consistent navigation patterns (back buttons, modals).
+- Coordinate with **B3** on the Riverpod migration of `AgentChatController` and `PassiveAgentController`.
+- Coordinate with **B1** on the `ResumeState` shape — they import `ProposedEdit` and `resume_diff_service`.
+- Coordinate with **B2** on the Gmail OAuth scope addition to Google Sign-In.
+- Coordinate with **FE2** on consistent navigation patterns.
 
 **Common pitfalls**
-- Don't restructure the provider tree without checking with B3 — the chat
-  controller has subtle dependencies on AuthController and ResumeController
-  being created before it.
+- Don't half-migrate. A codebase with both `provider` and `flutter_riverpod` is a debugging nightmare. Land the migration in one PR.
+- Don't expose mutable lists/maps in state classes — use `List.unmodifiable` or freeze-style copy semantics. Mutation in state breaks Riverpod's diffing.
+- Don't compute V2 in widgets. The controller is the only place that calls `applyEdits`.
+- Don't bring back the 24h auto-brief as a "convenience" — it's a token-cost regression.
 - Don't break the `go_router` redirect logic — it handles auth-gating.
 - Don't add a new top-level dependency without team vote.
 
