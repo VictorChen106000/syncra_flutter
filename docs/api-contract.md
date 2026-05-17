@@ -1,13 +1,13 @@
 # Syncra Architecture Contract
 
-**Status:** Draft v1.1 — agent-first reframe, replaces v0.4 REST contract
+**Status:** Draft v1.3 — adds PR-diff resume tailoring + opt-in morning brief, replaces v1.1
 **Demo target:** June 16, 2026
-**Last updated:** 2026-05-16
+**Last updated:** 2026-05-17
 
 Single source of truth for how Syncra is wired. If code disagrees with this
 file, this file wins. Product context lives in [product-brief.md](./product-brief.md);
-team ownership in [team-plan.md](./team-plan.md). Old v0.4 contract archived at
-[api-contract-v0.4-archived.md](./api-contract-v0.4-archived.md).
+team ownership in [team-handoff.md](./team-handoff.md) (per-track work) and
+[roles/](./roles/) (per-person briefs).
 
 ---
 
@@ -37,15 +37,20 @@ team ownership in [team-plan.md](./team-plan.md). Old v0.4 contract archived at
 ## 1. Agent loop — the primary UX
 
 There is **one** agent. What looks like "passive" vs "active" agent in the UI
-is just two **triggers** for the same `AnthropicChatService.runAgent` loop:
+is just two **triggers** for the same `AnthropicChatService.runAgent` loop —
+both now explicit user taps:
 
-- **User trigger** — user types a prompt; chat shows the tool calls live.
-- **System trigger** — when the user opens the app and `users/{uid}.last_brief_at`
-  is null or > 24h old, [PassiveAgentController](../lib/features/agent/state/passive_agent_controller.dart)
+- **Chat trigger** — user types a prompt in the chat; chat shows the tool calls live.
+- **Brief trigger** — user taps "Run today's brief" on the dashboard.
+  [PassiveAgentController.runBrief()](../lib/features/agent/state/passive_agent_controller.dart)
   fires a canned prompt (*"Find 5 fresh jobs matching my profile, score them
   via match_jobs, and save each as a pipeline card via save_to_pipeline"*).
-  Same code path, same tools. The user sees tool-call progress in the
-  notifications inbox; cards land on the pipeline page.
+  Same code path, same tools. Tool-call progress lands in the notifications
+  inbox; cards land on the pipeline page. `users/{uid}.last_brief_at` is
+  written for the "Last brief: 2h ago" label, **but is never read to decide
+  auto-firing**. There is no auto-fire on app open in v1.3 (this was a token-cost
+  regression in v1.2). The dashboard CTA is hidden behind
+  `morning_brief_enabled` in the user profile, off by default.
 
 ### The shape
 
@@ -87,7 +92,8 @@ is just two **triggers** for the same `AnthropicChatService.runAgent` loop:
 | `search_jobs` | ✅ | No |
 | `read_resume` | ✅ | No |
 | `match_jobs` | ✅ | No |
-| `tailor_resume` | ✅ | User reviews the PDF before save |
+| `tailor_resume` | ✅ | Returns proposed edits only — no PDF, no write |
+| `apply_resume_edits` | ❌ | **User-gated.** Fired by the diff viewer's "Apply N edits" CTA, never by Claude |
 | `draft_email` | ✅ | User reviews before send |
 | `lookup_hiring_manager` | ✅ | No |
 | `save_to_tracker` | Depends on `autonomy_level` | Writes to the Applications page. `suggest` → ask; `auto_apply` → just do it |
@@ -146,14 +152,50 @@ returns: list<MatchResult>  # category, match_score, justification, missing_skil
 #### 2.4 `tailor_resume`
 ```yaml
 name: tailor_resume
-description: Rewrite the user's resume for a specific job. Returns a new tailored ResumeJSON.
+description: Propose targeted edits to the user's resume for a specific job.
+  Returns a list of proposed edits — does NOT modify the resume and does NOT
+  render any PDF. The user reviews each edit in the diff viewer before
+  applying.
 input_schema:
   resume_id: string
   job_id: string
-backed_by: Anthropic (paraphrase only — never invents experience)
-returns: { tailored_resume_id, resume_json }
-side_effect: renders to PDF, saves to local disk, creates new Firestore resume doc with source='tailored'
-requires_confirmation: false (user reviews preview before next step)
+backed_by: Anthropic (paraphrase only — never invents experience, employers, dates, or metrics)
+returns:
+  proposed_edits: list<ProposedEdit>
+    # ProposedEdit = {
+    #   target_path: string,    # JSON path into ResumeJSON, e.g. "experience[0].bullets[2]"
+    #   original_text: string,  # verbatim current text at that path (validated by string match)
+    #   proposed_text: string,  # rewritten version
+    #   reason: string,         # one-sentence why this helps for THIS job
+    # }
+side_effect: none — the resume is not changed until the user accepts edits
+  and FE2 calls apply_resume_edits
+constraints:
+  - 3-8 edits per call
+  - every original_text must match the current resume verbatim; mismatched edits are dropped
+  - prefer rewriting individual bullets over full-section rewrites
+loop_behavior: after this tool returns, Claude must stop and wait. The user
+  reviews edits in the diff viewer; FE2 fires apply_resume_edits with the
+  accepted subset; the resulting tool_result feeds back into the loop and
+  Claude then proceeds (typically to draft_email).
+```
+
+#### 2.4b `apply_resume_edits` *(new — user-triggered render step)*
+```yaml
+name: apply_resume_edits
+description: Apply the subset of proposed edits the user accepted in the diff
+  viewer, render the tailored PDF, and create a new resume document. Call only
+  after the user has reviewed proposed_edits and tapped "Apply N edits" in the
+  Resume Diff Page.
+input_schema:
+  resume_id: string             # the original resume
+  accepted_edits: list<ProposedEdit>
+returns: { tailored_resume_id }
+backed_by: resume_diff_service.applyEdits (pure, deterministic) → pdf_template render → resumes_repository
+side_effect: renders to PDF, saves to local disk, creates new Firestore resume
+  doc with source='tailored', parent_resume_id=<original>, tailored_for_job_id=<job>
+caller: FE2's diff viewer dispatches this via the chat controller. Claude must
+  not call this tool directly — it is user-gated.
 ```
 
 #### 2.5 `draft_email`
@@ -257,14 +299,16 @@ ui: emits InputRequestBlock — chat shows a text field + optional suggestion ch
 ## 3. Firestore data model
 
 ### `users/{uid}` — profile
-| Field | Type |
-|---|---|
-| `name`, `email`, `avatar_url`, `role` | string(?) |
-| `is_agent_active` | bool |
-| `autonomy_level` | `'suggest' \| 'ask_first' \| 'auto_apply'` |
-| `gmail_connected` | bool |
-| `gmail_refresh_token` | string? (encrypted; v2) |
-| `created_at`, `last_brief_at` | Timestamp |
+| Field | Type | Notes |
+|---|---|---|
+| `name`, `email`, `avatar_url`, `role` | string(?) | `role` is captured in onboarding |
+| `is_agent_active` | bool | |
+| `autonomy_level` | `'suggest' \| 'ask_first' \| 'auto_apply'` | default `'ask_first'`. Set in Settings, **not** onboarding |
+| `morning_brief_enabled` | bool | default `false`. When false, the dashboard "Run today's brief" CTA is hidden. **Never** triggers an auto-fire — even when true, the brief requires a tap |
+| `gmail_connected` | bool | |
+| `gmail_refresh_token` | string? | encrypted; v2 |
+| `created_at` | Timestamp | |
+| `last_brief_at` | Timestamp? | Written by `runBrief()` for the "Last brief: 2h ago" label. **Display-only** — never read to decide whether to auto-fire |
 
 ### `users/{uid}/applications/{appId}` — Activity log (was tracker)
 **Schema simplified in v1.2 to match what the system can actually observe.**
@@ -454,7 +498,7 @@ concepts. One page, status filters, sorted in-flight first. Lives at
 
 ## 10. Migration / build status
 
-| Piece | Status | Owner (see team-plan.md) |
+| Piece | Status | Owner (see [team-handoff.md](./team-handoff.md)) |
 |---|---|---|
 | Firebase Auth + Google Sign-In | ✅ Done | Track E |
 | Firestore + rules deployed | ✅ Done | Track E |
@@ -474,6 +518,15 @@ concepts. One page, status filters, sorted in-flight first. Lives at
 | Gmail API send | ❌ Not built | Track D |
 | Hunter.io lookup (stretch) | ❌ Not built | Track C |
 | `backend/` Python dir | ⚠️ Delete after demo | — |
+| **v1.3 changes** | | |
+| `ProposedEdit` model + `resume_diff_service` | ❌ Not built | B1 |
+| `tailor_resume` returns proposed_edits (not PDF) | ❌ Not built | B1 + B3 |
+| `apply_resume_edits` tool | ❌ Not built | B1 |
+| Resume Diff Page (PR-style UI) | ❌ Not built | FE2 |
+| Riverpod migration + immutable state | ❌ Not built | FE1 |
+| Remove 24h auto-fire from PassiveAgentController | ❌ Not started | B3 |
+| "Run today's brief" dashboard CTA | ❌ Not built | FE1 |
+| `morning_brief_enabled` setting + toggle in Settings | ❌ Not built | FE1 |
 
 ---
 

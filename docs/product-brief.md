@@ -1,8 +1,8 @@
 # Syncra — Product Brief
 
-**Status:** v1.0 — locks the product story for the June 16 demo
+**Status:** v1.3 — adds PR-diff resume tailoring + opt-in morning brief
 **Audience:** team of 5, TA, anyone who needs the gist in 90 seconds
-**Last updated:** 2026-05-16
+**Last updated:** 2026-05-17
 
 ---
 
@@ -35,32 +35,33 @@ tape between them. **Syncra is the duct tape, automated.**
 2. **Upload your resume** — one PDF, lives on the phone (no cloud cost).
 3. **Tap the chat icon.** Type: *"Help me apply to a senior UX role at an AI startup, anywhere remote."*
 4. Agent thinks → searches jobs → ranks them → asks: *"Linear is the top match (94%). Tailor for them?"* You tap **Yes**.
-5. Agent parses your resume → tailors it for Linear → renders a new PDF.
-6. Agent drafts a cold-outreach email to Linear's head of design.
-7. Screen shows: tailored resume preview + email draft + send button.
-8. You tap **Send**. Email goes out via your own Gmail. Application appears on the **Applications** page.
+5. Agent reads your resume → **proposes 4–6 targeted edits.** You see them as a PR-style diff: original on top, rewrite below, one-sentence reason. Accept the ones you like, reject the rest.
+6. Tap **Apply N edits.** A new tailored PDF renders from the accepted subset.
+7. Agent drafts a cold-outreach email to Linear's head of design.
+8. Screen shows: tailored resume preview + email draft + send button.
+9. You tap **Send**. Email goes out via your own Gmail. Application appears on the **Applications** page.
 
-End-to-end in under a minute, with the user reviewing — never blindly trusting — the agent's output.
+End-to-end in ~2 minutes, with the user reviewing — never blindly trusting — the agent's output at two explicit gates (the diff viewer and the email modal).
 
 ---
 
 ## What makes Syncra different
 
-**One agent, multiple triggers.**
+**One agent, two triggers — both user-initiated.**
 
-There is *one* Claude agent with one tool registry. What the user perceives as
-"active" vs "passive" is just **how the agent got invoked**:
+There is *one* Claude agent with one tool registry. The user invokes it two ways:
 
-- **User-triggered** — user types a prompt on the dashboard → chat opens → agent
-  runs. Intentional, specific.
-- **System-triggered** — when the user opens the app and hasn't had a brief
-  today, the system fires a canned prompt: *"Find 5 fresh jobs matching my
-  profile, score them, save them as pipeline cards."* Same agent, same tools,
-  same code path — the user just didn't have to type.
+- **Chat trigger** — user types a prompt → chat opens → agent runs. Intentional, specific.
+- **Brief trigger** — user taps *"Run today's brief"* on the dashboard. The
+  agent fires a canned prompt (*"Find 5 fresh jobs matching my profile, score
+  them, save them as pipeline cards"*). Same code path, same tools — the user
+  just didn't have to type.
 
 Both runs surface the same way: tool calls visible in the notifications inbox,
-results landing on the pipeline page and/or in chat. The user sees one
-consistent agent, regardless of trigger.
+results landing on the pipeline page and/or in chat. **Nothing fires on app
+open** — earlier drafts auto-ran the brief every 24h, which burned Claude
+tokens on every launch. The brief is now opt-in (off by default; toggle in
+Settings) and always requires a tap.
 
 **Walk-away support.** Long-running agent work (tailoring, sending) doesn't
 trap the user inside the chat. The in-app **notifications inbox** receives
@@ -85,9 +86,16 @@ pretend to read the user's inbox, so we don't fake multi-stage status updates.
 - The user's autonomy level (`suggest` / `ask_first` / `auto_apply`) is
   stored in their profile — easy to crank up later without rewriting the loop.
 
-**Single PDF template.** Your resume always renders into the same clean,
-ATS-safe layout. The agent only paraphrases text — never invents experience,
-never touches design. Manual and tailored resumes look identical.
+**Tailoring is a pull request, not a rewrite.** When the agent tailors your
+resume, it doesn't hand you a finished PDF and hope you like it. It proposes
+a short list of targeted edits — *"replace this bullet with this; reason:
+matches the JD's growth-metrics emphasis"* — and you accept or reject each one
+like reviewing a GitHub PR. Only after you tap **Apply N edits** does a new
+tailored PDF get rendered. Your original resume is never touched.
+
+**Single PDF template.** Tailored resumes render into the same clean, ATS-safe
+layout as your original. The agent only paraphrases text — never invents
+experience, never touches design.
 
 **100% free to run.** Spark plan, no credit card, no servers. The only thing
 that costs money is Claude tokens, capped at ~$5/month for our usage.
@@ -151,8 +159,9 @@ LinkedIn integration, real-time job-source webhooks.
 >
 > Watch — I type one sentence: *'help me apply to a UX role at an AI startup.'*
 > No filters, no keywords, no forms. The agent reads my resume, searches
-> live job boards, picks the best fit, rewrites my resume to match, and
-> drafts a cold email to the hiring manager. I press send. Done.
+> live job boards, picks the best fit, and proposes a handful of targeted
+> rewrites — I accept the ones I like, like reviewing a pull request. Then
+> it drafts the email to the hiring manager. I read it, hit send. Done.
 >
 > The whole thing runs on Flutter, Firebase, and Claude. No backend
 > server. Free to operate. We can demo on any phone right now."
@@ -165,5 +174,5 @@ That's the pitch. Two sentences of code-architecture commentary, then a live dem
 
 - **Tech stack migrated** to Flutter + Firebase + Claude (May 2026).
 - **Architecture contract** in [api-contract.md](./api-contract.md).
-- **Team plan** in [team-plan.md](./team-plan.md).
+- **Team plan** in [team-handoff.md](./team-handoff.md) (per-track) + [roles/](./roles/) (per-person).
 - **Demo target:** June 16, 2026.

@@ -111,7 +111,7 @@ syncra_flutter/
 ├── docs/
 │   ├── product-brief.md              ✅ — what Syncra is
 │   ├── api-contract.md               ✅ — data model + tools spec
-│   ├── team-plan.md                  ✅ — older 5-track plan (overlap w/ this doc)
+│   ├── roles/                        ✅ — per-person briefs (01-05), parallel to this doc
 │   └── team-handoff.md               ← you are here
 │
 ├── firebase.json, firestore.rules    ✅ — deployed, don't edit without team vote
@@ -598,85 +598,111 @@ states, smooth navigation, an onboarding that captures real data — that's all 
 
 ---
 
-### Track 5 — Frontend: Agent Surfaces, Email, & Notifications Inbox (FE2)
+### Track 5 — Frontend: Diff Viewer, Email Modal, Notifications Inbox (FE2)
 
 **You own**
 - [lib/features/agent_chat/presentation/](../lib/features/agent_chat/presentation/) — chat UI polish
 - [lib/features/agent_chat/presentation/widgets/agent_block_views.dart](../lib/features/agent_chat/presentation/widgets/agent_block_views.dart) — block renderers
-- [lib/features/resumes/presentation/](../lib/features/resumes/presentation/) — resume list / preview / tailor flow
-- [lib/features/jobs/presentation/tailor_page.dart](../lib/features/jobs/presentation/tailor_page.dart) — wire to real tailor
-- [lib/features/notifications/](../lib/features/notifications/) — **upgrade from static list to in-app agent-event inbox** with inline actions (the walk-away feature)
+- [lib/features/resumes/presentation/](../lib/features/resumes/presentation/) — resume list / preview
+- `lib/features/resumes/presentation/resume_diff_page.dart` — **create this — the headline UI of v1.3**
+- [lib/features/jobs/presentation/tailor_page.dart](../lib/features/jobs/presentation/tailor_page.dart) — wire to the diff flow
+- [lib/features/notifications/](../lib/features/notifications/) — **upgrade from static list to live agent-event inbox**
 - `lib/features/email/presentation/email_review_page.dart` — **create this**
 
 **Why it matters**
-Whatever the agent does, the user sees through the chat. If the chat looks
-janky, the agent feels janky. Your job is to make each tool block, each
-`ask_user` prompt, each accept-or-edit decision card feel *crafted*.
+You build the surface where the agent's proposed edits meet the user's
+judgment. The whole "user stays in control" promise from the brief lives or
+dies here. Three pieces of UI gate the critical actions:
 
-Plus you build the **two pieces of UI that gate critical actions**:
+- The **Resume Diff Page** — the headline UI of the v1.3 pivot. Without it, the
+  new tailoring architecture is invisible. The user must see the original and
+  the proposed text side-by-side (or stacked, mobile-first) and accept or
+  reject each change as a discrete decision, like a GitHub PR.
 - The **email review modal** — without it, B2 can't ship `send_email` safely.
-- The **notifications inbox** — without it, the user is trapped inside the chat
-  while the agent works. The inbox is what makes the "walk away, get
-  notified, accept from there" pattern work.
-
-**The notifications inbox in detail.** When the agent fires an `ask_user` or
-finishes a tool call (`tailor_resume` produces a new PDF, `draft_email` produces
-a draft to review), an entry lands in the notifications page. Each entry shows
-the same surface the chat would have shown (text field, accept/edit buttons,
-preview card). Tapping it acts inline; the agent loop continues. This requires
-coordination with B3 — agree on an `AgentEvent`-stream subscription that lives
-above the chat controller so both UIs can observe it.
+- The **notifications inbox** — without it, the user is trapped inside chat
+  while the agent works.
 
 **Build order**
-1. **`InputRequestView` polish** — it works but isn't pretty. Make the text
-   field expansion smooth, suggestion chips beautiful, "answered" state
-   distinct.
-2. **Decision cards on tool results** — when the agent tailors a resume and
-   `tool_use` returns `{ tailored_resume_id, file_name }`, render an
-   `ActionProposalBlock`-like card showing "Tailored {file} — Preview / Save /
-   Discard". Wire to the chat controller.
-3. **Notifications inbox upgrade** — the existing `notifications/` page is a
-   static list of fixtures. Rewrite it as a live subscription on the agent's
-   event stream. Each agent `ask_user` and tool completion that happens while
-   the user isn't on the chat page becomes a notification entry. Tapping an
-   entry shows the inline surface (text field or decision card) right there —
-   no jump to chat required. Coordinate with B3 on the subscription shape.
-4. **Email review modal** — the most important send-gate. Modal sheet with
-   subject + body (both editable), "Send to {recipient}" button. Tap the
-   button → `JobsController.confirmAndSendEmail(token)` → triggers B2's
-   `send_email` tool with a confirmation token. Coordinate with B2 on the
-   token shape.
-5. **Resume preview improvements** — when the local file is missing (different
-   device), show a clear "this resume isn't on this device" state with a
-   re-upload button.
-6. **Tailor flow page** — wire `tailor_page.dart` to call the real tailor
-   tool (via the controller, not the agent loop directly). Show progress
-   states: "extracting text", "tailoring", "rendering PDF".
-7. **Cross-platform check** — run on iOS, Android, web. Note differences in
-   a shared doc, file issues against FE1 for any shell-layer bugs you find.
+
+1. **`InputRequestView` polish** — text field expansion smooth, suggestion chips beautiful, "answered" state distinct.
+
+2. **Resume Diff Page — the headline build.** Triggered when the agent's
+   `tailor_resume` tool result lands in chat. The page lists each
+   `ProposedEdit` from `ref.watch(resumeProvider).pending` as its own card:
+
+   ```
+   ┌──────────────────────────────────────────────┐
+   │ EXPERIENCE › ACME CORP › BULLET 3            │
+   │                                              │
+   │  − Shipped feature X to 200K users.          │  ← original, red strikethrough
+   │  + Led the launch of feature X to 200K       │  ← proposed, green
+   │    users, lifting D7 retention 18%.          │
+   │                                              │
+   │  💡 Aligns with the JD's emphasis on        │  ← reason
+   │     growth metrics.                          │
+   │                                              │
+   │  [ Reject ]              [ Accept ]          │
+   └──────────────────────────────────────────────┘
+   ```
+
+   - **Accept** → `ref.read(resumeProvider.notifier).acceptEdit(edit)`. The controller adds to `acceptedPaths` and recomputes V2 by re-applying the accepted subset to V1 (via B1's `resume_diff_service`). State updates immutably; your widget rebuilds.
+   - **Reject** → `rejectEdit(edit)`. The edit is removed from `pending`; V2 stays as it was (revert is instant — no PDF render).
+   - **Header** shows "{accepted}/{total} accepted" with **Accept all** and **Reject all** bulk actions.
+   - When the user has resolved every edit and `acceptedPaths.isNotEmpty`, show a sticky bottom CTA: **"Apply N edits → render tailored PDF."** Tapping it dispatches `apply_resume_edits` via the chat controller (so the agent loop continues with the new `tailored_resume_id` and proceeds to `draft_email`).
+   - If `acceptedPaths.isEmpty` after the user resolves everything, show a clear "No changes accepted — original resume kept" state with a "Back to chat" action. Do **not** call `apply_resume_edits`.
+
+3. **Decision card in the chat stream** — when `tailor_resume` returns, render
+   a compact summary card: **"{N} proposed edits for {Job Title} — Review"** →
+   tap opens the Resume Diff Page. The old v1.2 "Tailored {file} — Preview /
+   Save / Discard" card is dead under the diff model; delete it.
+
+4. **Live preview pane (stretch).** On tablets/web, split-screen: diff list on
+   the left, ResumeJSON-rendered preview on the right that updates as the user
+   accepts/rejects. On mobile, behind a "Preview" tab. **Debounce the preview
+   render** — re-render at most once per ~400ms; don't render on every tap.
+
+5. **Notifications inbox upgrade** — rewrite the existing static list as a
+   live subscription on B3's agent event stream. Each `ask_user` and tool
+   completion that fires while the user isn't on the chat page becomes an
+   inbox entry. Tapping shows the inline surface:
+   - For `ask_user` events → inline text field + suggestion chips.
+   - For `tailor_resume` results → **a "Review {N} edits" link that opens the Resume Diff Page**. Don't try to render the diff inside the notification card.
+   - For other tool completions → the appropriate decision surface.
+   Coordinate with B3 on the `AgentEvent` stream shape.
+
+6. **Email review modal** — modal sheet with editable subject + body, "Send to
+   {recipient}" button. Tap → `confirmAndSendEmail(token)` → triggers B2's
+   `send_email` tool with a one-shot UUID confirmation token. Coordinate with B2 on the token shape.
+
+7. **Resume preview improvements** — when the local file is missing (different device), show a clear "this resume isn't on this device" state with a re-upload button.
+
+8. **Tailor flow page** — wire [tailor_page.dart](../lib/features/jobs/presentation/tailor_page.dart) to *open the Resume Diff Page* when proposed_edits land — not to render a finished PDF.
+
+9. **Cross-platform check** — iOS, Android, web. File issues against FE1 for shell-layer bugs.
 
 **You're done when**
-- The chat looks beautiful — `ask_user`, tool blocks, decision cards all feel
-  consistent.
-- The user can close the chat mid-loop → see a notification entry appear →
-  tap it → answer or accept inline → agent continues without re-opening chat.
-- The email review modal exists, is editable, and the send button is the
-  *only* path to actually sending an email.
-- The tailor flow page works without going through the chat.
+- After `tailor_resume` fires, the chat shows "{N} proposed edits — Review" → tapping opens the Resume Diff Page.
+- In the diff viewer, every edit has its own Accept/Reject pair. Accepting one edit instantly updates the "N/M accepted" counter (and, if preview is on, the rendered resume).
+- Rejecting an edit removes it from the list and reverts that field to original **instantly — no PDF render needed**.
+- The "Apply N edits" CTA only enables when `acceptedPaths.isNotEmpty`; tapping renders the tailored PDF and resumes the agent loop with the new `tailored_resume_id`.
+- The user can close chat mid-loop → see a notification → tap → answer (text field) or review (open diff page) without re-opening chat manually.
+- Email review modal exists, is editable, and the send button is the **only** path to actually sending an email.
 - App looks correct on iOS and Android.
 
 **Dependencies**
-- B3 controls what blocks the agent emits — coordinate on new block types.
-- B2 controls when `send_email` actually fires — coordinate on the confirmation
-  handshake (suggestion: a one-shot UUID generated by the modal, passed to the
-  tool, validated on the receiving side).
+- **B1** owns the `ProposedEdit` model and `resume_diff_service.applyEdits()` — you import both.
+- **B3** controls the chat block emitted when `tailor_resume` returns + the event stream for notifications.
+- **B2** controls when `send_email` fires — agree on the confirmation-token handshake (one-shot UUID generated by the modal, passed to the tool, validated on the receiving side).
+- **FE1** owns the Riverpod migration — your UI binds to `ref.watch(resumeProvider)`, not `Consumer<ResumeController>`.
 
 **Common pitfalls**
-- Don't add markdown rendering to text blocks unless B3 says the agent will
-  emit markdown. Right now it doesn't.
-- Don't bypass the review modal for `send_email` — the whole point of that
-  modal is "the user explicitly tapped Send."
-- Don't fork the design-system widgets — extend the ones in `lib/shared/widgets/`.
+- Don't compute V2 in the UI layer. Always call `resumeProvider.notifier.acceptEdit()` so state stays single-source-of-truth.
+- Don't render the tailored PDF preview on every accept tap — debounce, or render only on explicit Preview action.
+- Don't let "Apply N edits" be tappable while `acceptedPaths` is empty.
+- Don't try to render the diff *inside* a notification card — link out to the Diff Page.
+- Don't bypass the email review modal for `send_email` — the whole point of that modal is "the user explicitly tapped Send."
+- Don't add markdown rendering to text blocks unless B3 says the agent will emit markdown. Right now it doesn't.
+- Don't fork the design-system widgets — extend the ones in [lib/shared/widgets/](../lib/shared/widgets/).
 
 ---
 
