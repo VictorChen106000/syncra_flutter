@@ -19,7 +19,7 @@ team ownership in [team-handoff.md](./team-handoff.md) (per-track work) and
 | Server | **None.** No FastAPI, no Cloud Functions. |
 | Auth | Firebase Auth — Google Sign-In only |
 | Database | Cloud Firestore (Spark plan) |
-| File storage | **Local device** via `path_provider`. No Firebase Cloud Storage. |
+| File storage | **Local device/session storage**. Mobile/desktop use `path_provider`; web uses browser `sessionStorage` as a temporary PDF-byte cache. No Firebase Cloud Storage. |
 | LLM | Anthropic Claude (Haiku 4.5) — direct from Flutter |
 | Job source | JSearch via RapidAPI — direct from Flutter |
 | Email send | Gmail API (user's own account, OAuth) |
@@ -33,6 +33,16 @@ team ownership in [team-handoff.md](./team-handoff.md) (per-track work) and
 | Authorization | Owner-only Firestore rules on `users/{uid}/**` |
 
 ---
+
+### Web preview cache
+
+On Flutter Web, `path_provider` is not used because browser apps do not have a normal app documents directory. The app stores uploaded PDF bytes in browser `sessionStorage` so PDF preview survives hot reload, hot restart, and page reload in the same tab/session.
+
+Behavior:
+- Same browser tab/session: PDF preview can survive reload.
+- Closed tab/window: browser `sessionStorage` is cleared, so preview requires re-upload.
+- Different device/browser: Firestore metadata still appears, but the actual PDF bytes are missing.
+- No Firebase Storage is used, keeping the project on the Spark/free-plan-safe architecture.
 
 ## 1. Agent loop — the primary UX
 

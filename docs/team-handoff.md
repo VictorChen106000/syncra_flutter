@@ -50,7 +50,7 @@ reference; delete after).
 | Anthropic chat with full tool-use loop | ✅ |
 | `ask_user` mid-flow input (text field in chat) | ✅ |
 | Tool registry + 8 tools registered | ✅ (some stubs, some real) |
-| Resume upload via `path_provider` (local file + Firestore metadata) | ✅ |
+| Resume upload via `path_provider` on mobile/desktop + web `sessionStorage` preview cache; Firestore stores metadata only | ✅ |
 | PDF text extraction (`syncfusion_flutter_pdf`) | ✅ |
 | Resume parser (PDF text → Claude → ResumeJSON, lazy + cached) | ✅ |
 | Resume tailor service + fixed PDF template | ✅ |
@@ -191,7 +191,10 @@ syncra_flutter/
 │   │   │   │   ├── resume_parser_service.dart    ✅ — lazy parse
 │   │   │   │   ├── resume_tailor_service.dart    ✅
 │   │   │   │   ├── pdf_template.dart             ✅ — fixed layout
-│   │   │   │   └── resume_tailor_orchestrator.dart  ✅ — full chain  (B1)
+│   │   │   │   ├── resume_tailor_orchestrator.dart  ✅ — full chain  (B1)
+│   │   │   │   ├── resume_session_storage.dart       ✅ — platform export
+│   │   │   │   ├── resume_session_storage_web.dart   ✅ — web sessionStorage PDF-byte cache
+│   │   │   │   └── resume_session_storage_stub.dart  ✅ — non-web no-op
 │   │   │   ├── state/resume_controller.dart  ✅ — local-cache wired
 │   │   │   └── presentation/
 │   │   │       ├── resume_lists_page.dart  ✅
