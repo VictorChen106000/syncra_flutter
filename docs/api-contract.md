@@ -186,7 +186,7 @@ name: apply_resume_edits
 description: Apply the subset of proposed edits the user accepted in the diff
   viewer, render the tailored PDF, and create a new resume document. Call only
   after the user has reviewed proposed_edits and tapped "Apply N edits" in the
-  Resume Diff Page.
+  inline `ProposedEditsBlock` in the chat.
 input_schema:
   resume_id: string             # the original resume
   accepted_edits: list<ProposedEdit>
@@ -522,7 +522,7 @@ concepts. One page, status filters, sorted in-flight first. Lives at
 | `ProposedEdit` model + `resume_diff_service` | ❌ Not built | B1 |
 | `tailor_resume` returns proposed_edits (not PDF) | ❌ Not built | B1 + B3 |
 | `apply_resume_edits` tool | ❌ Not built | B1 |
-| Resume Diff Page (PR-style UI) | ❌ Not built | FE2 |
+| `ProposedEditsBlock` (PR-style review, inline in chat) | ❌ Not built | FE2 / R2 |
 | Riverpod migration + immutable state | ❌ Not built | FE1 |
 | Remove 24h auto-fire from PassiveAgentController | ❌ Not started | B3 |
 | "Run today's brief" dashboard CTA | ❌ Not built | FE1 |

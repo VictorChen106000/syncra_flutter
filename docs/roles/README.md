@@ -49,7 +49,7 @@ class ResumeDiffService {
 // + tailor_resume and apply_resume_edits tool executors
 ```
 
-R2 imports these, builds the diff page + ResumeController state, never touches
+R2 imports these, builds the inline `ProposedEditsBlock` + ResumeController state, never touches
 R1's services. R1 ships nothing UI, never touches R2's presentation files.
 After day 2, neither blocks the other.
 
@@ -61,9 +61,12 @@ After day 2, neither blocks the other.
 | `lib/features/resumes/services/` | ✅ owns | imports `applyEdits` |
 | `lib/data/firestore/resumes_repository.dart` | ✅ owns | imports |
 | `lib/features/agent_chat/tools/builtin_tools.dart` — `tailor_resume` + `apply_resume_edits` executors | ✅ owns | does not touch |
-| `lib/features/resumes/presentation/` | does not touch | ✅ owns |
-| `lib/features/resumes/state/resume_controller.dart` | does not touch | ✅ owns (Riverpod Notifier) |
-| `lib/features/agent_chat/presentation/widgets/agent_block_views.dart` — `tailor_resume` decision card only | does not touch | ✅ owns (just that card; A owns the file's other renderers) |
+| `lib/features/resumes/presentation/` (list page, preview page) | does not touch | ✅ owns |
+| `lib/features/resumes/state/resume_controller.dart` (Riverpod Notifier, V1/V2 state) | does not touch | ✅ owns |
+| `lib/features/agent_chat/presentation/widgets/proposed_edits_block.dart` (NEW — inline diff block) | does not touch | ✅ owns (whole file) |
+| `lib/features/agent_chat/presentation/widgets/agent_block_views.dart` | does not touch | does not touch — A owns; A adds one `case ProposedEditsBlock` delegating to R2's widget |
+
+**Why inline in the chat (not a separate page):** users live in the chat — they upload resumes there, talk to the agent there, and see results there. A separate "Resume Diff Page" forces a navigation hop out of the conversation. Rendering the diff as an inline block (like Claude artifacts) keeps the agent loop and the review in the same surface.
 
 ---
 

@@ -110,8 +110,9 @@ is currently static fixtures. Rewrite as a live subscription on A's
 
 Each `ask_user` or tool-completion event that fires while user isn't on chat
 becomes an inbox entry. Tapping an entry shows the inline surface
-(text field for `ask_user`, or link out to Resume Diff Page for
-`tailor_resume` results).
+(text field for `ask_user`, or deep-link back into chat scrolled to the
+`ProposedEditsBlock` for `tailor_resume` results — don't render the diff
+inside the notification).
 
 ### 8. Empty states everywhere (~2h)
 - First-time user with no resume — explain + one-tap upload action.

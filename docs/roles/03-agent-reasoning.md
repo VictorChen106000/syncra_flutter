@@ -141,7 +141,7 @@ in week 1.
 | Day | With | Decide |
 |---|---|---|
 | Day 1 | R1 | Lock the `proposed_edits` JSON schema (you prompt, they validate) |
-| Day 2 | R2 | Chat block shape for `tailor_resume` results + the controller method R2's "Apply N edits" CTA calls |
+| Day 2 | R2 | `ProposedEditsBlock` data shape (what `tailor_resume` tool result becomes) + the controller method R2's "Apply N edits" CTA calls. You add `case ProposedEditsBlock` in [agent_block_views.dart](../../lib/features/agent_chat/presentation/widgets/agent_block_views.dart) that delegates to R2's widget |
 | Day 3 | F | `PassiveAgentController.runBrief()` signature (sync/async, return shape) |
 | Day 3 | F | `AgentEvent` stream shape — what each event carries (kind, body, target route) |
 

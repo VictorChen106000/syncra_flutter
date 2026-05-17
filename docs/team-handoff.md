@@ -598,14 +598,12 @@ states, smooth navigation, an onboarding that captures real data — that's all 
 
 ---
 
-### Track 5 — Frontend: Diff Viewer, Email Modal, Notifications Inbox (FE2)
+### Track 5 — Frontend: Inline Diff Block, Email Modal, Notifications (FE2)
 
 **You own**
 - [lib/features/agent_chat/presentation/](../lib/features/agent_chat/presentation/) — chat UI polish
-- [lib/features/agent_chat/presentation/widgets/agent_block_views.dart](../lib/features/agent_chat/presentation/widgets/agent_block_views.dart) — block renderers
-- [lib/features/resumes/presentation/](../lib/features/resumes/presentation/) — resume list / preview
-- `lib/features/resumes/presentation/resume_diff_page.dart` — **create this — the headline UI of v1.3**
-- [lib/features/jobs/presentation/tailor_page.dart](../lib/features/jobs/presentation/tailor_page.dart) — wire to the diff flow
+- `lib/features/agent_chat/presentation/widgets/proposed_edits_block.dart` — **create this — the headline UI of v1.3, inline in the chat**
+- [lib/features/resumes/presentation/](../lib/features/resumes/presentation/) — resume list / preview (output viewers; not the review surface)
 - [lib/features/notifications/](../lib/features/notifications/) — **upgrade from static list to live agent-event inbox**
 - `lib/features/email/presentation/email_review_page.dart` — **create this**
 
@@ -614,10 +612,11 @@ You build the surface where the agent's proposed edits meet the user's
 judgment. The whole "user stays in control" promise from the brief lives or
 dies here. Three pieces of UI gate the critical actions:
 
-- The **Resume Diff Page** — the headline UI of the v1.3 pivot. Without it, the
-  new tailoring architecture is invisible. The user must see the original and
-  the proposed text side-by-side (or stacked, mobile-first) and accept or
-  reject each change as a discrete decision, like a GitHub PR.
+- The **inline `ProposedEditsBlock`** — the headline UI of the v1.3 pivot.
+  Renders **inside the chat stream** (not on a separate page). The user
+  reviews each edit as a discrete Accept/Reject like a GitHub PR, then taps
+  "Apply N edits" in the block's footer. No navigation hop — the user lives
+  in the chat and the review happens there too.
 - The **email review modal** — without it, B2 can't ship `send_email` safely.
 - The **notifications inbox** — without it, the user is trapped inside chat
   while the agent works.
@@ -626,47 +625,60 @@ dies here. Three pieces of UI gate the critical actions:
 
 1. **`InputRequestView` polish** — text field expansion smooth, suggestion chips beautiful, "answered" state distinct.
 
-2. **Resume Diff Page — the headline build.** Triggered when the agent's
-   `tailor_resume` tool result lands in chat. The page lists each
-   `ProposedEdit` from `ref.watch(resumeProvider).pending` as its own card:
+2. **`ProposedEditsBlock` — the headline build, inline in chat.** Create
+   `lib/features/agent_chat/presentation/widgets/proposed_edits_block.dart`
+   (your file — no collision with A's other block renderers). When the
+   `tailor_resume` tool result lands in the chat stream, this block renders
+   inline between the agent's text message and whatever comes next.
+
+   A adds a single `case ProposedEditsBlock` in `agent_block_views.dart` that
+   delegates to your widget. You own the widget; A wires the case.
 
    ```
-   ┌──────────────────────────────────────────────┐
-   │ EXPERIENCE › ACME CORP › BULLET 3            │
-   │                                              │
-   │  − Shipped feature X to 200K users.          │  ← original, red strikethrough
-   │  + Led the launch of feature X to 200K       │  ← proposed, green
-   │    users, lifting D7 retention 18%.          │
-   │                                              │
-   │  💡 Aligns with the JD's emphasis on        │  ← reason
-   │     growth metrics.                          │
-   │                                              │
-   │  [ Reject ]              [ Accept ]          │
-   └──────────────────────────────────────────────┘
+   [agent: "I've reviewed your resume against the Linear JD. Here are 5 edits."]
+
+   ┌─ 5 proposed edits · 0/5 accepted ──────────────┐
+   │                                  [×]  [✓ all]  │
+   ├────────────────────────────────────────────────┤
+   │  EXPERIENCE › ACME CORP › BULLET 3             │
+   │  − Shipped feature X to 200K users.            │  ← original, strikethrough
+   │  + Led the launch of feature X to 200K users,  │  ← proposed
+   │    lifting D7 retention 18%.                   │
+   │  💡 Aligns with the JD's growth metrics.      │
+   │  [ Reject ]                  [ Accept ]        │
+   ├────────────────────────────────────────────────┤
+   │  ... 4 more edits ...                          │
+   ├────────────────────────────────────────────────┤
+   │      [ Apply N edits → render tailored PDF ]   │  ← sticky footer-in-block
+   └────────────────────────────────────────────────┘
+
+   [agent waits — no follow-up blocks until user resolves]
    ```
 
-   - **Accept** → `ref.read(resumeProvider.notifier).acceptEdit(edit)`. The controller adds to `acceptedPaths` and recomputes V2 by re-applying the accepted subset to V1 (via B1's `resume_diff_service`). State updates immutably; your widget rebuilds.
-   - **Reject** → `rejectEdit(edit)`. The edit is removed from `pending`; V2 stays as it was (revert is instant — no PDF render).
-   - **Header** shows "{accepted}/{total} accepted" with **Accept all** and **Reject all** bulk actions.
-   - When the user has resolved every edit and `acceptedPaths.isNotEmpty`, show a sticky bottom CTA: **"Apply N edits → render tailored PDF."** Tapping it dispatches `apply_resume_edits` via the chat controller (so the agent loop continues with the new `tailored_resume_id` and proceeds to `draft_email`).
-   - If `acceptedPaths.isEmpty` after the user resolves everything, show a clear "No changes accepted — original resume kept" state with a "Back to chat" action. Do **not** call `apply_resume_edits`.
+   - **Per-card Accept** → `ref.read(resumeProvider.notifier).acceptEdit(edit)`. The controller adds to `acceptedPaths` and recomputes V2 via B1's `resume_diff_service.applyEdits`. Header counter updates instantly.
+   - **Per-card Reject** → `rejectEdit(edit)`. Card collapses with a "rejected" badge; V2 reverts that path. **No PDF render.**
+   - **Header** — `"{accepted}/{total} accepted"` + bulk Accept all / Reject all.
+   - **Footer CTA** — "Apply N edits" only enabled when `acceptedPaths.isNotEmpty`. Tapping calls A's chat controller method to dispatch `apply_resume_edits`. The agent loop resumes; a new tool result block appears below: *"Tailored for {Job} — [View PDF]"*.
+   - **Empty-after-resolve** — if user resolved all edits with zero accepted, footer shows *"No changes accepted — original resume kept"*. Do **not** call `apply_resume_edits`.
+   - **Long lists** — each card collapsible when there are >5 edits (collapsed = section path; expanded = full diff). Keep the chat scrollable.
 
-3. **Decision card in the chat stream** — when `tailor_resume` returns, render
-   a compact summary card: **"{N} proposed edits for {Job Title} — Review"** →
-   tap opens the Resume Diff Page. The old v1.2 "Tailored {file} — Preview /
-   Save / Discard" card is dead under the diff model; delete it.
+3. **Tailored-result link** — when the apply tool result lands, the result
+   block links to `resume_preview_page.dart` so the user can see the
+   rendered tailored PDF. (Quick wire, ~30 min.) The old v1.2 "Tailored
+   {file} — Preview / Save / Discard" decision card is dead under the diff
+   model; delete it.
 
-4. **Live preview pane (stretch).** On tablets/web, split-screen: diff list on
-   the left, ResumeJSON-rendered preview on the right that updates as the user
-   accepts/rejects. On mobile, behind a "Preview" tab. **Debounce the preview
-   render** — re-render at most once per ~400ms; don't render on every tap.
+4. **Live preview pane (stretch, tablet/web).** Right-side pane that renders
+   the ResumeJSON V2 live as the user accepts/rejects in the `ProposedEditsBlock`.
+   **Debounce** at ~400ms; don't render on every tap. On mobile, skip — the
+   block IS the review surface.
 
 5. **Notifications inbox upgrade** — rewrite the existing static list as a
    live subscription on B3's agent event stream. Each `ask_user` and tool
    completion that fires while the user isn't on the chat page becomes an
    inbox entry. Tapping shows the inline surface:
    - For `ask_user` events → inline text field + suggestion chips.
-   - For `tailor_resume` results → **a "Review {N} edits" link that opens the Resume Diff Page**. Don't try to render the diff inside the notification card.
+   - For `tailor_resume` results → **deep-link back into chat scrolled to the `ProposedEditsBlock`**. Don't try to render the diff inside the notification card or build a separate review surface.
    - For other tool completions → the appropriate decision surface.
    Coordinate with B3 on the `AgentEvent` stream shape.
 
@@ -676,16 +688,16 @@ dies here. Three pieces of UI gate the critical actions:
 
 7. **Resume preview improvements** — when the local file is missing (different device), show a clear "this resume isn't on this device" state with a re-upload button.
 
-8. **Tailor flow page** — wire [tailor_page.dart](../lib/features/jobs/presentation/tailor_page.dart) to *open the Resume Diff Page* when proposed_edits land — not to render a finished PDF.
+8. **`tailor_page.dart`** — drop or repurpose as a simple entry point that pre-fills a chat prompt ("Tailor my resume for {Job Title}"). The review itself now happens in the inline `ProposedEditsBlock`, not on a separate page.
 
 9. **Cross-platform check** — iOS, Android, web. File issues against FE1 for shell-layer bugs.
 
 **You're done when**
-- After `tailor_resume` fires, the chat shows "{N} proposed edits — Review" → tapping opens the Resume Diff Page.
-- In the diff viewer, every edit has its own Accept/Reject pair. Accepting one edit instantly updates the "N/M accepted" counter (and, if preview is on, the rendered resume).
+- After `tailor_resume` fires, the chat scrolls to a `ProposedEditsBlock` inline — no navigation hop.
+- In the block, every edit has its own Accept/Reject pair. Accepting one edit instantly updates the header counter (and, if preview is on, the rendered resume).
 - Rejecting an edit removes it from the list and reverts that field to original **instantly — no PDF render needed**.
 - The "Apply N edits" CTA only enables when `acceptedPaths.isNotEmpty`; tapping renders the tailored PDF and resumes the agent loop with the new `tailored_resume_id`.
-- The user can close chat mid-loop → see a notification → tap → answer (text field) or review (open diff page) without re-opening chat manually.
+- The user can close chat mid-loop → see a notification → tap → answer (text field) or return to chat scrolled to the `ProposedEditsBlock`.
 - Email review modal exists, is editable, and the send button is the **only** path to actually sending an email.
 - App looks correct on iOS and Android.
 
@@ -699,7 +711,7 @@ dies here. Three pieces of UI gate the critical actions:
 - Don't compute V2 in the UI layer. Always call `resumeProvider.notifier.acceptEdit()` so state stays single-source-of-truth.
 - Don't render the tailored PDF preview on every accept tap — debounce, or render only on explicit Preview action.
 - Don't let "Apply N edits" be tappable while `acceptedPaths` is empty.
-- Don't try to render the diff *inside* a notification card — link out to the Diff Page.
+- Don't try to render the diff *inside* a notification card — deep-link back into chat at the `ProposedEditsBlock`.
 - Don't bypass the email review modal for `send_email` — the whole point of that modal is "the user explicitly tapped Send."
 - Don't add markdown rendering to text blocks unless B3 says the agent will emit markdown. Right now it doesn't.
 - Don't fork the design-system widgets — extend the ones in [lib/shared/widgets/](../lib/shared/widgets/).
