@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../features/resumes/models/resume_file.dart';
 import 'firestore_paths.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 /// Stores resume **metadata** in Firestore and the actual **PDF bytes** in
 /// the app's documents directory on the device. Firebase Storage is not
@@ -37,11 +38,13 @@ class ResumesRepository {
     ResumeSource source = ResumeSource.manual,
   }) async {
     final docRef = _paths.resumes(uid).doc();
-    final localPath = await _writeBytesToAppDocs(
-      resumeId: docRef.id,
-      name: name,
-      bytes: bytes,
-    );
+    final String? localPath = kIsWeb
+    ? null
+    : await _writeBytesToAppDocs(
+        resumeId: docRef.id,
+        name: name,
+        bytes: bytes,
+      );
     final uploadedAt = DateTime.now();
 
     await docRef.set({
@@ -72,7 +75,7 @@ class ResumesRepository {
     required String resumeId,
     String? localPath,
   }) async {
-    if (localPath != null && localPath.isNotEmpty) {
+    if (!kIsWeb && localPath != null && localPath.isNotEmpty) {
       try {
         final file = File(localPath);
         if (await file.exists()) {
@@ -96,11 +99,13 @@ class ResumesRepository {
     String? tailoredForJobId,
   }) async {
     final docRef = _paths.resumes(uid).doc();
-    final localPath = await _writeBytesToAppDocs(
-      resumeId: docRef.id,
-      name: name,
-      bytes: bytes,
-    );
+    final String? localPath = kIsWeb
+    ? null
+    : await _writeBytesToAppDocs(
+        resumeId: docRef.id,
+        name: name,
+        bytes: bytes,
+      );
     final uploadedAt = DateTime.now();
 
     await docRef.set({
