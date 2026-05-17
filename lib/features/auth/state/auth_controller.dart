@@ -56,24 +56,29 @@ class AuthController extends ChangeNotifier {
 
   /// Sign in with Google account via Firebase.
   Future<void> signInWithGoogle() async {
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
+  if (_isLoading) return;
 
-    try {
-      final user = await _authService.signInWithGoogle();
-      if (user != null) {
-        _appUser = user;
-      }
-      // If user is null, the user cancelled — not an error.
-    } catch (e) {
-      _error = 'Sign-in failed. Please try again.';
-      debugPrint('Google Sign-In Error: $e');
-    } finally {
-      _isLoading = false;
-      notifyListeners();
+  _isLoading = true;
+  _error = null;
+  notifyListeners();
+
+  try {
+    final user = await _authService
+        .signInWithGoogle()
+        .timeout(const Duration(seconds: 8), onTimeout: () => null);
+
+    if (user != null) {
+      _appUser = user;
     }
+    // user == null means the user cancelled or closed the popup.
+  } catch (e) {
+    _error = 'Sign-in failed. Please try again.';
+    debugPrint('Google Sign-In Error: $e');
+  } finally {
+    _isLoading = false;
+    notifyListeners();
   }
+}
 
   /// Continue without authentication.
   void continueAsGuest() {

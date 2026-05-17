@@ -38,8 +38,9 @@ class GoogleAuthService {
     }
   }
 
-  /// Triggers Google sign-in and signs into Firebase.
-  Future<AppUser?> signInWithGoogle() async {
+/// Triggers Google sign-in and signs into Firebase.
+Future<AppUser?> signInWithGoogle() async {
+  try {
     if (kIsWeb) {
       final googleProvider = GoogleAuthProvider()
         ..addScope('email')
@@ -64,7 +65,16 @@ class GoogleAuthService {
         await _firebaseAuth.signInWithCredential(credential);
 
     return userToAppUser(userCredential.user);
+  } on FirebaseAuthException catch (e) {
+    if (e.code == 'popup-closed-by-user' ||
+        e.code == 'cancelled-popup-request' ||
+        e.code == 'web-context-cancelled') {
+      return null;
+    }
+
+    rethrow;
   }
+}
 
   /// Signs out of both Google and Firebase.
   Future<void> signOut() async {
