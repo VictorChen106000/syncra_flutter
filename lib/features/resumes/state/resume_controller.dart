@@ -32,16 +32,22 @@ class ResumeController extends ChangeNotifier {
 
   StreamSubscription<List<ResumeFile>>? _subscription;
   String? _boundUid;
-  List<ResumeFile> _allResumes = const [];
 
+  List<ResumeFile> _allResumes = const [];
   final List<UploadQueueItem> _uploadQueue = [];
   final Set<String> _selectedResumeIds = {};
+  final Map<String, Uint8List> _resumeBytesCache = {};
   ResumeActionResult? _lastAction;
 
-  List<ResumeFile> get resumes =>
-      _allResumes.where((r) => r.source == ResumeSource.manual).toList();
-  List<ResumeFile> get tailoredResumes =>
-      _allResumes.where((r) => r.source == ResumeSource.tailored).toList();
+ List<ResumeFile> get resumes => _allResumes
+    .where((r) => r.source == ResumeSource.manual)
+    .map(_withCachedBytes)
+    .toList();
+
+List<ResumeFile> get tailoredResumes => _allResumes
+    .where((r) => r.source == ResumeSource.tailored)
+    .map(_withCachedBytes)
+    .toList();
   List<UploadQueueItem> get uploadQueue => List.unmodifiable(_uploadQueue);
   Set<String> get selectedResumeIds => Set.unmodifiable(_selectedResumeIds);
 
@@ -56,6 +62,13 @@ class ResumeController extends ChangeNotifier {
         .where((resume) => _selectedResumeIds.contains(resume.id))
         .toList();
   }
+
+  ResumeFile? resumeById(String resumeId) {
+  for (final resume in [...resumes, ...tailoredResumes]) {
+    if (resume.id == resumeId) return resume;
+  }
+  return null;
+}
 
   Future<void> pickAndUploadResumes() async {
     final uid = _auth.appUser?.uid;
@@ -107,6 +120,23 @@ class ResumeController extends ChangeNotifier {
     }
   }
 
+  ResumeFile _withCachedBytes(ResumeFile resume) {
+  final cachedBytes = resume.bytes ?? _resumeBytesCache[resume.id];
+
+  if (cachedBytes == null) return resume;
+
+  return ResumeFile(
+    id: resume.id,
+    name: resume.name,
+    size: resume.size,
+    type: resume.type,
+    uploadedAt: resume.uploadedAt,
+    source: resume.source,
+    path: resume.path,
+    bytes: cachedBytes,
+  );
+}
+
   void toggleSelectedResume(String resumeId) {
     if (_selectedResumeIds.contains(resumeId)) {
       _selectedResumeIds.remove(resumeId);
@@ -131,6 +161,7 @@ class ResumeController extends ChangeNotifier {
           : _allResumes.first,
     );
     _selectedResumeIds.remove(resumeId);
+    _resumeBytesCache.remove(resumeId);
     _lastAction = ResumeActionResult(message: '${target.name} deleted');
     notifyListeners();
     try {
@@ -190,6 +221,11 @@ class ResumeController extends ChangeNotifier {
         contentType: type,
       );
 
+      _resumeBytesCache[uploaded.id] = bytes;
+      _allResumes = [
+        uploaded,
+        ..._allResumes.where((resume) => resume.id != uploaded.id),
+      ];
       _uploadQueue.removeWhere((item) => item.id == queueId);
       _selectedResumeIds.add(uploaded.id);
       _lastAction = ResumeActionResult(message: '$name uploaded');
@@ -225,6 +261,9 @@ class ResumeController extends ChangeNotifier {
     _subscription?.cancel();
     _subscription = null;
     _allResumes = const [];
+    _uploadQueue.clear();
+    _selectedResumeIds.clear();
+    _resumeBytesCache.clear();
 
     final user = _auth.appUser;
     if (user == null || user.isGuest) {

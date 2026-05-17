@@ -51,6 +51,10 @@ class ResumePreviewPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final latestResume = resume == null
+        ? null
+        : context.watch<ResumeController>().resumeById(resume!.id) ?? resume;
+
     return Scaffold(
       backgroundColor: AppColors.scaffold,
       body: SafeArea(
@@ -79,7 +83,7 @@ class ResumePreviewPage extends StatelessWidget {
                       onPressed: () => context.go(RouteNames.resumes),
                     ),
                     const Spacer(),
-                    if (resume != null)
+                    if (latestResume != null)
                       Container(
                         width: 40,
                         height: 40,
@@ -89,7 +93,8 @@ class ResumePreviewPage extends StatelessWidget {
                         ),
                         child: IconButton(
                           padding: EdgeInsets.zero,
-                          onPressed: () => _confirmDelete(context, resume!),
+                          onPressed: () =>
+                              _confirmDelete(context, latestResume),
                           icon: const Icon(
                             Icons.delete_outline_rounded,
                             color: AppColors.textMuted,
@@ -103,11 +108,11 @@ class ResumePreviewPage extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 80, 20, 100),
-              child: resume == null
+              child: latestResume == null
                   ? _EmptyPreview()
-                  : _ResumePreviewBody(resume: resume!),
+                  : _ResumePreviewBody(resume: latestResume),
             ),
-            if (resume != null)
+            if (latestResume != null)
               Positioned(
                 left: 24,
                 right: 24,
@@ -115,8 +120,8 @@ class ResumePreviewPage extends StatelessWidget {
                 child: Center(
                   child: Container(
                     constraints: const BoxConstraints(maxWidth: 280),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 9),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                     decoration: BoxDecoration(
                       color: AppColors.ink.withValues(alpha: 0.80),
                       borderRadius: BorderRadius.circular(99),
@@ -135,7 +140,7 @@ class ResumePreviewPage extends StatelessWidget {
                         const SizedBox(width: 6),
                         Flexible(
                           child: Text(
-                            resume!.name,
+                            latestResume.name,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               color: Colors.white,
@@ -180,9 +185,27 @@ class _ResumePreviewBody extends StatelessWidget {
               ),
             ],
           ),
-          child: resume.bytes != null
-              ? SfPdfViewer.memory(resume.bytes!)
-              : SfPdfViewer.file(File(resume.path!)),
+          child: SizedBox.expand(
+            child: resume.bytes != null
+                ? SfPdfViewer.memory(
+                    resume.bytes!,
+                    key: ValueKey('${resume.id}-${resume.bytes!.length}'),
+                    onDocumentLoaded: (details) {
+                      debugPrint(
+                        'PDF loaded: ${details.document.pages.count} pages',
+                      );
+                    },
+                    onDocumentLoadFailed: (details) {
+                      debugPrint(
+                        'PDF load failed: ${details.error} ${details.description}',
+                      );
+                    },
+                  )
+                : SfPdfViewer.file(
+                    File(resume.path!),
+                    key: ValueKey('${resume.id}-${resume.path}'),
+                  ),
+          ),
         ),
       );
     }
