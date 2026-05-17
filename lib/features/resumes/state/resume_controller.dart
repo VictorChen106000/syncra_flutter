@@ -8,6 +8,7 @@ import '../../../data/firestore/resumes_repository.dart';
 import '../../auth/state/auth_controller.dart';
 import '../models/resume_file.dart';
 import '../models/upload_queue_item.dart';
+import '../services/resume_session_storage.dart';
 
 /// Outcome of a controller operation surfaced through SnackBars.
 class ResumeActionResult {
@@ -68,6 +69,31 @@ List<ResumeFile> get tailoredResumes => _allResumes
     if (resume.id == resumeId) return resume;
   }
   return null;
+}
+
+Future<void> _restoreSessionBytes(
+  String uid,
+  List<ResumeFile> resumes,
+) async {
+  var changed = false;
+
+  for (final resume in resumes) {
+    if (_resumeBytesCache.containsKey(resume.id)) continue;
+
+    final bytes = await ResumeSessionStorage.readBytes(
+      uid: uid,
+      resumeId: resume.id,
+    );
+
+    if (bytes == null) continue;
+
+    _resumeBytesCache[resume.id] = bytes;
+    changed = true;
+  }
+
+  if (changed) {
+    notifyListeners();
+  }
 }
 
   Future<void> pickAndUploadResumes() async {
@@ -162,6 +188,12 @@ List<ResumeFile> get tailoredResumes => _allResumes
     );
     _selectedResumeIds.remove(resumeId);
     _resumeBytesCache.remove(resumeId);
+    unawaited(
+      ResumeSessionStorage.removeBytes(
+        uid: uid,
+        resumeId: resumeId,
+      ),
+    );
     _lastAction = ResumeActionResult(message: '${target.name} deleted');
     notifyListeners();
     try {
@@ -222,6 +254,13 @@ List<ResumeFile> get tailoredResumes => _allResumes
       );
 
       _resumeBytesCache[uploaded.id] = bytes;
+      unawaited(
+        ResumeSessionStorage.saveBytes(
+          uid: uid,
+          resumeId: uploaded.id,
+          bytes: bytes,
+        ),
+      );
       _allResumes = [
         uploaded,
         ..._allResumes.where((resume) => resume.id != uploaded.id),
@@ -277,6 +316,7 @@ List<ResumeFile> get tailoredResumes => _allResumes
       (resumes) {
         _allResumes = resumes;
         notifyListeners();
+        unawaited(_restoreSessionBytes(user.uid, resumes));
       },
       onError: (Object e) {
         debugPrint('resumes stream error: $e');
