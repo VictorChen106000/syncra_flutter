@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../core/constants/app_colors.dart';
@@ -18,26 +19,48 @@ class ChatInputBar extends StatefulWidget {
   State<ChatInputBar> createState() => _ChatInputBarState();
 }
 
-class _ChatInputBarState extends State<ChatInputBar> {
+class _ChatInputBarState extends State<ChatInputBar>
+    with SingleTickerProviderStateMixin {
   final TextEditingController _textController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   bool _focused = false;
+  late final AnimationController _bounceController;
+
+  static const _spring = SpringDescription(
+    mass: 1,
+    stiffness: 320,
+    damping: 11,
+  );
 
   @override
   void initState() {
     super.initState();
+    _bounceController = AnimationController.unbounded(
+      vsync: this,
+      value: 1.0,
+    );
     _focusNode.addListener(() {
       if (_focusNode.hasFocus != _focused) {
         setState(() => _focused = _focusNode.hasFocus);
+        if (_focusNode.hasFocus) _bounce(from: 0.96);
       }
     });
   }
 
   @override
   void dispose() {
+    _bounceController.dispose();
     _textController.dispose();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  void _bounce({required double from}) {
+    _bounceController.stop();
+    _bounceController.value = from;
+    _bounceController.animateWith(
+      SpringSimulation(_spring, from, 1.0, 0),
+    );
   }
 
   void _send(BuildContext context) {
@@ -51,6 +74,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
           attachments: attachments,
         );
     _textController.clear();
+    _bounce(from: 1.06);
     setState(() {});
   }
 
@@ -63,7 +87,14 @@ class _ChatInputBarState extends State<ChatInputBar> {
         return Container(
           padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
           color: AppColors.surface,
-          child: AnimatedContainer(
+          child: AnimatedBuilder(
+            animation: _bounceController,
+            builder: (context, child) => Transform.scale(
+              scale: _bounceController.value,
+              alignment: Alignment.bottomCenter,
+              child: child,
+            ),
+            child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             padding: const EdgeInsets.fromLTRB(16, 14, 12, 12),
             decoration: BoxDecoration(
@@ -158,6 +189,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 ),
               ],
             ),
+          ),
           ),
         );
       },

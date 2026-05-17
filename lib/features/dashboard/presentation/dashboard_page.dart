@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
@@ -766,97 +767,147 @@ class _PromptSuggestionCard extends StatelessWidget {
 // Glass AI input bar
 // ---------------------------------------------------------------------------
 
-class _AgentInputBar extends StatelessWidget {
+class _AgentInputBar extends StatefulWidget {
   const _AgentInputBar();
+
+  @override
+  State<_AgentInputBar> createState() => _AgentInputBarState();
+}
+
+class _AgentInputBarState extends State<_AgentInputBar>
+    with SingleTickerProviderStateMixin {
+  static const _spring = SpringDescription(
+    mass: 1,
+    stiffness: 320,
+    damping: 11,
+  );
+
+  late final AnimationController _bounceController;
+
+  @override
+  void initState() {
+    super.initState();
+    _bounceController = AnimationController.unbounded(
+      vsync: this,
+      value: 1.0,
+    );
+  }
+
+  @override
+  void dispose() {
+    _bounceController.dispose();
+    super.dispose();
+  }
+
+  void _bounceAndGo() {
+    HapticFeedback.lightImpact();
+    _bounceController.stop();
+    _bounceController.value = 0.94;
+    _bounceController.animateWith(
+      SpringSimulation(_spring, 0.94, 1.0, 0),
+    );
+    Future.delayed(const Duration(milliseconds: 120), () {
+      if (!mounted) return;
+      context.go(RouteNames.agentChat);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Consumer<ResumeController>(
       builder: (context, resumeController, _) {
-        return Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.78),
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.40),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
-                blurRadius: 40,
-                offset: const Offset(0, 12),
-              ),
-            ],
+        return AnimatedBuilder(
+          animation: _bounceController,
+          builder: (context, child) => Transform.scale(
+            scale: _bounceController.value,
+            alignment: Alignment.bottomCenter,
+            child: child,
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ResumeAttachmentChips(
-                resumes: resumeController.selectedResumes,
-                onRemove: resumeController.removeSelectedResume,
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.78),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.40),
               ),
-              Row(
-                children: [
-                  InkResponse(
-                    onTap: () => SelectResumesBottomSheet.show(context),
-                    radius: 24,
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: AppColors.scaffold,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      alignment: Alignment.center,
-                      child: const Icon(
-                        Icons.add_rounded,
-                        color: AppColors.ink,
-                        size: 20,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.12),
+                  blurRadius: 40,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ResumeAttachmentChips(
+                  resumes: resumeController.selectedResumes,
+                  onRemove: resumeController.removeSelectedResume,
+                ),
+                Row(
+                  children: [
+                    InkResponse(
+                      onTap: () => SelectResumesBottomSheet.show(context),
+                      radius: 24,
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: AppColors.scaffold,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          Icons.add_rounded,
+                          color: AppColors.ink,
+                          size: 20,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => context.go(RouteNames.agentChat),
-                      behavior: HitTestBehavior.opaque,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                        child: Text(
-                          resumeController.selectedResumes.isNotEmpty
-                              ? AppStrings.askAgentAboutContext
-                              : AppStrings.askSyncra,
-                          style: const TextStyle(
-                            color: AppColors.textSoft,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: _bounceAndGo,
+                        behavior: HitTestBehavior.opaque,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          child: Text(
+                            resumeController.selectedResumes.isNotEmpty
+                                ? AppStrings.askAgentAboutContext
+                                : AppStrings.askSyncra,
+                            style: const TextStyle(
+                              color: AppColors.textSoft,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                  InkResponse(
-                    onTap: () => context.go(RouteNames.agentChat),
-                    radius: 24,
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: AppColors.ink,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      alignment: Alignment.center,
-                      child: const Icon(
-                        Icons.send_rounded,
-                        color: Colors.white,
-                        size: 16,
+                    InkResponse(
+                      onTap: _bounceAndGo,
+                      radius: 24,
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: AppColors.ink,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          Icons.send_rounded,
+                          color: Colors.white,
+                          size: 16,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
         );
       },
