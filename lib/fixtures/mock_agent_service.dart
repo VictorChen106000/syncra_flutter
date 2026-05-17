@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../features/agent_chat/models/agent_block.dart';
-import '../../features/agent_chat/models/chat_message.dart';
-import '../../features/agent_chat/services/agent_service.dart';
+import '../features/agent_chat/models/agent_block.dart';
+import '../features/agent_chat/models/chat_message.dart';
+import '../features/agent_chat/services/agent_service.dart';
 
 /// Scripted [AgentService] for the demo flow.
 ///

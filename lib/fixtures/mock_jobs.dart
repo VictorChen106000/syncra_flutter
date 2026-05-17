@@ -1,4 +1,4 @@
-import '../models/job.dart';
+import '../data/models/job.dart';
 
 class MockJobs {
   const MockJobs._();

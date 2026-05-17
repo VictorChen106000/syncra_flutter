@@ -36,14 +36,22 @@ team ownership in [team-plan.md](./team-plan.md). Old v0.4 contract archived at
 
 ## 1. Agent loop — the primary UX
 
+There is **one** agent. What looks like "passive" vs "active" agent in the UI
+is just two **triggers** for the same `AnthropicChatService.runAgent` loop:
+
+- **User trigger** — user types a prompt; chat shows the tool calls live.
+- **System trigger** — when the user opens the app and `users/{uid}.last_brief_at`
+  is null or > 24h old, [PassiveAgentController](../lib/features/agent/state/passive_agent_controller.dart)
+  fires a canned prompt (*"Find 5 fresh jobs matching my profile, score them
+  via match_jobs, and save each as a pipeline card via save_to_pipeline"*).
+  Same code path, same tools. The user sees tool-call progress in the
+  notifications inbox; cards land on the pipeline page.
+
 ### The shape
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  user types a prompt                                     │
-│         │                                                │
-│         ▼                                                │
-│  AgentChatController.sendPrompt(prompt)                  │
+│  trigger: user prompt  OR  system canned prompt          │
 │         │                                                │
 │         ▼                                                │
 │  AnthropicChatService.runAgent(messages, tools[])        │
@@ -56,6 +64,9 @@ team ownership in [team-plan.md](./team-plan.md). Old v0.4 contract archived at
 │         │                                                │
 │         ▼                                                │
 │  if (c), wait for user input → resume loop               │
+│                                                          │
+│  Events route to: chat UI (if user is there)             │
+│                 + notifications inbox (always)           │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -79,7 +90,7 @@ team ownership in [team-plan.md](./team-plan.md). Old v0.4 contract archived at
 | `tailor_resume` | ✅ | User reviews the PDF before save |
 | `draft_email` | ✅ | User reviews before send |
 | `lookup_hiring_manager` | ✅ | No |
-| `save_to_tracker` | Depends on `autonomy_level` | `suggest` → ask; `auto_apply` → just do it |
+| `save_to_tracker` | Depends on `autonomy_level` | Writes to the Applications page. `suggest` → ask; `auto_apply` → just do it |
 | `send_email` | ❌ | **Always requires user tap.** No exceptions in v1. |
 | `ask_user` | n/a | Paused, awaits user typing |
 
@@ -170,6 +181,38 @@ backed_by: Hunter.io domain search
 returns: { name?, email?, confidence_score }
 ```
 
+#### 2.6a `remember_fact` *(new — learning across sessions)*
+```yaml
+name: remember_fact
+description: Persist a fact about the user that came up during conversation
+  (skills, preferences, missing experience the user disclosed). Future agent
+  turns read these via read_resume so the user doesn't get asked the same
+  question twice. Call this whenever the user answers an ask_user with
+  information that would apply beyond the current task.
+input_schema:
+  topic: string         # short slug, e.g. "ab_testing", "remote_preference"
+  detail: string        # one or two sentences with the actual fact
+returns: { fact_id }
+backed_by: Firestore users/{uid}/learned_facts/{factId}
+```
+
+#### 2.6b `save_to_pipeline`
+```yaml
+name: save_to_pipeline
+description: Write a scored job match to the user's pipeline as an approval card.
+  Used by the morning-brief flow to persist agent-prepared recommendations.
+input_schema:
+  job_id: string
+  category: 'ready' | 'input_needed' | 'exploration'
+  match_score: int           # 0-100, sort-only
+  agent_action: string       # short verb phrase, e.g. "Ready to send"
+  agent_justification: string # one-sentence reasoning
+  matched_skills: list<string>
+  missing_skills: list<string>
+backed_by: PipelineRepository.createCard
+returns: { card_id }
+```
+
 #### 2.7 `save_to_tracker`
 ```yaml
 name: save_to_tracker
@@ -223,16 +266,34 @@ ui: emits InputRequestBlock — chat shows a text field + optional suggestion ch
 | `gmail_refresh_token` | string? (encrypted; v2) |
 | `created_at`, `last_brief_at` | Timestamp |
 
-### `users/{uid}/applications/{appId}` — tracker
+### `users/{uid}/applications/{appId}` — Activity log (was tracker)
+**Schema simplified in v1.2 to match what the system can actually observe.**
+The old multi-stage `status` enum (viewed/replied/interview/offer/rejected) was
+removed — we don't read the user's inbox, so those statuses would have stayed
+stuck at `submitted` forever, looking broken in the demo. Now: drafted, sent,
+and user-flipped flags only.
+
+| Field | Type | Notes |
+|---|---|---|
+| `job` | map | Embedded Job snapshot |
+| `resume_id` | string | Tailored resume used for this application |
+| `drafted_at` | Timestamp | When the agent prepared the draft |
+| `sent_at` | Timestamp? | When the user tapped Send (null = still drafting) |
+| `got_reply` | bool | User-flippable toggle — manual since no inbox scope |
+| `follow_up_at` | Timestamp? | Optional reminder set by the user |
+| `notes` | array<{body, created_at}> | Free-form user notes |
+| `sent_email_id` | string? | Gmail message id, set when send_email succeeds |
+
+### `users/{uid}/learned_facts/{factId}` *(new collection)*
+Persistent facts the agent learned from `ask_user` answers. Read by future
+agent turns so the same question isn't asked twice.
+
 | Field | Type |
 |---|---|
-| `job` | map (embedded Job snapshot) |
-| `resume_id` | string |
-| `status` | `submitted \| viewed \| replied \| interview \| offer \| rejected` |
-| `submitted_at`, `last_update_at` | Timestamp |
-| `next_step` | string? |
-| `notes` | array<{ body, created_at }> |
-| `sent_email_id` | string? (Gmail message id) |
+| `topic` | string |
+| `detail` | string |
+| `source` | `'user' \| 'resume'` |
+| `learned_at` | Timestamp |
 
 ### `users/{uid}/pipeline/{cardId}` — agent-generated job cards
 | Field | Type |
@@ -362,10 +423,26 @@ Page-overflow rule: allow page 2 if experience is long; no graphics ever.
 
 ---
 
-## 9. Out of scope for v1
+## 9. In scope additions and out-of-scope clarifications
 
-- Push notifications (no Cloud Messaging).
-- Cross-device resume sync (PDFs are local).
+### In scope (added in v1.1 brainstorm)
+
+**In-app notifications inbox** — when the user leaves the chat while the
+agent is mid-loop, agent events (especially `ask_user` and tool-completion
+results) land in [lib/features/notifications/](../lib/features/notifications/)
+as actionable items. From the notifications page the user can accept, edit, or
+answer follow-up questions inline — same surfaces as the chat would have shown.
+The agent loop continues in the background regardless of which screen the user
+is on. **This is the walk-away pattern.** Owner: FE2 (UI) + B3 (event routing).
+
+**Applications page** — replaces the v1.0 separate "Tracker" + "History"
+concepts. One page, status filters, sorted in-flight first. Lives at
+[lib/features/applications/](../lib/features/applications/).
+
+### Out of scope for v1
+
+- *Push* notifications (FCM) — in-app inbox only; no system tray.
+- Cross-device resume sync (PDFs are local-cache).
 - Auto-submit applications.
 - LinkedIn integration.
 - Cover-letter generation as a separate document.

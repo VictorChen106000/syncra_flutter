@@ -5,10 +5,10 @@ import 'package:provider/provider.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../data/models/job.dart';
 import '../../../../data/models/tracked_application.dart';
-import '../../state/tracker_controller.dart';
+import '../../state/applications_controller.dart';
 
-class TrackerDetailSheet extends StatefulWidget {
-  const TrackerDetailSheet._({required this.application});
+class ApplicationDetailSheet extends StatefulWidget {
+  const ApplicationDetailSheet._({required this.application});
 
   final TrackedApplication application;
 
@@ -17,15 +17,15 @@ class TrackerDetailSheet extends StatefulWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => TrackerDetailSheet._(application: app),
+      builder: (_) => ApplicationDetailSheet._(application: app),
     );
   }
 
   @override
-  State<TrackerDetailSheet> createState() => _TrackerDetailSheetState();
+  State<ApplicationDetailSheet> createState() => _ApplicationDetailSheetState();
 }
 
-class _TrackerDetailSheetState extends State<TrackerDetailSheet> {
+class _ApplicationDetailSheetState extends State<ApplicationDetailSheet> {
   final _noteCtrl = TextEditingController();
 
   @override
@@ -34,7 +34,7 @@ class _TrackerDetailSheetState extends State<TrackerDetailSheet> {
     super.dispose();
   }
 
-  void _submitNote(TrackerController controller) {
+  void _submitNote(ApplicationsController controller) {
     final text = _noteCtrl.text.trim();
     if (text.isEmpty) return;
     controller.addNote(widget.application.id, text);
@@ -44,7 +44,7 @@ class _TrackerDetailSheetState extends State<TrackerDetailSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<TrackerController>(
+    return Consumer<ApplicationsController>(
       builder: (context, controller, _) {
         // Use the latest snapshot from the controller so the sheet reflects
         // status/note updates without dismissing.

@@ -6,7 +6,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
-import '../../../data/mock/mock_jobs.dart';
+import '../../../fixtures/mock_jobs.dart';
 import '../../../data/models/job.dart';
 import '../../../shared/widgets/app_buttons.dart';
 
@@ -109,7 +109,7 @@ class SubmittedPage extends StatelessWidget {
                     AppPrimaryButton(
                       label: AppStrings.trackApplication,
                       icon: const Icon(Icons.timeline_rounded, size: 16),
-                      onPressed: () => context.go(RouteNames.tracker),
+                      onPressed: () => context.go(RouteNames.applications),
                     ),
                     const SizedBox(height: 10),
                     AppSecondaryButton(

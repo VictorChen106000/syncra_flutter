@@ -21,7 +21,7 @@ import '../../features/profile/presentation/profile_page.dart';
 import '../../features/resumes/models/resume_file.dart';
 import '../../features/resumes/presentation/resume_lists_page.dart';
 import '../../features/resumes/presentation/resume_preview_page.dart';
-import '../../features/tracker/presentation/tracker_page.dart';
+import '../../features/applications/presentation/applications_page.dart';
 import '../../shared/widgets/app_shell_scaffold.dart';
 import 'route_names.dart';
 
@@ -145,9 +145,9 @@ class AppRouter {
           ],
         ),
         GoRoute(
-          path: RouteNames.tracker,
+          path: RouteNames.applications,
           pageBuilder: (context, state) =>
-              _fadePage(state, const TrackerPage()),
+              _fadePage(state, const ApplicationsPage()),
         ),
         GoRoute(
           path: RouteNames.notifications,

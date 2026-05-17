@@ -52,7 +52,7 @@ reference; delete after).
 | Tailor orchestrator (parse → tailor → render → save) | ✅ |
 | Tracker streaming from Firestore, status updates, notes | ✅ |
 | Brief reasoner client-side (writes pipeline cards to Firestore) | ✅ |
-| Pipeline approve → creates application in tracker | ✅ |
+| Pipeline approve → creates entry on Applications page | ✅ |
 
 If you find yourself building one of these from scratch, **stop and ask** — it
 probably already exists.
@@ -122,14 +122,15 @@ syncra_flutter/
 │   ├── data/
 │   │   ├── firestore/
 │   │   │   ├── firestore_paths.dart      ✅
-│   │   │   ├── user_repository.dart      ✅
+│   │   │   ├── user_repository.dart      ✅ 🟡 needs an update() method (FE1)
 │   │   │   ├── applications_repository.dart ✅
 │   │   │   ├── pipeline_repository.dart  ✅
 │   │   │   ├── jobs_repository.dart      ✅
 │   │   │   └── resumes_repository.dart   ✅ — local-cache via path_provider  (B1)
-│   │   ├── models/
-│   │   │   ├── job.dart, tracked_application.dart  ✅
-│   │   └── mock/                     ✅ — kept as fallback fixtures
+│   │   └── models/
+│   │       ├── job.dart, tracked_application.dart  ✅
+│   │
+│   ├── fixtures/                     ✅ — dev-only sample data (was data/mock/)
 │   │
 │   ├── features/
 │   │   ├── agent/
@@ -163,8 +164,8 @@ syncra_flutter/
 │   │   │
 │   │   ├── dashboard/                🟡 — needs prominent prompt entry (FE1)
 │   │   ├── profile/                  🟡 — bare scaffold, needs settings (FE1)
-│   │   ├── notifications/            ✅
-│   │   ├── tracker/                  ✅ — streaming, status, notes work (FE1)
+│   │   ├── notifications/            🟡 — needs in-app agent-event inbox + inline actions (FE2)
+│   │   ├── applications/             ✅ — streaming, status, notes (was tracker/) (FE1 polish)
 │   │   │
 │   │   ├── jobs/
 │   │   │   ├── state/jobs_controller.dart  ✅ — pipeline stream + approve
@@ -363,6 +364,19 @@ intent, partial tool failures, hitting the loop limit). The difference between
    just iteration cap).
 6. **Brief reasoner quality** — tune the `_systemPrompt` in `anthropic_service.dart`
    so categorizations are sharper (fewer "exploration" defaults).
+7. **NEW: implement `save_to_pipeline` tool** in [builtin_tools.dart](../lib/features/agent_chat/tools/builtin_tools.dart) — see [api-contract.md §2.6b](./api-contract.md). Lets the agent persist pipeline cards instead of `PassiveAgentController` bypassing the tool registry.
+7a. **NEW: implement `remember_fact` tool** + `users/{uid}/learned_facts/`
+    collection — see [api-contract.md §2.6a](./api-contract.md). When the user
+    answers an `ask_user`, the agent persists the answer. Future tailoring
+    reads `learned_facts` via `read_resume` (extend that tool to include them).
+    Strong demo moment: "the agent learns about you across sessions." ~3h.
+8. **NEW: refactor `PassiveAgentController.runBrief()`** to call
+   `AnthropicChatService.runAgent` with a canned brief prompt instead of
+   calling `AnthropicService.scoreJobs` directly. This locks in the "one agent,
+   two triggers" model (see [api-contract.md §1](./api-contract.md)). ~2-3h.
+9. **Event-stream subscription** for FE2's notifications inbox — expose the
+   agent's event stream above the chat controller so both the chat UI and the
+   notifications page can subscribe.
 
 **You're done when**
 - Vague prompts ("help me find a job") trigger appropriate `ask_user` calls
@@ -396,7 +410,7 @@ intent, partial tool failures, hitting the loop limit). The difference between
 - [lib/features/auth/](../lib/features/auth/) — sign-in, splash, onboarding
 - [lib/features/dashboard/](../lib/features/dashboard/) — landing screen
 - [lib/features/profile/](../lib/features/profile/) — needs to become a real settings page
-- [lib/features/tracker/presentation/](../lib/features/tracker/presentation/) — tracker UI (mostly done, may need polish)
+- [lib/features/applications/presentation/](../lib/features/applications/presentation/) — Applications UI (was tracker, mostly done, may need polish)
 - [lib/shared/widgets/](../lib/shared/widgets/) — design system
 - Build configuration — `--dart-define` recipes, README setup section
 - Firebase project config — when Track 2 adds Gmail scope, you coordinate
@@ -418,8 +432,17 @@ agent is the headline, but the shell is what people feel.
 3. **Settings page** — replace [lib/features/profile/presentation/profile_page.dart](../lib/features/profile/presentation/profile_page.dart)
    with a real settings page: autonomy slider, sign out, delete account.
 4. **Empty states** everywhere — first-time user with no resume, no jobs in
-   pipeline, no applications in tracker. Each empty state should explain how
+   pipeline, no applications on the Applications page. Each empty state should explain how
    to get started AND offer a one-tap action (e.g. "Open the chat").
+4a. **NEW: Activity-log refactor of the Applications page.** Drop the
+    multi-stage status enum (viewed/replied/interview/offer/rejected) — see
+    [api-contract.md §3](./api-contract.md). New fields: `drafted_at`,
+    `sent_at`, `got_reply` (user-flippable bool), `follow_up_at`, `notes`.
+    Rebuild [applications_page.dart](../lib/features/applications/presentation/applications_page.dart)
+    to render as a date-sorted activity log with a "Got a reply" switch on each
+    entry. Filter chips become `All / Drafts / Sent / Replied`. Coordinate with
+    [ApplicationsController](../lib/features/applications/state/applications_controller.dart) +
+    [ApplicationsRepository](../lib/data/firestore/applications_repository.dart). ~4-5h.
 5. **Build config doc** — a README section listing every `--dart-define` flag,
    where each key comes from, and a single `flutter run` command that has them
    all. Save your friends 30 minutes each.
@@ -446,13 +469,14 @@ agent is the headline, but the shell is what people feel.
 
 ---
 
-### Track 5 — Frontend: Agent Surfaces & Email (FE2)
+### Track 5 — Frontend: Agent Surfaces, Email, & Notifications Inbox (FE2)
 
 **You own**
 - [lib/features/agent_chat/presentation/](../lib/features/agent_chat/presentation/) — chat UI polish
 - [lib/features/agent_chat/presentation/widgets/agent_block_views.dart](../lib/features/agent_chat/presentation/widgets/agent_block_views.dart) — block renderers
 - [lib/features/resumes/presentation/](../lib/features/resumes/presentation/) — resume list / preview / tailor flow
 - [lib/features/jobs/presentation/tailor_page.dart](../lib/features/jobs/presentation/tailor_page.dart) — wire to real tailor
+- [lib/features/notifications/](../lib/features/notifications/) — **upgrade from static list to in-app agent-event inbox** with inline actions (the walk-away feature)
 - `lib/features/email/presentation/email_review_page.dart` — **create this**
 
 **Why it matters**
@@ -460,8 +484,19 @@ Whatever the agent does, the user sees through the chat. If the chat looks
 janky, the agent feels janky. Your job is to make each tool block, each
 `ask_user` prompt, each accept-or-edit decision card feel *crafted*.
 
-Plus you build the one piece of UI that gates the most important action: the
-email review modal. Without it, B2 can't ship `send_email` safely.
+Plus you build the **two pieces of UI that gate critical actions**:
+- The **email review modal** — without it, B2 can't ship `send_email` safely.
+- The **notifications inbox** — without it, the user is trapped inside the chat
+  while the agent works. The inbox is what makes the "walk away, get
+  notified, accept from there" pattern work.
+
+**The notifications inbox in detail.** When the agent fires an `ask_user` or
+finishes a tool call (`tailor_resume` produces a new PDF, `draft_email` produces
+a draft to review), an entry lands in the notifications page. Each entry shows
+the same surface the chat would have shown (text field, accept/edit buttons,
+preview card). Tapping it acts inline; the agent loop continues. This requires
+coordination with B3 — agree on an `AgentEvent`-stream subscription that lives
+above the chat controller so both UIs can observe it.
 
 **Build order**
 1. **`InputRequestView` polish** — it works but isn't pretty. Make the text
@@ -471,23 +506,31 @@ email review modal. Without it, B2 can't ship `send_email` safely.
    `tool_use` returns `{ tailored_resume_id, file_name }`, render an
    `ActionProposalBlock`-like card showing "Tailored {file} — Preview / Save /
    Discard". Wire to the chat controller.
-3. **Email review modal** — the most important piece. Modal sheet with
+3. **Notifications inbox upgrade** — the existing `notifications/` page is a
+   static list of fixtures. Rewrite it as a live subscription on the agent's
+   event stream. Each agent `ask_user` and tool completion that happens while
+   the user isn't on the chat page becomes a notification entry. Tapping an
+   entry shows the inline surface (text field or decision card) right there —
+   no jump to chat required. Coordinate with B3 on the subscription shape.
+4. **Email review modal** — the most important send-gate. Modal sheet with
    subject + body (both editable), "Send to {recipient}" button. Tap the
    button → `JobsController.confirmAndSendEmail(token)` → triggers B2's
    `send_email` tool with a confirmation token. Coordinate with B2 on the
    token shape.
-4. **Resume preview improvements** — when the local file is missing (different
+5. **Resume preview improvements** — when the local file is missing (different
    device), show a clear "this resume isn't on this device" state with a
    re-upload button.
-5. **Tailor flow page** — wire `tailor_page.dart` to call the real tailor
+6. **Tailor flow page** — wire `tailor_page.dart` to call the real tailor
    tool (via the controller, not the agent loop directly). Show progress
    states: "extracting text", "tailoring", "rendering PDF".
-6. **Cross-platform check** — run on iOS, Android, web. Note differences in
+7. **Cross-platform check** — run on iOS, Android, web. Note differences in
    a shared doc, file issues against FE1 for any shell-layer bugs you find.
 
 **You're done when**
 - The chat looks beautiful — `ask_user`, tool blocks, decision cards all feel
   consistent.
+- The user can close the chat mid-loop → see a notification entry appear →
+  tap it → answer or accept inline → agent continues without re-opening chat.
 - The email review modal exists, is editable, and the send button is the
   *only* path to actually sending an email.
 - The tailor flow page works without going through the chat.
