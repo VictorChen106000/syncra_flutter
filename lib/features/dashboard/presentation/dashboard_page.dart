@@ -82,7 +82,7 @@ class _DashboardHeader extends ConsumerWidget {
     final user = auth.appUser;
     return AppHeader.home(
       avatar: _Avatar(photoUrl: user?.photoUrl),
-      name: user?.displayName ?? 'Daryn',
+      name: user?.displayName ?? 'there',
       role: AppStrings.dashboardGreetingRole,
       unreadCount: notifications.unreadCount,
       onBellTap: () => context.go(RouteNames.notifications),
@@ -90,6 +90,8 @@ class _DashboardHeader extends ConsumerWidget {
     );
   }
 }
+
+
 
 class _Avatar extends StatelessWidget {
   const _Avatar({required this.photoUrl});
@@ -127,17 +129,22 @@ class _Avatar extends StatelessWidget {
   }
 }
 
-class _AgentLiveBanner extends StatelessWidget {
+class _AgentLiveBanner extends ConsumerWidget {
   const _AgentLiveBanner();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isRunning = ref.watch(
+      passiveAgentProvider.select((s) => s.isRunning),
+    );
+    final label = isRunning ? AppStrings.agentLive : AppStrings.agentIdle;
+    final detail = isRunning ? AppStrings.activeTask : AppStrings.idleTask;
     return Row(
       children: [
-        const _LiveDot(),
+        _LiveDot(active: isRunning),
         const SizedBox(width: 8),
         Text(
-          AppStrings.agentLive.toUpperCase(),
+          label.toUpperCase(),
           style: const TextStyle(
             color: AppColors.ink,
             fontSize: 11,
@@ -157,7 +164,7 @@ class _AgentLiveBanner extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            AppStrings.activeTask,
+            detail,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: AppColors.textMuted,
@@ -172,7 +179,9 @@ class _AgentLiveBanner extends StatelessWidget {
 }
 
 class _LiveDot extends StatelessWidget {
-  const _LiveDot();
+  const _LiveDot({this.active = true});
+
+  final bool active;
 
   @override
   Widget build(BuildContext context) {
@@ -182,25 +191,26 @@ class _LiveDot extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.accentBright.withValues(alpha: 0.55),
-            ),
-          )
-              .animate(onPlay: repeatIfMotion(context))
-              .scale(
-                duration: 1400.ms,
-                begin: const Offset(0.6, 0.6),
-                end: const Offset(1.8, 1.8),
-                curve: Curves.easeOut,
-              )
-              .fadeOut(duration: 1400.ms),
+          if (active)
+            Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.accentBright.withValues(alpha: 0.55),
+              ),
+            )
+                .animate(onPlay: repeatIfMotion(context))
+                .scale(
+                  duration: 1400.ms,
+                  begin: const Offset(0.6, 0.6),
+                  end: const Offset(1.8, 1.8),
+                  curve: Curves.easeOut,
+                )
+                .fadeOut(duration: 1400.ms),
           Container(
             width: 6,
             height: 6,
-            decoration: const BoxDecoration(
-              color: AppColors.accentBright,
+            decoration: BoxDecoration(
+              color: active ? AppColors.accentBright : AppColors.textSoft,
               shape: BoxShape.circle,
             ),
           ),
@@ -285,7 +295,7 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
       _StackCardData(
         title: 'Approval Pipeline',
         kicker: 'Pending Review',
-        count: 4,
+        count: passive.inputNeededCount,
         background: AppColors.surface,
         foreground: AppColors.ink,
         icon: Icons.work_outline_rounded,

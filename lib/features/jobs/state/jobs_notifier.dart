@@ -173,11 +173,14 @@ class JobsNotifier extends Notifier<JobsState> {
     final card = state.cards.where((c) => c.job.id == jobId).firstOrNull;
     if (card == null) return;
     try {
-      await _applications.createApplication(
+      final appId = await _applications.createApplication(
         uid: uid,
         job: card.job,
-        status: JobStatus.submitted,
       );
+      // Approving from the agent-pipeline screen means "the user accepts
+      // this draft and intends to send it" — flip sent_at immediately. For
+      // the v1 demo we don't actually call send_email here.
+      await _applications.markSent(uid, appId);
       await _repository.approve(uid, card.id);
       state = state.copyWith(
         lastMessage: '${card.job.company} added to tracker',

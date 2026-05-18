@@ -141,12 +141,6 @@ class _ChatHeader extends StatelessWidget {
                       letterSpacing: -0.2,
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  const Icon(
-                    Icons.expand_more_rounded,
-                    size: 16,
-                    color: AppColors.textMuted,
-                  ),
                   if (isStreaming) ...[
                     const SizedBox(width: 10),
                     const _LiveDot(),
@@ -155,10 +149,7 @@ class _ChatHeader extends StatelessWidget {
               ),
             ),
           ),
-          _IconBtn(
-            icon: Icons.edit_square,
-            onTap: () {},
-          ),
+          const SizedBox(width: 40),
         ],
       ),
     );

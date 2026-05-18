@@ -38,6 +38,15 @@ class _AuthRefreshNotifier extends ChangeNotifier {
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
+  // Force initialization of every provider the redirect reads, so the first
+  // redirect (which fires synchronously when GoRouter mounts) can never hit
+  // an uninitialized provider. Reading `.notifier` triggers `build()` without
+  // subscribing routerProvider to state changes — refreshListenable handles
+  // re-runs.
+  ref.read(authProvider.notifier);
+  ref.read(passiveAgentProvider.notifier);
+  ref.read(userProfileProvider.notifier);
+
   final refresh = _AuthRefreshNotifier(ref);
   ref.onDispose(refresh.dispose);
 

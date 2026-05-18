@@ -75,7 +75,7 @@ class _ProfileHeaderCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authProvider).appUser;
-    final displayName = user?.displayName ?? 'Daryn';
+    final displayName = user?.displayName ?? 'there';
     final initial = user?.initial ?? 'D';
     final email = user?.email ?? '';
     final photoUrl = user?.photoUrl;

@@ -1,7 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../fixtures/mock_notifications.dart';
+import '../../agent_chat/services/agent_service.dart';
+import '../models/app_notification.dart';
 
 enum NotificationsFilter { all, unread }
 
@@ -41,9 +42,28 @@ class NotificationsState {
 }
 
 class NotificationsNotifier extends Notifier<NotificationsState> {
+  int _seq = 0;
+
   @override
   NotificationsState build() {
-    return NotificationsState(items: List.of(MockNotifications.all));
+    return const NotificationsState();
+  }
+
+  /// Public entry point for the agent layer. Translates an [AgentEvent] into
+  /// an inbox entry; no-ops when the event isn't user-visible (thinking
+  /// blocks, plain text, etc.).
+  ///
+  /// Per v1 spec the inbox is a complete log of agent activity. A future
+  /// refinement (track D coordination) can suppress entries when the chat
+  /// page is the active route — but for the demo, always recording keeps
+  /// the bell badge meaningful.
+  void onAgentEvent(AgentEvent event) {
+    final entry = AppNotification.fromAgentEvent(
+      event,
+      idSeed: 'n${_seq++}',
+    );
+    if (entry == null) return;
+    state = state.copyWith(items: [entry, ...state.items]);
   }
 
   String? consumeMessage() {
@@ -63,7 +83,7 @@ class NotificationsNotifier extends Notifier<NotificationsState> {
     final idx = state.items.indexWhere((n) => n.id == id);
     if (idx == -1 || !state.items[idx].unread) return;
     final next = [...state.items];
-    next[idx] = _copyWith(next[idx], unread: false);
+    next[idx] = next[idx].copyWith(unread: false);
     state = state.copyWith(items: next);
   }
 
@@ -72,7 +92,7 @@ class NotificationsNotifier extends Notifier<NotificationsState> {
     final next = [...state.items];
     for (var i = 0; i < next.length; i++) {
       if (next[i].unread) {
-        next[i] = _copyWith(next[i], unread: false);
+        next[i] = next[i].copyWith(unread: false);
         changed = true;
       }
     }
@@ -82,18 +102,6 @@ class NotificationsNotifier extends Notifier<NotificationsState> {
         lastMessage: 'All notifications marked read',
       );
     }
-  }
-
-  AppNotification _copyWith(AppNotification n, {required bool unread}) {
-    return AppNotification(
-      id: n.id,
-      kind: n.kind,
-      title: n.title,
-      body: n.body,
-      timestamp: n.timestamp,
-      actionLabel: n.actionLabel,
-      unread: unread,
-    );
   }
 }
 

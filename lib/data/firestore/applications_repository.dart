@@ -13,19 +13,63 @@ class ApplicationsRepository {
   Stream<List<TrackedApplication>> watchApplications(String uid) {
     return _paths
         .applications(uid)
-        .orderBy('submitted_at', descending: true)
+        .orderBy('drafted_at', descending: true)
         .snapshots()
         .map((snap) => snap.docs.map(_fromDoc).toList());
   }
 
-  Future<void> updateStatus(
+  /// Agent creates a draft application. `sentAt` is null — the user must
+  /// tap Send to mark it as actually submitted.
+  Future<String> createApplication({
+    required String uid,
+    required Job job,
+    String? resumeId,
+  }) async {
+    final ref = _paths.applications(uid).doc();
+    await ref.set({
+      'job': _jobToMap(job),
+      'resume_id': resumeId,
+      'drafted_at': FieldValue.serverTimestamp(),
+      'sent_at': null,
+      'got_reply': false,
+      'follow_up_at': null,
+      'sent_email_id': null,
+      'notes': <Map<String, dynamic>>[],
+    });
+    return ref.id;
+  }
+
+  /// User tapped Send (or the agent's `send_email` tool succeeded). Stamps
+  /// `sent_at` and optionally records the Gmail message id.
+  Future<void> markSent(
+    String uid,
+    String applicationId, {
+    String? sentEmailId,
+  }) async {
+    await _paths.applications(uid).doc(applicationId).update({
+      'sent_at': FieldValue.serverTimestamp(),
+      if (sentEmailId != null) 'sent_email_id': sentEmailId,
+    });
+  }
+
+  Future<void> setGotReply(
     String uid,
     String applicationId,
-    JobStatus status,
+    bool gotReply,
   ) async {
     await _paths.applications(uid).doc(applicationId).update({
-      'status': status.name,
-      'last_update_at': FieldValue.serverTimestamp(),
+      'got_reply': gotReply,
+    });
+  }
+
+  Future<void> setFollowUp(
+    String uid,
+    String applicationId,
+    DateTime? followUpAt,
+  ) async {
+    await _paths.applications(uid).doc(applicationId).update({
+      'follow_up_at':
+          followUpAt == null ? null : Timestamp.fromDate(followUpAt),
     });
   }
 
@@ -39,44 +83,24 @@ class ApplicationsRepository {
           'created_at': Timestamp.now(),
         }
       ]),
-      'last_update_at': FieldValue.serverTimestamp(),
     });
-  }
-
-  Future<String> createApplication({
-    required String uid,
-    required Job job,
-    required JobStatus status,
-    String? nextStep,
-  }) async {
-    final ref = _paths.applications(uid).doc();
-    final now = FieldValue.serverTimestamp();
-    await ref.set({
-      'job': _jobToMap(job),
-      'status': status.name,
-      'submitted_at': now,
-      'last_update_at': now,
-      'next_step': nextStep,
-      'notes': <Map<String, dynamic>>[],
-    });
-    return ref.id;
   }
 }
 
 TrackedApplication _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
   final data = doc.data();
   final job = _jobFromMap(Map<String, dynamic>.from(data['job'] as Map));
-  final submittedAt = _toDate(data['submitted_at']);
-  final lastUpdateAt = _toDate(data['last_update_at']);
   final notesRaw = (data['notes'] as List?) ?? const [];
 
   return TrackedApplication(
     id: doc.id,
     job: job,
-    status: _statusFromName(data['status'] as String?),
-    submittedLabel: _relativeLabel(submittedAt),
-    lastUpdate: _relativeLabel(lastUpdateAt),
-    nextStep: data['next_step'] as String?,
+    resumeId: data['resume_id'] as String?,
+    draftedAt: _toDate(data['drafted_at']) ?? DateTime.now(),
+    sentAt: _toDate(data['sent_at']),
+    gotReply: (data['got_reply'] as bool?) ?? false,
+    followUpAt: _toDate(data['follow_up_at']),
+    sentEmailId: data['sent_email_id'] as String?,
     notes: notesRaw
         .whereType<Map>()
         .map((m) => TrackedApplicationNote(
@@ -118,13 +142,6 @@ Map<String, dynamic> _jobToMap(Job j) => {
       'why': j.why,
     };
 
-JobStatus _statusFromName(String? name) {
-  for (final s in JobStatus.values) {
-    if (s.name == name) return s;
-  }
-  return JobStatus.submitted;
-}
-
 JobCategory _categoryFromName(String? name) {
   for (final c in JobCategory.values) {
     if (c.name == name) return c;
@@ -136,14 +153,4 @@ DateTime? _toDate(Object? value) {
   if (value is Timestamp) return value.toDate();
   if (value is DateTime) return value;
   return null;
-}
-
-String _relativeLabel(DateTime? when) {
-  if (when == null) return 'Just now';
-  final diff = DateTime.now().difference(when);
-  if (diff.inMinutes < 1) return 'Just now';
-  if (diff.inHours < 1) return '${diff.inMinutes}m ago';
-  if (diff.inDays < 1) return '${diff.inHours}h ago';
-  if (diff.inDays < 7) return '${diff.inDays}d ago';
-  return '${(diff.inDays / 7).floor()}w ago';
 }

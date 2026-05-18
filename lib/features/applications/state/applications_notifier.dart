@@ -4,32 +4,28 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/firestore/applications_repository.dart';
-import '../../../data/models/job.dart';
 import '../../../data/models/tracked_application.dart';
 import '../../auth/state/auth_notifier.dart';
 
-class ApplicationsFilter {
-  const ApplicationsFilter.all() : status = null;
-  const ApplicationsFilter.status(JobStatus s) : status = s;
+enum ApplicationsFilter {
+  all,
+  drafts,
+  sent,
+  replied;
 
-  final JobStatus? status;
-
-  bool get isAll => status == null;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is ApplicationsFilter && other.status == status;
-
-  @override
-  int get hashCode => status.hashCode;
+  String get label => switch (this) {
+        ApplicationsFilter.all => 'All',
+        ApplicationsFilter.drafts => 'Drafts',
+        ApplicationsFilter.sent => 'Sent',
+        ApplicationsFilter.replied => 'Replied',
+      };
 }
 
 @immutable
 class ApplicationsState {
   const ApplicationsState({
     this.items = const [],
-    this.filter = const ApplicationsFilter.all(),
+    this.filter = ApplicationsFilter.all,
     this.lastMessage,
   });
 
@@ -37,11 +33,22 @@ class ApplicationsState {
   final ApplicationsFilter filter;
   final String? lastMessage;
 
+  /// Items the filter accepts, already sorted newest-first by [TrackedApplication.sortAt].
   List<TrackedApplication> get filtered {
-    final s = filter.status;
-    if (s == null) return items;
-    return items.where((a) => a.status == s).toList();
+    final base = switch (filter) {
+      ApplicationsFilter.all => items,
+      ApplicationsFilter.drafts =>
+        items.where((a) => a.phase == ApplicationPhase.draft).toList(),
+      ApplicationsFilter.sent =>
+        items.where((a) => a.phase == ApplicationPhase.sent).toList(),
+      ApplicationsFilter.replied =>
+        items.where((a) => a.phase == ApplicationPhase.replied).toList(),
+    };
+    return List.of(base)..sort((a, b) => b.sortAt.compareTo(a.sortAt));
   }
+
+  int countOf(ApplicationPhase phase) =>
+      items.where((a) => a.phase == phase).length;
 
   ApplicationsState copyWith({
     List<TrackedApplication>? items,
@@ -86,8 +93,6 @@ class ApplicationsNotifier extends Notifier<ApplicationsState> {
 
     if (uid == null || isGuest) {
       _boundUid = null;
-      // Don't read/write `state` here — this is called from build() before
-      // the initial state is published. build()'s return value resets state.
       return;
     }
 
@@ -115,34 +120,49 @@ class ApplicationsNotifier extends Notifier<ApplicationsState> {
     state = state.copyWith(filter: f);
   }
 
-  Future<void> updateStatus(String applicationId, JobStatus status) async {
-    final user = ref.read(authProvider).appUser;
-    final uid = user?.uid;
-    if (uid == null || user!.isGuest) return;
-    final current = state.items.firstWhere(
-      (a) => a.id == applicationId,
-      orElse: () => state.items.isEmpty
-          ? throw StateError('No application $applicationId')
-          : state.items.first,
-    );
-    await _repository.updateStatus(uid, applicationId, status);
+  TrackedApplication? _find(String applicationId) {
+    for (final a in state.items) {
+      if (a.id == applicationId) return a;
+    }
+    return null;
+  }
+
+  Future<void> markSent(String applicationId, {String? sentEmailId}) async {
+    final uid = _boundUid;
+    final app = _find(applicationId);
+    if (uid == null || app == null) return;
+    await _repository.markSent(uid, applicationId, sentEmailId: sentEmailId);
     state = state.copyWith(
-      lastMessage: '${current.job.company}: status set to ${status.label}',
+      lastMessage: '${app.job.company} marked as sent',
     );
   }
 
+  Future<void> setGotReply(String applicationId, bool gotReply) async {
+    final uid = _boundUid;
+    final app = _find(applicationId);
+    if (uid == null || app == null) return;
+    await _repository.setGotReply(uid, applicationId, gotReply);
+    state = state.copyWith(
+      lastMessage: gotReply
+          ? '${app.job.company}: marked replied'
+          : '${app.job.company}: reply cleared',
+    );
+  }
+
+  Future<void> setFollowUp(String applicationId, DateTime? followUpAt) async {
+    final uid = _boundUid;
+    if (uid == null || _find(applicationId) == null) return;
+    await _repository.setFollowUp(uid, applicationId, followUpAt);
+  }
+
   Future<void> addNote(String applicationId, String body) async {
-    final user = ref.read(authProvider).appUser;
-    final uid = user?.uid;
-    if (uid == null || user!.isGuest) return;
+    final uid = _boundUid;
+    final app = _find(applicationId);
+    if (uid == null || app == null) return;
     final trimmed = body.trim();
     if (trimmed.isEmpty) return;
-    final current = state.items.firstWhere(
-      (a) => a.id == applicationId,
-      orElse: () => state.items.first,
-    );
     await _repository.addNote(uid, applicationId, trimmed);
-    state = state.copyWith(lastMessage: 'Note added to ${current.job.company}');
+    state = state.copyWith(lastMessage: 'Note added to ${app.job.company}');
   }
 }
 

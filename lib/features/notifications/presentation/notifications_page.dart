@@ -7,8 +7,8 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
-import '../../../fixtures/mock_notifications.dart';
 import '../../../shared/widgets/app_header.dart';
+import '../models/app_notification.dart';
 import '../state/notifications_notifier.dart';
 
 class NotificationsPage extends ConsumerWidget {
