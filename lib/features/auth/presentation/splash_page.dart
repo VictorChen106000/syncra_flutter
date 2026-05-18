@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/constants/app_colors.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/brand_theme.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key, this.target = RouteNames.login});
@@ -25,18 +25,18 @@ class _SplashPageState extends State<SplashPage> {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Scaffold(
-      backgroundColor: AppColors.scaffold,
+      backgroundColor: brand.bg,
       body: Stack(
         alignment: Alignment.center,
         children: [
-          // Ambient lime glow
           Container(
             width: 260,
             height: 260,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: AppColors.accent.withValues(alpha: 0.30),
+              color: brand.accent.withValues(alpha: 0.30),
             ),
           )
               .animate()
@@ -53,26 +53,24 @@ class _SplashPageState extends State<SplashPage> {
                 duration: 450.ms,
                 curve: Curves.easeIn,
               ),
-
-          // Expanding black square morph
           Container(
             width: 96,
             height: 96,
             decoration: BoxDecoration(
-              color: AppColors.ink,
+              color: brand.ink,
               borderRadius: BorderRadius.circular(40),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.20),
+                  color: brand.shadow,
                   blurRadius: 30,
                   offset: const Offset(0, 12),
                 ),
               ],
             ),
             alignment: Alignment.center,
-            child: const Icon(
+            child: Icon(
               Icons.star_rounded,
-              color: AppColors.accent,
+              color: brand.accent,
               size: 48,
             )
                 .animate(delay: 100.ms)

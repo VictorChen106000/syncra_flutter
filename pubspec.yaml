@@ -24,6 +24,7 @@ dependencies:
   pdf: ^3.11.1
   share_plus: ^11.1.0
   http: ^1.5.0
+  shared_preferences: ^2.3.2
 
   cupertino_icons: ^1.0.8
   firebase_core: ^4.7.0

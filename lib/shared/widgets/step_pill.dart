@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../core/constants/app_colors.dart';
+import '../../core/theme/brand_theme.dart';
 
 /// Small label chip used throughout — `4 Pending`, `Responsive design`, etc.
 class StepPill extends StatelessWidget {
@@ -21,8 +21,10 @@ class StepPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final background = color ?? (accent ? AppColors.accent : AppColors.surface);
-    final foreground = textColor ?? AppColors.ink;
+    final brand = context.brand;
+    final background =
+        color ?? (accent ? brand.accent : brand.surface);
+    final foreground = textColor ?? (accent ? brand.onAccent : brand.ink);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -30,7 +32,7 @@ class StepPill extends StatelessWidget {
         color: background,
         borderRadius: BorderRadius.circular(99),
         border: !accent && color == null
-            ? Border.all(color: AppColors.border)
+            ? Border.all(color: brand.border)
             : null,
       ),
       child: Row(

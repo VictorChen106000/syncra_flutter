@@ -1,12 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../core/constants/app_colors.dart';
+import '../../core/theme/brand_theme.dart';
 
 /// Standard empty-state card: icon, title, body, optional one-tap CTA.
-///
-/// Used by pages where the user has no data yet (no resumes, no
-/// applications, no pipeline). Each empty state should always give the
-/// user a single concrete next step — see [team-handoff.md] FE1 §8.
 class EmptyStateCard extends StatelessWidget {
   const EmptyStateCard({
     super.key,
@@ -27,13 +23,14 @@ class EmptyStateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final hasAction = actionLabel != null && onAction != null;
     return Container(
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: brand.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: brand.border),
       ),
       child: Column(
         children: [
@@ -41,28 +38,28 @@ class EmptyStateCard extends StatelessWidget {
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              color: AppColors.ink,
+              color: brand.ink,
               borderRadius: BorderRadius.circular(18),
             ),
             alignment: Alignment.center,
-            child: Icon(icon, color: Colors.white, size: 26),
+            child: Icon(icon, color: brand.inkInverse, size: 26),
           ),
           const SizedBox(height: 16),
           Text(
             title,
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               fontWeight: FontWeight.w900,
               fontSize: 16,
-              color: AppColors.ink,
+              color: brand.ink,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             body,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: AppColors.textMuted,
+            style: TextStyle(
+              color: brand.textMuted,
               fontSize: 13,
               height: 1.5,
               fontWeight: FontWeight.w500,
@@ -73,8 +70,8 @@ class EmptyStateCard extends StatelessWidget {
             FilledButton(
               onPressed: onAction,
               style: FilledButton.styleFrom(
-                backgroundColor: AppColors.ink,
-                foregroundColor: Colors.white,
+                backgroundColor: brand.ink,
+                foregroundColor: brand.inkInverse,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 shape: RoundedRectangleBorder(

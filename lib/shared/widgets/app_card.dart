@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/theme/brand_theme.dart';
 
 class AppCard extends StatelessWidget {
   const AppCard({
@@ -10,7 +10,7 @@ class AppCard extends StatelessWidget {
     this.padding = const EdgeInsets.all(AppConstants.cardPadding),
     this.margin,
     this.onTap,
-    this.backgroundColor = AppColors.surface,
+    this.backgroundColor,
     this.radius = AppConstants.cardRadius,
     this.showBorder = true,
     this.showShadow = true,
@@ -20,24 +20,27 @@ class AppCard extends StatelessWidget {
   final EdgeInsetsGeometry padding;
   final EdgeInsetsGeometry? margin;
   final VoidCallback? onTap;
-  final Color backgroundColor;
+  final Color? backgroundColor;
   final double radius;
   final bool showBorder;
   final bool showShadow;
 
   @override
   Widget build(BuildContext context) {
-    final card = Container(
+    final brand = context.brand;
+    final card = AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
       margin: margin,
       padding: padding,
       decoration: BoxDecoration(
-        color: backgroundColor,
+        color: backgroundColor ?? brand.surface,
         borderRadius: BorderRadius.circular(radius),
-        border: showBorder ? Border.all(color: AppColors.border) : null,
+        border: showBorder ? Border.all(color: brand.border) : null,
         boxShadow: showShadow
             ? [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
+                  color: brand.shadow,
                   blurRadius: 24,
                   offset: const Offset(0, 8),
                 ),
@@ -55,6 +58,8 @@ class AppCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(radius),
         onTap: onTap,
+        splashColor: brand.accent.withValues(alpha: 0.08),
+        highlightColor: brand.accent.withValues(alpha: 0.04),
         child: card,
       ),
     );

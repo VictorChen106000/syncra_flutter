@@ -3,10 +3,10 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/empty_state_card.dart';
 import '../models/resume_file.dart';
@@ -29,6 +29,7 @@ class _ResumeListsPageState extends ConsumerState<ResumeListsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     ref.listen<ResumeState>(resumeProvider, (prev, next) {
       final result = next.lastAction;
       if (result == null || result == prev?.lastAction) return;
@@ -37,8 +38,7 @@ class _ResumeListsPageState extends ConsumerState<ResumeListsPage> {
         ..clearSnackBars()
         ..showSnackBar(
           SnackBar(
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: result.isError ? AppColors.danger : null,
+            backgroundColor: result.isError ? brand.danger : null,
             content: Text(result.message),
           ),
         );
@@ -50,7 +50,7 @@ class _ResumeListsPageState extends ConsumerState<ResumeListsPage> {
         _tabIndex == 0 ? state.resumes : state.tailoredResumes;
 
     return Scaffold(
-      backgroundColor: AppColors.scaffold,
+      backgroundColor: brand.bg,
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -129,10 +129,6 @@ class _ResumeListsPageState extends ConsumerState<ResumeListsPage> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Tab switcher
-// ---------------------------------------------------------------------------
-
 class _TabSwitcher extends StatelessWidget {
   const _TabSwitcher({
     required this.selectedIndex,
@@ -144,10 +140,11 @@ class _TabSwitcher extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: AppColors.border.withValues(alpha: 0.40),
+        color: brand.border.withValues(alpha: 0.40),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -181,17 +178,18 @@ class _TabButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Expanded(
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 240),
         curve: Curves.easeOutCubic,
         decoration: BoxDecoration(
-          color: active ? AppColors.surface : Colors.transparent,
+          color: active ? brand.surface : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
           boxShadow: active
               ? [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
+                    color: brand.shadow,
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -210,7 +208,7 @@ class _TabButton extends StatelessWidget {
                 label,
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: active ? AppColors.ink : AppColors.textMuted,
+                  color: active ? brand.ink : brand.textMuted,
                   fontWeight: FontWeight.w900,
                   fontSize: 13.5,
                 ),
@@ -223,10 +221,6 @@ class _TabButton extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Upload drop zone
-// ---------------------------------------------------------------------------
-
 class _UploadDropZone extends StatelessWidget {
   const _UploadDropZone({required this.onTap});
 
@@ -234,8 +228,9 @@ class _UploadDropZone extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Material(
-      color: AppColors.surface,
+      color: brand.surface,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: onTap,
@@ -245,29 +240,29 @@ class _UploadDropZone extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: AppColors.ink.withValues(alpha: 0.30),
+              color: brand.ink.withValues(alpha: 0.30),
               width: 1.5,
               style: BorderStyle.solid,
             ),
           ),
-          child: const Column(
+          child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.upload_rounded, size: 28, color: AppColors.ink),
-              SizedBox(height: 8),
+              Icon(Icons.upload_rounded, size: 28, color: brand.ink),
+              const SizedBox(height: 8),
               Text(
                 AppStrings.uploadResume,
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
                   fontSize: 14,
-                  color: AppColors.ink,
+                  color: brand.ink,
                 ),
               ),
-              SizedBox(height: 4),
+              const SizedBox(height: 4),
               Text(
                 AppStrings.uploadResumeHint,
                 style: TextStyle(
-                  color: AppColors.textMuted,
+                  color: brand.textMuted,
                   fontSize: 11.5,
                   fontWeight: FontWeight.w500,
                 ),
@@ -279,4 +274,3 @@ class _UploadDropZone extends StatelessWidget {
     );
   }
 }
-

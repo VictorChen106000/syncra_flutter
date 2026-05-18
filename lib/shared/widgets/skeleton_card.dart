@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 
-import '../../core/constants/app_colors.dart';
+import '../../core/theme/brand_theme.dart';
 
 /// Generic shimmering placeholder for any list page during data fetches.
-///
-/// Use this while waiting on `ApiClient` calls — e.g. tracker/list refresh,
-/// pipeline brief, notifications fetch.
 class SkeletonCard extends StatelessWidget {
   const SkeletonCard({
     super.key,
@@ -19,15 +16,16 @@ class SkeletonCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Shimmer.fromColors(
-        baseColor: AppColors.border.withValues(alpha: 0.45),
-        highlightColor: AppColors.surface,
+        baseColor: brand.border.withValues(alpha: 0.45),
+        highlightColor: brand.surface,
         child: Container(
           height: height,
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: brand.surface,
             borderRadius: BorderRadius.circular(borderRadius),
           ),
         ),

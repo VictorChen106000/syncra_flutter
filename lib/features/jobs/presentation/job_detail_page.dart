@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../fixtures/mock_jobs.dart';
 import '../../../data/models/job.dart';
 import '../../../shared/widgets/app_buttons.dart';
@@ -18,10 +18,11 @@ class JobDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final j = job ?? MockJobs.all.first;
 
     return Scaffold(
-      backgroundColor: AppColors.scaffold,
+      backgroundColor: brand.bg,
       body: SafeArea(
         child: Column(
           children: [
@@ -45,13 +46,13 @@ class JobDetailPage extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            const Expanded(
+                            Expanded(
                               child: Text(
                                 AppStrings.matchAnalysis,
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w900,
-                                  color: AppColors.ink,
+                                  color: brand.ink,
                                 ),
                               ),
                             ),
@@ -61,13 +62,13 @@ class JobDetailPage extends StatelessWidget {
                                 vertical: 5,
                               ),
                               decoration: BoxDecoration(
-                                color: AppColors.accent,
+                                color: brand.accent,
                                 borderRadius: BorderRadius.circular(99),
                               ),
                               child: Text(
                                 '${j.matchScore}%',
-                                style: const TextStyle(
-                                  color: AppColors.ink,
+                                style: TextStyle(
+                                  color: brand.onAccent,
                                   fontWeight: FontWeight.w900,
                                   fontSize: 12,
                                 ),
@@ -78,8 +79,8 @@ class JobDetailPage extends StatelessWidget {
                         const SizedBox(height: 12),
                         Text(
                           j.why,
-                          style: const TextStyle(
-                            color: AppColors.textMuted,
+                          style: TextStyle(
+                            color: brand.textMuted,
                             fontSize: 13.5,
                             height: 1.55,
                             fontWeight: FontWeight.w500,
@@ -93,12 +94,12 @@ class JobDetailPage extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           AppStrings.requirementChecklist,
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w900,
-                            color: AppColors.ink,
+                            color: brand.ink,
                           ),
                         ),
                         const SizedBox(height: 14),
@@ -111,17 +112,17 @@ class JobDetailPage extends StatelessWidget {
                               padding: const EdgeInsets.only(bottom: 10),
                               child: Row(
                                 children: [
-                                  const Icon(
+                                  Icon(
                                     Icons.check_circle_rounded,
-                                    color: AppColors.accent,
+                                    color: brand.accent,
                                     size: 16,
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
                                       r,
-                                      style: const TextStyle(
-                                        color: AppColors.ink,
+                                      style: TextStyle(
+                                        color: brand.ink,
                                         fontSize: 13.5,
                                         fontWeight: FontWeight.w500,
                                       ),
@@ -134,7 +135,7 @@ class JobDetailPage extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const AppCard(
+                  AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -143,14 +144,14 @@ class JobDetailPage extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w900,
-                            color: AppColors.ink,
+                            color: brand.ink,
                           ),
                         ),
-                        SizedBox(height: 10),
+                        const SizedBox(height: 10),
                         Text(
                           'Add role-specific keywords, strengthen project impact, and rewrite one bullet to show measurable results.',
                           style: TextStyle(
-                            color: AppColors.textMuted,
+                            color: brand.textMuted,
                             fontSize: 13.5,
                             height: 1.55,
                             fontWeight: FontWeight.w500,

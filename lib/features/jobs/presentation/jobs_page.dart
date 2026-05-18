@@ -7,6 +7,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../fixtures/mock_jobs.dart';
 import '../../../data/models/job.dart';
 import '../../../shared/widgets/app_bottom_nav.dart';
@@ -55,7 +56,6 @@ class _JobsPageState extends ConsumerState<JobsPage> {
       ..showSnackBar(
         SnackBar(
           duration: const Duration(seconds: 3),
-          behavior: SnackBarBehavior.floating,
           content: Text('${job.company} dismissed'),
           action: SnackBarAction(
             label: 'Undo',
@@ -76,7 +76,6 @@ class _JobsPageState extends ConsumerState<JobsPage> {
         ..clearSnackBars()
         ..showSnackBar(
           SnackBar(
-            behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 3),
             content: Text(next.lastMessage!),
           ),
@@ -144,10 +143,11 @@ class _TabSwitcher extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: AppColors.border.withValues(alpha: 0.40),
+        color: brand.border.withValues(alpha: 0.40),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -158,12 +158,12 @@ class _TabSwitcher extends StatelessWidget {
               duration: const Duration(milliseconds: 240),
               curve: Curves.easeOutCubic,
               decoration: BoxDecoration(
-                color: active ? AppColors.surface : Colors.transparent,
+                color: active ? brand.surface : Colors.transparent,
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: active
                     ? [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.08),
+                          color: brand.shadow,
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -185,7 +185,7 @@ class _TabSwitcher extends StatelessWidget {
                         fontSize: 13,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.1,
-                        color: active ? AppColors.ink : AppColors.textMuted,
+                        color: active ? brand.ink : brand.textMuted,
                       ),
                     ),
                   ),
@@ -272,7 +272,7 @@ class _ReviewQueueTab extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Filter chips + inline expanding search (single row)
+// Filter chips + inline expanding search
 // ---------------------------------------------------------------------------
 
 class _FilterSearchRow extends StatefulWidget {
@@ -433,32 +433,32 @@ class _SearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: brand.surface,
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: brand.border),
       ),
       child: Row(
         children: [
-          const Icon(Icons.search_rounded,
-              size: 18, color: AppColors.textMuted),
+          Icon(Icons.search_rounded, size: 18, color: brand.textMuted),
           const SizedBox(width: 10),
           Expanded(
             child: TextField(
               controller: controller,
               focusNode: focusNode,
               onChanged: onChanged,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: AppColors.ink,
+                color: brand.ink,
               ),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: AppStrings.searchJobsHint,
                 hintStyle: TextStyle(
-                  color: AppColors.textSoft,
+                  color: brand.textSoft,
                   fontWeight: FontWeight.w500,
                   fontSize: 14,
                 ),
@@ -475,12 +475,12 @@ class _SearchField extends StatelessWidget {
               onTap: onClose,
               radius: 22,
               excludeFromSemantics: true,
-              child: const Padding(
-                padding: EdgeInsets.all(4),
+              child: Padding(
+                padding: const EdgeInsets.all(4),
                 child: Icon(
                   Icons.close_rounded,
                   size: 18,
-                  color: AppColors.textMuted,
+                  color: brand.textMuted,
                 ),
               ),
             ),
@@ -504,12 +504,13 @@ class _IconCircleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Semantics(
       label: semanticLabel,
       button: true,
       child: Material(
-        color: AppColors.surface,
-        shape: const CircleBorder(side: BorderSide(color: AppColors.border)),
+        color: brand.surface,
+        shape: CircleBorder(side: BorderSide(color: brand.border)),
         child: InkWell(
           onTap: onTap,
           customBorder: const CircleBorder(),
@@ -517,7 +518,7 @@ class _IconCircleButton extends StatelessWidget {
           child: SizedBox(
             width: 40,
             height: 40,
-            child: Icon(icon, size: 18, color: AppColors.ink),
+            child: Icon(icon, size: 18, color: brand.ink),
           ),
         ),
       ),
@@ -538,8 +539,9 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Material(
-      color: active ? AppColors.ink : AppColors.surface,
+      color: active ? brand.ink : brand.surface,
       borderRadius: BorderRadius.circular(99),
       child: InkWell(
         borderRadius: BorderRadius.circular(99),
@@ -550,7 +552,7 @@ class _FilterChip extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(99),
             border: Border.all(
-              color: active ? AppColors.ink : AppColors.border,
+              color: active ? brand.ink : brand.border,
             ),
           ),
           child: Text(
@@ -558,7 +560,7 @@ class _FilterChip extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: active ? Colors.white : AppColors.ink,
+              color: active ? brand.inkInverse : brand.ink,
             ),
           ),
         ),
@@ -572,32 +574,33 @@ class _EmptyResults extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Container(
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: brand.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: brand.border),
       ),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(Icons.search_off_rounded, size: 28, color: AppColors.textMuted),
-          SizedBox(height: 12),
+          Icon(Icons.search_off_rounded, size: 28, color: brand.textMuted),
+          const SizedBox(height: 12),
           Text(
             'Nothing matched',
             style: TextStyle(
               fontWeight: FontWeight.w800,
               fontSize: 15,
-              color: AppColors.ink,
+              color: brand.ink,
               letterSpacing: -0.1,
             ),
           ),
-          SizedBox(height: 6),
+          const SizedBox(height: 6),
           Text(
             'Try a different search or clear the filter.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: AppColors.textMuted,
+              color: brand.textMuted,
               fontSize: 13,
               fontWeight: FontWeight.w500,
               height: 1.4,
@@ -632,8 +635,8 @@ class _JobCard extends StatefulWidget {
 class _JobCardState extends State<_JobCard> {
   bool _expanded = false;
 
-  Color get _accentColor => switch (widget.job.category) {
-        JobCategory.ready => AppColors.ink,
+  Color _accentColor(BrandTheme brand) => switch (widget.job.category) {
+        JobCategory.ready => brand.ink,
         JobCategory.inputNeeded => AppColors.categoryInputDeep,
         JobCategory.exploration => AppColors.categoryExploreDeep,
       };
@@ -675,17 +678,19 @@ class _JobCardState extends State<_JobCard> {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
+    final accentColor = _accentColor(brand);
     final job = widget.job;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: brand.surface,
         borderRadius: BorderRadius.circular(AppConstants.cardRadius),
-        border: Border.all(color: AppColors.border.withValues(alpha: 0.60)),
+        border: Border.all(color: brand.border.withValues(alpha: 0.60)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: brand.shadow,
             blurRadius: 24,
             offset: const Offset(0, 6),
           ),
@@ -695,7 +700,6 @@ class _JobCardState extends State<_JobCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Always-visible summary ─────────────────────────────────────
           InkWell(
             onTap: _toggle,
             child: Padding(
@@ -712,20 +716,20 @@ class _JobCardState extends State<_JobCard> {
                           padding: const EdgeInsets.only(right: 4),
                           child: Text(
                             '${job.matchScore}% Match',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: AppColors.textMuted,
+                              color: brand.textMuted,
                             ),
                           ),
                         ),
                       AnimatedRotation(
                         duration: const Duration(milliseconds: 220),
                         turns: _expanded ? 0.5 : 0,
-                        child: const Icon(
+                        child: Icon(
                           Icons.keyboard_arrow_down_rounded,
                           size: 22,
-                          color: AppColors.textMuted,
+                          color: brand.textMuted,
                         ),
                       ),
                     ],
@@ -737,14 +741,14 @@ class _JobCardState extends State<_JobCard> {
                         width: 44,
                         height: 44,
                         decoration: BoxDecoration(
-                          color: AppColors.ink,
+                          color: brand.ink,
                           borderRadius: BorderRadius.circular(14),
                         ),
                         alignment: Alignment.center,
                         child: Text(
                           job.company[0],
-                          style: const TextStyle(
-                            color: AppColors.accent,
+                          style: TextStyle(
+                            color: brand.accent,
                             fontWeight: FontWeight.w900,
                             fontSize: 17,
                           ),
@@ -757,10 +761,10 @@ class _JobCardState extends State<_JobCard> {
                           children: [
                             Text(
                               job.title,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.w800,
                                 fontSize: 16,
-                                color: AppColors.ink,
+                                color: brand.ink,
                                 letterSpacing: -0.2,
                                 height: 1.2,
                               ),
@@ -770,10 +774,10 @@ class _JobCardState extends State<_JobCard> {
                             const SizedBox(height: 4),
                             Text(
                               '${job.company} · ${job.category == JobCategory.inputNeeded ? job.location : job.salary}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w500,
-                                color: AppColors.textMuted,
+                                color: brand.textMuted,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -787,8 +791,6 @@ class _JobCardState extends State<_JobCard> {
               ),
             ),
           ),
-
-          // ── Collapsible detail ─────────────────────────────────────────
           AnimatedSize(
             duration: const Duration(milliseconds: 280),
             curve: Curves.easeOutCubic,
@@ -799,7 +801,7 @@ class _JobCardState extends State<_JobCard> {
                     child: Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: AppColors.softSurface,
+                        color: brand.surfaceMuted,
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Column(
@@ -808,7 +810,7 @@ class _JobCardState extends State<_JobCard> {
                           Row(
                             children: [
                               Icon(_justificationIcon,
-                                  size: 14, color: _accentColor),
+                                  size: 14, color: accentColor),
                               const SizedBox(width: 6),
                               Expanded(
                                 child: Text(
@@ -819,7 +821,7 @@ class _JobCardState extends State<_JobCard> {
                                     fontSize: 11,
                                     fontWeight: FontWeight.w800,
                                     letterSpacing: 1.0,
-                                    color: _accentColor,
+                                    color: accentColor,
                                   ),
                                 ),
                               ),
@@ -829,9 +831,9 @@ class _JobCardState extends State<_JobCard> {
                           job.missingSkills.isNotEmpty
                               ? RichText(
                                   text: TextSpan(
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 13,
-                                      color: AppColors.textMuted,
+                                      color: brand.textMuted,
                                       height: 1.5,
                                       fontFamily: 'Inter',
                                     ),
@@ -840,7 +842,7 @@ class _JobCardState extends State<_JobCard> {
                                         text:
                                             'Missing: ${job.missingSkills.join(', ')}. ',
                                         style: TextStyle(
-                                          color: _accentColor,
+                                          color: accentColor,
                                           fontWeight: FontWeight.w800,
                                         ),
                                       ),
@@ -850,9 +852,9 @@ class _JobCardState extends State<_JobCard> {
                                 )
                               : Text(
                                   job.agentJustification,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 13,
-                                    color: AppColors.textMuted,
+                                    color: brand.textMuted,
                                     height: 1.5,
                                   ),
                                 ),
@@ -862,8 +864,6 @@ class _JobCardState extends State<_JobCard> {
                   )
                 : const SizedBox(width: double.infinity, height: 0),
           ),
-
-          // ── Action row ─────────────────────────────────────────────────
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
             child: Row(
@@ -872,8 +872,8 @@ class _JobCardState extends State<_JobCard> {
                   child: FilledButton(
                     onPressed: _onPrimaryTap(context),
                     style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.ink,
-                      foregroundColor: Colors.white,
+                      backgroundColor: brand.ink,
+                      foregroundColor: brand.inkInverse,
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 14),
                       shape: RoundedRectangleBorder(
@@ -936,11 +936,12 @@ class _SecondaryAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Semantics(
       label: isIconOnly ? 'More actions' : label,
       button: true,
       child: Material(
-        color: AppColors.scaffold,
+        color: brand.surfaceMuted,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: onTap,
@@ -953,15 +954,15 @@ class _SecondaryAction extends StatelessWidget {
               vertical: 14,
             ),
             child: isIconOnly
-                ? const Icon(
+                ? Icon(
                     Icons.more_horiz_rounded,
                     size: 20,
-                    color: AppColors.textMuted,
+                    color: brand.textMuted,
                   )
                 : Text(
                     label,
-                    style: const TextStyle(
-                      color: AppColors.textMuted,
+                    style: TextStyle(
+                      color: brand.textMuted,
                       fontWeight: FontWeight.w700,
                       fontSize: 14,
                     ),
@@ -980,11 +981,12 @@ class _CategoryBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final (label, bg, fg, icon) = switch (category) {
       JobCategory.ready => (
           'Ready to Send',
-          AppColors.accent,
-          AppColors.ink,
+          brand.accent,
+          brand.onAccent,
           Icons.check_circle_outline_rounded,
         ),
       JobCategory.inputNeeded => (
@@ -1065,6 +1067,7 @@ class _HistoryItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final active = data['active'] as bool;
     final undoable = data['undoable'] as bool;
     final sub = data['sub'] as String;
@@ -1073,7 +1076,6 @@ class _HistoryItem extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Timeline rail
           SizedBox(
             width: 16,
             child: Column(
@@ -1084,15 +1086,15 @@ class _HistoryItem extends StatelessWidget {
                   height: 10,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: active ? AppColors.accent : AppColors.surface,
+                    color: active ? brand.accent : brand.surface,
                     border: Border.all(
-                      color: active ? AppColors.accent : AppColors.border,
+                      color: active ? brand.accent : brand.border,
                       width: 2,
                     ),
                     boxShadow: active
                         ? [
                             BoxShadow(
-                              color: AppColors.accent.withValues(alpha: 0.30),
+                              color: brand.accent.withValues(alpha: 0.30),
                               blurRadius: 6,
                               spreadRadius: 1,
                             ),
@@ -1105,14 +1107,13 @@ class _HistoryItem extends StatelessWidget {
                     child: Container(
                       width: 2,
                       margin: const EdgeInsets.symmetric(vertical: 4),
-                      color: AppColors.border.withValues(alpha: 0.6),
+                      color: brand.border.withValues(alpha: 0.6),
                     ),
                   ),
               ],
             ),
           ),
           const SizedBox(width: 14),
-          // Content
           Expanded(
             child: Padding(
               padding: EdgeInsets.only(bottom: isLast ? 0 : 22),
@@ -1126,10 +1127,10 @@ class _HistoryItem extends StatelessWidget {
                           data['title'] as String,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.w800,
                             fontSize: 15,
-                            color: AppColors.ink,
+                            color: brand.ink,
                             letterSpacing: -0.1,
                             height: 1.2,
                           ),
@@ -1138,10 +1139,10 @@ class _HistoryItem extends StatelessWidget {
                       const SizedBox(width: 12),
                       Text(
                         data['time'] as String,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.textMuted,
+                          color: brand.textMuted,
                         ),
                       ),
                     ],
@@ -1150,10 +1151,10 @@ class _HistoryItem extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       sub,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textSoft,
+                        color: brand.textSoft,
                         letterSpacing: 0.3,
                       ),
                     ),
@@ -1161,9 +1162,9 @@ class _HistoryItem extends StatelessWidget {
                   const SizedBox(height: 6),
                   Text(
                     data['desc'] as String,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
-                      color: AppColors.textMuted,
+                      color: brand.textMuted,
                       height: 1.5,
                       fontWeight: FontWeight.w500,
                     ),
@@ -1171,7 +1172,7 @@ class _HistoryItem extends StatelessWidget {
                   if (undoable) ...[
                     const SizedBox(height: 10),
                     Material(
-                      color: AppColors.surface,
+                      color: brand.surface,
                       borderRadius: BorderRadius.circular(10),
                       child: InkWell(
                         onTap: () {
@@ -1179,7 +1180,6 @@ class _HistoryItem extends StatelessWidget {
                             ..clearSnackBars()
                             ..showSnackBar(
                               const SnackBar(
-                                behavior: SnackBarBehavior.floating,
                                 content: Text('Action undone'),
                                 duration: Duration(seconds: 2),
                               ),
@@ -1193,20 +1193,20 @@ class _HistoryItem extends StatelessWidget {
                           ),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: AppColors.border),
+                            border: Border.all(color: brand.border),
                           ),
-                          child: const Row(
+                          child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(Icons.undo_rounded,
-                                  size: 13, color: AppColors.ink),
-                              SizedBox(width: 6),
+                                  size: 13, color: brand.ink),
+                              const SizedBox(width: 6),
                               Text(
                                 'Undo',
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w800,
-                                  color: AppColors.ink,
+                                  color: brand.ink,
                                 ),
                               ),
                             ],

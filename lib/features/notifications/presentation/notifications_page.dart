@@ -76,7 +76,7 @@ class NotificationsPage extends ConsumerWidget {
             ),
             Expanded(
               child: items.isEmpty
-                  ? const _EmptyState()
+                  ? _EmptyState(hasAnyEver: state.items.isNotEmpty)
                   : ListView.separated(
                       padding: const EdgeInsets.fromLTRB(
                         AppConstants.screenHorizontalPadding,
@@ -180,10 +180,19 @@ class _TabChip extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState();
+  const _EmptyState({required this.hasAnyEver});
+
+  /// When false: brand-new user, agent hasn't run anything yet.
+  /// When true: the Unread filter is active but everything's been read.
+  final bool hasAnyEver;
 
   @override
   Widget build(BuildContext context) {
+    final title = hasAnyEver ? "You're all caught up" : 'Nothing here yet';
+    final body = hasAnyEver
+        ? 'Switch to "All" to see your history.'
+        : 'Once the agent starts working, you\'ll see its asks and '
+            'completed actions here.';
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -194,25 +203,25 @@ class _EmptyState extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: AppColors.border),
           ),
-          child: const Column(
+          child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.notifications_none_rounded,
+              const Icon(Icons.notifications_none_rounded,
                   size: 28, color: AppColors.textMuted),
-              SizedBox(height: 10),
+              const SizedBox(height: 10),
               Text(
-                'You\'re all caught up',
-                style: TextStyle(
+                title,
+                style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w900,
                   color: AppColors.ink,
                 ),
               ),
-              SizedBox(height: 4),
+              const SizedBox(height: 4),
               Text(
-                'New agent actions and replies will appear here.',
+                body,
                 textAlign: TextAlign.center,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 12,
                   color: AppColors.textMuted,
                   fontWeight: FontWeight.w500,

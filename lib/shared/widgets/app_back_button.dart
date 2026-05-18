@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../../core/constants/app_colors.dart';
+import '../../core/theme/brand_theme.dart';
 
 class AppBackButton extends StatelessWidget {
-  const AppBackButton({super.key, this.onPressed, this.color = AppColors.ink});
+  const AppBackButton({super.key, this.onPressed, this.color});
 
   final VoidCallback? onPressed;
-  final Color color;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
@@ -20,7 +20,7 @@ class AppBackButton extends StatelessWidget {
           padding: const EdgeInsets.all(2),
           child: Icon(
             Icons.chevron_left_rounded,
-            color: color,
+            color: color ?? context.brand.ink,
             size: 30,
           ),
         ),

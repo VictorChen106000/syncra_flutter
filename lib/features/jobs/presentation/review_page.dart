@@ -3,10 +3,10 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../fixtures/mock_jobs.dart';
 import '../../../data/models/job.dart';
 import '../../../shared/widgets/app_buttons.dart';
@@ -28,11 +28,12 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
 
   Future<void> _onApprove() async {
     final job = _job;
+    final brand = context.brand;
     final action = await showModalBottomSheet<_InterceptAction>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      barrierColor: AppColors.ink.withValues(alpha: 0.50),
+      barrierColor: brand.ink.withValues(alpha: 0.50),
       builder: (_) => const _InterceptModal(),
     );
 
@@ -59,10 +60,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final j = _job;
 
     return Scaffold(
-      backgroundColor: AppColors.scaffold,
+      backgroundColor: brand.bg,
       body: SafeArea(
         child: Column(
           children: [
@@ -90,14 +92,14 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
                               width: 44,
                               height: 44,
                               decoration: BoxDecoration(
-                                color: AppColors.ink,
+                                color: brand.ink,
                                 borderRadius: BorderRadius.circular(14),
                               ),
                               alignment: Alignment.center,
                               child: Text(
                                 j.company[0],
-                                style: const TextStyle(
-                                  color: AppColors.accent,
+                                style: TextStyle(
+                                  color: brand.accent,
                                   fontWeight: FontWeight.w900,
                                   fontSize: 18,
                                 ),
@@ -110,17 +112,17 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
                                 children: [
                                   Text(
                                     j.company,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 15,
                                       fontWeight: FontWeight.w900,
-                                      color: AppColors.ink,
+                                      color: brand.ink,
                                     ),
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
                                     '${j.title} · ${j.location}',
-                                    style: const TextStyle(
-                                      color: AppColors.textMuted,
+                                    style: TextStyle(
+                                      color: brand.textMuted,
                                       fontSize: 12.5,
                                       fontWeight: FontWeight.w500,
                                     ),
@@ -134,22 +136,22 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
                         Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: AppColors.softSurface,
+                            color: brand.surfaceMuted,
                             borderRadius: BorderRadius.circular(16),
                           ),
-                          child: const Row(
+                          child: Row(
                             children: [
                               Icon(
                                 Icons.shield_outlined,
                                 size: 16,
-                                color: AppColors.ink,
+                                color: brand.ink,
                               ),
-                              SizedBox(width: 8),
+                              const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   'Review carefully before submitting. You are always in control.',
                                   style: TextStyle(
-                                    color: AppColors.ink,
+                                    color: brand.ink,
                                     fontSize: 12.5,
                                     height: 1.5,
                                     fontWeight: FontWeight.w600,
@@ -210,6 +212,7 @@ class _DetailCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -220,19 +223,19 @@ class _DetailCard extends StatelessWidget {
                 width: 30,
                 height: 30,
                 decoration: BoxDecoration(
-                  color: AppColors.softSurface,
+                  color: brand.surfaceMuted,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 alignment: Alignment.center,
-                child: Icon(icon, size: 16, color: AppColors.ink),
+                child: Icon(icon, size: 16, color: brand.ink),
               ),
               const SizedBox(width: 10),
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w900,
-                  color: AppColors.ink,
+                  color: brand.ink,
                 ),
               ),
             ],
@@ -240,8 +243,8 @@ class _DetailCard extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             body,
-            style: const TextStyle(
-              color: AppColors.textMuted,
+            style: TextStyle(
+              color: brand.textMuted,
               fontSize: 13.5,
               height: 1.55,
               fontWeight: FontWeight.w500,
@@ -260,10 +263,11 @@ class _InterceptModal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.scaffold,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+      decoration: BoxDecoration(
+        color: brand.bg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
       ),
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 36),
       child: Column(
@@ -276,17 +280,17 @@ class _InterceptModal extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: AppColors.warning.withValues(alpha: 0.20),
+                  color: brand.warning.withValues(alpha: 0.20),
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
-                child: const Icon(
+                child: Icon(
                   Icons.error_outline_rounded,
-                  color: AppColors.warning,
+                  color: brand.warning,
                 ),
               ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -295,17 +299,17 @@ class _InterceptModal extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w900,
-                        color: AppColors.textMuted,
+                        color: brand.textMuted,
                         letterSpacing: 1.2,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
                       'Hold on — requirements just changed.',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
-                        color: AppColors.ink,
+                        color: brand.ink,
                         letterSpacing: -0.4,
                       ),
                     ),
@@ -318,9 +322,9 @@ class _InterceptModal extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: brand.surface,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: AppColors.border),
+              border: Border.all(color: brand.border),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -331,44 +335,44 @@ class _InterceptModal extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: AppColors.warning.withValues(alpha: 0.20),
+                        color: brand.warning.withValues(alpha: 0.20),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: const Text(
+                      child: Text(
                         'NEW REQUIREMENT',
                         style: TextStyle(
                           fontSize: 9,
                           fontWeight: FontWeight.w900,
-                          color: AppColors.categoryInputDeep,
+                          color: brand.warning,
                           letterSpacing: 1.2,
                         ),
                       ),
                     ),
                     const SizedBox(width: 8),
-                    const Text(
+                    Text(
                       '10m ago',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textSoft,
+                        color: brand.textSoft,
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
-                const Text(
+                Text(
                   'Figma Prototyping',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w900,
-                    color: AppColors.ink,
+                    color: brand.ink,
                   ),
                 ),
                 const SizedBox(height: 6),
-                const Text(
+                Text(
                   'Do you want me to rewrite your resume draft to emphasize your Figma skills before we submit?',
                   style: TextStyle(
-                    color: AppColors.textMuted,
+                    color: brand.textMuted,
                     fontSize: 13,
                     height: 1.5,
                     fontWeight: FontWeight.w500,
@@ -403,32 +407,33 @@ class _ResolvingDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Dialog(
       backgroundColor: Colors.transparent,
       elevation: 0,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         decoration: BoxDecoration(
-          color: AppColors.accent,
+          color: brand.accent,
           borderRadius: BorderRadius.circular(16),
         ),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
               width: 18,
               height: 18,
               child: CircularProgressIndicator(
-                color: AppColors.ink,
+                color: brand.onAccent,
                 strokeWidth: 2.4,
               ),
             ),
-            SizedBox(width: 12),
+            const SizedBox(width: 12),
             Text(
               'Auto-fixing & Submitting...',
               style: TextStyle(
                 fontWeight: FontWeight.w900,
-                color: AppColors.ink,
+                color: brand.onAccent,
                 fontSize: 14,
               ),
             ),
