@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
@@ -10,112 +10,99 @@ import '../../../core/router/route_names.dart';
 import '../../../data/models/tracked_application.dart';
 import '../../../data/models/job.dart';
 import '../../../shared/widgets/app_header.dart';
-import '../state/applications_controller.dart';
+import '../../../shared/widgets/empty_state_card.dart';
+import '../state/applications_notifier.dart';
 import 'widgets/application_detail_sheet.dart';
 
-class ApplicationsPage extends StatefulWidget {
+class ApplicationsPage extends ConsumerWidget {
   const ApplicationsPage({super.key});
 
   @override
-  State<ApplicationsPage> createState() => _ApplicationsPageState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen<ApplicationsState>(applicationsProvider, (prev, next) {
+      if (next.lastMessage == null || next.lastMessage == prev?.lastMessage) {
+        return;
+      }
+      ref.read(applicationsProvider.notifier).consumeMessage();
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text(next.lastMessage!),
+          ),
+        );
+    });
 
-class _ApplicationsPageState extends State<ApplicationsPage> {
-  ApplicationsController? _bound;
+    final state = ref.watch(applicationsProvider);
+    final notifier = ref.read(applicationsProvider.notifier);
+    final apps = state.filtered;
+    final all = state.items;
 
-  void _onMessage() {
-    final msg = _bound?.consumeMessage();
-    if (msg == null || !mounted) return;
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          content: Text(msg),
-        ),
-      );
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final c = context.read<ApplicationsController>();
-    if (!identical(c, _bound)) {
-      _bound?.removeListener(_onMessage);
-      _bound = c;
-      c.addListener(_onMessage);
-    }
-  }
-
-  @override
-  void dispose() {
-    _bound?.removeListener(_onMessage);
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.scaffold,
       body: SafeArea(
         bottom: false,
-        child: Consumer<ApplicationsController>(
-          builder: (context, controller, _) {
-            final apps = controller.filtered;
-            final all = controller.items;
-            return Column(
-              children: [
-                AppHeader.page(
-                  title: AppStrings.applicationsTitle,
-                  onBack: () => context.go(RouteNames.dashboard),
+        child: Column(
+          children: [
+            AppHeader.page(
+              title: AppStrings.applicationsTitle,
+              onBack: () => context.go(RouteNames.dashboard),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(
+                  AppConstants.screenHorizontalPadding,
+                  16,
+                  AppConstants.screenHorizontalPadding,
+                  40,
                 ),
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppConstants.screenHorizontalPadding,
-                      16,
-                      AppConstants.screenHorizontalPadding,
-                      40,
+                children: [
+                  _SummaryStrip(apps: all),
+                  const SizedBox(height: 20),
+                  Text(
+                    AppStrings.applicationsSubtitle,
+                    style: const TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      height: 1.45,
                     ),
-                    children: [
-                      _SummaryStrip(apps: all),
-                      const SizedBox(height: 20),
-                      Text(
-                        AppStrings.applicationsSubtitle,
-                        style: const TextStyle(
-                          color: AppColors.textMuted,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          height: 1.45,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _FilterChipsRow(
-                        active: controller.filter,
-                        onChanged: controller.setFilter,
-                      ),
-                      const SizedBox(height: 16),
-                      if (apps.isEmpty)
-                        const _EmptyFiltered()
-                      else
-                        ...apps.asMap().entries.map(
-                              (entry) => _TrackerCard(
-                                app: entry.value,
-                                onTap: () => ApplicationDetailSheet.show(
-                                  context,
-                                  entry.value,
-                                ),
-                              )
-                                  .animate(delay: (entry.key * 60).ms)
-                                  .fadeIn()
-                                  .moveY(begin: 14, end: 0),
-                            ),
-                    ],
                   ),
-                ),
-              ],
-            );
-          },
+                  const SizedBox(height: 12),
+                  _FilterChipsRow(
+                    active: state.filter,
+                    onChanged: notifier.setFilter,
+                  ),
+                  const SizedBox(height: 16),
+                  if (apps.isEmpty)
+                    all.isEmpty
+                        ? EmptyStateCard(
+                            icon: Icons.send_rounded,
+                            title: 'No applications yet',
+                            body: 'Open the chat to ask the agent to apply to a role, '
+                                'or browse roles in your pipeline.',
+                            actionLabel: 'Open chat',
+                            onAction: () => context.go(RouteNames.agentChat),
+                          )
+                        : const _EmptyFiltered()
+                  else
+                    ...apps.asMap().entries.map(
+                          (entry) => _TrackerCard(
+                            app: entry.value,
+                            onTap: () => ApplicationDetailSheet.show(
+                              context,
+                              entry.value,
+                            ),
+                          )
+                              .animate(delay: (entry.key * 60).ms)
+                              .fadeIn()
+                              .moveY(begin: 14, end: 0),
+                        ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

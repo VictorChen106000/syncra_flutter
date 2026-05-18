@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
@@ -12,18 +12,18 @@ import '../../../data/models/job.dart';
 import '../../../shared/widgets/app_buttons.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_header.dart';
-import '../state/jobs_controller.dart';
+import '../state/jobs_notifier.dart';
 
-class ReviewPage extends StatefulWidget {
+class ReviewPage extends ConsumerStatefulWidget {
   const ReviewPage({super.key, this.job});
 
   final Job? job;
 
   @override
-  State<ReviewPage> createState() => _ReviewPageState();
+  ConsumerState<ReviewPage> createState() => _ReviewPageState();
 }
 
-class _ReviewPageState extends State<ReviewPage> {
+class _ReviewPageState extends ConsumerState<ReviewPage> {
   Job get _job => widget.job ?? MockJobs.all.first;
 
   Future<void> _onApprove() async {
@@ -41,7 +41,7 @@ class _ReviewPageState extends State<ReviewPage> {
       await _showResolving(job);
     }
     if (!mounted) return;
-    await context.read<JobsController>().approveByJobId(job.id);
+    await ref.read(jobsProvider.notifier).approveByJobId(job.id);
     if (mounted) {
       context.go(RouteNames.submitted, extra: job);
     }

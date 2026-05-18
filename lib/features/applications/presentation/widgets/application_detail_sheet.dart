@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../data/models/job.dart';
 import '../../../../data/models/tracked_application.dart';
-import '../../state/applications_controller.dart';
+import '../../state/applications_notifier.dart';
 
-class ApplicationDetailSheet extends StatefulWidget {
+class ApplicationDetailSheet extends ConsumerStatefulWidget {
   const ApplicationDetailSheet._({required this.application});
 
   final TrackedApplication application;
@@ -22,10 +22,11 @@ class ApplicationDetailSheet extends StatefulWidget {
   }
 
   @override
-  State<ApplicationDetailSheet> createState() => _ApplicationDetailSheetState();
+  ConsumerState<ApplicationDetailSheet> createState() =>
+      _ApplicationDetailSheetState();
 }
 
-class _ApplicationDetailSheetState extends State<ApplicationDetailSheet> {
+class _ApplicationDetailSheetState extends ConsumerState<ApplicationDetailSheet> {
   final _noteCtrl = TextEditingController();
 
   @override
@@ -34,25 +35,23 @@ class _ApplicationDetailSheetState extends State<ApplicationDetailSheet> {
     super.dispose();
   }
 
-  void _submitNote(ApplicationsController controller) {
+  void _submitNote(ApplicationsNotifier notifier) {
     final text = _noteCtrl.text.trim();
     if (text.isEmpty) return;
-    controller.addNote(widget.application.id, text);
+    notifier.addNote(widget.application.id, text);
     _noteCtrl.clear();
     FocusScope.of(context).unfocus();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ApplicationsController>(
-      builder: (context, controller, _) {
-        // Use the latest snapshot from the controller so the sheet reflects
-        // status/note updates without dismissing.
-        final app = controller.items.firstWhere(
-          (a) => a.id == widget.application.id,
-          orElse: () => widget.application,
-        );
-        final viewport = MediaQuery.of(context);
+    final state = ref.watch(applicationsProvider);
+    final notifier = ref.read(applicationsProvider.notifier);
+    final app = state.items.firstWhere(
+      (a) => a.id == widget.application.id,
+      orElse: () => widget.application,
+    );
+    final viewport = MediaQuery.of(context);
         return Padding(
           padding: EdgeInsets.only(bottom: viewport.viewInsets.bottom),
           child: Container(
@@ -106,14 +105,14 @@ class _ApplicationDetailSheetState extends State<ApplicationDetailSheet> {
                   const SizedBox(height: 10),
                   _StatusPicker(
                     current: app.status,
-                    onChanged: (s) => controller.updateStatus(app.id, s),
+                    onChanged: (s) => notifier.updateStatus(app.id, s),
                   ),
                   const SizedBox(height: 20),
                   _SectionHeader(label: 'NOTES'),
                   const SizedBox(height: 10),
                   _NoteComposer(
                     controller: _noteCtrl,
-                    onSubmit: () => _submitNote(controller),
+                    onSubmit: () => _submitNote(notifier),
                   ),
                   if (app.notes.isEmpty)
                     const Padding(
@@ -137,8 +136,6 @@ class _ApplicationDetailSheetState extends State<ApplicationDetailSheet> {
             ),
           ),
         );
-      },
-    );
   }
 }
 

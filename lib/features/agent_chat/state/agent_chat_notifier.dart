@@ -1,36 +1,75 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_strings.dart';
+import '../../../fixtures/mock_agent_service.dart';
 import '../models/agent_block.dart';
 import '../models/chat_message.dart';
 import '../services/agent_service.dart';
+import '../services/anthropic_chat_service.dart';
+import '../tools/builtin_tools.dart';
+import '../tools/tool_registry.dart';
 
-class AgentChatController extends ChangeNotifier {
-  AgentChatController({required AgentService service})
-      : _service = service,
-        _items = [
-          AgentTurn(
-            id: 'turn-initial',
-            blocks: [
-              TextBlock(
-                id: 'initial-text',
-                text: AppStrings.chatInitialMessage,
-              ),
-            ],
-            isStreaming: false,
-          ),
-        ];
+/// The active [AgentService] for the app. Backed by Claude when an
+/// `ANTHROPIC_API_KEY` is configured, otherwise a deterministic mock.
+final agentServiceProvider = Provider<AgentService>((ref) {
+  final registry = ToolRegistry();
+  registerBuiltinTools(registry);
+  final anthropic = AnthropicChatService(registry: registry);
+  return anthropic.hasApiKey ? anthropic : MockAgentService();
+});
 
-  final AgentService _service;
-  final List<ChatItem> _items;
+@immutable
+class AgentChatState {
+  const AgentChatState({
+    required this.items,
+    this.isStreaming = false,
+  });
+
+  final List<ChatItem> items;
+  final bool isStreaming;
+
+  AgentChatState copyWith({
+    List<ChatItem>? items,
+    bool? isStreaming,
+  }) {
+    return AgentChatState(
+      items: items ?? this.items,
+      isStreaming: isStreaming ?? this.isStreaming,
+    );
+  }
+}
+
+class AgentChatNotifier extends Notifier<AgentChatState> {
+  late final AgentService _service;
   StreamSubscription<AgentEvent>? _activeSub;
   AgentTurn? _activeTurn;
   int _seq = 0;
 
-  List<ChatItem> get items => List.unmodifiable(_items);
-  bool get isStreaming => _activeTurn != null;
+  @override
+  AgentChatState build() {
+    _service = ref.watch(agentServiceProvider);
+    ref.onDispose(() {
+      _activeSub?.cancel();
+    });
+
+    return AgentChatState(
+      items: [
+        AgentTurn(
+          id: 'turn-initial',
+          blocks: [
+            TextBlock(
+              id: 'initial-text',
+              text: AppStrings.chatInitialMessage,
+            ),
+          ],
+          isStreaming: false,
+        ),
+      ],
+    );
+  }
 
   String _nextId(String prefix) {
     _seq += 1;
@@ -42,19 +81,22 @@ class AgentChatController extends ChangeNotifier {
     List<ChatAttachment> attachments = const [],
   }) {
     final clean = prompt.trim();
-    if (clean.isEmpty || isStreaming) return;
+    if (clean.isEmpty || state.isStreaming) return;
 
-    _items.add(
+    final next = [
+      ...state.items,
       UserMessage(
         id: _nextId('user'),
         text: clean,
         attachments: attachments,
       ),
-    );
+    ];
     final turn = AgentTurn(id: _nextId('turn'));
     _activeTurn = turn;
-    _items.add(turn);
-    notifyListeners();
+    state = state.copyWith(
+      items: [...next, turn],
+      isStreaming: true,
+    );
 
     _activeSub = _service
         .runPrompt(prompt: clean, attachments: attachments)
@@ -79,7 +121,8 @@ class AgentChatController extends ChangeNotifier {
         _finishTurn();
         return;
     }
-    notifyListeners();
+    // Rebuild the outer items list so Riverpod sees a new reference.
+    state = state.copyWith(items: [...state.items]);
   }
 
   void _finishTurn() {
@@ -87,25 +130,25 @@ class AgentChatController extends ChangeNotifier {
     _activeTurn = null;
     _activeSub?.cancel();
     _activeSub = null;
-    notifyListeners();
+    state = state.copyWith(items: [...state.items], isStreaming: false);
   }
 
   void acceptProposal(String blockId) {
     final block = _findProposal(blockId);
     if (block == null) return;
     block.state = ActionState.accepted;
-    notifyListeners();
+    state = state.copyWith(items: [...state.items]);
   }
 
   void dismissProposal(String blockId) {
     final block = _findProposal(blockId);
     if (block == null) return;
     block.state = ActionState.dismissed;
-    notifyListeners();
+    state = state.copyWith(items: [...state.items]);
   }
 
   ActionProposalBlock? _findProposal(String blockId) {
-    for (final item in _items) {
+    for (final item in state.items) {
       if (item is! AgentTurn) continue;
       for (final block in item.blocks) {
         if (block is ActionProposalBlock && block.id == blockId) return block;
@@ -115,7 +158,7 @@ class AgentChatController extends ChangeNotifier {
   }
 
   InputRequestBlock? _findInputRequest(String blockId) {
-    for (final item in _items) {
+    for (final item in state.items) {
       if (item is! AgentTurn) continue;
       for (final block in item.blocks) {
         if (block is InputRequestBlock && block.id == blockId) return block;
@@ -125,7 +168,6 @@ class AgentChatController extends ChangeNotifier {
   }
 
   /// Called when the user submits an answer to an inline `ask_user` prompt.
-  /// Resolves the paused agent loop with the typed answer.
   void submitInputAnswer(String blockId, String answer) {
     final block = _findInputRequest(blockId);
     if (block == null) return;
@@ -134,13 +176,10 @@ class AgentChatController extends ChangeNotifier {
     if (trimmed.isEmpty) return;
     block.state = InputRequestState.answered;
     block.answer = trimmed;
-    notifyListeners();
+    state = state.copyWith(items: [...state.items]);
     _service.provideUserAnswer(blockId, trimmed);
   }
-
-  @override
-  void dispose() {
-    _activeSub?.cancel();
-    super.dispose();
-  }
 }
+
+final agentChatProvider =
+    NotifierProvider<AgentChatNotifier, AgentChatState>(AgentChatNotifier.new);

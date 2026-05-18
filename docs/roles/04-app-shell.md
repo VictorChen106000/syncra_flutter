@@ -100,7 +100,7 @@ that. New schema:
 
 Rebuild as a date-sorted activity log with a "Got a reply" switch per entry.
 Filter chips become `All / Drafts / Sent / Replied`. Coordinate with
-[ApplicationsController](../../lib/features/applications/state/applications_controller.dart)
+[ApplicationsController](../../lib/features/applications/state/applications_notifier.dart)
 and [ApplicationsRepository](../../lib/data/firestore/applications_repository.dart).
 
 ### 7. Notifications inbox upgrade (~3–4h)

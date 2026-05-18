@@ -1,25 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../resumes/presentation/widgets/resume_attachment_chips.dart';
 import '../../../resumes/presentation/widgets/select_resumes_bottom_sheet.dart';
-import '../../../resumes/state/resume_controller.dart';
+import '../../../resumes/state/resume_notifier.dart';
 import '../../models/chat_message.dart';
-import '../../state/agent_chat_controller.dart';
+import '../../state/agent_chat_notifier.dart';
 
 /// Claude-style composer. Large rounded surface with the text field on top
 /// and a clean action row beneath (attach · model pill · send). Subtle
 /// focus halo and crisp send affordance.
-class ChatInputBar extends StatefulWidget {
+class ChatInputBar extends ConsumerStatefulWidget {
   const ChatInputBar({super.key});
 
   @override
-  State<ChatInputBar> createState() => _ChatInputBarState();
+  ConsumerState<ChatInputBar> createState() => _ChatInputBarState();
 }
 
-class _ChatInputBarState extends State<ChatInputBar>
+class _ChatInputBarState extends ConsumerState<ChatInputBar>
     with SingleTickerProviderStateMixin {
   final TextEditingController _textController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
@@ -63,13 +63,13 @@ class _ChatInputBarState extends State<ChatInputBar>
     );
   }
 
-  void _send(BuildContext context) {
-    final resumeController = context.read<ResumeController>();
-    final attachments = resumeController.selectedResumes
+  void _send() {
+    final resumeState = ref.read(resumeProvider);
+    final attachments = resumeState.selectedResumes
         .map((resume) => ChatAttachment(id: resume.id, name: resume.name))
         .toList();
 
-    context.read<AgentChatController>().sendPrompt(
+    ref.read(agentChatProvider.notifier).sendPrompt(
           prompt: _textController.text,
           attachments: attachments,
         );
@@ -80,11 +80,12 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   @override
   Widget build(BuildContext context) {
-    return Consumer2<ResumeController, AgentChatController>(
-      builder: (context, resumeController, chatController, _) {
-        final streaming = chatController.isStreaming;
-        final hasText = _textController.text.trim().isNotEmpty;
-        return Container(
+    final resumeState = ref.watch(resumeProvider);
+    final resumeNotifier = ref.read(resumeProvider.notifier);
+    final chatState = ref.watch(agentChatProvider);
+    final streaming = chatState.isStreaming;
+    final hasText = _textController.text.trim().isNotEmpty;
+    return Container(
           padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
           color: AppColors.surface,
           child: AnimatedBuilder(
@@ -120,10 +121,10 @@ class _ChatInputBarState extends State<ChatInputBar>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (resumeController.selectedResumes.isNotEmpty) ...[
+                if (resumeState.selectedResumes.isNotEmpty) ...[
                   ResumeAttachmentChips(
-                    resumes: resumeController.selectedResumes,
-                    onRemove: resumeController.removeSelectedResume,
+                    resumes: resumeState.selectedResumes,
+                    onRemove: resumeNotifier.removeSelectedResume,
                   ),
                   const SizedBox(height: 8),
                 ],
@@ -183,7 +184,7 @@ class _ChatInputBarState extends State<ChatInputBar>
                     const Spacer(),
                     _SendButton(
                       enabled: !streaming && hasText,
-                      onTap: () => _send(context),
+                      onTap: _send,
                     ),
                   ],
                 ),
@@ -192,8 +193,6 @@ class _ChatInputBarState extends State<ChatInputBar>
           ),
           ),
         );
-      },
-    );
   }
 }
 

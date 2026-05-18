@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../models/agent_block.dart';
-import '../../state/agent_chat_controller.dart';
+import '../../state/agent_chat_notifier.dart';
 
 /// Routes an [AgentBlock] to its renderer. Add a new branch here when a new
 /// block type lands.
@@ -32,16 +32,16 @@ class AgentBlockView extends StatelessWidget {
 // agent calls `ask_user` mid-loop and is paused waiting for the answer.
 // ---------------------------------------------------------------------------
 
-class InputRequestView extends StatefulWidget {
+class InputRequestView extends ConsumerStatefulWidget {
   const InputRequestView({super.key, required this.block});
 
   final InputRequestBlock block;
 
   @override
-  State<InputRequestView> createState() => _InputRequestViewState();
+  ConsumerState<InputRequestView> createState() => _InputRequestViewState();
 }
 
-class _InputRequestViewState extends State<InputRequestView> {
+class _InputRequestViewState extends ConsumerState<InputRequestView> {
   late final TextEditingController _controller =
       TextEditingController(text: widget.block.answer ?? '');
   final FocusNode _focusNode = FocusNode();
@@ -56,8 +56,8 @@ class _InputRequestViewState extends State<InputRequestView> {
   void _submit(String value) {
     final trimmed = value.trim();
     if (trimmed.isEmpty) return;
-    context
-        .read<AgentChatController>()
+    ref
+        .read(agentChatProvider.notifier)
         .submitInputAnswer(widget.block.id, trimmed);
     _focusNode.unfocus();
   }
@@ -550,13 +550,13 @@ class ActionProposalView extends StatelessWidget {
   }
 }
 
-class _ActionRow extends StatelessWidget {
+class _ActionRow extends ConsumerWidget {
   const _ActionRow({required this.block});
 
   final ActionProposalBlock block;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Row(
       children: [
         Expanded(
@@ -565,7 +565,7 @@ class _ActionRow extends StatelessWidget {
             icon: Icons.tune_rounded,
             filled: false,
             onTap: () =>
-                context.read<AgentChatController>().dismissProposal(block.id),
+                ref.read(agentChatProvider.notifier).dismissProposal(block.id),
           ),
         ),
         const SizedBox(width: 8),
@@ -575,7 +575,7 @@ class _ActionRow extends StatelessWidget {
             icon: Icons.check_rounded,
             filled: true,
             onTap: () =>
-                context.read<AgentChatController>().acceptProposal(block.id),
+                ref.read(agentChatProvider.notifier).acceptProposal(block.id),
           ),
         ),
       ],

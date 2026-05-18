@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_colors.dart';
@@ -12,8 +12,10 @@ import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/section_title.dart';
-import '../../auth/state/auth_controller.dart';
-import '../../resumes/state/resume_controller.dart';
+import '../../auth/models/user_profile.dart';
+import '../../auth/state/auth_notifier.dart';
+import '../../auth/state/user_profile_notifier.dart';
+import '../../resumes/state/resume_notifier.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -41,16 +43,18 @@ class ProfilePage extends StatelessWidget {
                 SectionTitle(title: AppStrings.agentAutonomy),
                 _AutonomySection(),
                 SizedBox(height: 24),
+                SectionTitle(title: "Today's brief"),
+                _MorningBriefSection(),
+                SizedBox(height: 24),
                 SectionTitle(title: AppStrings.careerPipeline),
                 _CareerPipelineSection(),
                 SizedBox(height: 24),
                 SectionTitle(title: AppStrings.agentPermissions),
                 _IntegrationSection(),
                 SizedBox(height: 24),
-                SectionTitle(title: AppStrings.preferences),
-                _PreferenceSection(),
-                SizedBox(height: 24),
                 _SignOutButton(),
+                SizedBox(height: 12),
+                _DeleteAccountButton(),
               ],
             ),
           ),
@@ -64,20 +68,18 @@ class ProfilePage extends StatelessWidget {
 // Header card
 // ---------------------------------------------------------------------------
 
-class _ProfileHeaderCard extends StatelessWidget {
+class _ProfileHeaderCard extends ConsumerWidget {
   const _ProfileHeaderCard();
 
   @override
-  Widget build(BuildContext context) {
-    return Consumer<AuthController>(
-      builder: (context, auth, _) {
-        final user = auth.appUser;
-        final displayName = user?.displayName ?? 'Daryn';
-        final initial = user?.initial ?? 'D';
-        final email = user?.email ?? '';
-        final photoUrl = user?.photoUrl;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authProvider).appUser;
+    final displayName = user?.displayName ?? 'Daryn';
+    final initial = user?.initial ?? 'D';
+    final email = user?.email ?? '';
+    final photoUrl = user?.photoUrl;
 
-        return Container(
+    return Container(
           padding: const EdgeInsets.all(AppConstants.cardPadding),
           decoration: BoxDecoration(
             color: AppColors.surface,
@@ -149,8 +151,6 @@ class _ProfileHeaderCard extends StatelessWidget {
             ],
           ),
         );
-      },
-    );
   }
 }
 
@@ -244,25 +244,39 @@ class _PulsingActiveDot extends StatelessWidget {
 // Agent autonomy — three-position selector
 // ---------------------------------------------------------------------------
 
-class _AutonomySection extends StatefulWidget {
+class _AutonomySection extends ConsumerWidget {
   const _AutonomySection();
 
-  @override
-  State<_AutonomySection> createState() => _AutonomySectionState();
-}
-
-class _AutonomySectionState extends State<_AutonomySection> {
-  int _level = 1; // default to Ask First
-
-  static const _options = [
-    (AppStrings.autonomySuggest, AppStrings.autonomySuggestBody, Icons.lightbulb_outline_rounded),
-    (AppStrings.autonomyAskFirst, AppStrings.autonomyAskFirstBody, Icons.front_hand_outlined),
-    (AppStrings.autonomyAutoApply, AppStrings.autonomyAutoApplyBody, Icons.bolt_rounded),
+  static const _options = <(AutonomyLevel, String, String, IconData)>[
+    (
+      AutonomyLevel.suggest,
+      AppStrings.autonomySuggest,
+      AppStrings.autonomySuggestBody,
+      Icons.lightbulb_outline_rounded,
+    ),
+    (
+      AutonomyLevel.askFirst,
+      AppStrings.autonomyAskFirst,
+      AppStrings.autonomyAskFirstBody,
+      Icons.front_hand_outlined,
+    ),
+    (
+      AutonomyLevel.autoApply,
+      AppStrings.autonomyAutoApply,
+      AppStrings.autonomyAutoApplyBody,
+      Icons.bolt_rounded,
+    ),
   ];
 
   @override
-  Widget build(BuildContext context) {
-    final body = _options[_level].$2;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(userProfileProvider);
+    // Default to ask_first when profile hasn't loaded yet (guest, or stream
+    // hasn't fired). Selecting an option before profile loads is a no-op
+    // upstream — see UserProfileNotifier.setAutonomyLevel.
+    final selected = profile?.autonomyLevel ?? AutonomyLevel.askFirst;
+    final activeIndex = _options.indexWhere((o) => o.$1 == selected);
+    final body = _options[activeIndex.clamp(0, _options.length - 1)].$3;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -288,10 +302,13 @@ class _AutonomySectionState extends State<_AutonomySection> {
             ),
             child: Row(
               children: List.generate(_options.length, (i) {
-                final active = i == _level;
+                final (level, label, _, icon) = _options[i];
+                final active = level == selected;
                 return Expanded(
                   child: GestureDetector(
-                    onTap: () => setState(() => _level = i),
+                    onTap: () => ref
+                        .read(userProfileProvider.notifier)
+                        .setAutonomyLevel(level),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 220),
                       curve: Curves.easeOutCubic,
@@ -304,13 +321,13 @@ class _AutonomySectionState extends State<_AutonomySection> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                            _options[i].$3,
+                            icon,
                             size: 14,
                             color: active ? AppColors.accent : AppColors.textMuted,
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            _options[i].$1,
+                            label,
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w800,
@@ -330,7 +347,7 @@ class _AutonomySectionState extends State<_AutonomySection> {
             duration: const Duration(milliseconds: 180),
             child: Text(
               body,
-              key: ValueKey(_level),
+              key: ValueKey(selected),
               style: const TextStyle(
                 color: AppColors.textMuted,
                 fontSize: 13,
@@ -346,44 +363,126 @@ class _AutonomySectionState extends State<_AutonomySection> {
 }
 
 // ---------------------------------------------------------------------------
+// Today's brief — opt-in toggle. Default off. Gates the dashboard CTA.
+// Per api-contract §3 / product-brief: the agent never auto-fires; this
+// switch only controls whether the "Run today's brief" CTA appears.
+// ---------------------------------------------------------------------------
+
+class _MorningBriefSection extends ConsumerWidget {
+  const _MorningBriefSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(userProfileProvider);
+    final enabled = profile?.morningBriefEnabled ?? false;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: enabled ? AppColors.ink : AppColors.scaffold,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              Icons.wb_sunny_outlined,
+              color: enabled ? AppColors.accent : AppColors.ink,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Show daily brief CTA',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.ink,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Adds a "Run today\'s brief" button on the dashboard. '
+                  'The agent still only runs when you tap it.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.4,
+                    color: AppColors.textMuted,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch.adaptive(
+            value: enabled,
+            activeThumbColor: AppColors.ink,
+            onChanged: profile == null
+                ? null
+                : (v) => ref
+                    .read(userProfileProvider.notifier)
+                    .setMorningBriefEnabled(v),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Career pipeline section
 // ---------------------------------------------------------------------------
 
-class _CareerPipelineSection extends StatelessWidget {
+class _CareerPipelineSection extends ConsumerWidget {
   const _CareerPipelineSection();
 
   @override
-  Widget build(BuildContext context) {
-    return Consumer<ResumeController>(
-      builder: (context, controller, _) {
-        return _GroupedCard(
-          children: [
-            _SettingsTile(
-              icon: Icons.description_rounded,
-              iconActive: true,
-              title: 'Resumes',
-              count: controller.resumes.length + controller.tailoredResumes.length,
-              onTap: () => context.go(RouteNames.resumes),
-            ),
-            const _GroupedDivider(),
-            _SettingsTile(
-              icon: Icons.timeline_rounded,
-              iconActive: true,
-              title: 'Application Tracker',
-              count: 5,
-              onTap: () => context.go(RouteNames.applications),
-            ),
-            const _GroupedDivider(),
-            _SettingsTile(
-              icon: Icons.search_rounded,
-              iconActive: true,
-              title: 'Discovered Roles',
-              count: 4,
-              onTap: () => context.go(RouteNames.jobs),
-            ),
-          ],
-        );
-      },
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(resumeProvider);
+    return _GroupedCard(
+      children: [
+        _SettingsTile(
+          icon: Icons.description_rounded,
+          iconActive: true,
+          title: 'Resumes',
+          count: state.resumes.length + state.tailoredResumes.length,
+          onTap: () => context.go(RouteNames.resumes),
+        ),
+        const _GroupedDivider(),
+        _SettingsTile(
+          icon: Icons.timeline_rounded,
+          iconActive: true,
+          title: 'Application Tracker',
+          count: 5,
+          onTap: () => context.go(RouteNames.applications),
+        ),
+        const _GroupedDivider(),
+        _SettingsTile(
+          icon: Icons.search_rounded,
+          iconActive: true,
+          title: 'Discovered Roles',
+          count: 4,
+          onTap: () => context.go(RouteNames.jobs),
+        ),
+      ],
     );
   }
 }
@@ -552,28 +651,80 @@ class _Integration {
 // Preferences
 // ---------------------------------------------------------------------------
 
-class _PreferenceSection extends StatelessWidget {
-  const _PreferenceSection();
+// ---------------------------------------------------------------------------
+// Delete account — confirmation dialog + AuthNotifier.deleteAccount().
+// May fail with 'requires-recent-login'; AuthState surfaces a friendly
+// error message that the SnackBar renders via the listener below.
+// ---------------------------------------------------------------------------
+
+class _DeleteAccountButton extends ConsumerWidget {
+  const _DeleteAccountButton();
+
+  static const Color _danger = Color(0xFFD64545);
+
+  Future<void> _confirmAndDelete(BuildContext context, WidgetRef ref) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete account?'),
+        content: const Text(
+          'This permanently deletes your Syncra profile and signs you out. '
+          'Resumes saved on this device will remain until you uninstall the app.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: _danger),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await ref.read(authProvider.notifier).deleteAccount();
+  }
 
   @override
-  Widget build(BuildContext context) {
-    return const _GroupedCard(
-      children: [
-        _SettingsTile(
-          icon: Icons.notifications_none_rounded,
-          title: 'Agent Notifications',
+  Widget build(BuildContext context, WidgetRef ref) {
+    final loading = ref.watch(authProvider).isLoading;
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
+      child: InkWell(
+        onTap: loading ? null : () => _confirmAndDelete(context, ref),
+        borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
+            border: Border.all(
+              color: _danger.withValues(alpha: 0.30),
+            ),
+          ),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.delete_outline_rounded, size: 14, color: _danger),
+              SizedBox(width: 8),
+              Text(
+                'Delete account',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: _danger,
+                  letterSpacing: 0.1,
+                ),
+              ),
+            ],
+          ),
         ),
-        _GroupedDivider(),
-        _SettingsTile(
-          icon: Icons.shield_outlined,
-          title: 'Privacy & Data',
-        ),
-        _GroupedDivider(),
-        _SettingsTile(
-          icon: Icons.palette_outlined,
-          title: 'Appearance',
-        ),
-      ],
+      ),
     );
   }
 }
@@ -704,62 +855,60 @@ class _GroupedDivider extends StatelessWidget {
 // Sign out button
 // ---------------------------------------------------------------------------
 
-class _SignOutButton extends StatelessWidget {
+class _SignOutButton extends ConsumerWidget {
   const _SignOutButton();
 
   static const Color _danger = Color(0xFFD64545);
 
   @override
-  Widget build(BuildContext context) {
-    return Consumer<AuthController>(
-      builder: (context, auth, _) {
-        final loading = auth.isLoading;
-        return Material(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
-          child: InkWell(
-            onTap: loading ? null : () => auth.signOut(),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final loading = ref.watch(authProvider).isLoading;
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
+      child: InkWell(
+        onTap: loading
+            ? null
+            : () => ref.read(authProvider.notifier).signOut(),
+        borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            color: _danger.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              decoration: BoxDecoration(
-                color: _danger.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
-                border: Border.all(
-                  color: _danger.withValues(alpha: 0.22),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (loading)
-                    const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation(_danger),
-                      ),
-                    )
-                  else
-                    const Icon(Icons.logout_rounded, size: 16, color: _danger),
-                  const SizedBox(width: 10),
-                  Text(
-                    loading ? 'Signing out…' : AppStrings.signOut,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
-                      color: _danger,
-                      letterSpacing: 0.1,
-                    ),
-                  ),
-                ],
-              ),
+            border: Border.all(
+              color: _danger.withValues(alpha: 0.22),
             ),
           ),
-        );
-      },
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (loading)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation(_danger),
+                  ),
+                )
+              else
+                const Icon(Icons.logout_rounded, size: 16, color: _danger),
+              const SizedBox(width: 10),
+              Text(
+                loading ? 'Signing out…' : AppStrings.signOut,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  color: _danger,
+                  letterSpacing: 0.1,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

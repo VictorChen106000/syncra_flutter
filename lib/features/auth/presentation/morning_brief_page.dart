@@ -1,55 +1,59 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
 import '../../../data/models/job.dart';
-import '../../agent/state/passive_agent_controller.dart';
-import '../state/auth_controller.dart';
+import '../../agent/state/passive_agent_notifier.dart';
+import '../models/app_user.dart';
+import '../state/auth_notifier.dart';
 
 /// The morning briefing the agent delivers right after sign-in.
 ///
 /// Auto-triggers a passive-agent brief on entry, then narrates the best
 /// match Claude found. Falls back to the seeded "Binance 94%" headline
 /// when the brief is still running or running in mock mode.
-class MorningBriefPage extends StatefulWidget {
+class MorningBriefPage extends ConsumerStatefulWidget {
   const MorningBriefPage({super.key, this.userName});
 
   final String? userName;
 
   @override
-  State<MorningBriefPage> createState() => _MorningBriefPageState();
+  ConsumerState<MorningBriefPage> createState() => _MorningBriefPageState();
 }
 
-class _MorningBriefPageState extends State<MorningBriefPage> {
+class _MorningBriefPageState extends ConsumerState<MorningBriefPage> {
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final controller = context.read<PassiveAgentController>();
-      if (!controller.hasPipeline && !controller.isRunning) {
-        controller.runBrief();
+      final state = ref.read(passiveAgentProvider);
+      if (!state.hasPipeline && !state.isRunning) {
+        ref.read(passiveAgentProvider.notifier).runBrief();
       }
     });
   }
 
   void _continue() {
-    context.read<PassiveAgentController>().markMorningBriefShown();
+    ref.read(passiveAgentProvider.notifier).markMorningBriefShown();
     context.go(RouteNames.dashboard);
   }
 
-  String _firstName(String? raw, AuthController auth) {
+  String _firstName(String? raw, AppUser? user) {
     final source = (raw?.isNotEmpty ?? false)
         ? raw!
-        : (auth.appUser?.displayName ?? 'there');
+        : (user?.displayName ?? 'there');
     return source.split(' ').first;
   }
 
   @override
   Widget build(BuildContext context) {
+    final agent = ref.watch(passiveAgentProvider);
+    final auth = ref.watch(authProvider);
+    final firstName = _firstName(widget.userName, auth.appUser);
     return Scaffold(
       backgroundColor: AppColors.ink,
       body: Stack(
@@ -78,63 +82,58 @@ class _MorningBriefPageState extends State<MorningBriefPage> {
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(28, 24, 28, 32),
-              child: Consumer2<PassiveAgentController, AuthController>(
-                builder: (context, agent, auth, _) {
-                  final firstName = _firstName(widget.userName, auth);
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      Row(
-                        children: [
-                          _LiveBadge(isLive: agent.isLiveModeEnabled),
-                          const Spacer(),
-                          TextButton(
-                            onPressed: _continue,
-                            child: Text(
-                              'Skip',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.70),
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
+                      _LiveBadge(isLive: agent.isLiveModeEnabled),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: _continue,
+                        child: Text(
+                          'Skip',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.70),
+                            fontWeight: FontWeight.w800,
                           ),
-                        ],
-                      ),
-                      const Spacer(),
-                      Text(
-                            '${AppStrings.goodMorning}\n$firstName.',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 40,
-                              fontWeight: FontWeight.w900,
-                              height: 1.1,
-                              letterSpacing: -1.4,
-                            ),
-                          )
-                          .animate()
-                          .fadeIn(duration: 600.ms)
-                          .moveY(begin: 14, end: 0),
-                      const SizedBox(height: 28),
-                      _BriefBody(agent: agent),
-                      const Spacer(),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(child: _BriefStatusLine(agent: agent)),
-                          const SizedBox(width: 12),
-                          _NextButton(onTap: _continue)
-                              .animate(delay: 700.ms)
-                              .scale(
-                                begin: const Offset(0.8, 0.8),
-                                end: const Offset(1, 1),
-                                curve: Curves.easeOutBack,
-                              )
-                              .fadeIn(),
-                        ],
+                        ),
                       ),
                     ],
-                  );
-                },
+                  ),
+                  const Spacer(),
+                  Text(
+                        '${AppStrings.goodMorning}\n$firstName.',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 40,
+                          fontWeight: FontWeight.w900,
+                          height: 1.1,
+                          letterSpacing: -1.4,
+                        ),
+                      )
+                      .animate()
+                      .fadeIn(duration: 600.ms)
+                      .moveY(begin: 14, end: 0),
+                  const SizedBox(height: 28),
+                  _BriefBody(agent: agent),
+                  const Spacer(),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(child: _BriefStatusLine(agent: agent)),
+                      const SizedBox(width: 12),
+                      _NextButton(onTap: _continue)
+                          .animate(delay: 700.ms)
+                          .scale(
+                            begin: const Offset(0.8, 0.8),
+                            end: const Offset(1, 1),
+                            curve: Curves.easeOutBack,
+                          )
+                          .fadeIn(),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),
@@ -189,7 +188,7 @@ class _LiveBadge extends StatelessWidget {
 class _BriefBody extends StatelessWidget {
   const _BriefBody({required this.agent});
 
-  final PassiveAgentController agent;
+  final PassiveAgentState agent;
 
   @override
   Widget build(BuildContext context) {
@@ -210,7 +209,7 @@ class _BriefBody extends StatelessWidget {
 class _RunningBody extends StatelessWidget {
   const _RunningBody({required this.agent});
 
-  final PassiveAgentController agent;
+  final PassiveAgentState agent;
 
   String get _line {
     switch (agent.status) {
@@ -404,7 +403,7 @@ class _ErrorBody extends StatelessWidget {
 class _BriefStatusLine extends StatelessWidget {
   const _BriefStatusLine({required this.agent});
 
-  final PassiveAgentController agent;
+  final PassiveAgentState agent;
 
   @override
   Widget build(BuildContext context) {

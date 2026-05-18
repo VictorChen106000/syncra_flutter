@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/router/route_names.dart';
-import '../../state/passive_agent_controller.dart';
+import '../../state/passive_agent_notifier.dart';
 
 /// Status card for the passive agent's brief pipeline. Shows the latest
 /// scan state, lets the user trigger a new brief, and surfaces a 3-tier
 /// breakdown of pipeline results.
-class PassiveAgentCard extends StatelessWidget {
+class PassiveAgentCard extends ConsumerWidget {
   const PassiveAgentCard({super.key});
 
   String _statusLabel(AgentBriefStatus s) {
@@ -31,12 +31,12 @@ class PassiveAgentCard extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Consumer<PassiveAgentController>(
-      builder: (context, controller, _) {
-        final running = controller.isRunning;
-        final lastBrief = controller.lastBriefAt;
-        return Container(
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(passiveAgentProvider);
+    final notifier = ref.read(passiveAgentProvider.notifier);
+    final running = state.isRunning;
+    final lastBrief = state.lastBriefAt;
+    return Container(
           padding: const EdgeInsets.all(AppConstants.cardPadding),
           decoration: BoxDecoration(
             color: AppColors.surface,
@@ -73,7 +73,7 @@ class PassiveAgentCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          _statusLabel(controller.status),
+                          _statusLabel(state.status),
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w900,
@@ -86,15 +86,15 @@ class PassiveAgentCard extends StatelessWidget {
                   ),
                   _BriefButton(
                     running: running,
-                    onPressed: controller.runBrief,
+                    onPressed: notifier.runBrief,
                   ),
                 ],
               ),
               const SizedBox(height: 14),
               _PipelineBreakdown(
-                ready: controller.readyCount,
-                inputNeeded: controller.inputNeededCount,
-                exploration: controller.explorationCount,
+                ready: state.readyCount,
+                inputNeeded: state.inputNeededCount,
+                exploration: state.explorationCount,
               ),
               const SizedBox(height: 12),
               Row(
@@ -138,8 +138,6 @@ class PassiveAgentCard extends StatelessWidget {
             ],
           ),
         );
-      },
-    );
   }
 }
 

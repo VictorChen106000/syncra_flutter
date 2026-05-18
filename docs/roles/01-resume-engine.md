@@ -138,7 +138,7 @@ Group original + tailored variants on the resume list page.
 
 **You do NOT touch:**
 - `lib/features/resumes/presentation/*` — R2 owns
-- `lib/features/resumes/state/resume_controller.dart` — R2 owns (Riverpod Notifier)
+- `lib/features/resumes/state/resume_notifier.dart` — R2 owns (Riverpod Notifier)
 - Other executors in `builtin_tools.dart` — A or I owns
 
 ---

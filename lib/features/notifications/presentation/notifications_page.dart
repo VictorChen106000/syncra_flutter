@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
@@ -9,50 +9,13 @@ import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
 import '../../../fixtures/mock_notifications.dart';
 import '../../../shared/widgets/app_header.dart';
-import '../state/notifications_controller.dart';
+import '../state/notifications_notifier.dart';
 
-class NotificationsPage extends StatefulWidget {
+class NotificationsPage extends ConsumerWidget {
   const NotificationsPage({super.key});
 
-  @override
-  State<NotificationsPage> createState() => _NotificationsPageState();
-}
-
-class _NotificationsPageState extends State<NotificationsPage> {
-  NotificationsController? _bound;
-
-  void _onMessage() {
-    final msg = _bound?.consumeMessage();
-    if (msg == null || !mounted) return;
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          content: Text(msg),
-        ),
-      );
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final c = context.read<NotificationsController>();
-    if (!identical(c, _bound)) {
-      _bound?.removeListener(_onMessage);
-      _bound = c;
-      c.addListener(_onMessage);
-    }
-  }
-
-  @override
-  void dispose() {
-    _bound?.removeListener(_onMessage);
-    super.dispose();
-  }
-
-  void _handleTap(BuildContext context, AppNotification n) {
-    context.read<NotificationsController>().markRead(n.id);
+  void _handleTap(BuildContext context, WidgetRef ref, AppNotification n) {
+    ref.read(notificationsProvider.notifier).markRead(n.id);
     final route = switch (n.kind) {
       NotificationKind.intercept => RouteNames.jobs,
       NotificationKind.reply => RouteNames.agentChat,
@@ -64,68 +27,80 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen<NotificationsState>(notificationsProvider, (prev, next) {
+      if (next.lastMessage == null || next.lastMessage == prev?.lastMessage) {
+        return;
+      }
+      ref.read(notificationsProvider.notifier).consumeMessage();
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text(next.lastMessage!),
+          ),
+        );
+    });
+
+    final state = ref.watch(notificationsProvider);
+    final notifier = ref.read(notificationsProvider.notifier);
+    final hasUnread = state.unreadCount > 0;
+    final items = state.filtered;
+
     return Scaffold(
       backgroundColor: AppColors.scaffold,
       body: SafeArea(
         bottom: false,
-        child: Consumer<NotificationsController>(
-          builder: (context, controller, _) {
-            final hasUnread = controller.unreadCount > 0;
-            final items = controller.filtered;
-            return Column(
-              children: [
-                AppHeader.page(
-                  title: AppStrings.notificationsTitle,
-                  onBack: () => context.go(RouteNames.dashboard),
-                  trailing: hasUnread
-                      ? _ReadAllChip(onTap: controller.markAllRead)
-                      : null,
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppConstants.screenHorizontalPadding,
-                    8,
-                    AppConstants.screenHorizontalPadding,
-                    8,
-                  ),
-                  child: _FilterTabs(
-                    filter: controller.filter,
-                    unreadCount: controller.unreadCount,
-                    onChanged: controller.setFilter,
-                  ),
-                ),
-                Expanded(
-                  child: items.isEmpty
-                      ? const _EmptyState()
-                      : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(
-                            AppConstants.screenHorizontalPadding,
-                            8,
-                            AppConstants.screenHorizontalPadding,
-                            40,
-                          ),
-                          itemCount: items.length,
-                          separatorBuilder: (_, _) =>
-                              const SizedBox(height: 10),
-                          itemBuilder: (context, i) {
-                            final n = items[i];
-                            return _NotificationCard(
-                              notification: n,
-                              onTap: () => _handleTap(context, n),
-                              onAction: () => _handleTap(context, n),
-                              onMarkRead: () =>
-                                  controller.markRead(n.id),
-                            )
-                                .animate(delay: (i * 50).ms)
-                                .fadeIn()
-                                .moveY(begin: 8, end: 0);
-                          },
-                        ),
-                ),
-              ],
-            );
-          },
+        child: Column(
+          children: [
+            AppHeader.page(
+              title: AppStrings.notificationsTitle,
+              onBack: () => context.go(RouteNames.dashboard),
+              trailing: hasUnread
+                  ? _ReadAllChip(onTap: notifier.markAllRead)
+                  : null,
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppConstants.screenHorizontalPadding,
+                8,
+                AppConstants.screenHorizontalPadding,
+                8,
+              ),
+              child: _FilterTabs(
+                filter: state.filter,
+                unreadCount: state.unreadCount,
+                onChanged: notifier.setFilter,
+              ),
+            ),
+            Expanded(
+              child: items.isEmpty
+                  ? const _EmptyState()
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppConstants.screenHorizontalPadding,
+                        8,
+                        AppConstants.screenHorizontalPadding,
+                        40,
+                      ),
+                      itemCount: items.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
+                      itemBuilder: (context, i) {
+                        final n = items[i];
+                        return _NotificationCard(
+                          notification: n,
+                          onTap: () => _handleTap(context, ref, n),
+                          onAction: () => _handleTap(context, ref, n),
+                          onMarkRead: () => notifier.markRead(n.id),
+                        )
+                            .animate(delay: (i * 50).ms)
+                            .fadeIn()
+                            .moveY(begin: 8, end: 0);
+                      },
+                    ),
+            ),
+          ],
         ),
       ),
     );

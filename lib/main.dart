@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
 import 'firebase_options.dart';
@@ -7,10 +8,10 @@ import 'features/auth/services/google_auth_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-   await Firebase.initializeApp(
+  await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
   await GoogleAuthService.initialize();
-  runApp(const SyncraApp());
+  runApp(const ProviderScope(child: SyncraApp()));
 }
 //test11

@@ -88,4 +88,13 @@ Future<AppUser?> signInWithGoogle() async {
 
     await _firebaseAuth.signOut();
   }
+
+  /// Deletes the current Firebase auth account. Throws
+  /// `FirebaseAuthException(code: 'requires-recent-login')` if the token
+  /// is older than ~5 minutes — caller should re-auth and retry.
+  Future<void> deleteCurrentUser() async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) return;
+    await user.delete();
+  }
 }

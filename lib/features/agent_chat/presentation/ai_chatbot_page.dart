@@ -1,41 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/router/route_names.dart';
 import '../../../fixtures/mock_agent_service.dart';
 import '../models/chat_message.dart';
-import '../state/agent_chat_controller.dart';
+import '../state/agent_chat_notifier.dart';
 import 'widgets/agent_turn_view.dart';
 import 'widgets/chat_input_bar.dart';
 import 'widgets/chat_message_bubble.dart';
 
-class AiChatbotPage extends StatefulWidget {
+class AiChatbotPage extends ConsumerStatefulWidget {
   const AiChatbotPage({super.key});
 
   @override
-  State<AiChatbotPage> createState() => _AiChatbotPageState();
+  ConsumerState<AiChatbotPage> createState() => _AiChatbotPageState();
 }
 
-class _AiChatbotPageState extends State<AiChatbotPage> {
+class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
   final ScrollController _scrollController = ScrollController();
-  AgentChatController? _controller;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final controller = context.read<AgentChatController>();
-    if (!identical(controller, _controller)) {
-      _controller?.removeListener(_onControllerChanged);
-      _controller = controller;
-      _controller!.addListener(_onControllerChanged);
-      _scheduleScrollToBottom();
-    }
-  }
-
-  void _onControllerChanged() => _scheduleScrollToBottom();
 
   void _scheduleScrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
@@ -52,46 +37,46 @@ class _AiChatbotPageState extends State<AiChatbotPage> {
 
   @override
   void dispose() {
-    _controller?.removeListener(_onControllerChanged);
     _scrollController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<AgentChatState>(agentChatProvider, (_, _) => _scheduleScrollToBottom());
+
+    final state = ref.watch(agentChatProvider);
+    final notifier = ref.read(agentChatProvider.notifier);
+
+    // Empty/intro state — only the initial greeting turn exists
+    // and the user hasn't sent anything yet.
+    final onlyInitial =
+        state.items.length == 1 && state.items.first is AgentTurn;
+
     return Scaffold(
       backgroundColor: AppColors.surface,
       body: SafeArea(
         bottom: false,
         child: Column(
           children: [
-            const _ChatHeader(),
+            _ChatHeader(isStreaming: state.isStreaming),
             Expanded(
-              child: Consumer<AgentChatController>(
-                builder: (context, controller, _) {
-                  // Empty/intro state — only the initial greeting turn exists
-                  // and the user hasn't sent anything yet.
-                  final onlyInitial = controller.items.length == 1 &&
-                      controller.items.first is AgentTurn;
-                  if (onlyInitial) {
-                    return _EmptyState(
+              child: onlyInitial
+                  ? _EmptyState(
                       onPromptTap: (text) =>
-                          controller.sendPrompt(prompt: text),
-                    );
-                  }
-                  return ListView(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                    children: [
-                      for (final item in controller.items)
-                        switch (item) {
-                          UserMessage() => UserMessageView(message: item),
-                          AgentTurn() => AgentTurnView(turn: item),
-                        },
-                    ],
-                  );
-                },
-              ),
+                          notifier.sendPrompt(prompt: text),
+                    )
+                  : ListView(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                      children: [
+                        for (final item in state.items)
+                          switch (item) {
+                            UserMessage() => UserMessageView(message: item),
+                            AgentTurn() => AgentTurnView(turn: item),
+                          },
+                      ],
+                    ),
             ),
             const ChatInputBar(),
           ],
@@ -106,77 +91,75 @@ class _AiChatbotPageState extends State<AiChatbotPage> {
 // ---------------------------------------------------------------------------
 
 class _ChatHeader extends StatelessWidget {
-  const _ChatHeader();
+  const _ChatHeader({required this.isStreaming});
+
+  final bool isStreaming;
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AgentChatController>(
-      builder: (context, controller, _) {
-        return Container(
-          padding: const EdgeInsets.fromLTRB(8, 10, 12, 10),
-          decoration: const BoxDecoration(
-            color: AppColors.surface,
-            border: Border(
-              bottom: BorderSide(color: AppColors.border, width: 0.6),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8, 10, 12, 10),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(
+          bottom: BorderSide(color: AppColors.border, width: 0.6),
+        ),
+      ),
+      child: Row(
+        children: [
+          _IconBtn(
+            icon: Icons.arrow_back_ios_new_rounded,
+            onTap: () => context.go(RouteNames.dashboard),
+          ),
+          Expanded(
+            child: Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 22,
+                    height: 22,
+                    decoration: const BoxDecoration(
+                      color: AppColors.ink,
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.auto_awesome_rounded,
+                      color: AppColors.accent,
+                      size: 12,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Syncra',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.ink,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Icon(
+                    Icons.expand_more_rounded,
+                    size: 16,
+                    color: AppColors.textMuted,
+                  ),
+                  if (isStreaming) ...[
+                    const SizedBox(width: 10),
+                    const _LiveDot(),
+                  ],
+                ],
+              ),
             ),
           ),
-          child: Row(
-            children: [
-              _IconBtn(
-                icon: Icons.arrow_back_ios_new_rounded,
-                onTap: () => context.go(RouteNames.dashboard),
-              ),
-              Expanded(
-                child: Center(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 22,
-                        height: 22,
-                        decoration: const BoxDecoration(
-                          color: AppColors.ink,
-                          shape: BoxShape.circle,
-                        ),
-                        alignment: Alignment.center,
-                        child: const Icon(
-                          Icons.auto_awesome_rounded,
-                          color: AppColors.accent,
-                          size: 12,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'Syncra',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.ink,
-                          letterSpacing: -0.2,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      const Icon(
-                        Icons.expand_more_rounded,
-                        size: 16,
-                        color: AppColors.textMuted,
-                      ),
-                      if (controller.isStreaming) ...[
-                        const SizedBox(width: 10),
-                        const _LiveDot(),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              _IconBtn(
-                icon: Icons.edit_square,
-                onTap: () {},
-              ),
-            ],
+          _IconBtn(
+            icon: Icons.edit_square,
+            onTap: () {},
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 }

@@ -48,7 +48,7 @@ Stack: Flutter, Riverpod (replacing `provider`), strict immutable state.
 
 ### 1. ResumeController as Riverpod Notifier (~3h)
 After F (App Shell) publishes the Riverpod pattern (day 1), convert
-[lib/features/resumes/state/resume_controller.dart](../../lib/features/resumes/state/resume_controller.dart)
+[lib/features/resumes/state/resume_notifier.dart](../../lib/features/resumes/state/resume_notifier.dart)
 to a `Notifier<ResumeState>` with this state shape:
 
 ```dart
@@ -151,7 +151,7 @@ iOS, Android, web. File issues against F for shell-layer bugs.
 
 - [lib/features/agent_chat/presentation/widgets/proposed_edits_block.dart](../../lib/features/agent_chat/presentation/widgets/proposed_edits_block.dart) (NEW — the inline diff block)
 - [lib/features/resumes/presentation/](../../lib/features/resumes/presentation/) — resume list page, resume preview page (output viewers)
-- [lib/features/resumes/state/resume_controller.dart](../../lib/features/resumes/state/resume_controller.dart) — as a Riverpod Notifier holding V1/V2/pending/acceptedPaths
+- [lib/features/resumes/state/resume_notifier.dart](../../lib/features/resumes/state/resume_notifier.dart) — as a Riverpod Notifier holding V1/V2/pending/acceptedPaths
 
 **You do NOT touch:**
 - [lib/features/agent_chat/presentation/widgets/agent_block_views.dart](../../lib/features/agent_chat/presentation/widgets/agent_block_views.dart) — A owns this file; they add one `case ProposedEditsBlock` that delegates to your widget

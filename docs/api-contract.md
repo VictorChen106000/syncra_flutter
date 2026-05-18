@@ -52,7 +52,7 @@ both now explicit user taps:
 
 - **Chat trigger** — user types a prompt in the chat; chat shows the tool calls live.
 - **Brief trigger** — user taps "Run today's brief" on the dashboard.
-  [PassiveAgentController.runBrief()](../lib/features/agent/state/passive_agent_controller.dart)
+  [PassiveAgentNotifier.runBrief()](../lib/features/agent/state/passive_agent_notifier.dart)
   fires a canned prompt (*"Find 5 fresh jobs matching my profile, score them
   via match_jobs, and save each as a pipeline card via save_to_pipeline"*).
   Same code path, same tools. Tool-call progress lands in the notifications
@@ -109,6 +109,109 @@ both now explicit user taps:
 | `save_to_tracker` | Depends on `autonomy_level` | Writes to the Applications page. `suggest` → ask; `auto_apply` → just do it |
 | `send_email` | ❌ | **Always requires user tap.** No exceptions in v1. |
 | `ask_user` | n/a | Paused, awaits user typing |
+
+---
+
+## 1.5 State management — Riverpod providers
+
+> **Migrated 2026-05-18 from `provider` → `flutter_riverpod` ^2.6.1.** Every
+> controller is now a `Notifier<T>` exposing an **immutable** state class.
+> Old `*_controller.dart` files were deleted; the new files end in `_notifier.dart`.
+> Widget call sites use `ref.watch(xProvider)` for state, `ref.read(xProvider.notifier).method()` for actions.
+
+This section is the reference for all tracks (backend included) on what state
+each notifier exposes and what methods are callable. If you need to read or
+write app state from inside a tool implementation, fetch the notifier off the
+`Ref` you receive — never re-implement state ownership.
+
+### How to access state from a tool handler
+
+Tool implementations registered in [builtin_tools.dart](../lib/features/agent_chat/tools/builtin_tools.dart)
+receive a `Ref` so they can reach into Riverpod. Examples:
+
+```dart
+// Read current user (e.g. for uid)
+final uid = ref.read(authProvider).appUser?.uid;
+
+// Persist a pipeline card via the notifier (preferred over hitting the repo directly)
+await ref.read(jobsProvider.notifier).approveByJobId(jobId);
+
+// Fire a chat block manually after a backend event resolves
+ref.read(agentChatProvider.notifier).sendPrompt(prompt: ...);
+```
+
+Never call `state = ...` from outside the notifier. Always go through a method
+on the notifier — that's the only place mutations are allowed.
+
+### Provider reference table
+
+| Provider | State class | Key fields | Notifier methods |
+|---|---|---|---|
+| `authProvider` | `AuthState` | `appUser`, `isLoading`, `error`, `isSignedIn` | `signInWithGoogle()`, `signOut()`, `continueAsGuest()`, `deleteAccount()` |
+| `userProfileProvider` | `UserProfile?` (null for guests / unloaded) | `name`, `email`, `avatarUrl`, `role`, `isAgentActive`, `autonomyLevel` (`suggest`/`askFirst`/`autoApply`), `morningBriefEnabled`, `gmailConnected` | `setAutonomyLevel(level)`, `setMorningBriefEnabled(bool)`, `setRole(string)`, `setAgentActive(bool)` — all write through `UserRepository.update()` |
+| `resumeProvider` | `ResumeState` | `allResumes`, `resumes` (manual), `tailoredResumes`, `uploadQueue`, `selectedResumeIds`, `selectedResumes`, `lastAction` | `pickAndUploadResumes()`, `deleteResume(id)`, `toggleSelectedResume(id)`, `removeSelectedResume(id)`, `consumeLastAction()` |
+| `applicationsProvider` | `ApplicationsState` | `items`, `filtered`, `filter`, `lastMessage` | `setFilter(f)`, `updateStatus(appId, status)`, `addNote(appId, body)`, `consumeMessage()` |
+| `jobsProvider` | `JobsState` | `cards`, `pendingCards`, `pendingJobs`, `savedIds`, `hiddenIds`, `dismissedIds`, `lastMessage`, `isSaved/isHidden/isDismissed(id)` | `toggleSaved(id)`, `hide(id)`, `unhide(id)`, `dismiss(id)`, `undismiss(id)`, `approveByJobId(jobId)`, `consumeMessage()` |
+| `passiveAgentProvider` | `PassiveAgentState` | `status`, `pipeline`, `activity`, `lastBriefAt`, `lastError`, `morningBriefShown`, `isLiveModeEnabled`, `hasPipeline`, `isRunning`, `readyCount`, `inputNeededCount`, `explorationCount`, `topMatch` | `runBrief()` *(user-tap only — never auto-fire)*, `markMorningBriefShown()`, `consumeMessage()` |
+| `notificationsProvider` | `NotificationsState` | `items`, `filtered`, `filter`, `unreadCount`, `lastMessage` | `setFilter(f)`, `markRead(id)`, `markAllRead()`, `consumeMessage()` |
+| `agentChatProvider` | `AgentChatState` | `items` (`List<ChatItem>`), `isStreaming` | `sendPrompt({prompt, attachments})`, `acceptProposal(blockId)`, `dismissProposal(blockId)`, `submitInputAnswer(blockId, answer)` |
+| `agentServiceProvider` | `AgentService` | n/a (singleton) | — chooses `AnthropicChatService` if `ANTHROPIC_API_KEY` set, else `MockAgentService` |
+| `routerProvider` | `GoRouter` | n/a (singleton) | listens to `authProvider` for redirect refresh |
+
+### Side-effect handshakes (one-time message channels)
+
+Several states expose a `lastMessage` / `lastAction` field used as a one-shot
+SnackBar channel. Pattern:
+
+```dart
+ref.listen<XState>(xProvider, (prev, next) {
+  if (next.lastMessage == null || next.lastMessage == prev?.lastMessage) return;
+  ref.read(xProvider.notifier).consumeMessage();   // clears it
+  ScaffoldMessenger.of(context).showSnackBar(...);
+});
+```
+
+If you write a `lastMessage` from a notifier method, the active page will
+SnackBar it once. Don't poll this field — read it via `ref.listen`.
+
+### Auth-derived providers — dependency direction
+
+`userProfileProvider`, `resumeProvider`, `applicationsProvider`, `jobsProvider`,
+`passiveAgentProvider` all `ref.watch(authProvider)` inside their `build()` so
+their Firestore stream subscription rebinds whenever the signed-in user
+changes. **Do not** add an `addListener(auth)` pattern anywhere — Riverpod
+handles this automatically.
+
+### Settings-gated UI
+
+The dashboard `_RunBriefCta` only renders when
+`userProfileProvider.morningBriefEnabled == true`. A brand-new account sees
+no CTA until the user toggles it on in Settings (default `false` per §3).
+The agent **never** auto-fires regardless of this flag — the toggle only
+controls whether the manual trigger is visible.
+
+### Router-gated UI
+
+`routerProvider`'s redirect uses both `authProvider` and `userProfileProvider`:
+
+- **Signed-out** + protected route → `/login`
+- **Signed-in + non-guest + profile loaded + `role` empty** → `/onboarding`
+  (one-shot; once the user submits a role, the redirect releases them to
+  `/dashboard` or `/morningBrief`)
+- **Signed-in + has role** sitting on `/onboarding` → `/dashboard`
+- **Signed-in on `/login` or `/signup`** → `/morningBrief` (first sign-in of
+  the session) or `/dashboard`
+
+`profile == null` (stream still loading) is treated as "don't redirect to
+onboarding yet" — the refresh listener will re-evaluate when the first
+snapshot arrives.
+
+### Hard rules (carry-over from migration)
+
+- Never expose mutable lists/maps in state classes — copy on every mutation.
+- Never call `state = ...` outside the notifier.
+- Never re-add `provider` (the package) to `pubspec.yaml`.
+- Adding a new provider requires updating this table.
 
 ---
 
@@ -533,10 +636,14 @@ concepts. One page, status filters, sorted in-flight first. Lives at
 | `tailor_resume` returns proposed_edits (not PDF) | ❌ Not built | B1 + B3 |
 | `apply_resume_edits` tool | ❌ Not built | B1 |
 | `ProposedEditsBlock` (PR-style review, inline in chat) | ❌ Not built | FE2 / R2 |
-| Riverpod migration + immutable state | ❌ Not built | FE1 |
-| Remove 24h auto-fire from PassiveAgentController | ❌ Not started | B3 |
-| "Run today's brief" dashboard CTA | ❌ Not built | FE1 |
-| `morning_brief_enabled` setting + toggle in Settings | ❌ Not built | FE1 |
+| Riverpod migration + immutable state | ✅ Shipped 2026-05-18 (see §1.5) | FE1 |
+| Remove 24h auto-fire from PassiveAgentController | ✅ No timer exists; `runBrief()` is a pure callable | B3 (verified) |
+| "Run today's brief" dashboard CTA | ✅ Shipped 2026-05-18 — `_RunBriefCta` in [dashboard_page.dart](../lib/features/dashboard/presentation/dashboard_page.dart) | FE1 |
+| Dashboard prompt entry dispatches text to chat | ✅ Shipped 2026-05-18 | FE1 |
+| `morning_brief_enabled` setting + toggle in Settings | ✅ Shipped 2026-05-18 — Settings page section gates dashboard CTA via `userProfileProvider` | FE1 |
+| Settings page (autonomy slider + brief toggle + delete account) | ✅ Shipped 2026-05-18 | FE1 |
+| `UserRepository.update()` partial-update | ✅ Shipped 2026-05-18 | FE1 |
+| Onboarding actually captures + persists `role` via `userProfileProvider` | ✅ Shipped 2026-05-18 — router redirect sends new users (role=null) to `/onboarding` once | FE1 |
 
 ---
 

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
-import '../../state/resume_controller.dart';
+import '../../state/resume_notifier.dart';
 import 'resume_upload_card.dart';
 
-class SelectResumesBottomSheet extends StatelessWidget {
+class SelectResumesBottomSheet extends ConsumerWidget {
   const SelectResumesBottomSheet({super.key});
 
   static Future<void> show(BuildContext context) {
@@ -22,10 +22,10 @@ class SelectResumesBottomSheet extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Consumer<ResumeController>(
-      builder: (context, controller, _) {
-        return DraggableScrollableSheet(
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(resumeProvider);
+    final notifier = ref.read(resumeProvider.notifier);
+    return DraggableScrollableSheet(
           expand: false,
           initialChildSize: 0.72,
           minChildSize: 0.45,
@@ -43,7 +43,7 @@ class SelectResumesBottomSheet extends StatelessWidget {
                           children: [
                             const Text('Select Resumes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
                             Text(
-                              '${controller.selectedResumeIds.length}/10 selected',
+                              '${state.selectedResumeIds.length}/10 selected',
                               style: const TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
                             ),
                           ],
@@ -64,7 +64,7 @@ class SelectResumesBottomSheet extends StatelessWidget {
                     padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
                     children: [
                       InkWell(
-                        onTap: controller.pickAndUploadResumes,
+                        onTap: notifier.pickAndUploadResumes,
                         borderRadius: BorderRadius.circular(18),
                         child: Container(
                           padding: const EdgeInsets.all(16),
@@ -94,16 +94,16 @@ class SelectResumesBottomSheet extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      ...controller.uploadQueue.map((item) => Padding(
+                      ...state.uploadQueue.map((item) => Padding(
                             padding: const EdgeInsets.only(bottom: 12),
                             child: ResumeUploadCard(uploadingItem: item),
                           )),
-                      ...controller.resumes.map((resume) {
-                        final selected = controller.selectedResumeIds.contains(resume.id);
+                      ...state.resumes.map((resume) {
+                        final selected = state.selectedResumeIds.contains(resume.id);
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 12),
                           child: InkWell(
-                            onTap: () => controller.toggleSelectedResume(resume.id),
+                            onTap: () => notifier.toggleSelectedResume(resume.id),
                             borderRadius: BorderRadius.circular(20),
                             child: Container(
                               padding: const EdgeInsets.all(14),
@@ -136,7 +136,5 @@ class SelectResumesBottomSheet extends StatelessWidget {
             );
           },
         );
-      },
-    );
   }
 }

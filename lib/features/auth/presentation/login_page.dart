@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
-import '../state/auth_controller.dart';
+import '../state/auth_notifier.dart';
 
-class LoginPage extends StatelessWidget {
+class LoginPage extends ConsumerWidget {
   const LoginPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authProvider);
+    final notifier = ref.read(authProvider.notifier);
+    final disabled = auth.isLoading;
     return Scaffold(
       backgroundColor: AppColors.ink,
       body: Stack(
@@ -19,10 +22,7 @@ class LoginPage extends StatelessWidget {
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 36),
-              child: Consumer<AuthController>(
-                builder: (context, auth, _) {
-                  final disabled = auth.isLoading;
-                  return Column(
+              child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Spacer(),
@@ -48,7 +48,7 @@ class LoginPage extends StatelessWidget {
                         backgroundColor: Colors.white,
                         foregroundColor: AppColors.ink,
                         icon: Icons.g_mobiledata_rounded,
-                        onTap: disabled ? null : () => auth.signInWithGoogle(),
+                        onTap: disabled ? null : () => notifier.signInWithGoogle(),
                       ),
                       const SizedBox(height: 12),
                       _LoginButton(
@@ -63,7 +63,7 @@ class LoginPage extends StatelessWidget {
                       Center(
                         child: TextButton(
                           onPressed:
-                              disabled ? null : () => auth.continueAsGuest(),
+                              disabled ? null : () => notifier.continueAsGuest(),
                           child: Text(
                             AppStrings.continueAsGuest,
                             style: TextStyle(
@@ -85,9 +85,7 @@ class LoginPage extends StatelessWidget {
                         ),
                       ),
                     ],
-                  );
-                },
-              ),
+                  ),
             ),
           ),
         ],

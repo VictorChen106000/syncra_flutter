@@ -1,129 +1,128 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
 import '../../../shared/widgets/app_header.dart';
+import '../../../shared/widgets/empty_state_card.dart';
 import '../models/resume_file.dart';
-import '../state/resume_controller.dart';
+import '../state/resume_notifier.dart';
 import 'widgets/resume_upload_card.dart';
 
-class ResumeListsPage extends StatefulWidget {
+class ResumeListsPage extends ConsumerStatefulWidget {
   const ResumeListsPage({super.key});
 
   @override
-  State<ResumeListsPage> createState() => _ResumeListsPageState();
+  ConsumerState<ResumeListsPage> createState() => _ResumeListsPageState();
 }
 
-class _ResumeListsPageState extends State<ResumeListsPage> {
+class _ResumeListsPageState extends ConsumerState<ResumeListsPage> {
   int _tabIndex = 0;
-  ResumeController? _boundController;
 
   void _openPreview(ResumeFile resume) {
     context.go(RouteNames.resumePreview, extra: resume);
   }
 
-  void _onControllerChanged() {
-    final result = _boundController?.consumeLastAction();
-    if (result == null || !mounted) return;
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: result.isError ? AppColors.danger : null,
-          content: Text(result.message),
-        ),
-      );
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final controller = context.read<ResumeController>();
-    if (!identical(_boundController, controller)) {
-      _boundController?.removeListener(_onControllerChanged);
-      _boundController = controller;
-      controller.addListener(_onControllerChanged);
-    }
-  }
-
-  @override
-  void dispose() {
-    _boundController?.removeListener(_onControllerChanged);
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
+    ref.listen<ResumeState>(resumeProvider, (prev, next) {
+      final result = next.lastAction;
+      if (result == null || result == prev?.lastAction) return;
+      ref.read(resumeProvider.notifier).consumeLastAction();
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: result.isError ? AppColors.danger : null,
+            content: Text(result.message),
+          ),
+        );
+    });
+
+    final state = ref.watch(resumeProvider);
+    final notifier = ref.read(resumeProvider.notifier);
+    final visibleResumes =
+        _tabIndex == 0 ? state.resumes : state.tailoredResumes;
+
     return Scaffold(
       backgroundColor: AppColors.scaffold,
       body: SafeArea(
         bottom: false,
-        child: Consumer<ResumeController>(
-          builder: (context, controller, _) {
-            final visibleResumes = _tabIndex == 0
-                ? controller.resumes
-                : controller.tailoredResumes;
-
-            return Column(
-              children: [
-                AppHeader.page(
-                  title: AppStrings.resumeListsTitle,
-                  onBack: () => context.go(RouteNames.profile),
-                  bottom: _TabSwitcher(
-                    selectedIndex: _tabIndex,
-                    onChanged: (i) => setState(() => _tabIndex = i),
+        child: Column(
+          children: [
+            AppHeader.page(
+              title: AppStrings.resumeListsTitle,
+              onBack: () => context.go(RouteNames.profile),
+              bottom: _TabSwitcher(
+                selectedIndex: _tabIndex,
+                onChanged: (i) => setState(() => _tabIndex = i),
+              ),
+            ),
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                child: ListView(
+                  key: ValueKey(_tabIndex),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppConstants.screenHorizontalPadding,
+                    20,
+                    AppConstants.screenHorizontalPadding,
+                    36,
                   ),
-                ),
-                Expanded(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 220),
-                    child: ListView(
-                      key: ValueKey(_tabIndex),
-                      padding: const EdgeInsets.fromLTRB(
-                        AppConstants.screenHorizontalPadding,
-                        20,
-                        AppConstants.screenHorizontalPadding,
-                        36,
+                  children: [
+                    if (_tabIndex == 0) ...[
+                      _UploadDropZone(
+                        onTap: notifier.pickAndUploadResumes,
                       ),
-                      children: [
-                        if (_tabIndex == 0) ...[
-                          _UploadDropZone(
-                            onTap: controller.pickAndUploadResumes,
-                          ),
-                          const SizedBox(height: 14),
-                        ],
-                        for (final item in controller.uploadQueue)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: ResumeUploadCard(uploadingItem: item),
-                          ),
-                        if (visibleResumes.isEmpty &&
-                            controller.uploadQueue.isEmpty)
-                          _EmptyState(isUploads: _tabIndex == 0),
-                        for (final resume in visibleResumes)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: ResumeUploadCard(
-                              resume: resume,
-                              onOpen: () => _openPreview(resume),
-                              onDelete: _tabIndex == 0
-                                  ? () => controller.deleteResume(resume.id)
-                                  : null,
-                            ).animate().fadeIn(duration: 220.ms).moveY(begin: 8, end: 0),
-                          ),
-                      ],
-                    ),
-                  ),
+                      const SizedBox(height: 14),
+                    ],
+                    for (final item in state.uploadQueue)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: ResumeUploadCard(uploadingItem: item),
+                      ),
+                    if (visibleResumes.isEmpty && state.uploadQueue.isEmpty)
+                      _tabIndex == 0
+                          ? EmptyStateCard(
+                              icon: Icons.upload_rounded,
+                              title: AppStrings.noResumesTitle,
+                              body: AppStrings.noResumesBody,
+                              actionLabel: 'Upload resume',
+                              actionIcon: Icons.add_rounded,
+                              onAction: notifier.pickAndUploadResumes,
+                            )
+                          : EmptyStateCard(
+                              icon: Icons.auto_awesome_rounded,
+                              title: AppStrings.noTailoredTitle,
+                              body: AppStrings.noTailoredBody,
+                              actionLabel: 'Open chat',
+                              onAction: () =>
+                                  context.go(RouteNames.agentChat),
+                            ),
+                    for (final resume in visibleResumes)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: ResumeUploadCard(
+                          resume: resume,
+                          onOpen: () => _openPreview(resume),
+                          onDelete: _tabIndex == 0
+                              ? () => notifier.deleteResume(resume.id)
+                              : null,
+                        )
+                            .animate()
+                            .fadeIn(duration: 220.ms)
+                            .moveY(begin: 8, end: 0),
+                      ),
+                  ],
                 ),
-              ],
-            );
-          },
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -281,62 +280,3 @@ class _UploadDropZone extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Empty state
-// ---------------------------------------------------------------------------
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.isUploads});
-
-  final bool isUploads;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(28),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: AppColors.ink,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            alignment: Alignment.center,
-            child: const Icon(
-              Icons.description_rounded,
-              color: Colors.white,
-              size: 26,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            isUploads ? AppStrings.noResumesTitle : AppStrings.noTailoredTitle,
-            style: const TextStyle(
-              fontWeight: FontWeight.w900,
-              fontSize: 16,
-              color: AppColors.ink,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            isUploads ? AppStrings.noResumesBody : AppStrings.noTailoredBody,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: AppColors.textMuted,
-              fontSize: 13,
-              height: 1.5,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

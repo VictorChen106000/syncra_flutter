@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../data/models/job.dart';
-import '../../state/jobs_controller.dart';
+import '../../state/jobs_notifier.dart';
 
 class JobActionSheet {
   const JobActionSheet._();
@@ -18,16 +18,17 @@ class JobActionSheet {
   }
 }
 
-class _JobActionSheetBody extends StatelessWidget {
+class _JobActionSheetBody extends ConsumerWidget {
   const _JobActionSheetBody({required this.job});
 
   final Job job;
 
   @override
-  Widget build(BuildContext context) {
-    final controller = context.watch<JobsController>();
-    final isSaved = controller.isSaved(job.id);
-    final isHidden = controller.isHidden(job.id);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(jobsProvider);
+    final notifier = ref.read(jobsProvider.notifier);
+    final isSaved = state.isSaved(job.id);
+    final isHidden = state.isHidden(job.id);
     final label = '${job.title} at ${job.company}';
 
     return SafeArea(
@@ -65,7 +66,7 @@ class _JobActionSheetBody extends StatelessWidget {
               icon: isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
               label: isSaved ? 'Saved' : 'Save for later',
               onTap: () {
-                controller.toggleSaved(job.id, label: label);
+                notifier.toggleSaved(job.id, label: label);
                 Navigator.of(context).pop();
               },
             ),
@@ -89,9 +90,9 @@ class _JobActionSheetBody extends StatelessWidget {
               label: isHidden ? 'Show again' : 'Hide this role',
               onTap: () {
                 if (isHidden) {
-                  controller.unhide(job.id);
+                  notifier.unhide(job.id);
                 } else {
-                  controller.hide(job.id, label: label);
+                  notifier.hide(job.id, label: label);
                 }
                 Navigator.of(context).pop();
               },
@@ -101,7 +102,7 @@ class _JobActionSheetBody extends StatelessWidget {
               label: 'Dismiss',
               destructive: true,
               onTap: () {
-                controller.dismiss(job.id, label: label);
+                notifier.dismiss(job.id, label: label);
                 Navigator.of(context).pop();
               },
             ),

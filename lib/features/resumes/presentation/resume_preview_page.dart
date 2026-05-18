@@ -1,22 +1,22 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/router/route_names.dart';
 import '../../../shared/widgets/app_back_button.dart';
 import '../models/resume_file.dart';
-import '../state/resume_controller.dart';
+import '../state/resume_notifier.dart';
 
-class ResumePreviewPage extends StatelessWidget {
+class ResumePreviewPage extends ConsumerWidget {
   const ResumePreviewPage({super.key, this.resume});
 
   final ResumeFile? resume;
 
-  void _confirmDelete(BuildContext context, ResumeFile r) {
+  void _confirmDelete(BuildContext context, WidgetRef ref, ResumeFile r) {
     showDialog<void>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
@@ -31,7 +31,7 @@ class ResumePreviewPage extends StatelessWidget {
             style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             onPressed: () {
               Navigator.of(dialogCtx).pop();
-              context.read<ResumeController>().deleteResume(r.id);
+              ref.read(resumeProvider.notifier).deleteResume(r.id);
               ScaffoldMessenger.of(context)
                 ..clearSnackBars()
                 ..showSnackBar(
@@ -50,10 +50,14 @@ class ResumePreviewPage extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final allResumes = ref.watch(resumeProvider).allResumes;
     final latestResume = resume == null
         ? null
-        : context.watch<ResumeController>().resumeById(resume!.id) ?? resume;
+        : allResumes.firstWhere(
+              (r) => r.id == resume!.id,
+              orElse: () => resume!,
+            );
 
     return Scaffold(
       backgroundColor: AppColors.scaffold,
@@ -94,7 +98,7 @@ class ResumePreviewPage extends StatelessWidget {
                         child: IconButton(
                           padding: EdgeInsets.zero,
                           onPressed: () =>
-                              _confirmDelete(context, latestResume),
+                              _confirmDelete(context, ref, latestResume),
                           icon: const Icon(
                             Icons.delete_outline_rounded,
                             color: AppColors.textMuted,

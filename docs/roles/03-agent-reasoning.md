@@ -84,7 +84,7 @@ Bake into the tool description: *"Always provide 2–3 suggestion chips unless t
 terminates due to repeated tool failures (not just hitting the iteration cap).
 
 ### 7. Refactor `PassiveAgentController` (~2h)
-[passive_agent_controller.dart](../../lib/features/agent/state/passive_agent_controller.dart).
+[passive_agent_notifier.dart](../../lib/features/agent/state/passive_agent_notifier.dart).
 
 - **Remove the 24h auto-fire** on app open. Delete the timer / app-resume hook entirely.
 - Expose `runBrief()` as a pure callable that F's "Run today's brief" dashboard button invokes.
@@ -116,8 +116,8 @@ in week 1.
 - [lib/features/agent_chat/tools/anthropic_tool_calls.dart](../../lib/features/agent_chat/tools/anthropic_tool_calls.dart) — paraphrase + draft prompts
 - [lib/features/agent_chat/tools/builtin_tools.dart](../../lib/features/agent_chat/tools/builtin_tools.dart) — system prompt + tool descriptions (NOT the resume tool executors — R1 owns those; NOT the integration tool executors — I owns those)
 - [lib/features/agent/services/anthropic_service.dart](../../lib/features/agent/services/anthropic_service.dart) — brief reasoner
-- [lib/features/agent/state/passive_agent_controller.dart](../../lib/features/agent/state/passive_agent_controller.dart) — now a callable
-- [lib/features/agent_chat/state/agent_chat_controller.dart](../../lib/features/agent_chat/state/agent_chat_controller.dart) — chat controller (Riverpod Notifier, following F's pattern)
+- [lib/features/agent/state/passive_agent_notifier.dart](../../lib/features/agent/state/passive_agent_notifier.dart) — now a callable
+- [lib/features/agent_chat/state/agent_chat_notifier.dart](../../lib/features/agent_chat/state/agent_chat_notifier.dart) — chat controller (Riverpod Notifier, following F's pattern)
 
 **You do NOT touch:**
 - `tailor_resume` or `apply_resume_edits` executor bodies — R1 owns

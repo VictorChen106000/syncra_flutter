@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/models/job.dart';
@@ -8,8 +9,9 @@ import '../../features/auth/presentation/morning_brief_page.dart';
 import '../../features/auth/presentation/onboarding_page.dart';
 import '../../features/auth/presentation/signup_page.dart';
 import '../../features/auth/presentation/splash_page.dart';
-import '../../features/agent/state/passive_agent_controller.dart';
-import '../../features/auth/state/auth_controller.dart';
+import '../../features/agent/state/passive_agent_notifier.dart';
+import '../../features/auth/state/auth_notifier.dart';
+import '../../features/auth/state/user_profile_notifier.dart';
 import '../../features/dashboard/presentation/dashboard_page.dart';
 import '../../features/jobs/presentation/job_detail_page.dart';
 import '../../features/jobs/presentation/jobs_page.dart';
@@ -25,90 +27,116 @@ import '../../features/applications/presentation/applications_page.dart';
 import '../../shared/widgets/app_shell_scaffold.dart';
 import 'route_names.dart';
 
-class AppRouter {
-  const AppRouter._();
+/// A [ChangeNotifier] that fires whenever auth or user-profile state
+/// changes, so [GoRouter] can re-run its redirect (e.g. land a new sign-in
+/// on onboarding once the profile stream confirms `role == null`).
+class _AuthRefreshNotifier extends ChangeNotifier {
+  _AuthRefreshNotifier(Ref ref) {
+    ref.listen(authProvider, (_, _) => notifyListeners());
+    ref.listen(userProfileProvider, (_, _) => notifyListeners());
+  }
+}
 
-  static Page<void> _fadePage(GoRouterState state, Widget child) {
+final routerProvider = Provider<GoRouter>((ref) {
+  final refresh = _AuthRefreshNotifier(ref);
+  ref.onDispose(refresh.dispose);
+
+  Page<void> fadePage(GoRouterState state, Widget child) {
     return NoTransitionPage<void>(key: state.pageKey, child: child);
   }
 
-  /// Creates a [GoRouter] that redirects based on auth state.
-  ///
-  /// The [authController] is used to check sign-in status and trigger
-  /// refreshes when the auth state changes. The [passiveAgent] controller
-  /// is consulted to decide whether to send a fresh sign-in to the
-  /// morning brief before the dashboard.
-  static GoRouter router(
-    AuthController authController,
-    PassiveAgentController passiveAgent,
-  ) {
-    return GoRouter(
-      initialLocation: RouteNames.splash,
-      refreshListenable: authController,
-      redirect: (context, state) {
-        final isSignedIn = authController.isSignedIn;
-        final loc = state.matchedLocation;
-        final isAuthRoute = loc == RouteNames.login ||
-            loc == RouteNames.signup ||
-            loc == RouteNames.splash ||
-            loc == RouteNames.onboarding;
+  return GoRouter(
+    initialLocation: RouteNames.splash,
+    refreshListenable: refresh,
+    redirect: (context, state) {
+      final auth = ref.read(authProvider);
+      final passive = ref.read(passiveAgentProvider);
+      final profile = ref.read(userProfileProvider);
+      final isSignedIn = auth.isSignedIn;
+      final isGuest = auth.appUser?.isGuest ?? false;
+      final loc = state.matchedLocation;
+      final isAuthRoute = loc == RouteNames.login ||
+          loc == RouteNames.signup ||
+          loc == RouteNames.splash ||
+          loc == RouteNames.onboarding;
 
-        // Not signed in and trying to reach a protected route → login.
-        if (!isSignedIn && !isAuthRoute) {
-          return RouteNames.login;
-        }
+      if (!isSignedIn && !isAuthRoute) {
+        return RouteNames.login;
+      }
 
-        // Signed in but sitting on login/signup → morning brief on first
-        // sign-in this session, then straight to dashboard.
-        if (isSignedIn &&
-            (loc == RouteNames.login || loc == RouteNames.signup)) {
-          return passiveAgent.morningBriefShown
-              ? RouteNames.dashboard
-              : RouteNames.morningBrief;
-        }
+      // First-time setup: signed-in non-guest whose profile has loaded
+      // but has no `role` yet → send to onboarding once.
+      //
+      // Profile being null means either (a) guest, or (b) the
+      // `users/{uid}` stream hasn't fired its first snapshot yet. In
+      // either case we don't redirect — the refresh listener will
+      // re-evaluate when the profile arrives.
+      final needsOnboarding =
+          isSignedIn && !isGuest && profile != null && (profile.role ?? '').trim().isEmpty;
+      if (needsOnboarding && loc != RouteNames.onboarding) {
+        return RouteNames.onboarding;
+      }
 
-        return null;
-      },
-      routes: [
+      // Conversely, if the user has a role and is sitting on onboarding,
+      // bounce them to the dashboard.
+      if (!needsOnboarding && loc == RouteNames.onboarding) {
+        return RouteNames.dashboard;
+      }
+
+      if (isSignedIn &&
+          (loc == RouteNames.login || loc == RouteNames.signup)) {
+        return passive.morningBriefShown
+            ? RouteNames.dashboard
+            : RouteNames.morningBrief;
+      }
+
+      return null;
+    },
+    routes: _routes(fadePage),
+  );
+});
+
+List<RouteBase> _routes(Page<void> Function(GoRouterState, Widget) fadePage) =>
+    [
         GoRoute(
           path: RouteNames.splash,
-          pageBuilder: (context, state) => _fadePage(state, const SplashPage()),
+          pageBuilder: (context, state) => fadePage(state, const SplashPage()),
         ),
         GoRoute(
           path: RouteNames.login,
-          pageBuilder: (context, state) => _fadePage(state, const LoginPage()),
+          pageBuilder: (context, state) => fadePage(state, const LoginPage()),
         ),
         GoRoute(
           path: RouteNames.signup,
-          pageBuilder: (context, state) => _fadePage(state, const SignUpPage()),
+          pageBuilder: (context, state) => fadePage(state, const SignUpPage()),
         ),
         GoRoute(
           path: RouteNames.onboarding,
           pageBuilder: (context, state) =>
-              _fadePage(state, const OnboardingPage()),
+              fadePage(state, const OnboardingPage()),
         ),
         GoRoute(
           path: RouteNames.morningBrief,
           pageBuilder: (context, state) =>
-              _fadePage(state, const MorningBriefPage()),
+              fadePage(state, const MorningBriefPage()),
         ),
         GoRoute(
           path: RouteNames.resumes,
           pageBuilder: (context, state) =>
-              _fadePage(state, const ResumeListsPage()),
+              fadePage(state, const ResumeListsPage()),
         ),
         GoRoute(
           path: RouteNames.resumePreview,
           pageBuilder: (context, state) {
             final resume =
                 state.extra is ResumeFile ? state.extra as ResumeFile : null;
-            return _fadePage(state, ResumePreviewPage(resume: resume));
+            return fadePage(state, ResumePreviewPage(resume: resume));
           },
         ),
         GoRoute(
           path: RouteNames.agentChat,
           pageBuilder: (context, state) =>
-              _fadePage(state, const AiChatbotPage()),
+              fadePage(state, const AiChatbotPage()),
         ),
         StatefulShellRoute.indexedStack(
           builder: (context, state, navigationShell) =>
@@ -120,7 +148,7 @@ class AppRouter {
                 GoRoute(
                   path: RouteNames.dashboard,
                   pageBuilder: (context, state) =>
-                      _fadePage(state, const DashboardPage()),
+                      fadePage(state, const DashboardPage()),
                 ),
               ],
             ),
@@ -129,7 +157,7 @@ class AppRouter {
                 GoRoute(
                   path: RouteNames.jobs,
                   pageBuilder: (context, state) =>
-                      _fadePage(state, const JobsPage()),
+                      fadePage(state, const JobsPage()),
                 ),
               ],
             ),
@@ -138,7 +166,7 @@ class AppRouter {
                 GoRoute(
                   path: RouteNames.profile,
                   pageBuilder: (context, state) =>
-                      _fadePage(state, const ProfilePage()),
+                      fadePage(state, const ProfilePage()),
                 ),
               ],
             ),
@@ -147,42 +175,39 @@ class AppRouter {
         GoRoute(
           path: RouteNames.applications,
           pageBuilder: (context, state) =>
-              _fadePage(state, const ApplicationsPage()),
+              fadePage(state, const ApplicationsPage()),
         ),
         GoRoute(
           path: RouteNames.notifications,
           pageBuilder: (context, state) =>
-              _fadePage(state, const NotificationsPage()),
+              fadePage(state, const NotificationsPage()),
         ),
         GoRoute(
           path: RouteNames.detail,
           pageBuilder: (context, state) {
             final job = state.extra is Job ? state.extra as Job : null;
-            return _fadePage(state, JobDetailPage(job: job));
+            return fadePage(state, JobDetailPage(job: job));
           },
         ),
         GoRoute(
           path: RouteNames.tailor,
           pageBuilder: (context, state) {
             final job = state.extra is Job ? state.extra as Job : null;
-            return _fadePage(state, TailorPage(job: job));
+            return fadePage(state, TailorPage(job: job));
           },
         ),
         GoRoute(
           path: RouteNames.review,
           pageBuilder: (context, state) {
             final job = state.extra is Job ? state.extra as Job : null;
-            return _fadePage(state, ReviewPage(job: job));
+            return fadePage(state, ReviewPage(job: job));
           },
         ),
         GoRoute(
           path: RouteNames.submitted,
           pageBuilder: (context, state) {
             final job = state.extra is Job ? state.extra as Job : null;
-            return _fadePage(state, SubmittedPage(job: job));
+            return fadePage(state, SubmittedPage(job: job));
           },
         ),
-      ],
-    );
-  }
-}
+    ];

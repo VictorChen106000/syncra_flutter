@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
@@ -12,57 +12,26 @@ import '../../../data/models/job.dart';
 import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
-import '../state/jobs_controller.dart';
+import '../../../shared/widgets/empty_state_card.dart';
+import '../state/jobs_notifier.dart';
 import 'widgets/job_action_sheet.dart';
 
-class JobsPage extends StatefulWidget {
+class JobsPage extends ConsumerStatefulWidget {
   const JobsPage({super.key});
 
   @override
-  State<JobsPage> createState() => _JobsPageState();
+  ConsumerState<JobsPage> createState() => _JobsPageState();
 }
 
-class _JobsPageState extends State<JobsPage> {
+class _JobsPageState extends ConsumerState<JobsPage> {
   int _tabIndex = 0;
   String _query = '';
   _Filter _filter = _Filter.all;
-  JobsController? _bound;
 
-  void _onJobsMessage() {
-    final msg = _bound?.consumeMessage();
-    if (msg == null || !mounted) return;
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 3),
-          content: Text(msg),
-        ),
-      );
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final c = context.read<JobsController>();
-    if (!identical(c, _bound)) {
-      _bound?.removeListener(_onJobsMessage);
-      _bound = c;
-      c.addListener(_onJobsMessage);
-    }
-  }
-
-  @override
-  void dispose() {
-    _bound?.removeListener(_onJobsMessage);
-    super.dispose();
-  }
-
-  List<Job> _filteredQueue(JobsController controller) {
-    final all = controller.pendingJobs;
+  List<Job> _filteredQueue(JobsState state) {
+    final all = state.pendingJobs;
     return all.where((j) {
-      if (controller.isDismissed(j.id)) return false;
+      if (state.isDismissed(j.id)) return false;
       final matchesFilter = switch (_filter) {
         _Filter.all => true,
         _Filter.ready => j.category == JobCategory.ready,
@@ -79,8 +48,8 @@ class _JobsPageState extends State<JobsPage> {
   }
 
   void _dismiss(Job job) {
-    final controller = context.read<JobsController>();
-    controller.dismiss(job.id, label: job.company);
+    final notifier = ref.read(jobsProvider.notifier);
+    notifier.dismiss(job.id, label: job.company);
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(
@@ -90,7 +59,7 @@ class _JobsPageState extends State<JobsPage> {
           content: Text('${job.company} dismissed'),
           action: SnackBarAction(
             label: 'Undo',
-            onPressed: () => controller.undismiss(job.id),
+            onPressed: () => notifier.undismiss(job.id),
           ),
         ),
       );
@@ -98,45 +67,60 @@ class _JobsPageState extends State<JobsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<JobsController>(
-      builder: (context, controller, _) {
-        final jobs = _filteredQueue(controller);
-        return AppScreen(
-          showBottomNav: false,
-          activeTab: BottomNavTab.agent,
-          extendBehindBottomNav: true,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AppHeader.tab(
-                title: AppStrings.agentPipeline,
-                bottom: _TabSwitcher(
-                  selectedIndex: _tabIndex,
-                  labels: const [AppStrings.reviewQueue, AppStrings.history],
-                  onChanged: (i) => setState(() => _tabIndex = i),
-                ),
-              ),
-              Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 220),
-                  child: _tabIndex == 0
-                      ? _ReviewQueueTab(
-                          key: const ValueKey('queue'),
-                          query: _query,
-                          filter: _filter,
-                          jobs: jobs,
-                          onQueryChanged: (q) => setState(() => _query = q),
-                          onFilterChanged: (f) => setState(() => _filter = f),
-                          onDismiss: _dismiss,
-                          onMore: (job) => JobActionSheet.show(context, job),
-                        )
-                      : const _HistoryTab(key: ValueKey('history')),
-                ),
-              ),
-            ],
+    ref.listen<JobsState>(jobsProvider, (prev, next) {
+      if (next.lastMessage == null || next.lastMessage == prev?.lastMessage) {
+        return;
+      }
+      ref.read(jobsProvider.notifier).consumeMessage();
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
+            content: Text(next.lastMessage!),
           ),
         );
-      },
+    });
+
+    final state = ref.watch(jobsProvider);
+    final jobs = _filteredQueue(state);
+
+    return AppScreen(
+      showBottomNav: false,
+      activeTab: BottomNavTab.agent,
+      extendBehindBottomNav: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AppHeader.tab(
+            title: AppStrings.agentPipeline,
+            bottom: _TabSwitcher(
+              selectedIndex: _tabIndex,
+              labels: const [AppStrings.reviewQueue, AppStrings.history],
+              onChanged: (i) => setState(() => _tabIndex = i),
+            ),
+          ),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              child: _tabIndex == 0
+                  ? _ReviewQueueTab(
+                      key: const ValueKey('queue'),
+                      query: _query,
+                      filter: _filter,
+                      jobs: jobs,
+                      hasAnyPipeline: state.pendingJobs.isNotEmpty,
+                      onQueryChanged: (q) => setState(() => _query = q),
+                      onFilterChanged: (f) => setState(() => _filter = f),
+                      onDismiss: _dismiss,
+                      onMore: (job) => JobActionSheet.show(context, job),
+                    )
+                  : const _HistoryTab(key: ValueKey('history')),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -225,6 +209,7 @@ class _ReviewQueueTab extends StatelessWidget {
     required this.query,
     required this.filter,
     required this.jobs,
+    required this.hasAnyPipeline,
     required this.onQueryChanged,
     required this.onFilterChanged,
     required this.onDismiss,
@@ -234,6 +219,7 @@ class _ReviewQueueTab extends StatelessWidget {
   final String query;
   final _Filter filter;
   final List<Job> jobs;
+  final bool hasAnyPipeline;
   final ValueChanged<String> onQueryChanged;
   final ValueChanged<_Filter> onFilterChanged;
   final ValueChanged<Job> onDismiss;
@@ -257,7 +243,16 @@ class _ReviewQueueTab extends StatelessWidget {
         ),
         const SizedBox(height: 20),
         if (jobs.isEmpty)
-          const _EmptyResults()
+          hasAnyPipeline
+              ? const _EmptyResults()
+              : EmptyStateCard(
+                  icon: Icons.bolt_rounded,
+                  title: 'No roles in your pipeline',
+                  body: 'Enable "Today\'s brief" in Settings, then tap '
+                      '"Run today\'s brief" on the dashboard to scan for fresh roles.',
+                  actionLabel: 'Open dashboard',
+                  onAction: () => context.go(RouteNames.dashboard),
+                )
         else
           ...jobs.asMap().entries.map((entry) {
             final job = entry.value;

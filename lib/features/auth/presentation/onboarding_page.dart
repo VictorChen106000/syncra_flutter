@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
@@ -7,12 +8,76 @@ import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
 import '../../../shared/widgets/app_back_button.dart';
 import '../../../shared/widgets/glass_pill.dart';
+import '../state/auth_notifier.dart';
+import '../state/user_profile_notifier.dart';
 
-class OnboardingPage extends StatelessWidget {
+/// First-time setup. Captures the user's target role and persists it to
+/// `users/{uid}.role` via [UserProfileNotifier.setRole]. The brief reasoner
+/// reads this field for match scoring.
+///
+/// Per [team-handoff.md], `autonomy_level` is **not** captured here — it's
+/// deferred to Settings so users have context before choosing.
+class OnboardingPage extends ConsumerStatefulWidget {
   const OnboardingPage({super.key});
 
   @override
+  ConsumerState<OnboardingPage> createState() => _OnboardingPageState();
+}
+
+class _OnboardingPageState extends ConsumerState<OnboardingPage> {
+  final TextEditingController _roleController = TextEditingController();
+  final FocusNode _roleFocus = FocusNode();
+  bool _submitted = false;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Pre-fill if the user already has a role and re-entered onboarding.
+    final existing = ref.read(userProfileProvider)?.role;
+    if (existing != null && existing.isNotEmpty) {
+      _roleController.text = existing;
+      _submitted = true;
+    }
+    _roleController.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _roleController.dispose();
+    _roleFocus.dispose();
+    super.dispose();
+  }
+
+  bool get _hasValidRole => _roleController.text.trim().isNotEmpty;
+
+  Future<void> _saveAndContinue() async {
+    final role = _roleController.text.trim();
+    if (role.isEmpty || _saving) return;
+
+    setState(() => _saving = true);
+    _roleFocus.unfocus();
+
+    await ref.read(userProfileProvider.notifier).setRole(role);
+
+    if (!mounted) return;
+    setState(() {
+      _submitted = true;
+      _saving = false;
+    });
+
+    // Small beat so the confirmation bubble animates in before nav.
+    await Future.delayed(const Duration(milliseconds: 700));
+    if (!mounted) return;
+    context.go(RouteNames.dashboard);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final displayName = ref.watch(authProvider).appUser?.displayName;
+    final firstName =
+        (displayName?.split(' ').first ?? '').isEmpty ? null : displayName!.split(' ').first;
+
     return Scaffold(
       backgroundColor: AppColors.scaffold,
       body: SafeArea(
@@ -31,7 +96,10 @@ class OnboardingPage extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  AppBackButton(onPressed: () => context.go(RouteNames.login)),
+                  AppBackButton(
+                    onPressed: () =>
+                        ref.read(authProvider.notifier).signOut(),
+                  ),
                   const Spacer(),
                   const GlassPill(
                     child: Row(
@@ -59,9 +127,10 @@ class OnboardingPage extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
                 children: [
-                  const _AiMessage(
+                  _AiMessage(
                     text:
-                        "Hi! I'm Syncra AI. Let's set up your career profile. Could you upload your latest resume?",
+                        "Hi${firstName == null ? '' : ' $firstName'}! I'm Syncra AI. "
+                        "Let's set up your career profile. Could you upload your latest resume?",
                   ).animate().fadeIn().moveY(begin: 8, end: 0),
                   const SizedBox(height: 16),
                   const _UserMessage(
@@ -94,21 +163,30 @@ class OnboardingPage extends StatelessWidget {
                         'I successfully extracted your skills! To calibrate my matching engine, what specific role are you aiming for?',
                   ).animate(delay: 700.ms).fadeIn().moveY(begin: 8, end: 0),
                   const SizedBox(height: 16),
-                  const _UserMessage(
-                    child: Text(
-                      'UX Designer or Frontend Developer',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w600,
+                  if (_submitted)
+                    _UserMessage(
+                      child: Text(
+                        _roleController.text.trim(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                  ).animate(delay: 850.ms).fadeIn().moveY(begin: 8, end: 0),
-                  const SizedBox(height: 16),
-                  const _AiMessage(
-                    text:
-                        "Got it! Your AI profile is ready. I'll start finding matches in the background.",
-                  ).animate(delay: 1000.ms).fadeIn().moveY(begin: 8, end: 0),
+                    ).animate().fadeIn().moveY(begin: 8, end: 0)
+                  else
+                    _RoleInput(
+                      controller: _roleController,
+                      focusNode: _roleFocus,
+                      onSubmitted: _saveAndContinue,
+                    ).animate(delay: 850.ms).fadeIn().moveY(begin: 8, end: 0),
+                  if (_submitted) ...[
+                    const SizedBox(height: 16),
+                    const _AiMessage(
+                      text:
+                          "Got it! Your AI profile is ready. I'll start finding matches in the background.",
+                    ).animate().fadeIn().moveY(begin: 8, end: 0),
+                  ],
                 ],
               ),
             ),
@@ -117,24 +195,44 @@ class OnboardingPage extends StatelessWidget {
               child: SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: () => context.go(RouteNames.dashboard),
+                  onPressed:
+                      (_hasValidRole && !_saving) ? _saveAndContinue : null,
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.ink,
                     foregroundColor: Colors.white,
+                    disabledBackgroundColor: AppColors.border,
+                    disabledForegroundColor: AppColors.textMuted,
                     minimumSize: const Size.fromHeight(56),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(
-                        AppStrings.goToDashboard,
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
-                      ),
-                      SizedBox(width: 8),
-                      Icon(Icons.arrow_forward_rounded, size: 16),
+                      if (_saving)
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      else
+                        Text(
+                          _submitted
+                              ? AppStrings.goToDashboard
+                              : 'Save & continue',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      if (!_saving) ...[
+                        const SizedBox(width: 8),
+                        const Icon(Icons.arrow_forward_rounded, size: 16),
+                      ],
                     ],
                   ),
                 ),
@@ -143,6 +241,73 @@ class OnboardingPage extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Replaces the hardcoded role bubble. Posts to the AI bubble side (right-
+/// aligned, same shape as `_UserMessage`) but with an editable field.
+class _RoleInput extends StatelessWidget {
+  const _RoleInput({
+    required this.controller,
+    required this.focusNode,
+    required this.onSubmitted,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final VoidCallback onSubmitted;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        Flexible(
+          child: Container(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.sizeOf(context).width * 0.82,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.ink,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(22),
+                topRight: Radius.circular(22),
+                bottomLeft: Radius.circular(22),
+                bottomRight: Radius.circular(4),
+              ),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.15),
+              ),
+            ),
+            child: TextField(
+              controller: controller,
+              focusNode: focusNode,
+              autofocus: true,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => onSubmitted(),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14.5,
+                fontWeight: FontWeight.w600,
+              ),
+              decoration: const InputDecoration(
+                hintText: 'e.g. Senior UX Designer at AI startups',
+                hintStyle: TextStyle(
+                  color: Colors.white54,
+                  fontWeight: FontWeight.w500,
+                ),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                isCollapsed: true,
+                contentPadding: EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

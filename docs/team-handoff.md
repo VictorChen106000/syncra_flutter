@@ -58,6 +58,13 @@ reference; delete after).
 | Tracker streaming from Firestore, status updates, notes | ✅ |
 | Brief reasoner client-side (writes pipeline cards to Firestore) | ✅ |
 | Pipeline approve → creates entry on Applications page | ✅ |
+| **`provider` → `flutter_riverpod` migration** (immutable state, 7 notifiers) | ✅ 2026-05-18 — see [api-contract §1.5](./api-contract.md) for the provider reference table |
+| Dashboard prompt entry → dispatches typed prompt + selected resumes to chat | ✅ 2026-05-18 |
+| "Run today's brief" dashboard CTA (`_RunBriefCta`) — opt-in, never auto-fires | ✅ 2026-05-18 |
+| Settings page — autonomy slider, "Today's brief" toggle, delete account, sign out | ✅ 2026-05-18 — backed by [`userProfileProvider`](../lib/features/auth/state/user_profile_notifier.dart) + `UserRepository.update()` |
+| `UserProfile` model + `users/{uid}` stream subscription | ✅ 2026-05-18 — see [api-contract §1.5](./api-contract.md) |
+| Onboarding captures `role` (text field) + persists via `userProfileProvider.setRole(...)` | ✅ 2026-05-18 |
+| Router redirects new users (role=null, non-guest) to `/onboarding` once | ✅ 2026-05-18 — see [api-contract §1.5](./api-contract.md) "Router-gated UI" |
 
 If you find yourself building one of these from scratch, **stop and ask** — it
 probably already exists.
@@ -117,7 +124,7 @@ syncra_flutter/
 ├── firebase.json, firestore.rules    ✅ — deployed, don't edit without team vote
 │
 ├── lib/
-│   ├── main.dart, app.dart           ✅ — provider tree, router boot   (FE1)
+│   ├── main.dart, app.dart           ✅ — `ProviderScope` + router boot (FE1)
 │   │
 │   ├── core/
 │   │   ├── constants/                ✅ — colors, strings, sizes      (FE1)
@@ -140,7 +147,7 @@ syncra_flutter/
 │   ├── features/
 │   │   ├── agent/
 │   │   │   ├── services/anthropic_service.dart  ✅ — brief reasoner   (B3)
-│   │   │   ├── state/passive_agent_controller.dart  ✅                (B3)
+│   │   │   ├── state/passive_agent_notifier.dart  ✅                (B3)
 │   │   │   └── data/fake_resume.dart  ✅ — fallback ResumeJSON
 │   │   │
 │   │   ├── agent_chat/               ← Track B3's home
@@ -150,7 +157,7 @@ syncra_flutter/
 │   │   │   ├── services/
 │   │   │   │   ├── agent_service.dart           ✅ — interface
 │   │   │   │   └── anthropic_chat_service.dart  ✅ — tool-use loop    (B3)
-│   │   │   ├── state/agent_chat_controller.dart ✅                    (B3)
+│   │   │   ├── state/agent_chat_notifier.dart ✅                    (B3)
 │   │   │   ├── tools/
 │   │   │   │   ├── tool.dart, tool_registry.dart       ✅
 │   │   │   │   ├── anthropic_tool_calls.dart    ✅ — paraphrase + draft (B3)
@@ -165,7 +172,7 @@ syncra_flutter/
 │   │   │   │   ├── onboarding_page.dart  🟡 — needs autonomy_level capture (FE1)
 │   │   │   │   └── morning_brief_page.dart ✅
 │   │   │   ├── services/google_auth_service.dart  ✅
-│   │   │   └── state/auth_controller.dart  ✅
+│   │   │   └── state/auth_notifier.dart  ✅
 │   │   │
 │   │   ├── dashboard/                🟡 — needs prominent prompt entry (FE1)
 │   │   ├── profile/                  🟡 — bare scaffold, needs settings (FE1)
@@ -173,7 +180,7 @@ syncra_flutter/
 │   │   ├── applications/             ✅ — streaming, status, notes (was tracker/) (FE1 polish)
 │   │   │
 │   │   ├── jobs/
-│   │   │   ├── state/jobs_controller.dart  ✅ — pipeline stream + approve
+│   │   │   ├── state/jobs_notifier.dart  ✅ — pipeline stream + approve
 │   │   │   └── presentation/
 │   │   │       ├── jobs_page.dart    ✅
 │   │   │       ├── job_detail_page.dart ✅
@@ -195,7 +202,7 @@ syncra_flutter/
 │   │   │   │   ├── resume_session_storage.dart       ✅ — platform export
 │   │   │   │   ├── resume_session_storage_web.dart   ✅ — web sessionStorage PDF-byte cache
 │   │   │   │   └── resume_session_storage_stub.dart  ✅ — non-web no-op
-│   │   │   ├── state/resume_controller.dart  ✅ — local-cache wired
+│   │   │   ├── state/resume_notifier.dart  ✅ — local-cache wired
 │   │   │   └── presentation/
 │   │   │       ├── resume_lists_page.dart  ✅
 │   │   │       ├── resume_preview_page.dart ✅ — local file viewer
@@ -389,7 +396,7 @@ been drafting fake emails until now.
 - [lib/features/agent_chat/tools/anthropic_tool_calls.dart](../lib/features/agent_chat/tools/anthropic_tool_calls.dart) — paraphrase + draft email prompts
 - [lib/features/agent_chat/tools/builtin_tools.dart](../lib/features/agent_chat/tools/builtin_tools.dart) — system prompt + tool descriptions
 - [lib/features/agent/services/anthropic_service.dart](../lib/features/agent/services/anthropic_service.dart) — brief reasoner / job matcher
-- [lib/features/agent/state/passive_agent_controller.dart](../lib/features/agent/state/passive_agent_controller.dart) — **now a user-triggered callable, not a scheduler (see §8)**
+- [lib/features/agent/state/passive_agent_notifier.dart](../lib/features/agent/state/passive_agent_notifier.dart) — **now a user-triggered callable, not a scheduler (see §8)**
 
 **Why it matters**
 Two big shifts since v1.2 that touch every prompt you own:
@@ -564,7 +571,7 @@ states, smooth navigation, an onboarding that captures real data — that's all 
    Rebuild [applications_page.dart](../lib/features/applications/presentation/applications_page.dart)
    as a date-sorted activity log with a "Got a reply" switch per entry. Filter
    chips become `All / Drafts / Sent / Replied`. Coordinate with
-   [ApplicationsController](../lib/features/applications/state/applications_controller.dart) and
+   [ApplicationsController](../lib/features/applications/state/applications_notifier.dart) and
    [ApplicationsRepository](../lib/data/firestore/applications_repository.dart). ~4–5h.
 
 8. **Empty states everywhere** — first-time user with no resume, no jobs in

@@ -62,7 +62,7 @@ After day 2, neither blocks the other.
 | `lib/data/firestore/resumes_repository.dart` | ✅ owns | imports |
 | `lib/features/agent_chat/tools/builtin_tools.dart` — `tailor_resume` + `apply_resume_edits` executors | ✅ owns | does not touch |
 | `lib/features/resumes/presentation/` (list page, preview page) | does not touch | ✅ owns |
-| `lib/features/resumes/state/resume_controller.dart` (Riverpod Notifier, V1/V2 state) | does not touch | ✅ owns |
+| `lib/features/resumes/state/resume_notifier.dart` (Riverpod Notifier, V1/V2 state) | does not touch | ✅ owns |
 | `lib/features/agent_chat/presentation/widgets/proposed_edits_block.dart` (NEW — inline diff block) | does not touch | ✅ owns (whole file) |
 | `lib/features/agent_chat/presentation/widgets/agent_block_views.dart` | does not touch | does not touch — A owns; A adds one `case ProposedEditsBlock` delegating to R2's widget |
 
