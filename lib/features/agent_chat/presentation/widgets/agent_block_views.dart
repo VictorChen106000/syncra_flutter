@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/motion.dart';
 import '../../models/agent_block.dart';
 import '../../state/agent_chat_notifier.dart';
 
@@ -359,7 +360,7 @@ class _ShimmerText extends StatelessWidget {
     );
     if (!active) return base;
     return base
-        .animate(onPlay: (c) => c.repeat())
+        .animate(onPlay: repeatIfMotion(context))
         .shimmer(
           duration: 1600.ms,
           color: AppColors.ink.withValues(alpha: 0.55),
@@ -448,7 +449,7 @@ class _Spinner extends StatelessWidget {
       size: 14,
       color: AppColors.textMuted.withValues(alpha: 0.85),
     )
-        .animate(onPlay: (c) => c.repeat())
+        .animate(onPlay: repeatIfMotion(context))
         .rotate(duration: 900.ms, curve: Curves.linear);
   }
 }

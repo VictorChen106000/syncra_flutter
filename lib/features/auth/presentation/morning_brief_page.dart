@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/utils/motion.dart';
 import '../../../core/router/route_names.dart';
 import '../../../data/models/job.dart';
 import '../../agent/state/passive_agent_notifier.dart';
@@ -70,7 +71,7 @@ class _MorningBriefPageState extends ConsumerState<MorningBriefPage> {
                         color: AppColors.accent.withValues(alpha: 0.20),
                       ),
                     )
-                    .animate(onPlay: (c) => c.repeat(reverse: true))
+                    .animate(onPlay: repeatIfMotion(context, reverse: true))
                     .scale(
                       duration: 4.seconds,
                       begin: const Offset(1, 1),

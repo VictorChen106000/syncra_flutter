@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/utils/motion.dart';
 import '../../../fixtures/mock_agent_service.dart';
 import '../models/chat_message.dart';
 import '../state/agent_chat_notifier.dart';
@@ -207,7 +208,7 @@ class _LiveDot extends StatelessWidget {
         ],
       ),
     )
-        .animate(onPlay: (c) => c.repeat(reverse: true))
+        .animate(onPlay: repeatIfMotion(context, reverse: true))
         .fadeIn(duration: 500.ms)
         .then()
         .fadeOut(duration: 500.ms);

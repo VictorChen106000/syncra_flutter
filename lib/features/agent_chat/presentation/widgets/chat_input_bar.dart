@@ -285,34 +285,40 @@ class _SendButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOutCubic,
-      width: 40,
-      height: 40,
-      decoration: BoxDecoration(
-        color: enabled ? AppColors.ink : AppColors.softSurface,
-        shape: BoxShape.circle,
-        boxShadow: enabled
-            ? [
-                BoxShadow(
-                  color: AppColors.ink.withValues(alpha: 0.22),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ]
-            : null,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        shape: const CircleBorder(),
-        child: InkWell(
-          onTap: enabled ? onTap : null,
-          customBorder: const CircleBorder(),
-          child: Icon(
-            Icons.arrow_upward_rounded,
-            color: enabled ? Colors.white : AppColors.textSoft,
-            size: 20,
+    return Semantics(
+      label: 'Send message',
+      button: true,
+      enabled: enabled,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: enabled ? AppColors.ink : AppColors.softSurface,
+          shape: BoxShape.circle,
+          boxShadow: enabled
+              ? [
+                  BoxShadow(
+                    color: AppColors.ink.withValues(alpha: 0.22),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          child: InkWell(
+            onTap: enabled ? onTap : null,
+            customBorder: const CircleBorder(),
+            excludeFromSemantics: true,
+            child: Icon(
+              Icons.arrow_upward_rounded,
+              color: enabled ? Colors.white : AppColors.textSoft,
+              size: 20,
+            ),
           ),
         ),
       ),

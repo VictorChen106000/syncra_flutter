@@ -160,73 +160,78 @@ class _NavPillState extends State<_NavPill>
     // (including the label expansion when isActive flips).
     WidgetsBinding.instance.addPostFrameCallback((_) => _measurePill());
 
-    return AnimatedBuilder(
-      animation: _pulse,
-      builder: (context, child) {
-        final scale = _pulse.value;
-        // Push siblings outward by exactly the amount the scaled pill grew
-        // on each side, so neighbours track the pill instead of over- or
-        // under-shooting against a magic constant.
-        final pushPx = (scale - 1.0) * _pillWidth / 2;
-        return Padding(
-          padding: EdgeInsets.symmetric(horizontal: pushPx),
-          child: Transform.scale(scale: scale, child: child),
-        );
-      },
-      child: Material(
-        key: _pillKey,
-        color: AppColors.ink,
-        borderRadius: BorderRadius.circular(31),
-        shadowColor: Colors.black.withValues(alpha: 0.32),
-        elevation: 8,
-        child: InkWell(
+    return Semantics(
+      label: item.label,
+      button: true,
+      selected: isActive,
+      child: AnimatedBuilder(
+        animation: _pulse,
+        builder: (context, child) {
+          final scale = _pulse.value;
+          // Push siblings outward by exactly the amount the scaled pill grew
+          // on each side, so neighbours track the pill instead of over- or
+          // under-shooting against a magic constant.
+          final pushPx = (scale - 1.0) * _pillWidth / 2;
+          return Padding(
+            padding: EdgeInsets.symmetric(horizontal: pushPx),
+            child: Transform.scale(scale: scale, child: child),
+          );
+        },
+        child: Material(
+          key: _pillKey,
+          color: AppColors.ink,
           borderRadius: BorderRadius.circular(31),
-          onTap: _handleTap,
-          child: AnimatedContainer(
-            duration: _shapeDuration,
-            curve: _shapeCurve,
-            height: 62,
-            padding: EdgeInsets.symmetric(horizontal: isActive ? 22 : 18),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AnimatedSwitcher(
-                  duration: _shapeDuration,
-                  switchInCurve: _shapeCurve,
-                  switchOutCurve: _shapeCurve,
-                  child: Icon(
-                    isActive ? item.icon : item.outlineIcon,
-                    key: ValueKey<bool>(isActive),
-                    size: 26,
-                    color: isActive ? activeColor : AppColors.surface,
-                  ),
-                ),
-                ClipRect(
-                  child: AnimatedAlign(
+          shadowColor: Colors.black.withValues(alpha: 0.32),
+          elevation: 8,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(31),
+            onTap: _handleTap,
+            child: AnimatedContainer(
+              duration: _shapeDuration,
+              curve: _shapeCurve,
+              height: 62,
+              padding: EdgeInsets.symmetric(horizontal: isActive ? 22 : 18),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedSwitcher(
                     duration: _shapeDuration,
-                    curve: _shapeCurve,
-                    alignment: Alignment.centerLeft,
-                    widthFactor: isActive ? 1 : 0,
-                    child: AnimatedOpacity(
+                    switchInCurve: _shapeCurve,
+                    switchOutCurve: _shapeCurve,
+                    child: Icon(
+                      isActive ? item.icon : item.outlineIcon,
+                      key: ValueKey<bool>(isActive),
+                      size: 26,
+                      color: isActive ? activeColor : AppColors.surface,
+                    ),
+                  ),
+                  ClipRect(
+                    child: AnimatedAlign(
                       duration: _shapeDuration,
                       curve: _shapeCurve,
-                      opacity: isActive ? 1 : 0,
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 8),
-                        child: Text(
-                          item.label,
-                          style: TextStyle(
-                            color: activeColor,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: -0.1,
+                      alignment: Alignment.centerLeft,
+                      widthFactor: isActive ? 1 : 0,
+                      child: AnimatedOpacity(
+                        duration: _shapeDuration,
+                        curve: _shapeCurve,
+                        opacity: isActive ? 1 : 0,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: Text(
+                            item.label,
+                            style: TextStyle(
+                              color: activeColor,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: -0.1,
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

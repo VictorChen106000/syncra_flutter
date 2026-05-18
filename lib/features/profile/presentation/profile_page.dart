@@ -7,6 +7,7 @@ import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/utils/motion.dart';
 import '../../../core/router/route_names.dart';
 import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
@@ -218,7 +219,7 @@ class _PulsingActiveDot extends StatelessWidget {
               color: AppColors.accent.withValues(alpha: 0.45),
             ),
           )
-              .animate(onPlay: (c) => c.repeat())
+              .animate(onPlay: repeatIfMotion(context))
               .scale(
                 duration: 1300.ms,
                 begin: const Offset(0.5, 0.5),

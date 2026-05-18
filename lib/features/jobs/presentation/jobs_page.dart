@@ -409,6 +409,7 @@ class _FilterChipsRow extends StatelessWidget {
         const SizedBox(width: 10),
         _IconCircleButton(
           icon: Icons.search_rounded,
+          semanticLabel: 'Search jobs',
           onTap: onSearchTap,
         ),
       ],
@@ -467,15 +468,20 @@ class _SearchField extends StatelessWidget {
               ),
             ),
           ),
-          InkResponse(
-            onTap: onClose,
-            radius: 22,
-            child: const Padding(
-              padding: EdgeInsets.all(4),
-              child: Icon(
-                Icons.close_rounded,
-                size: 18,
-                color: AppColors.textMuted,
+          Semantics(
+            label: 'Close search',
+            button: true,
+            child: InkResponse(
+              onTap: onClose,
+              radius: 22,
+              excludeFromSemantics: true,
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(
+                  Icons.close_rounded,
+                  size: 18,
+                  color: AppColors.textMuted,
+                ),
               ),
             ),
           ),
@@ -486,23 +492,33 @@ class _SearchField extends StatelessWidget {
 }
 
 class _IconCircleButton extends StatelessWidget {
-  const _IconCircleButton({required this.icon, required this.onTap});
+  const _IconCircleButton({
+    required this.icon,
+    required this.onTap,
+    required this.semanticLabel,
+  });
 
   final IconData icon;
   final VoidCallback onTap;
+  final String semanticLabel;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.surface,
-      shape: const CircleBorder(side: BorderSide(color: AppColors.border)),
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: SizedBox(
-          width: 40,
-          height: 40,
-          child: Icon(icon, size: 18, color: AppColors.ink),
+    return Semantics(
+      label: semanticLabel,
+      button: true,
+      child: Material(
+        color: AppColors.surface,
+        shape: const CircleBorder(side: BorderSide(color: AppColors.border)),
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          excludeFromSemantics: true,
+          child: SizedBox(
+            width: 40,
+            height: 40,
+            child: Icon(icon, size: 18, color: AppColors.ink),
+          ),
         ),
       ),
     );
@@ -920,32 +936,37 @@ class _SecondaryAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.scaffold,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
+    return Semantics(
+      label: isIconOnly ? 'More actions' : label,
+      button: true,
+      child: Material(
+        color: AppColors.scaffold,
         borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: isIconOnly ? 16 : 18,
-            vertical: 14,
-          ),
-          child: isIconOnly
-              ? const Icon(
-                  Icons.more_horiz_rounded,
-                  size: 20,
-                  color: AppColors.textMuted,
-                )
-              : Text(
-                  label,
-                  style: const TextStyle(
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          borderRadius: BorderRadius.circular(12),
+          excludeFromSemantics: true,
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: isIconOnly ? 16 : 18,
+              vertical: 14,
+            ),
+            child: isIconOnly
+                ? const Icon(
+                    Icons.more_horiz_rounded,
+                    size: 20,
                     color: AppColors.textMuted,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
+                  )
+                : Text(
+                    label,
+                    style: const TextStyle(
+                      color: AppColors.textMuted,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
                   ),
-                ),
+          ),
         ),
       ),
     );

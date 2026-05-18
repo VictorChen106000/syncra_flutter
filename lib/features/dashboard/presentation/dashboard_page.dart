@@ -11,6 +11,7 @@ import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/utils/motion.dart';
 import '../../../core/router/route_names.dart';
 import '../../../fixtures/mock_agent_service.dart';
 import '../../../shared/widgets/app_bottom_nav.dart';
@@ -187,7 +188,7 @@ class _LiveDot extends StatelessWidget {
               color: AppColors.accentBright.withValues(alpha: 0.55),
             ),
           )
-              .animate(onPlay: (c) => c.repeat())
+              .animate(onPlay: repeatIfMotion(context))
               .scale(
                 duration: 1400.ms,
                 begin: const Offset(0.6, 0.6),

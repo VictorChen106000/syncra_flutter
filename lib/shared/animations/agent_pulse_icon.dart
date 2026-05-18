@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../core/utils/motion.dart';
 
 class AgentPulseIcon extends StatefulWidget {
   const AgentPulseIcon({super.key, this.size = 28});
@@ -16,7 +17,9 @@ class _AgentPulseIconState extends State<AgentPulseIcon>
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(seconds: 2),
-  )..repeat();
+  );
+
+  bool _started = false;
 
   @override
   void dispose() {
@@ -26,6 +29,10 @@ class _AgentPulseIconState extends State<AgentPulseIcon>
 
   @override
   Widget build(BuildContext context) {
+    if (!_started && shouldAnimate(context)) {
+      _started = true;
+      _controller.repeat();
+    }
     return CustomPaint(
       size: Size(widget.size * 1.7, widget.size),
       painter: _PulsePainter(animation: _controller),

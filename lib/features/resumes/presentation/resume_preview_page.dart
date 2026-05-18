@@ -97,6 +97,7 @@ class ResumePreviewPage extends ConsumerWidget {
                         ),
                         child: IconButton(
                           padding: EdgeInsets.zero,
+                          tooltip: 'Delete resume',
                           onPressed: () =>
                               _confirmDelete(context, ref, latestResume),
                           icon: const Icon(

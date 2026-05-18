@@ -34,26 +34,26 @@ class AppTheme {
         headlineLarge: inter.headlineLarge?.copyWith(
           color: AppColors.ink,
           fontSize: 32,
-          fontWeight: FontWeight.w900,
+          fontWeight: FontWeight.w800,
           height: 1.05,
           letterSpacing: -1.2,
         ),
         headlineMedium: inter.headlineMedium?.copyWith(
           color: AppColors.ink,
           fontSize: 26,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
           letterSpacing: -0.6,
         ),
         titleLarge: inter.titleLarge?.copyWith(
           color: AppColors.ink,
           fontSize: 20,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
           letterSpacing: -0.3,
         ),
         titleMedium: inter.titleMedium?.copyWith(
           color: AppColors.ink,
           fontSize: 16,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w600,
         ),
         bodyLarge: inter.bodyLarge?.copyWith(
           color: AppColors.ink,
@@ -70,7 +70,7 @@ class AppTheme {
         labelLarge: inter.labelLarge?.copyWith(
           color: AppColors.ink,
           fontSize: 14,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w600,
         ),
       ),
       switchTheme: SwitchThemeData(

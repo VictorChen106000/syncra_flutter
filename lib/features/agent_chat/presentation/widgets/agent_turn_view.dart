@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/motion.dart';
 import '../../models/agent_block.dart';
 import '../../models/chat_message.dart';
 import 'agent_block_views.dart';
@@ -98,7 +99,7 @@ class _Avatar extends StatelessWidget {
 
     if (!streaming) return dot;
     return dot
-        .animate(onPlay: (c) => c.repeat(reverse: true))
+        .animate(onPlay: repeatIfMotion(context, reverse: true))
         .scale(
           begin: const Offset(1, 1),
           end: const Offset(1.06, 1.06),
@@ -127,7 +128,7 @@ class _BouncingDots extends StatelessWidget {
             ),
           )
               .animate(
-                onPlay: (c) => c.repeat(),
+                onPlay: repeatIfMotion(context),
                 delay: (i * 180).ms,
               )
               .moveY(begin: 0, end: -3, duration: 380.ms, curve: Curves.easeOut)

@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/router/route_names.dart';
+import '../../../../core/utils/motion.dart';
 import '../../state/passive_agent_notifier.dart';
 
 /// Status card for the passive agent's brief pipeline. Shows the latest
@@ -164,7 +165,7 @@ class _StatusOrb extends StatelessWidget {
     );
     if (!running) return core;
     return core
-        .animate(onPlay: (c) => c.repeat(reverse: true))
+        .animate(onPlay: repeatIfMotion(context, reverse: true))
         .scale(
           duration: 900.ms,
           begin: const Offset(1, 1),
