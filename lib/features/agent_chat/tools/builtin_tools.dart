@@ -1,3 +1,4 @@
+import '../../../data/firestore/pipeline_repository.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -25,6 +26,7 @@ import 'tool_registry.dart';
 void registerBuiltinTools(ToolRegistry registry) {
   final jobs = JobsRepository();
   final applications = ApplicationsRepository();
+  final pipeline = PipelineRepository();
   final resumes = ResumesRepository();
   final anthropic = AnthropicService();
   final paraphrase = AnthropicParaphraseService();
@@ -38,6 +40,7 @@ void registerBuiltinTools(ToolRegistry registry) {
   _registerSearchJobs(registry, jobs);
   _registerReadResume(registry, orchestrator);
   _registerMatchJobs(registry, jobs, anthropic);
+  _registerSaveToPipeline(registry, jobs, pipeline);
   _registerTailorResume(registry, jobs, paraphrase, orchestrator);
   _registerDraftEmail(registry, jobs, paraphrase);
   _registerLookupHiringManager(registry);
@@ -280,6 +283,129 @@ void _registerMatchJobs(
 }
 
 // ---------------------------------------------------------------------------
+// save_to_pipeline — REAL: creates a pending pipeline card in Firestore
+// ---------------------------------------------------------------------------
+
+void _registerSaveToPipeline(
+  ToolRegistry registry,
+  JobsRepository jobsRepo,
+  PipelineRepository pipelineRepo,
+) {
+  registry.register(
+    tool: const Tool(
+      name: 'save_to_pipeline',
+      description:
+          'Save a matched job as a pending pipeline card for the user to '
+          'review. Use during the brief flow after search_jobs and match_jobs. '
+          'Does NOT create an application, tailor a resume, draft email, or '
+          'send anything.',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'job_id': {
+            'type': 'string',
+            'description': 'Job id returned by search_jobs.',
+          },
+          'category': {
+            'type': 'string',
+            'enum': ['ready', 'input_needed', 'exploration'],
+            'description':
+                'Match category from match_jobs. Defaults to ready.',
+          },
+          'match_score': {
+            'type': 'integer',
+            'description': '0-100 score from match_jobs.',
+          },
+          'agent_action': {
+            'type': 'string',
+            'description':
+                'Short action label, e.g. "Ready to send" or "Needs input".',
+          },
+          'agent_justification': {
+            'type': 'string',
+            'description':
+                'One-sentence explanation for why this job belongs in the pipeline.',
+          },
+          'matched_skills': {
+            'type': 'array',
+            'items': {'type': 'string'},
+          },
+          'missing_skills': {
+            'type': 'array',
+            'items': {'type': 'string'},
+          },
+        },
+        'required': ['job_id'],
+      },
+      uiLabel: 'Saving to pipeline…',
+      uiIcon: Icons.playlist_add_check_rounded,
+    ),
+    handler: (args) async {
+      final user = FirebaseAuth.instance.currentUser;
+      final uid = user?.uid;
+      if (uid == null || user!.isAnonymous) {
+        return ToolResult.error('Sign in to save jobs to the pipeline.');
+      }
+
+      final jobId = args['job_id'] as String?;
+      if (jobId == null || jobId.isEmpty) {
+        return ToolResult.error('job_id is required.');
+      }
+
+      final job = await jobsRepo.fetchById(jobId);
+      if (job == null) return ToolResult.error('Job not found.');
+
+      final category = _jobCategoryFromWire(
+        args['category'] as String?,
+        fallback: job.category,
+      );
+
+      final matchScore =
+          (args['match_score'] as num?)?.toInt() ?? job.matchScore;
+
+      final agentAction =
+          ((args['agent_action'] as String?) ?? job.agentAction).trim();
+
+      final agentJustification =
+          ((args['agent_justification'] as String?) ??
+                  job.agentJustification)
+              .trim();
+
+      final matchedSkills = List<String>.from(
+        (args['matched_skills'] as List?) ?? job.skills,
+      );
+
+      final missingSkills = List<String>.from(
+        (args['missing_skills'] as List?) ?? job.missingSkills,
+      );
+
+      await pipelineRepo.createCard(
+        uid: uid,
+        job: job,
+        category: category,
+        matchScore: matchScore.clamp(0, 100),
+        agentAction: agentAction.isEmpty ? 'Review match' : agentAction,
+        agentJustification: agentJustification.isEmpty
+            ? 'Saved by Syncra for review.'
+            : agentJustification,
+        matchedSkills: matchedSkills,
+        missingSkills: missingSkills,
+      );
+
+      return ToolResult(
+        summary: 'Saved ${job.company} to pipeline',
+        data: {
+          'saved': true,
+          'job_id': job.id,
+          'category': category.name,
+          'match_score': matchScore.clamp(0, 100),
+        },
+      );
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
 // tailor_resume — REAL prompt (paraphrase), returns ResumeJSON.
 // Track B will add: render to PDF + save as a new resume doc.
 // ---------------------------------------------------------------------------
@@ -451,6 +577,19 @@ void _registerDraftEmail(
       }
     },
   );
+}
+
+JobCategory _jobCategoryFromWire(
+  String? value, {
+  JobCategory fallback = JobCategory.ready,
+}) {
+  return switch (value) {
+    'ready' => JobCategory.ready,
+    'input_needed' => JobCategory.inputNeeded,
+    'inputNeeded' => JobCategory.inputNeeded,
+    'exploration' => JobCategory.exploration,
+    _ => fallback,
+  };
 }
 
 String _domainGuess(String company) {
