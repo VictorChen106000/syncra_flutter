@@ -11,6 +11,11 @@ import '../../../data/models/job.dart';
 import '../../auth/state/auth_notifier.dart';
 import '../data/fake_resume.dart';
 import '../services/anthropic_service.dart';
+import '../../agent_chat/models/agent_block.dart';
+import '../../agent_chat/services/agent_service.dart';
+import '../../agent_chat/services/anthropic_chat_service.dart';
+import '../../agent_chat/state/agent_chat_notifier.dart';
+import '../../notifications/state/notifications_notifier.dart';
 
 /// Lifecycle of the agent's passive job-discovery brief.
 enum AgentBriefStatus { idle, scanning, matching, done, error }
@@ -104,6 +109,23 @@ class PassiveAgentState {
 }
 
 class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
+  static const _briefPrompt = '''
+    Run today's career brief.
+
+    Use the tool flow only:
+    1. Call search_jobs with query "UX Designer Frontend Developer Product Designer" and location "Remote".
+    2. Call read_resume.
+    3. Call match_jobs for the best jobs returned by search_jobs.
+    4. Call save_to_pipeline once for each of the top 5 matched jobs.
+
+    Rules:
+    - Save at most 5 jobs.
+    - Do not call tailor_resume.
+    - Do not call draft_email.
+    - Do not call send_email.
+    - Do not ask the user questions during this brief. If information is missing, classify the job as input_needed and save it to the pipeline.
+    - End with one short sentence summarizing what you saved.
+    ''';
   PassiveAgentNotifier({
     AnthropicService? service,
     JobsRepository? jobsRepository,
@@ -140,9 +162,169 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
     state = state.copyWith(morningBriefShown: true);
   }
 
-  /// Kicks off a fresh agent brief.
   Future<void> runBrief() async {
     if (state.isRunning) return;
+
+    final service = ref.read(agentServiceProvider);
+
+    if (service is AnthropicChatService && service.hasApiKey) {
+      await _runAgentBrief(service);
+      return;
+    }
+
+    await _runLegacyMockBrief();
+  }
+
+  Future<void> _runAgentBrief(AgentService service) async {
+    state = state.copyWith(
+      briefId: 'brief_${DateTime.now().millisecondsSinceEpoch}',
+      status: AgentBriefStatus.scanning,
+      clearError: true,
+    );
+
+    _pushActivity(
+      AgentActivityStep(
+        tool: 'Syncra Agent',
+        detail: 'Running today\'s brief through the agent tool loop…',
+        status: 'active',
+        createdAt: DateTime.now(),
+      ),
+    );
+
+    var savedCount = 0;
+    var failedCount = 0;
+
+    try {
+      await for (final event in service.runPrompt(prompt: _briefPrompt)) {
+        ref.read(notificationsProvider.notifier).onAgentEvent(event);
+
+        switch (event) {
+          case BlockAdded(:final block):
+            _handleBriefBlock(block);
+
+          case ToolCallCompleted(:final summary, :final status):
+            if (status == ToolCallStatus.failed) {
+              failedCount += 1;
+            }
+
+            final normalizedSummary = summary.toLowerCase();
+            if (status == ToolCallStatus.done &&
+                normalizedSummary.startsWith('saved ') &&
+                normalizedSummary.contains(' to pipeline')) {
+              savedCount += 1;
+            }
+
+            _markFirstActivityDone();
+
+          case TurnCompleted():
+            break;
+        }
+      }
+
+      final now = DateTime.now();
+      final hadHardFailure = failedCount > 0 && savedCount == 0;
+
+      state = state.copyWith(
+        status: hadHardFailure ? AgentBriefStatus.error : AgentBriefStatus.done,
+        lastBriefAt: hadHardFailure ? state.lastBriefAt : now,
+        lastError: hadHardFailure
+            ? 'The agent brief hit tool failures before saving jobs.'
+            : null,
+        clearError: !hadHardFailure,
+        lastMessage: savedCount > 0
+            ? 'Brief complete · $savedCount roles saved to pipeline'
+            : 'Brief complete · check notifications for details',
+      );
+
+      _pushActivity(
+        AgentActivityStep(
+          tool: 'BriefPipeline',
+          detail: savedCount > 0
+              ? 'Saved $savedCount roles to your pipeline.'
+              : 'Brief completed. Check notifications for details.',
+          status: hadHardFailure ? 'waiting' : 'done',
+          createdAt: DateTime.now(),
+        ),
+      );
+    } catch (e) {
+      _markFirstActivityDone();
+      state = state.copyWith(
+        status: AgentBriefStatus.error,
+        lastError: e.toString(),
+        lastMessage: 'Brief failed unexpectedly',
+      );
+      _pushActivity(
+        AgentActivityStep(
+          tool: 'BriefPipeline',
+          detail: 'Brief failed: $e',
+          status: 'waiting',
+          createdAt: DateTime.now(),
+        ),
+      );
+    }
+  }
+
+  void _handleBriefBlock(AgentBlock block) {
+  if (block is ToolCallBlock) {
+    final nextStatus = switch (block.name) {
+      'match_jobs' || 'save_to_pipeline' => AgentBriefStatus.matching,
+      _ => AgentBriefStatus.scanning,
+    };
+
+    if (state.status != nextStatus) {
+      state = state.copyWith(status: nextStatus);
+    }
+
+    _pushActivity(
+      AgentActivityStep(
+        tool: _briefToolLabel(block.name),
+        detail: block.label,
+        status: 'active',
+        createdAt: DateTime.now(),
+      ),
+    );
+    return;
+  }
+
+  if (block is TextBlock) {
+    final text = block.text.trim();
+    if (text.isEmpty) return;
+
+    _pushActivity(
+      AgentActivityStep(
+        tool: 'Syncra',
+        detail: text.length > 120 ? '${text.substring(0, 120)}…' : text,
+        status: 'done',
+        createdAt: DateTime.now(),
+      ),
+    );
+    return;
+  }
+
+  if (block is InputRequestBlock) {
+    _pushActivity(
+      AgentActivityStep(
+        tool: 'Input needed',
+        detail: block.question,
+        status: 'waiting',
+        createdAt: DateTime.now(),
+      ),
+    );
+  }
+}
+
+String _briefToolLabel(String toolName) {
+  return switch (toolName) {
+    'search_jobs' => 'Job Search',
+    'read_resume' => 'Resume Context',
+    'match_jobs' => 'Match Scoring',
+    'save_to_pipeline' => 'Pipeline Save',
+    _ => toolName,
+  };
+}
+
+  /// Kicks off a fresh agent brief.
+  Future<void> _runLegacyMockBrief() async {    if (state.isRunning) return;
 
     state = state.copyWith(
       briefId: 'brief_${DateTime.now().millisecondsSinceEpoch}',
