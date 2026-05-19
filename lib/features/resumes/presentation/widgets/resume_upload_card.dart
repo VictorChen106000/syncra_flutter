@@ -26,8 +26,8 @@ class ResumeUploadCard extends StatelessWidget {
     final name = resume?.name ?? uploadingItem!.name;
     final size = resume?.size ?? uploadingItem!.size;
     final progress = uploadingItem?.progress ?? 100;
+    final progressFactor = (progress.clamp(0, 100) as num).toDouble() / 100;
     final hasError = uploadingItem?.hasError ?? false;
-
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: Stack(
@@ -53,18 +53,13 @@ class ResumeUploadCard extends StatelessWidget {
             ),
           ),
           if (uploadingItem != null && !hasError)
-            Positioned(
-              left: 0,
-              top: 0,
-              bottom: 0,
+            Positioned.fill(
               child: FractionallySizedBox(
-                widthFactor: progress / 100,
-                child: SizedBox(
-                  width: MediaQuery.sizeOf(context).width,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: brand.accent.withValues(alpha: 0.18),
-                    ),
+                alignment: Alignment.centerLeft,
+                widthFactor: progressFactor,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: brand.accent.withValues(alpha: 0.18),
                   ),
                 ),
               ),

@@ -9,6 +9,7 @@ import '../../../data/firestore/resumes_repository.dart';
 import '../../auth/state/auth_notifier.dart';
 import '../models/resume_file.dart';
 import '../models/upload_queue_item.dart';
+import '../services/resume_session_storage.dart';
 
 /// Outcome of a notifier operation surfaced through SnackBars.
 class ResumeActionResult {
@@ -94,8 +95,37 @@ class ResumeNotifier extends Notifier<ResumeState> {
 
     _boundUid = uid;
     _subscription = _repository.watchResumes(uid).listen(
-      (resumes) {
-        state = state.copyWith(allResumes: resumes);
+      (resumes) async {
+        final hydrated = <ResumeFile>[];
+
+        for (final resume in resumes) {
+          if (!resume.isPdf || resume.isAvailableLocally) {
+            hydrated.add(resume);
+            continue;
+          }
+
+          final bytes = await ResumeSessionStorage.readBytes(
+            uid: uid,
+            resumeId: resume.id,
+          );
+
+          hydrated.add(
+            bytes == null
+                ? resume
+                : ResumeFile(
+                    id: resume.id,
+                    name: resume.name,
+                    size: resume.size,
+                    type: resume.type,
+                    uploadedAt: resume.uploadedAt,
+                    source: resume.source,
+                    path: resume.path,
+                    bytes: bytes,
+                  ),
+          );
+        }
+
+        state = state.copyWith(allResumes: hydrated);
       },
       onError: (Object e) {
         debugPrint('resumes stream error: $e');
@@ -206,6 +236,11 @@ class ResumeNotifier extends Notifier<ResumeState> {
         resumeId: resumeId,
         localPath: target.path,
       );
+
+      await ResumeSessionStorage.removeBytes(
+        uid: uid,
+        resumeId: resumeId,
+      );
     } catch (e) {
       debugPrint('delete resume failed: $e');
     }
@@ -261,7 +296,26 @@ class ResumeNotifier extends Notifier<ResumeState> {
         contentType: type,
       );
 
+      if (uploaded.isPdf) {
+        await ResumeSessionStorage.saveBytes(
+          uid: uid,
+          resumeId: uploaded.id,
+          bytes: bytes,
+        );
+      }
+
+      final currentResumes = [...state.allResumes];
+      final existingIndex =
+          currentResumes.indexWhere((resume) => resume.id == uploaded.id);
+
+      if (existingIndex == -1) {
+        currentResumes.insert(0, uploaded);
+      } else {
+        currentResumes[existingIndex] = uploaded;
+      }
+
       state = state.copyWith(
+        allResumes: currentResumes,
         uploadQueue: state.uploadQueue.where((i) => i.id != queueId).toList(),
         selectedResumeIds: {...state.selectedResumeIds, uploaded.id},
         lastAction: ResumeActionResult(message: '$name uploaded'),
