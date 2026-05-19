@@ -1,9 +1,10 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_strings.dart';
+import '../../../data/models/job.dart';
 import '../../../fixtures/mock_agent_service.dart';
 import '../../notifications/state/notifications_notifier.dart';
 import '../models/agent_block.dart';
@@ -27,18 +28,26 @@ class AgentChatState {
   const AgentChatState({
     required this.items,
     this.isStreaming = false,
+    this.threadJob,
   });
 
   final List<ChatItem> items;
   final bool isStreaming;
 
+  /// When set, the chat is scoped to a single job — surfaces a context chip
+  /// in the header and gates the opening message to that role.
+  final Job? threadJob;
+
   AgentChatState copyWith({
     List<ChatItem>? items,
     bool? isStreaming,
+    Job? threadJob,
+    bool clearThreadJob = false,
   }) {
     return AgentChatState(
       items: items ?? this.items,
       isStreaming: isStreaming ?? this.isStreaming,
+      threadJob: clearThreadJob ? null : (threadJob ?? this.threadJob),
     );
   }
 }
@@ -57,18 +66,104 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     });
 
     return AgentChatState(
-      items: [
-        AgentTurn(
-          id: 'turn-initial',
-          blocks: [
-            TextBlock(
-              id: 'initial-text',
-              text: AppStrings.chatInitialMessage,
-            ),
-          ],
-          isStreaming: false,
-        ),
-      ],
+      items: [_buildOpener(null)],
+    );
+  }
+
+  /// Builds the first agent turn shown when the chat opens. Adapts to the
+  /// optional [job] so a thread opened from a pipeline card lands on a
+  /// contextual message + a relevant action proposal instead of the
+  /// generic welcome.
+  AgentTurn _buildOpener(Job? job) {
+    if (job == null) {
+      return AgentTurn(
+        id: 'turn-opener',
+        blocks: [
+          TextBlock(
+            id: 'opener-text',
+            text: AppStrings.chatInitialMessage,
+          ),
+        ],
+        isStreaming: false,
+      );
+    }
+
+    final blocks = <AgentBlock>[];
+    switch (job.category) {
+      case JobCategory.ready:
+        blocks.add(TextBlock(
+          id: 'opener-text-${job.id}',
+          text: "I drafted your application for ${job.title} at "
+              "${job.company} — match score ${job.matchScore}%. "
+              "${job.agentJustification}\n\n"
+              "Ready to send it out?",
+        ));
+        blocks.add(ActionProposalBlock(
+          id: 'opener-action-${job.id}',
+          icon: Icons.send_rounded,
+          title: 'Send to ${job.company}',
+          description: 'Tailored resume + cover letter · sends via Gmail',
+          acceptLabel: 'Send now',
+          editLabel: 'Edit draft',
+        ));
+        break;
+      case JobCategory.inputNeeded:
+        blocks.add(TextBlock(
+          id: 'opener-text-${job.id}',
+          text: "Before I can draft this one — ${job.agentJustification}",
+        ));
+        blocks.add(InputRequestBlock(
+          id: 'opener-input-${job.id}',
+          question: job.missingSkills.isEmpty
+              ? 'Your answer'
+              : 'Do you have ${job.missingSkills.first} experience?',
+          suggestions: job.missingSkills.isEmpty
+              ? const ['Tell me more', "I'm interested", 'Skip this one']
+              : [
+                  'Yes, ${job.missingSkills.first} experience',
+                  "No, I haven't used ${job.missingSkills.first}",
+                  'Tell me more',
+                ],
+        ));
+        break;
+      case JobCategory.exploration:
+        blocks.add(TextBlock(
+          id: 'opener-text-${job.id}',
+          text: "Worth considering: ${job.title} at ${job.company}. "
+              "${job.agentJustification}",
+        ));
+        blocks.add(ActionProposalBlock(
+          id: 'opener-action-${job.id}',
+          icon: Icons.auto_awesome_rounded,
+          title: 'Draft a pitch for ${job.company}',
+          description: 'I\'ll tailor your resume + draft outreach',
+          acceptLabel: 'Draft it',
+          editLabel: 'Pass on this',
+        ));
+        break;
+    }
+
+    return AgentTurn(
+      id: 'turn-opener-${job.id}',
+      blocks: blocks,
+      isStreaming: false,
+    );
+  }
+
+  /// Scopes the chat to [job] and replaces the opener with a contextual
+  /// turn. Called by the pipeline when a card is tapped — the chatbot is
+  /// the single thread for every agentic interaction.
+  void openJobThread(Job job) {
+    state = AgentChatState(
+      items: [_buildOpener(job)],
+      threadJob: job,
+    );
+  }
+
+  /// Closes the current job thread and resets to the generic welcome.
+  void clearThread() {
+    state = AgentChatState(
+      items: [_buildOpener(null)],
     );
   }
 

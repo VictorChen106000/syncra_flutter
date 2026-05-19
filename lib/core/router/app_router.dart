@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/models/job.dart';
+import '../dev/dev_flags_notifier.dart';
 import '../../features/agent_chat/presentation/ai_chatbot_page.dart';
 import '../../features/auth/presentation/login_page.dart';
 import '../../features/auth/presentation/morning_brief_page.dart';
@@ -34,6 +35,7 @@ class _AuthRefreshNotifier extends ChangeNotifier {
   _AuthRefreshNotifier(Ref ref) {
     ref.listen(authProvider, (_, _) => notifyListeners());
     ref.listen(userProfileProvider, (_, _) => notifyListeners());
+    ref.listen(devFlagsProvider, (_, _) => notifyListeners());
   }
 }
 
@@ -56,6 +58,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       final auth = ref.read(authProvider);
       final passive = ref.read(passiveAgentProvider);
       final profile = ref.read(userProfileProvider);
+      final dev = ref.read(devFlagsProvider);
       final isSignedIn = auth.isSignedIn;
       final isGuest = auth.appUser?.isGuest ?? false;
       final loc = state.matchedLocation;
@@ -70,6 +73,7 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       final needsOnboarding = isSignedIn &&
           !isGuest &&
+          !dev.skipOnboarding &&
           profile != null &&
           (profile.role ?? '').trim().isEmpty;
       if (needsOnboarding && loc != RouteNames.onboarding) {
@@ -82,9 +86,16 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       if (isSignedIn &&
           (loc == RouteNames.login || loc == RouteNames.signup)) {
-        return passive.morningBriefShown
-            ? RouteNames.dashboard
-            : RouteNames.morningBrief;
+        if (dev.skipMorningBrief || passive.morningBriefShown) {
+          return RouteNames.dashboard;
+        }
+        return RouteNames.morningBrief;
+      }
+
+      // If the user is already on the morning brief but has the dev skip on,
+      // bounce them to the dashboard.
+      if (dev.skipMorningBrief && loc == RouteNames.morningBrief) {
+        return RouteNames.dashboard;
       }
 
       return null;

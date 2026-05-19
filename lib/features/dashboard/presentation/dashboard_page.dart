@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/dev/dev_flags_notifier.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/motion.dart';
@@ -75,12 +76,14 @@ class _DashboardHeader extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authProvider);
     final notifications = ref.watch(notificationsProvider);
+    final devFlags = ref.watch(devFlagsProvider);
     final user = auth.appUser;
     return AppHeader.home(
       avatar: _Avatar(photoUrl: user?.photoUrl),
       name: user?.displayName ?? 'there',
       role: AppStrings.dashboardGreetingRole,
       unreadCount: notifications.unreadCount,
+      forceUnreadDot: devFlags.forceNotificationDot,
       onBellTap: () => context.go(RouteNames.notifications),
       bottom: const _AgentLiveBanner(),
     );

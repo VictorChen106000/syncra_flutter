@@ -17,6 +17,7 @@ import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/empty_state_card.dart';
+import '../../agent_chat/state/agent_chat_notifier.dart';
 import '../state/jobs_notifier.dart';
 import 'widgets/job_action_sheet.dart';
 
@@ -578,7 +579,7 @@ class _RingPainter extends CustomPainter {
       old.trackColor != trackColor;
 }
 
-class _JobCard extends StatefulWidget {
+class _JobCard extends ConsumerStatefulWidget {
   const _JobCard({
     required this.job,
     required this.onDismiss,
@@ -590,10 +591,10 @@ class _JobCard extends StatefulWidget {
   final VoidCallback onMore;
 
   @override
-  State<_JobCard> createState() => _JobCardState();
+  ConsumerState<_JobCard> createState() => _JobCardState();
 }
 
-class _JobCardState extends State<_JobCard> {
+class _JobCardState extends ConsumerState<_JobCard> {
   Color _accentColor(BrandTheme brand) => switch (widget.job.category) {
         JobCategory.ready => brand.ink,
         JobCategory.inputNeeded => AppColors.categoryInputDeep,
@@ -620,8 +621,10 @@ class _JobCardState extends State<_JobCard> {
 
   // Agentic flow: every pipeline interaction routes to the chatbot — no
   // secondary review/tailor/data-viz pages. The agent owns the thread.
-  VoidCallback _onPrimaryTap(BuildContext context) =>
-      () => context.go(RouteNames.agentChat);
+  VoidCallback _onPrimaryTap(BuildContext context) => () {
+        ref.read(agentChatProvider.notifier).openJobThread(widget.job);
+        context.go(RouteNames.agentChat);
+      };
 
   @override
   Widget build(BuildContext context) {

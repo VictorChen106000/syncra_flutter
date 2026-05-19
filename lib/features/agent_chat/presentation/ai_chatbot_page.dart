@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/motion.dart';
+import '../../../data/models/job.dart';
 import '../../../fixtures/mock_agent_service.dart';
 import '../models/chat_message.dart';
 import '../state/agent_chat_notifier.dart';
@@ -63,8 +64,13 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
         child: Column(
           children: [
             _ChatHeader(isStreaming: state.isStreaming),
+            if (state.threadJob != null)
+              _ThreadContextChip(
+                job: state.threadJob!,
+                onClear: notifier.clearThread,
+              ),
             Expanded(
-              child: onlyInitial
+              child: onlyInitial && state.threadJob == null
                   ? _EmptyState(
                       onPromptTap: (text) =>
                           notifier.sendPrompt(prompt: text),
@@ -84,6 +90,98 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
             const ChatInputBar(),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Pinned chip below the header announcing the active job thread. Tap the
+/// X to clear context and return to a generic chat.
+class _ThreadContextChip extends StatelessWidget {
+  const _ThreadContextChip({required this.job, required this.onClear});
+
+  final Job job;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: brand.surfaceMuted,
+        border: Border(
+          bottom: BorderSide(color: brand.border, width: 0.6),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: brand.ink,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              job.company[0],
+              style: TextStyle(
+                color: brand.accent,
+                fontWeight: FontWeight.w900,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'THREAD',
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.4,
+                    color: brand.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${job.title} · ${job.company}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: brand.ink,
+                    letterSpacing: -0.1,
+                    height: 1.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Semantics(
+            label: 'Close thread',
+            button: true,
+            child: InkResponse(
+              onTap: onClear,
+              radius: 22,
+              excludeFromSemantics: true,
+              child: Padding(
+                padding: const EdgeInsets.all(6),
+                child: Icon(
+                  Icons.close_rounded,
+                  size: 18,
+                  color: brand.textMuted,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
