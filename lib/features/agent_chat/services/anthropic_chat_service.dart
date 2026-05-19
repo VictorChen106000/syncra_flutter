@@ -100,7 +100,8 @@ clear next step or question.''';
         messages.add({'role': 'assistant', 'content': content});
 
         final toolResults = <Map<String, dynamic>>[];
-
+        bool shouldPauseAfterTailorResume = false;
+        String? tailorPauseMessage;
         for (final raw in content) {
           if (raw is! Map<String, dynamic>) continue;
           final type = raw['type'] as String?;
@@ -168,6 +169,14 @@ clear next step or question.''';
                       ? ToolCallStatus.failed
                       : ToolCallStatus.done,
                 );
+
+                if (!result.isError &&
+                    name == 'tailor_resume' &&
+                    _hasProposedEditsPayload(result.data)) {
+                  shouldPauseAfterTailorResume = true;
+                  tailorPauseMessage = _tailorPauseMessage(result.data);
+                }
+
                 toolResults.add({
                   'type': 'tool_result',
                   'tool_use_id': toolUseId,
@@ -193,6 +202,20 @@ clear next step or question.''';
 
         // No tools used → conversation is done.
         if (stopReason != 'tool_use' || toolResults.isEmpty) {
+          yield const TurnCompleted();
+          return;
+        }
+
+        // `tailor_resume` is user-gated under the PR-style diff flow.
+        // Once proposed edits exist, stop here and let the diff viewer handle
+        // accept/reject/apply. Do not feed the result back to Claude yet, because
+        // that can make it immediately call draft_email or apply_resume_edits.
+        if (shouldPauseAfterTailorResume) {
+          yield BlockAdded(TextBlock(
+            id: nextBlockId('text'),
+            text: tailorPauseMessage ??
+                'I found proposed resume edits. Review them before I continue.',
+          ));
           yield const TurnCompleted();
           return;
         }
@@ -256,6 +279,27 @@ clear next step or question.''';
       throw Exception(_extractError(response.body, response.statusCode));
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  bool _hasProposedEditsPayload(Object? data) {
+    if (data is! Map) return false;
+    final proposedEdits = data['proposed_edits'];
+    return proposedEdits is List;
+  }
+
+  String _tailorPauseMessage(Object? data) {
+    var count = 0;
+    if (data is Map && data['proposed_edits'] is List) {
+      count = (data['proposed_edits'] as List).length;
+    }
+
+    if (count <= 0) {
+      return 'I tried to prepare resume edits, but no proposed edits were returned. Review the result before I continue.';
+    }
+
+    final plural = count == 1 ? 'edit' : 'edits';
+    final pronoun = count == 1 ? 'it' : 'them';
+    return 'I found $count proposed resume $plural. Review $pronoun before I continue.';
   }
 
   String _serialize(Object? data) {
