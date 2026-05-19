@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../core/constants/app_colors.dart';
+import '../../core/theme/brand_theme.dart';
 
 class NotificationBell extends StatelessWidget {
   const NotificationBell({super.key, this.onTap, this.showDot = true});
@@ -10,6 +10,7 @@ class NotificationBell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Semantics(
       label: showDot ? 'Notifications, unread' : 'Notifications',
       button: true,
@@ -27,14 +28,14 @@ class NotificationBell extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  border: Border.all(color: AppColors.border),
+                  color: brand.surface,
+                  border: Border.all(color: brand.border),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.notifications_none_rounded,
                   size: 21,
-                  color: AppColors.ink,
+                  color: brand.ink,
                 ),
               ),
               if (showDot)
@@ -45,9 +46,9 @@ class NotificationBell extends StatelessWidget {
                     width: 9,
                     height: 9,
                     decoration: BoxDecoration(
-                      color: AppColors.danger,
+                      color: brand.danger,
                       shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.surface, width: 1.5),
+                      border: Border.all(color: brand.surface, width: 1.5),
                     ),
                   ),
                 ),

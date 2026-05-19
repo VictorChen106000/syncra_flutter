@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/constants/app_colors.dart';
+import '../../../../core/theme/brand_theme.dart';
 
 class TailorEditResult {
   const TailorEditResult({required this.body, required this.keywords});
@@ -66,13 +66,14 @@ class _TailorEditSheetBodyState extends State<_TailorEditSheetBody> {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final inset = MediaQuery.of(context);
     return Padding(
       padding: EdgeInsets.only(bottom: inset.viewInsets.bottom),
       child: Container(
-        decoration: const BoxDecoration(
-          color: AppColors.scaffold,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        decoration: BoxDecoration(
+          color: brand.bg,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         ),
         padding: EdgeInsets.only(
           left: 20,
@@ -90,31 +91,31 @@ class _TailorEditSheetBodyState extends State<_TailorEditSheetBody> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: AppColors.border,
+                    color: brand.border,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
               ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'Edit AI rewrite',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
-                  color: AppColors.ink,
+                  color: brand.ink,
                 ),
               ),
               const SizedBox(height: 4),
-              const Text(
+              Text(
                 'Tweak the wording or keywords before accepting.',
                 style: TextStyle(
                   fontSize: 13,
-                  color: AppColors.textMuted,
+                  color: brand.textMuted,
                   fontWeight: FontWeight.w500,
                 ),
               ),
               const SizedBox(height: 16),
-              _Label('Rewritten paragraph'),
+              const _Label('Rewritten paragraph'),
               const SizedBox(height: 6),
               TextField(
                 controller: _bodyCtrl,
@@ -122,29 +123,30 @@ class _TailorEditSheetBodyState extends State<_TailorEditSheetBody> {
                 maxLines: 8,
                 decoration: InputDecoration(
                   filled: true,
-                  fillColor: AppColors.surface,
+                  fillColor: brand.surface,
                   hintText: 'Edit the AI rewrite',
+                  hintStyle: TextStyle(color: brand.textSoft),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: AppColors.border),
+                    borderSide: BorderSide(color: brand.border),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: AppColors.ink),
+                    borderSide: BorderSide(color: brand.ink),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: AppColors.border),
+                    borderSide: BorderSide(color: brand.border),
                   ),
                 ),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
-                  color: AppColors.ink,
+                  color: brand.ink,
                   fontWeight: FontWeight.w500,
                 ),
               ),
               const SizedBox(height: 16),
-              _Label('Keywords'),
+              const _Label('Keywords'),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -152,10 +154,10 @@ class _TailorEditSheetBodyState extends State<_TailorEditSheetBody> {
                 children: [
                   for (final kw in _keywords)
                     InputChip(
-                      label: Text(kw),
+                      label: Text(kw, style: TextStyle(color: brand.ink)),
                       onDeleted: () => setState(() => _keywords.remove(kw)),
-                      backgroundColor: AppColors.surface,
-                      side: const BorderSide(color: AppColors.border),
+                      backgroundColor: brand.surface,
+                      side: BorderSide(color: brand.border),
                     ),
                 ],
               ),
@@ -169,31 +171,31 @@ class _TailorEditSheetBodyState extends State<_TailorEditSheetBody> {
                       onSubmitted: (_) => _addKeyword(),
                       decoration: InputDecoration(
                         filled: true,
-                        fillColor: AppColors.surface,
+                        fillColor: brand.surface,
                         hintText: 'Add a keyword',
+                        hintStyle: TextStyle(color: brand.textSoft),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: AppColors.border),
+                          borderSide: BorderSide(color: brand.border),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: AppColors.ink),
+                          borderSide: BorderSide(color: brand.ink),
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: AppColors.border),
+                          borderSide: BorderSide(color: brand.border),
                         ),
                       ),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
-                        color: AppColors.ink,
+                        color: brand.ink,
                       ),
                     ),
                   ),
                   IconButton(
                     onPressed: _addKeyword,
-                    icon: const Icon(Icons.add_circle_rounded,
-                        color: AppColors.ink),
+                    icon: Icon(Icons.add_circle_rounded, color: brand.ink),
                   ),
                 ],
               ),
@@ -202,7 +204,8 @@ class _TailorEditSheetBodyState extends State<_TailorEditSheetBody> {
                 width: double.infinity,
                 child: FilledButton(
                   style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.ink,
+                    backgroundColor: brand.ink,
+                    foregroundColor: brand.inkInverse,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
@@ -238,13 +241,14 @@ class _Label extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Text(
       text.toUpperCase(),
       style: TextStyle(
         fontSize: 11,
         fontWeight: FontWeight.w900,
         letterSpacing: 1.4,
-        color: AppColors.ink.withValues(alpha: 0.7),
+        color: brand.ink.withValues(alpha: 0.7),
       ),
     );
   }

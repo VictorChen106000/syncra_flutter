@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../fixtures/mock_jobs.dart';
 import '../../../data/models/job.dart';
 import '../../../shared/widgets/app_buttons.dart';
@@ -17,10 +17,11 @@ class SubmittedPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final j = job ?? MockJobs.all.first;
 
     return Scaffold(
-      backgroundColor: AppColors.scaffold,
+      backgroundColor: brand.bg,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(AppConstants.screenHorizontalPadding),
@@ -30,12 +31,12 @@ class SubmittedPage extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(28),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: brand.surface,
                   borderRadius: BorderRadius.circular(28),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: brand.border),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
+                      color: brand.shadow,
                       blurRadius: 30,
                       offset: const Offset(0, 12),
                     ),
@@ -46,14 +47,14 @@ class SubmittedPage extends StatelessWidget {
                     Container(
                       width: 96,
                       height: 96,
-                      decoration: const BoxDecoration(
-                        color: AppColors.accent,
+                      decoration: BoxDecoration(
+                        color: brand.accent,
                         shape: BoxShape.circle,
                       ),
                       alignment: Alignment.center,
-                      child: const Icon(
+                      child: Icon(
                         Icons.check_rounded,
-                        color: AppColors.ink,
+                        color: brand.onAccent,
                         size: 48,
                       ),
                     )
@@ -66,12 +67,12 @@ class SubmittedPage extends StatelessWidget {
                         )
                         .fadeIn(duration: 400.ms),
                     const SizedBox(height: 20),
-                    const Text(
+                    Text(
                       AppStrings.applicationSubmitted,
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w900,
-                        color: AppColors.ink,
+                        color: brand.ink,
                         letterSpacing: -0.4,
                       ),
                     ),
@@ -79,8 +80,8 @@ class SubmittedPage extends StatelessWidget {
                     Text(
                       '${j.company} · ${j.title}',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: AppColors.textMuted,
+                      style: TextStyle(
+                        color: brand.textMuted,
                         fontSize: 13.5,
                         height: 1.55,
                         fontWeight: FontWeight.w500,
@@ -91,7 +92,7 @@ class SubmittedPage extends StatelessWidget {
                       width: double.infinity,
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: AppColors.softSurface,
+                        color: brand.surfaceMuted,
                         borderRadius: BorderRadius.circular(18),
                       ),
                       child: const Column(
@@ -119,15 +120,15 @@ class SubmittedPage extends StatelessWidget {
                     const SizedBox(height: 6),
                     TextButton.icon(
                       onPressed: () => context.go(RouteNames.dashboard),
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.undo_rounded,
                         size: 16,
-                        color: AppColors.textMuted,
+                        color: brand.textMuted,
                       ),
-                      label: const Text(
+                      label: Text(
                         AppStrings.undoSubmission,
                         style: TextStyle(
-                          color: AppColors.textMuted,
+                          color: brand.textMuted,
                           fontWeight: FontWeight.w800,
                           fontSize: 13,
                         ),
@@ -152,16 +153,17 @@ class _DetailRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Row(
       children: [
         SizedBox(
           width: 84,
           child: Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w900,
-              color: AppColors.textMuted,
+              color: brand.textMuted,
               letterSpacing: 0.3,
             ),
           ),
@@ -169,10 +171,10 @@ class _DetailRow extends StatelessWidget {
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13.5,
               fontWeight: FontWeight.w700,
-              color: AppColors.ink,
+              color: brand.ink,
             ),
           ),
         ),

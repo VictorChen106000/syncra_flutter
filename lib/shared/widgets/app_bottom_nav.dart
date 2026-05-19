@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/constants/app_colors.dart';
 import '../../core/router/route_names.dart';
+import '../../core/theme/brand_theme.dart';
 
 enum BottomNavTab { home, agent, profile }
 
@@ -83,15 +83,12 @@ class _NavPill extends StatefulWidget {
 
 class _NavPillState extends State<_NavPill>
     with SingleTickerProviderStateMixin {
-  // One master duration/curve for every secondary animation on tap.
   static const Duration _shapeDuration = Duration(milliseconds: 320);
   static const Curve _shapeCurve = Curves.easeOutCubic;
 
   late final AnimationController _pulseController;
   late final Animation<double> _pulse;
 
-  // Measured width of the inner pill; drives the sibling-push translation
-  // so it tracks the pill's real size instead of a magic constant.
   final GlobalKey _pillKey = GlobalKey();
   double _pillWidth = 0;
 
@@ -102,7 +99,6 @@ class _NavPillState extends State<_NavPill>
       vsync: this,
       duration: const Duration(milliseconds: 420),
     );
-    // Continuous squash-and-settle: peak at 1.06, no mid-sequence jump.
     _pulse = TweenSequence<double>([
       TweenSequenceItem(
         tween: Tween(
@@ -133,7 +129,6 @@ class _NavPillState extends State<_NavPill>
   @override
   void didUpdateWidget(covariant _NavPill oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Only pulse when this pill becomes active — never on deactivation.
     if (widget.isActive && !oldWidget.isActive) {
       _pulseController.forward(from: 0);
     }
@@ -152,12 +147,15 @@ class _NavPillState extends State<_NavPill>
 
   @override
   Widget build(BuildContext context) {
-    final activeColor = AppColors.accentBright;
+    final brand = context.brand;
+    // Dark mode keeps the dark-pill nav for contrast against accent;
+    // light mode uses ink for the same effect.
+    final pillBg = brand.isDark ? const Color(0xFF1C1C1E) : brand.ink;
+    final activeColor = brand.accent;
+    final inactiveColor = brand.isDark ? brand.ink : const Color(0xFFFFFFFF);
     final isActive = widget.isActive;
     final item = widget.item;
 
-    // Re-measure after each layout so _pillWidth tracks the real pill width
-    // (including the label expansion when isActive flips).
     WidgetsBinding.instance.addPostFrameCallback((_) => _measurePill());
 
     return Semantics(
@@ -168,9 +166,6 @@ class _NavPillState extends State<_NavPill>
         animation: _pulse,
         builder: (context, child) {
           final scale = _pulse.value;
-          // Push siblings outward by exactly the amount the scaled pill grew
-          // on each side, so neighbours track the pill instead of over- or
-          // under-shooting against a magic constant.
           final pushPx = (scale - 1.0) * _pillWidth / 2;
           return Padding(
             padding: EdgeInsets.symmetric(horizontal: pushPx),
@@ -179,7 +174,7 @@ class _NavPillState extends State<_NavPill>
         },
         child: Material(
           key: _pillKey,
-          color: AppColors.ink,
+          color: pillBg,
           borderRadius: BorderRadius.circular(31),
           shadowColor: Colors.black.withValues(alpha: 0.32),
           elevation: 8,
@@ -202,7 +197,7 @@ class _NavPillState extends State<_NavPill>
                       isActive ? item.icon : item.outlineIcon,
                       key: ValueKey<bool>(isActive),
                       size: 26,
-                      color: isActive ? activeColor : AppColors.surface,
+                      color: isActive ? activeColor : inactiveColor,
                     ),
                   ),
                   ClipRect(
@@ -222,7 +217,7 @@ class _NavPillState extends State<_NavPill>
                             style: TextStyle(
                               color: activeColor,
                               fontSize: 15,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w700,
                               letterSpacing: -0.1,
                             ),
                           ),

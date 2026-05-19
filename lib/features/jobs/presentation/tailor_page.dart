@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../fixtures/mock_jobs.dart';
 import '../../../data/models/job.dart';
 import '../../../shared/widgets/app_buttons.dart';
@@ -50,7 +50,6 @@ class _TailorPageState extends State<TailorPage> {
       ..clearSnackBars()
       ..showSnackBar(
         const SnackBar(
-          behavior: SnackBarBehavior.floating,
           content: Text('Edits saved to draft'),
         ),
       );
@@ -58,10 +57,11 @@ class _TailorPageState extends State<TailorPage> {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final j = widget.job ?? MockJobs.all.first;
 
     return Scaffold(
-      backgroundColor: AppColors.scaffold,
+      backgroundColor: brand.bg,
       body: SafeArea(
         child: Column(
           children: [
@@ -79,7 +79,7 @@ class _TailorPageState extends State<TailorPage> {
                   32,
                 ),
                 children: [
-                  const AppCard(
+                  AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -88,41 +88,56 @@ class _TailorPageState extends State<TailorPage> {
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w900,
-                            color: AppColors.ink,
-                          ),
-                        ),
-                        SizedBox(height: 10),
-                        Text(
-                          'Created a student app project using React and Figma.',
-                          style: TextStyle(
-                            color: AppColors.textMuted,
-                            fontSize: 13.5,
-                            height: 1.55,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  AppCard(
-                    backgroundColor: AppColors.softSurface,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          AppStrings.after,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.ink,
+                            color: brand.ink,
                           ),
                         ),
                         const SizedBox(height: 10),
                         Text(
+                          'Created a student app project using React and Figma.',
+                          style: TextStyle(
+                            color: brand.textMuted,
+                            fontSize: 13.5,
+                            height: 1.55,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  AppCard(
+                    backgroundColor: brand.surfaceMuted,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: brand.accent,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                AppStrings.after.toUpperCase(),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                  color: brand.onAccent,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
                           _rewrite,
-                          style: const TextStyle(
-                            color: AppColors.ink,
+                          style: TextStyle(
+                            color: brand.ink,
                             fontSize: 13.5,
                             height: 1.55,
                             fontWeight: FontWeight.w500,
@@ -136,12 +151,12 @@ class _TailorPageState extends State<TailorPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           AppStrings.keywordsAdded,
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w900,
-                            color: AppColors.ink,
+                            color: brand.ink,
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -170,16 +185,16 @@ class _TailorPageState extends State<TailorPage> {
                   Center(
                     child: TextButton.icon(
                       onPressed: () => context.go(RouteNames.review, extra: j),
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.undo_rounded,
                         size: 16,
-                        color: AppColors.danger,
+                        color: brand.textMuted,
                       ),
-                      label: const Text(
+                      label: Text(
                         AppStrings.revertToOriginal,
                         style: TextStyle(
-                          color: AppColors.danger,
-                          fontWeight: FontWeight.w800,
+                          color: brand.textMuted,
+                          fontWeight: FontWeight.w700,
                           fontSize: 13,
                         ),
                       ),

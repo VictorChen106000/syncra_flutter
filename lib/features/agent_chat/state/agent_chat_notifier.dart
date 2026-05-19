@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_strings.dart';
 import '../../../fixtures/mock_agent_service.dart';
+import '../../notifications/state/notifications_notifier.dart';
 import '../models/agent_block.dart';
 import '../models/chat_message.dart';
 import '../services/agent_service.dart';
@@ -121,6 +122,9 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
         _finishTurn();
         return;
     }
+    // Mirror the event to the notifications inbox. NotificationsNotifier
+    // decides which events warrant an entry (ask_user, completed tools, …).
+    ref.read(notificationsProvider.notifier).onAgentEvent(event);
     // Rebuild the outer items list so Riverpod sees a new reference.
     state = state.copyWith(items: [...state.items]);
   }

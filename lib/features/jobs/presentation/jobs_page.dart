@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +9,8 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/brand_theme.dart';
+import '../../../data/firestore/pipeline_repository.dart';
 import '../../../fixtures/mock_jobs.dart';
 import '../../../data/models/job.dart';
 import '../../../shared/widgets/app_bottom_nav.dart';
@@ -24,29 +28,6 @@ class JobsPage extends ConsumerStatefulWidget {
 }
 
 class _JobsPageState extends ConsumerState<JobsPage> {
-  int _tabIndex = 0;
-  String _query = '';
-  _Filter _filter = _Filter.all;
-
-  List<Job> _filteredQueue(JobsState state) {
-    final all = state.pendingJobs;
-    return all.where((j) {
-      if (state.isDismissed(j.id)) return false;
-      final matchesFilter = switch (_filter) {
-        _Filter.all => true,
-        _Filter.ready => j.category == JobCategory.ready,
-        _Filter.input => j.category == JobCategory.inputNeeded,
-        _Filter.strategic => j.category == JobCategory.exploration,
-      };
-      if (!matchesFilter) return false;
-      if (_query.isEmpty) return true;
-      final q = _query.toLowerCase();
-      return j.title.toLowerCase().contains(q) ||
-          j.company.toLowerCase().contains(q) ||
-          j.location.toLowerCase().contains(q);
-    }).toList();
-  }
-
   void _dismiss(Job job) {
     final notifier = ref.read(jobsProvider.notifier);
     notifier.dismiss(job.id, label: job.company);
@@ -55,10 +36,26 @@ class _JobsPageState extends ConsumerState<JobsPage> {
       ..showSnackBar(
         SnackBar(
           duration: const Duration(seconds: 3),
-          behavior: SnackBarBehavior.floating,
           content: Text('${job.company} dismissed'),
           action: SnackBarAction(
             label: 'Undo',
+            onPressed: () => notifier.undismiss(job.id),
+          ),
+        ),
+      );
+  }
+
+  void _undoSend(Job job) {
+    final notifier = ref.read(jobsProvider.notifier);
+    notifier.dismiss(job.id, label: job.company);
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 4),
+          content: Text('Send to ${job.company} undone'),
+          action: SnackBarAction(
+            label: 'Resend',
             onPressed: () => notifier.undismiss(job.id),
           ),
         ),
@@ -76,7 +73,6 @@ class _JobsPageState extends ConsumerState<JobsPage> {
         ..clearSnackBars()
         ..showSnackBar(
           SnackBar(
-            behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 3),
             content: Text(next.lastMessage!),
           ),
@@ -84,523 +80,349 @@ class _JobsPageState extends ConsumerState<JobsPage> {
     });
 
     final state = ref.watch(jobsProvider);
-    final jobs = _filteredQueue(state);
+    final visible = state.pendingCards
+        .where((c) => !state.isDismissed(c.job.id))
+        .toList();
 
     return AppScreen(
       showBottomNav: false,
       activeTab: BottomNavTab.agent,
       extendBehindBottomNav: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AppHeader.tab(
-            title: AppStrings.agentPipeline,
-            bottom: _TabSwitcher(
-              selectedIndex: _tabIndex,
-              labels: const [AppStrings.reviewQueue, AppStrings.history],
-              onChanged: (i) => setState(() => _tabIndex = i),
-            ),
-          ),
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              child: _tabIndex == 0
-                  ? _ReviewQueueTab(
-                      key: const ValueKey('queue'),
-                      query: _query,
-                      filter: _filter,
-                      jobs: jobs,
-                      hasAnyPipeline: state.pendingJobs.isNotEmpty,
-                      onQueryChanged: (q) => setState(() => _query = q),
-                      onFilterChanged: (f) => setState(() => _filter = f),
-                      onDismiss: _dismiss,
-                      onMore: (job) => JobActionSheet.show(context, job),
-                    )
-                  : const _HistoryTab(key: ValueKey('history')),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-enum _Filter { all, ready, input, strategic }
-
-// ---------------------------------------------------------------------------
-// Tab switcher
-// ---------------------------------------------------------------------------
-
-class _TabSwitcher extends StatelessWidget {
-  const _TabSwitcher({
-    required this.selectedIndex,
-    required this.labels,
-    required this.onChanged,
-  });
-
-  final int selectedIndex;
-  final List<String> labels;
-  final ValueChanged<int> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: AppColors.border.withValues(alpha: 0.40),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: List.generate(labels.length, (i) {
-          final active = selectedIndex == i;
-          return Expanded(
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 240),
-              curve: Curves.easeOutCubic,
-              decoration: BoxDecoration(
-                color: active ? AppColors.surface : Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: active
-                    ? [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.08),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ]
-                    : null,
-              ),
-              child: Material(
-                color: Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
-                child: InkWell(
-                  onTap: () => onChanged(i),
-                  borderRadius: BorderRadius.circular(12),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Text(
-                      labels[i],
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.1,
-                        color: active ? AppColors.ink : AppColors.textMuted,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-        }),
+      child: _AgentTimeline(
+        cards: visible,
+        hasAnyPipeline: state.pendingCards.isNotEmpty,
+        onDismiss: _dismiss,
+        onUndoSend: _undoSend,
+        onMore: (job) => JobActionSheet.show(context, job),
       ),
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// Review Queue tab
+// Agent Timeline — the unified single-feed pipeline view.
+//
+// The agent leads: ready drafts are presented as already-sent (with Undo),
+// only items that genuinely need user input or a strategic decision surface
+// as actionable cards. No filter tabs, no search — this is a timeline, not
+// a search interface.
 // ---------------------------------------------------------------------------
 
-class _ReviewQueueTab extends StatelessWidget {
-  const _ReviewQueueTab({
-    super.key,
-    required this.query,
-    required this.filter,
-    required this.jobs,
+class _AgentTimeline extends StatelessWidget {
+  const _AgentTimeline({
+    required this.cards,
     required this.hasAnyPipeline,
-    required this.onQueryChanged,
-    required this.onFilterChanged,
     required this.onDismiss,
+    required this.onUndoSend,
     required this.onMore,
   });
 
-  final String query;
-  final _Filter filter;
-  final List<Job> jobs;
+  final List<PipelineCard> cards;
   final bool hasAnyPipeline;
-  final ValueChanged<String> onQueryChanged;
-  final ValueChanged<_Filter> onFilterChanged;
   final ValueChanged<Job> onDismiss;
+  final ValueChanged<Job> onUndoSend;
   final ValueChanged<Job> onMore;
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(
-        AppConstants.screenHorizontalPadding,
-        16,
-        AppConstants.screenHorizontalPadding,
-        140,
-      ),
+    final needs = cards
+        .where((c) =>
+            c.job.category == JobCategory.inputNeeded ||
+            c.job.category == JobCategory.exploration)
+        .toList();
+    final sent = cards
+        .where((c) => c.job.category == JobCategory.ready)
+        .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _FilterSearchRow(
-          query: query,
-          filter: filter,
-          onQueryChanged: onQueryChanged,
-          onFilterChanged: onFilterChanged,
+        AppHeader.tab(
+          title: AppStrings.agentPipeline,
+          subtitle: _stats(needs.length, sent.length),
         ),
-        const SizedBox(height: 20),
-        if (jobs.isEmpty)
-          hasAnyPipeline
-              ? const _EmptyResults()
-              : EmptyStateCard(
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(
+              AppConstants.screenHorizontalPadding,
+              8,
+              AppConstants.screenHorizontalPadding,
+              140,
+            ),
+            children: [
+              if (cards.isEmpty && !hasAnyPipeline)
+                EmptyStateCard(
                   icon: Icons.bolt_rounded,
-                  title: 'No roles in your pipeline',
+                  title: 'Your agent is idle',
                   body: 'Enable "Today\'s brief" in Settings, then tap '
-                      '"Run today\'s brief" on the dashboard to scan for fresh roles.',
+                      '"Run today\'s brief" on the dashboard. The agent will '
+                      'scan roles and drop them here.',
                   actionLabel: 'Open dashboard',
                   onAction: () => context.go(RouteNames.dashboard),
-                )
-        else
-          ...jobs.asMap().entries.map((entry) {
-            final job = entry.value;
-            return _JobCard(
-              key: ValueKey(job.id),
-              job: job,
-              onDismiss: () => onDismiss(job),
-              onMore: () => onMore(job),
-            )
-                .animate(delay: (entry.key * 60).ms)
-                .fadeIn()
-                .moveY(begin: 16, end: 0);
-          }),
+                ),
+              if (needs.isNotEmpty) ...[
+                _SectionHeader(
+                  label: 'Needs you',
+                  count: needs.length,
+                  accent: AppColors.categoryInputDeep,
+                ),
+                const SizedBox(height: 12),
+                for (var i = 0; i < needs.length; i++)
+                  _SwipeDismissible(
+                    key: ValueKey('need-${needs[i].job.id}'),
+                    onDismissed: () => onDismiss(needs[i].job),
+                    child: _JobCard(
+                      job: needs[i].job,
+                      onDismiss: () => onDismiss(needs[i].job),
+                      onMore: () => onMore(needs[i].job),
+                    ),
+                  )
+                      .animate(delay: (i * 60).ms)
+                      .fadeIn()
+                      .moveY(begin: 16, end: 0),
+              ],
+              if (sent.isNotEmpty) ...[
+                if (needs.isNotEmpty) const SizedBox(height: 8),
+                _SectionHeader(
+                  label: 'Sent today',
+                  count: sent.length,
+                  accent: AppColors.success,
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  decoration: BoxDecoration(
+                    color: context.brand.surface,
+                    borderRadius:
+                        BorderRadius.circular(AppConstants.cardRadius),
+                    border: Border.all(
+                      color: context.brand.border.withValues(alpha: 0.60),
+                    ),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    children: [
+                      for (var i = 0; i < sent.length; i++) ...[
+                        _SentRow(
+                          card: sent[i],
+                          onUndo: () => onUndoSend(sent[i].job),
+                        ),
+                        if (i < sent.length - 1)
+                          Divider(
+                            height: 1,
+                            thickness: 1,
+                            color: context.brand.border
+                                .withValues(alpha: 0.55),
+                          ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 28),
+              _SectionHeader(
+                label: 'Recent activity',
+                accent: context.brand.textMuted,
+              ),
+              const SizedBox(height: 16),
+              for (var i = 0; i < MockJobs.history.length; i++)
+                _HistoryItem(
+                  data: MockJobs.history[i],
+                  isLast: i == MockJobs.history.length - 1,
+                ),
+            ],
+          ),
+        ),
       ],
     );
   }
+
+  String _stats(int needs, int sent) {
+    final parts = <String>[];
+    if (sent > 0) parts.add('$sent sent today');
+    if (needs > 0) parts.add('$needs needs you');
+    if (parts.isEmpty) return 'Quiet — no agent activity yet';
+    return parts.join(' · ');
+  }
 }
 
-// ---------------------------------------------------------------------------
-// Filter chips + inline expanding search (single row)
-// ---------------------------------------------------------------------------
+/// Lightweight section header used to delineate the timeline groups.
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.label, required this.accent, this.count});
 
-class _FilterSearchRow extends StatefulWidget {
-  const _FilterSearchRow({
-    required this.query,
-    required this.filter,
-    required this.onQueryChanged,
-    required this.onFilterChanged,
-  });
-
-  final String query;
-  final _Filter filter;
-  final ValueChanged<String> onQueryChanged;
-  final ValueChanged<_Filter> onFilterChanged;
-
-  @override
-  State<_FilterSearchRow> createState() => _FilterSearchRowState();
-}
-
-class _FilterSearchRowState extends State<_FilterSearchRow> {
-  late bool _searching = widget.query.isNotEmpty;
-  late final TextEditingController _controller =
-      TextEditingController(text: widget.query);
-  final FocusNode _focusNode = FocusNode();
-
-  @override
-  void didUpdateWidget(covariant _FilterSearchRow oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.query != _controller.text) {
-      _controller.text = widget.query;
-      _controller.selection =
-          TextSelection.collapsed(offset: widget.query.length);
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    _focusNode.dispose();
-    super.dispose();
-  }
-
-  void _enterSearch() {
-    setState(() => _searching = true);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _focusNode.requestFocus();
-    });
-  }
-
-  void _exitSearch() {
-    _controller.clear();
-    widget.onQueryChanged('');
-    _focusNode.unfocus();
-    setState(() => _searching = false);
-  }
+  final String label;
+  final Color accent;
+  final int? count;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 40,
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 240),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (child, animation) {
-          return FadeTransition(
-            opacity: animation,
-            child: SizeTransition(
-              axis: Axis.horizontal,
-              sizeFactor: animation,
-              axisAlignment: 1,
-              child: child,
-            ),
-          );
-        },
-        child: _searching
-            ? _SearchField(
-                key: const ValueKey('search'),
-                controller: _controller,
-                focusNode: _focusNode,
-                onChanged: widget.onQueryChanged,
-                onClose: _exitSearch,
-              )
-            : _FilterChipsRow(
-                key: const ValueKey('chips'),
-                active: widget.filter,
-                onChanged: widget.onFilterChanged,
-                onSearchTap: _enterSearch,
-              ),
-      ),
-    );
-  }
-}
-
-class _FilterChipsRow extends StatelessWidget {
-  const _FilterChipsRow({
-    super.key,
-    required this.active,
-    required this.onChanged,
-    required this.onSearchTap,
-  });
-
-  final _Filter active;
-  final ValueChanged<_Filter> onChanged;
-  final VoidCallback onSearchTap;
-
-  static const _filters = [
-    (_Filter.all, 'All'),
-    (_Filter.ready, 'Ready'),
-    (_Filter.input, 'Needs Input'),
-    (_Filter.strategic, 'Strategic'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
+    final brand = context.brand;
     return Row(
       children: [
-        Expanded(
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            itemCount: _filters.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 8),
-            itemBuilder: (context, i) {
-              final (f, label) = _filters[i];
-              return _FilterChip(
-                label: label,
-                active: active == f,
-                onTap: () => onChanged(f),
-              );
-            },
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(
+            color: accent,
+            shape: BoxShape.circle,
           ),
         ),
-        const SizedBox(width: 10),
-        _IconCircleButton(
-          icon: Icons.search_rounded,
-          semanticLabel: 'Search jobs',
-          onTap: onSearchTap,
+        const SizedBox(width: 8),
+        Text(
+          label.toUpperCase(),
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.5,
+            color: brand.textMuted,
+          ),
         ),
-      ],
-    );
-  }
-}
-
-class _SearchField extends StatelessWidget {
-  const _SearchField({
-    super.key,
-    required this.controller,
-    required this.focusNode,
-    required this.onChanged,
-    required this.onClose,
-  });
-
-  final TextEditingController controller;
-  final FocusNode focusNode;
-  final ValueChanged<String> onChanged;
-  final VoidCallback onClose;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.search_rounded,
-              size: 18, color: AppColors.textMuted),
-          const SizedBox(width: 10),
-          Expanded(
-            child: TextField(
-              controller: controller,
-              focusNode: focusNode,
-              onChanged: onChanged,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.ink,
-              ),
-              decoration: const InputDecoration(
-                hintText: AppStrings.searchJobsHint,
-                hintStyle: TextStyle(
-                  color: AppColors.textSoft,
-                  fontWeight: FontWeight.w500,
-                  fontSize: 14,
-                ),
-                contentPadding: EdgeInsets.zero,
-                border: InputBorder.none,
-                isCollapsed: true,
-              ),
+        if (count != null) ...[
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: brand.surfaceMuted,
+              borderRadius: BorderRadius.circular(99),
             ),
-          ),
-          Semantics(
-            label: 'Close search',
-            button: true,
-            child: InkResponse(
-              onTap: onClose,
-              radius: 22,
-              excludeFromSemantics: true,
-              child: const Padding(
-                padding: EdgeInsets.all(4),
-                child: Icon(
-                  Icons.close_rounded,
-                  size: 18,
-                  color: AppColors.textMuted,
-                ),
+            child: Text(
+              '$count',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+                color: brand.ink,
               ),
             ),
           ),
         ],
-      ),
+      ],
     );
   }
 }
 
-class _IconCircleButton extends StatelessWidget {
-  const _IconCircleButton({
-    required this.icon,
-    required this.onTap,
-    required this.semanticLabel,
-  });
+/// Compact row representing a ready application the agent already queued
+/// for sending. Shows when it went out and offers a one-tap Undo.
+class _SentRow extends StatelessWidget {
+  const _SentRow({required this.card, required this.onUndo});
 
-  final IconData icon;
-  final VoidCallback onTap;
-  final String semanticLabel;
+  final PipelineCard card;
+  final VoidCallback onUndo;
 
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: semanticLabel,
-      button: true,
-      child: Material(
-        color: AppColors.surface,
-        shape: const CircleBorder(side: BorderSide(color: AppColors.border)),
-        child: InkWell(
-          onTap: onTap,
-          customBorder: const CircleBorder(),
-          excludeFromSemantics: true,
-          child: SizedBox(
-            width: 40,
-            height: 40,
-            child: Icon(icon, size: 18, color: AppColors.ink),
-          ),
-        ),
-      ),
-    );
+  String _timeLabel() {
+    final now = DateTime.now();
+    final delta = now.difference(card.createdAt);
+    if (delta.inMinutes < 1) return 'just now';
+    if (delta.inMinutes < 60) return '${delta.inMinutes}m ago';
+    if (delta.inHours < 24) return '${delta.inHours}h ago';
+    final hh = card.createdAt.hour.toString().padLeft(2, '0');
+    final mm = card.createdAt.minute.toString().padLeft(2, '0');
+    return '$hh:$mm';
   }
-}
-
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({
-    required this.label,
-    required this.active,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: active ? AppColors.ink : AppColors.surface,
-      borderRadius: BorderRadius.circular(99),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(99),
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(99),
-            border: Border.all(
-              color: active ? AppColors.ink : AppColors.border,
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: active ? Colors.white : AppColors.ink,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyResults extends StatelessWidget {
-  const _EmptyResults();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(28),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: const Column(
+    final brand = context.brand;
+    final job = card.job;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
+      child: Row(
         children: [
-          Icon(Icons.search_off_rounded, size: 28, color: AppColors.textMuted),
-          SizedBox(height: 12),
-          Text(
-            'Nothing matched',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 15,
-              color: AppColors.ink,
-              letterSpacing: -0.1,
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: brand.ink,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              job.company[0],
+              style: TextStyle(
+                color: brand.accent,
+                fontWeight: FontWeight.w900,
+                fontSize: 14,
+              ),
             ),
           ),
-          SizedBox(height: 6),
-          Text(
-            'Try a different search or clear the filter.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: AppColors.textMuted,
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              height: 1.4,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.check_circle_rounded,
+                      size: 13,
+                      color: brand.accentBright,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      'SENT · ${_timeLabel()}',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.1,
+                        color: brand.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  job.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: brand.ink,
+                    letterSpacing: -0.1,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  job.company,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: brand.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Material(
+            color: brand.surfaceMuted,
+            borderRadius: BorderRadius.circular(99),
+            child: InkWell(
+              onTap: onUndo,
+              borderRadius: BorderRadius.circular(99),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.undo_rounded, size: 13, color: brand.ink),
+                    const SizedBox(width: 5),
+                    Text(
+                      'Undo',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: brand.ink,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],
@@ -613,9 +435,151 @@ class _EmptyResults extends StatelessWidget {
 // Job card
 // ---------------------------------------------------------------------------
 
+/// Wraps a child in a swipe-left-to-dismiss gesture (built-in Flutter
+/// [Dismissible]). Reveals a red trash background as the user drags.
+class _SwipeDismissible extends StatelessWidget {
+  const _SwipeDismissible({
+    super.key,
+    required this.child,
+    required this.onDismissed,
+  });
+
+  final Widget child;
+  final VoidCallback onDismissed;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Dismissible(
+      key: ValueKey('dismiss-${(key as ValueKey).value}'),
+      direction: DismissDirection.endToStart,
+      onDismissed: (_) => onDismissed(),
+      background: const SizedBox.shrink(),
+      secondaryBackground: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.only(right: 28),
+        alignment: Alignment.centerRight,
+        decoration: BoxDecoration(
+          color: brand.danger.withValues(alpha: 0.92),
+          borderRadius: BorderRadius.circular(AppConstants.cardRadius),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: const [
+            Icon(Icons.archive_rounded, color: Colors.white, size: 22),
+            SizedBox(width: 10),
+            Text(
+              'Dismiss',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+                fontSize: 14,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ],
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// Animated circular match-score ring. Uses [TweenAnimationBuilder] to
+/// sweep the arc from 0 to [score] and counts the number up in sync.
+class _MatchRing extends StatelessWidget {
+  const _MatchRing({required this.score, required this.color});
+
+  final int score;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: score / 100),
+      duration: const Duration(milliseconds: 900),
+      curve: Curves.easeOutCubic,
+      builder: (context, t, _) {
+        return SizedBox(
+          width: 46,
+          height: 46,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              CustomPaint(
+                size: const Size(46, 46),
+                painter: _RingPainter(
+                  progress: t,
+                  trackColor: brand.border.withValues(alpha: 0.6),
+                  ringColor: color,
+                ),
+              ),
+              Text(
+                '${(t * 100).round()}',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  color: brand.ink,
+                  letterSpacing: -0.3,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _RingPainter extends CustomPainter {
+  _RingPainter({
+    required this.progress,
+    required this.trackColor,
+    required this.ringColor,
+  });
+
+  final double progress;
+  final Color trackColor;
+  final Color ringColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const stroke = 4.0;
+    final rect = Offset.zero & size;
+    final center = rect.center;
+    final radius = math.min(size.width, size.height) / 2 - stroke / 2;
+
+    final trackPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..color = trackColor;
+    canvas.drawCircle(center, radius, trackPaint);
+
+    final ringPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..color = ringColor;
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      -math.pi / 2,
+      2 * math.pi * progress.clamp(0.0, 1.0),
+      false,
+      ringPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _RingPainter old) =>
+      old.progress != progress ||
+      old.ringColor != ringColor ||
+      old.trackColor != trackColor;
+}
+
 class _JobCard extends StatefulWidget {
   const _JobCard({
-    super.key,
     required this.job,
     required this.onDismiss,
     required this.onMore,
@@ -630,10 +594,8 @@ class _JobCard extends StatefulWidget {
 }
 
 class _JobCardState extends State<_JobCard> {
-  bool _expanded = false;
-
-  Color get _accentColor => switch (widget.job.category) {
-        JobCategory.ready => AppColors.ink,
+  Color _accentColor(BrandTheme brand) => switch (widget.job.category) {
+        JobCategory.ready => brand.ink,
         JobCategory.inputNeeded => AppColors.categoryInputDeep,
         JobCategory.exploration => AppColors.categoryExploreDeep,
       };
@@ -645,275 +607,296 @@ class _JobCardState extends State<_JobCard> {
       };
 
   String get _primaryLabel => switch (widget.job.category) {
-        JobCategory.ready => 'Export Application',
-        JobCategory.inputNeeded => 'Reply in Chat',
-        JobCategory.exploration => 'Generate Draft',
+        JobCategory.ready => 'Send',
+        JobCategory.inputNeeded => 'Open chat',
+        JobCategory.exploration => 'Draft',
       };
 
-  IconData? get _primaryIcon => switch (widget.job.category) {
-        JobCategory.ready => null,
-        JobCategory.inputNeeded => Icons.send_rounded,
-        JobCategory.exploration => Icons.star_rounded,
+  IconData get _primaryIcon => switch (widget.job.category) {
+        JobCategory.ready => Icons.arrow_forward_rounded,
+        JobCategory.inputNeeded => Icons.chat_bubble_outline_rounded,
+        JobCategory.exploration => Icons.auto_awesome_rounded,
       };
 
-  String get _secondaryLabel => switch (widget.job.category) {
-        JobCategory.ready => '',
-        JobCategory.inputNeeded => 'Skip',
-        JobCategory.exploration => 'Ignore',
-      };
-
+  // Agentic flow: every pipeline interaction routes to the chatbot — no
+  // secondary review/tailor/data-viz pages. The agent owns the thread.
   VoidCallback _onPrimaryTap(BuildContext context) =>
-      switch (widget.job.category) {
-        JobCategory.ready =>
-          () => context.go(RouteNames.review, extra: widget.job),
-        JobCategory.inputNeeded => () => context.go(RouteNames.agentChat),
-        JobCategory.exploration =>
-          () => context.go(RouteNames.tailor, extra: widget.job),
-      };
-
-  void _toggle() => setState(() => _expanded = !_expanded);
+      () => context.go(RouteNames.agentChat);
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
+    final accentColor = _accentColor(brand);
     final job = widget.job;
+    final isInputNeeded = job.category == JobCategory.inputNeeded;
+    final isStrategic = job.category == JobCategory.exploration;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: brand.surface,
         borderRadius: BorderRadius.circular(AppConstants.cardRadius),
-        border: Border.all(color: AppColors.border.withValues(alpha: 0.60)),
+        border: Border.all(color: brand.border.withValues(alpha: 0.60)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: brand.shadow,
             blurRadius: 24,
             offset: const Offset(0, 6),
           ),
         ],
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
         children: [
-          // ── Always-visible summary ─────────────────────────────────────
-          InkWell(
-            onTap: _toggle,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 18, 14, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+          // Colored left accent stripe — category at a glance.
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 5,
+            child: Container(color: accentColor),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Tap anywhere on the card body to open the agent thread.
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _onPrimaryTap(context),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Flexible(child: _CategoryBadge(category: job.category)),
-                      const Spacer(),
-                      if (job.category == JobCategory.ready)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 4),
-                          child: Text(
-                            '${job.matchScore}% Match',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textMuted,
-                            ),
-                          ),
-                        ),
-                      AnimatedRotation(
-                        duration: const Duration(milliseconds: 220),
-                        turns: _expanded ? 0.5 : 0,
-                        child: const Icon(
-                          Icons.keyboard_arrow_down_rounded,
-                          size: 22,
-                          color: AppColors.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: AppColors.ink,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          job.company[0],
-                          style: const TextStyle(
-                            color: AppColors.accent,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 17,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 18, 18, 14),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              job.title,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 16,
-                                color: AppColors.ink,
-                                letterSpacing: -0.2,
-                                height: 1.2,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Flexible(
+                                  child: _CategoryBadge(category: job.category),
+                                ),
+                                const Spacer(),
+                                _MatchRing(
+                                  score: job.matchScore,
+                                  color: accentColor,
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${job.company} · ${job.category == JobCategory.inputNeeded ? job.location : job.salary}',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                                color: AppColors.textMuted,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            const SizedBox(height: 14),
+                            Row(
+                              children: [
+                                Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    color: brand.ink,
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    job.company[0],
+                                    style: TextStyle(
+                                      color: brand.accent,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 17,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        job.title,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 16,
+                                          color: brand.ink,
+                                          letterSpacing: -0.2,
+                                          height: 1.2,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${job.company} · ${isInputNeeded ? job.location : job.salary}',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                          color: brand.textMuted,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 18, 14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(_justificationIcon,
+                                    size: 13, color: accentColor),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    job.agentAction.toUpperCase(),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 1.4,
+                                      color: accentColor,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            job.missingSkills.isNotEmpty
+                                ? RichText(
+                                    text: TextSpan(
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: brand.textMuted,
+                                        height: 1.5,
+                                        fontFamily: 'Inter',
+                                      ),
+                                      children: [
+                                        TextSpan(
+                                          text:
+                                              'Missing: ${job.missingSkills.join(', ')}. ',
+                                          style: TextStyle(
+                                            color: accentColor,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                        TextSpan(
+                                          text: job.agentJustification,
+                                        ),
+                                      ],
+                                    ),
+                                  )
+                                : Text(
+                                    job.agentJustification,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: brand.textMuted,
+                                      height: 1.5,
+                                    ),
+                                  ),
                           ],
                         ),
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
-            ),
-          ),
-
-          // ── Collapsible detail ─────────────────────────────────────────
-          AnimatedSize(
-            duration: const Duration(milliseconds: 280),
-            curve: Curves.easeOutCubic,
-            alignment: Alignment.topCenter,
-            child: _expanded
-                ? Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
-                    child: Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: AppColors.softSurface,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 18, 18),
+                child: isStrategic
+                    ? Row(
                         children: [
-                          Row(
-                            children: [
-                              Icon(_justificationIcon,
-                                  size: 14, color: _accentColor),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  job.agentAction.toUpperCase(),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 1.0,
-                                    color: _accentColor,
-                                  ),
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: _onPrimaryTap(context),
+                              icon: const Icon(
+                                Icons.trending_up_rounded,
+                                size: 16,
+                              ),
+                              label: const Text(
+                                'Pursue',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 14,
                                 ),
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          job.missingSkills.isNotEmpty
-                              ? RichText(
-                                  text: TextSpan(
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      color: AppColors.textMuted,
-                                      height: 1.5,
-                                      fontFamily: 'Inter',
-                                    ),
-                                    children: [
-                                      TextSpan(
-                                        text:
-                                            'Missing: ${job.missingSkills.join(', ')}. ',
-                                        style: TextStyle(
-                                          color: _accentColor,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                      TextSpan(text: job.agentJustification),
-                                    ],
-                                  ),
-                                )
-                              : Text(
-                                  job.agentJustification,
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    color: AppColors.textMuted,
-                                    height: 1.5,
-                                  ),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: accentColor,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
-                        ],
-                      ),
-                    ),
-                  )
-                : const SizedBox(width: double.infinity, height: 0),
-          ),
-
-          // ── Action row ─────────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
-            child: Row(
-              children: [
-                Expanded(
-                  child: FilledButton(
-                    onPressed: _onPrimaryTap(context),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.ink,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Flexible(
-                          child: Text(
-                            _primaryLabel,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 14,
+                              ),
                             ),
                           ),
-                        ),
-                        if (_primaryIcon != null) ...[
-                          const SizedBox(width: 8),
-                          Icon(_primaryIcon, size: 16),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: widget.onDismiss,
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: brand.textMuted,
+                                side: BorderSide(color: brand.border),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Text(
+                                'Pass',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                          ),
                         ],
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                _SecondaryAction(
-                  isIconOnly: job.category == JobCategory.ready,
-                  label: _secondaryLabel,
-                  onTap: job.category == JobCategory.ready
-                      ? widget.onMore
-                      : widget.onDismiss,
-                  onLongPress: widget.onMore,
-                ),
-              ],
-            ),
+                      )
+                    : Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: _onPrimaryTap(context),
+                              icon: Icon(_primaryIcon, size: 16),
+                              label: Text(
+                                _primaryLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: brand.ink,
+                                foregroundColor: brand.inkInverse,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          _IconActionButton(
+                            icon: Icons.more_horiz_rounded,
+                            semanticLabel: 'More actions',
+                            onTap: widget.onMore,
+                          ),
+                        ],
+                      ),
+              ),
+            ],
           ),
         ],
       ),
@@ -921,51 +904,35 @@ class _JobCardState extends State<_JobCard> {
   }
 }
 
-class _SecondaryAction extends StatelessWidget {
-  const _SecondaryAction({
-    required this.isIconOnly,
-    required this.label,
+/// Minimalist square icon-only button — pairs alongside the primary CTA.
+class _IconActionButton extends StatelessWidget {
+  const _IconActionButton({
+    required this.icon,
     required this.onTap,
-    required this.onLongPress,
+    required this.semanticLabel,
   });
 
-  final bool isIconOnly;
-  final String label;
+  final IconData icon;
   final VoidCallback onTap;
-  final VoidCallback onLongPress;
+  final String semanticLabel;
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Semantics(
-      label: isIconOnly ? 'More actions' : label,
+      label: semanticLabel,
       button: true,
       child: Material(
-        color: AppColors.scaffold,
+        color: brand.surfaceMuted,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: onTap,
-          onLongPress: onLongPress,
           borderRadius: BorderRadius.circular(12),
           excludeFromSemantics: true,
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: isIconOnly ? 16 : 18,
-              vertical: 14,
-            ),
-            child: isIconOnly
-                ? const Icon(
-                    Icons.more_horiz_rounded,
-                    size: 20,
-                    color: AppColors.textMuted,
-                  )
-                : Text(
-                    label,
-                    style: const TextStyle(
-                      color: AppColors.textMuted,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
-                    ),
-                  ),
+          child: SizedBox(
+            width: 48,
+            height: 48,
+            child: Icon(icon, size: 20, color: brand.textMuted),
           ),
         ),
       ),
@@ -980,11 +947,12 @@ class _CategoryBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final (label, bg, fg, icon) = switch (category) {
       JobCategory.ready => (
           'Ready to Send',
-          AppColors.accent,
-          AppColors.ink,
+          brand.accent,
+          brand.onAccent,
           Icons.check_circle_outline_rounded,
         ),
       JobCategory.inputNeeded => (
@@ -1032,30 +1000,8 @@ class _CategoryBadge extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// History tab — vertical timeline
+// Activity feed item — used inline in the timeline's "Recent activity" group.
 // ---------------------------------------------------------------------------
-
-class _HistoryTab extends StatelessWidget {
-  const _HistoryTab({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final items = MockJobs.history;
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(
-        AppConstants.screenHorizontalPadding,
-        24,
-        AppConstants.screenHorizontalPadding,
-        140,
-      ),
-      itemCount: items.length,
-      itemBuilder: (context, i) => _HistoryItem(
-        data: items[i],
-        isLast: i == items.length - 1,
-      ),
-    );
-  }
-}
 
 class _HistoryItem extends StatelessWidget {
   const _HistoryItem({required this.data, required this.isLast});
@@ -1063,156 +1009,100 @@ class _HistoryItem extends StatelessWidget {
   final Map<String, dynamic> data;
   final bool isLast;
 
+  String _timeLabel() {
+    final time = data['time'] as String;
+    final sub = (data['sub'] as String?) ?? '';
+    return sub.isEmpty ? time : '$time $sub';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final active = data['active'] as bool;
     final undoable = data['undoable'] as bool;
-    final sub = data['sub'] as String;
 
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Timeline rail
           SizedBox(
             width: 16,
             child: Column(
               children: [
-                const SizedBox(height: 6),
-                Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: active ? AppColors.accent : AppColors.surface,
-                    border: Border.all(
-                      color: active ? AppColors.accent : AppColors.border,
-                      width: 2,
-                    ),
-                    boxShadow: active
-                        ? [
-                            BoxShadow(
-                              color: AppColors.accent.withValues(alpha: 0.30),
-                              blurRadius: 6,
-                              spreadRadius: 1,
-                            ),
-                          ]
-                        : null,
-                  ),
-                ),
+                const SizedBox(height: 8),
+                _TimelineNode(active: active),
                 if (!isLast)
                   Expanded(
                     child: Container(
                       width: 2,
                       margin: const EdgeInsets.symmetric(vertical: 4),
-                      color: AppColors.border.withValues(alpha: 0.6),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            brand.border.withValues(alpha: 0.85),
+                            brand.border.withValues(alpha: 0.25),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
               ],
             ),
           ),
           const SizedBox(width: 14),
-          // Content
           Expanded(
             child: Padding(
-              padding: EdgeInsets.only(bottom: isLast ? 0 : 22),
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 26),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          data['title'] as String,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 15,
-                            color: AppColors.ink,
-                            letterSpacing: -0.1,
-                            height: 1.2,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        data['time'] as String,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (sub.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      sub,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textSoft,
-                        letterSpacing: 0.3,
-                      ),
+                  Text(
+                    _timeLabel().toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.4,
+                      color: active ? brand.ink : brand.textSoft,
                     ),
-                  ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    data['title'] as String,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                      color: brand.ink,
+                      letterSpacing: -0.2,
+                      height: 1.25,
+                    ),
+                  ),
                   const SizedBox(height: 6),
                   Text(
                     data['desc'] as String,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
-                      color: AppColors.textMuted,
-                      height: 1.5,
+                      color: brand.textMuted,
+                      height: 1.55,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
                   if (undoable) ...[
                     const SizedBox(height: 10),
-                    Material(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(10),
-                      child: InkWell(
-                        onTap: () {
-                          ScaffoldMessenger.of(context)
-                            ..clearSnackBars()
-                            ..showSnackBar(
-                              const SnackBar(
-                                behavior: SnackBarBehavior.floating,
-                                content: Text('Action undone'),
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                        },
-                        borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: AppColors.border),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.undo_rounded,
-                                  size: 13, color: AppColors.ink),
-                              SizedBox(width: 6),
-                              Text(
-                                'Undo',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppColors.ink,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                    _TimelineUndo(
+                      onTap: () {
+                        ScaffoldMessenger.of(context)
+                          ..clearSnackBars()
+                          ..showSnackBar(
+                            const SnackBar(
+                              content: Text('Action undone'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                      },
                     ),
                   ],
                 ],
@@ -1220,6 +1110,114 @@ class _HistoryItem extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Small accent-green dot. Active dots get a soft glow plus a pulsing ring;
+/// done dots sit quiet as a hairline-bordered circle.
+class _TimelineNode extends StatelessWidget {
+  const _TimelineNode({required this.active});
+
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    const size = 10.0;
+
+    final dot = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: active ? brand.accent : brand.surface,
+        border: Border.all(
+          color: active ? brand.accent : brand.border,
+          width: 2,
+        ),
+        boxShadow: active
+            ? [
+                BoxShadow(
+                  color: brand.accent.withValues(alpha: 0.30),
+                  blurRadius: 6,
+                  spreadRadius: 1,
+                ),
+              ]
+            : null,
+      ),
+    );
+
+    if (!active) return dot;
+
+    return Stack(
+      alignment: Alignment.center,
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: brand.accent.withValues(alpha: 0.45),
+          ),
+        )
+            .animate(onPlay: (c) => c.repeat())
+            .scaleXY(
+              duration: 1600.ms,
+              begin: 1.0,
+              end: 2.2,
+              curve: Curves.easeOut,
+            )
+            .fadeOut(duration: 1600.ms),
+        dot,
+      ],
+    );
+  }
+}
+
+/// Quiet text-button-style undo — no border, subtle hover, sits flush with
+/// the timeline column rather than competing with it.
+class _TimelineUndo extends StatelessWidget {
+  const _TimelineUndo({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 6,
+            vertical: 4,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.undo_rounded,
+                size: 13,
+                color: brand.textMuted,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Undo',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.2,
+                  color: brand.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

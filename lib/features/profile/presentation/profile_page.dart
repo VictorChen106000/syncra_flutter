@@ -4,11 +4,12 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_assets.dart';
-import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
-import '../../../core/utils/motion.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/brand_theme.dart';
+import '../../../core/theme/theme_mode_notifier.dart';
+import '../../../core/utils/motion.dart';
 import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
@@ -34,24 +35,21 @@ class ProfilePage extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(
                 AppConstants.screenHorizontalPadding,
-                20,
+                16,
                 AppConstants.screenHorizontalPadding,
                 140,
               ),
               children: const [
                 _ProfileHeaderCard(),
                 SizedBox(height: 24),
-                SectionTitle(title: AppStrings.agentAutonomy),
-                _AutonomySection(),
-                SizedBox(height: 24),
-                SectionTitle(title: "Today's brief"),
-                _MorningBriefSection(),
-                SizedBox(height: 24),
                 SectionTitle(title: AppStrings.careerPipeline),
                 _CareerPipelineSection(),
                 SizedBox(height: 24),
-                SectionTitle(title: AppStrings.agentPermissions),
+                SectionTitle(title: 'Connections'),
                 _IntegrationSection(),
+                SizedBox(height: 24),
+                SectionTitle(title: 'Preferences'),
+                _PreferencesSection(),
                 SizedBox(height: 24),
                 _SignOutButton(),
                 SizedBox(height: 12),
@@ -66,92 +64,229 @@ class ProfilePage extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Header card
+// Preferences — a single grouped card with three compact tiles:
+// Dark mode · Today's brief · Agent autonomy.
 // ---------------------------------------------------------------------------
+
+class _PreferencesSection extends StatelessWidget {
+  const _PreferencesSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _GroupedCard(
+      children: [
+        _ThemeModeTile(),
+        _GroupedDivider(),
+        _MorningBriefTile(),
+        _GroupedDivider(),
+        _AutonomyTile(),
+      ],
+    );
+  }
+}
+
+/// Standard row layout used by every preference tile.
+/// Icon · title (+ optional subtitle) · trailing control.
+class _PreferenceRow extends StatelessWidget {
+  const _PreferenceRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.trailing,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Widget trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: brand.surfaceMuted,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, size: 18, color: brand.ink),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                    color: brand.ink,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: brand.textMuted,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          trailing,
+        ],
+      ),
+    );
+  }
+}
+
+/// Tiny icon-only segmented selector — three choices in a single pill.
+/// Active option flips to ink background with accent-colored icon.
+class _MiniSegmented<T> extends StatelessWidget {
+  const _MiniSegmented({
+    required this.options,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final List<(T, IconData)> options;
+  final T selected;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: brand.surfaceMuted,
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final (value, icon) in options)
+            GestureDetector(
+              onTap: () => onChanged(value),
+              behavior: HitTestBehavior.opaque,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                width: 30,
+                height: 28,
+                margin: const EdgeInsets.symmetric(horizontal: 1),
+                decoration: BoxDecoration(
+                  color: value == selected ? brand.ink : Colors.transparent,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  icon,
+                  size: 14,
+                  color: value == selected ? brand.accent : brand.textMuted,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
 
 class _ProfileHeaderCard extends ConsumerWidget {
   const _ProfileHeaderCard();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
     final user = ref.watch(authProvider).appUser;
-    final displayName = user?.displayName ?? 'Daryn';
+    final displayName = user?.displayName ?? 'there';
     final initial = user?.initial ?? 'D';
     final email = user?.email ?? '';
     final photoUrl = user?.photoUrl;
 
     return Container(
-          padding: const EdgeInsets.all(AppConstants.cardPadding),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(AppConstants.cardRadius),
-            border: Border.all(color: AppColors.border),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 20,
-                offset: const Offset(0, 6),
-              ),
-            ],
+      padding: const EdgeInsets.all(AppConstants.cardPadding),
+      decoration: BoxDecoration(
+        color: brand.surface,
+        borderRadius: BorderRadius.circular(AppConstants.cardRadius),
+        border: Border.all(color: brand.border),
+        boxShadow: [
+          BoxShadow(
+            color: brand.shadow,
+            blurRadius: 20,
+            offset: const Offset(0, 6),
           ),
-          child: Row(
-            children: [
-              _ProfileAvatar(
-                photoUrl: photoUrl,
-                initial: initial,
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      displayName,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.2,
-                        height: 1.2,
-                        color: AppColors.ink,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+        ],
+      ),
+      child: Row(
+        children: [
+          _ProfileAvatar(photoUrl: photoUrl, initial: initial),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  displayName,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
+                    height: 1.2,
+                    color: brand.ink,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (email.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    email,
+                    style: TextStyle(
+                      color: brand.textMuted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
                     ),
-                    if (email.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        email,
-                        style: const TextStyle(
-                          color: AppColors.textMuted,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const _PulsingActiveDot(),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Agent Active',
+                      style: TextStyle(
+                        color: brand.textMuted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.1,
                       ),
-                    ],
-                    const SizedBox(height: 8),
-                    const Row(
-                      children: [
-                        _PulsingActiveDot(),
-                        SizedBox(width: 8),
-                        Text(
-                          'Agent Active',
-                          style: TextStyle(
-                            color: AppColors.textMuted,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.1,
-                          ),
-                        ),
-                      ],
                     ),
                   ],
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        );
+        ],
+      ),
+    );
   }
 }
 
@@ -163,6 +298,7 @@ class _ProfileAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final hasNetworkPhoto = photoUrl != null && photoUrl!.isNotEmpty;
     final ImageProvider image = hasNetworkPhoto
         ? NetworkImage(photoUrl!)
@@ -171,20 +307,19 @@ class _ProfileAvatar extends StatelessWidget {
     return Container(
       width: 56,
       height: 56,
-      decoration: const BoxDecoration(
-        color: AppColors.ink,
+      decoration: BoxDecoration(
+        color: brand.ink,
         shape: BoxShape.circle,
       ),
       child: ClipOval(
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Fallback initial — visible only if the image fails to load.
             Center(
               child: Text(
                 initial,
-                style: const TextStyle(
-                  color: AppColors.accent,
+                style: TextStyle(
+                  color: brand.accent,
                   fontWeight: FontWeight.w900,
                   fontSize: 22,
                 ),
@@ -207,6 +342,7 @@ class _PulsingActiveDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return SizedBox(
       width: 10,
       height: 10,
@@ -216,7 +352,7 @@ class _PulsingActiveDot extends StatelessWidget {
           Container(
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: AppColors.accent.withValues(alpha: 0.45),
+              color: brand.accent.withValues(alpha: 0.45),
             ),
           )
               .animate(onPlay: repeatIfMotion(context))
@@ -230,8 +366,8 @@ class _PulsingActiveDot extends StatelessWidget {
           Container(
             width: 8,
             height: 8,
-            decoration: const BoxDecoration(
-              color: AppColors.accentBright,
+            decoration: BoxDecoration(
+              color: brand.accentBright,
               shape: BoxShape.circle,
             ),
           ),
@@ -241,216 +377,89 @@ class _PulsingActiveDot extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Agent autonomy — three-position selector
-// ---------------------------------------------------------------------------
-
-class _AutonomySection extends ConsumerWidget {
-  const _AutonomySection();
-
-  static const _options = <(AutonomyLevel, String, String, IconData)>[
-    (
-      AutonomyLevel.suggest,
-      AppStrings.autonomySuggest,
-      AppStrings.autonomySuggestBody,
-      Icons.lightbulb_outline_rounded,
-    ),
-    (
-      AutonomyLevel.askFirst,
-      AppStrings.autonomyAskFirst,
-      AppStrings.autonomyAskFirstBody,
-      Icons.front_hand_outlined,
-    ),
-    (
-      AutonomyLevel.autoApply,
-      AppStrings.autonomyAutoApply,
-      AppStrings.autonomyAutoApplyBody,
-      Icons.bolt_rounded,
-    ),
-  ];
+class _ThemeModeTile extends ConsumerWidget {
+  const _ThemeModeTile();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final profile = ref.watch(userProfileProvider);
-    // Default to ask_first when profile hasn't loaded yet (guest, or stream
-    // hasn't fired). Selecting an option before profile loads is a no-op
-    // upstream — see UserProfileNotifier.setAutonomyLevel.
-    final selected = profile?.autonomyLevel ?? AutonomyLevel.askFirst;
-    final activeIndex = _options.indexWhere((o) => o.$1 == selected);
-    final body = _options[activeIndex.clamp(0, _options.length - 1)].$3;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: AppColors.border.withValues(alpha: 0.40),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Row(
-              children: List.generate(_options.length, (i) {
-                final (level, label, _, icon) = _options[i];
-                final active = level == selected;
-                return Expanded(
-                  child: GestureDetector(
-                    onTap: () => ref
-                        .read(userProfileProvider.notifier)
-                        .setAutonomyLevel(level),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 220),
-                      curve: Curves.easeOutCubic,
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: active ? AppColors.ink : Colors.transparent,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            icon,
-                            size: 14,
-                            color: active ? AppColors.accent : AppColors.textMuted,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            label,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              color: active ? Colors.white : AppColors.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              }),
-            ),
-          ),
-          const SizedBox(height: 14),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 180),
-            child: Text(
-              body,
-              key: ValueKey(selected),
-              style: const TextStyle(
-                color: AppColors.textMuted,
-                fontSize: 13,
-                height: 1.5,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
+    final selected = ref.watch(themeModeProvider);
+    final subtitle = switch (selected) {
+      ThemeMode.light => 'Always light',
+      ThemeMode.dark => 'Always dark',
+      ThemeMode.system => 'Match device',
+    };
+    return _PreferenceRow(
+      icon: Icons.contrast_rounded,
+      title: 'Appearance',
+      subtitle: subtitle,
+      trailing: _MiniSegmented<ThemeMode>(
+        selected: selected,
+        onChanged: (m) =>
+            ref.read(themeModeProvider.notifier).setMode(m),
+        options: const [
+          (ThemeMode.light, Icons.wb_sunny_outlined),
+          (ThemeMode.dark, Icons.dark_mode_outlined),
+          (ThemeMode.system, Icons.brightness_auto_outlined),
         ],
       ),
     );
   }
 }
 
-// ---------------------------------------------------------------------------
-// Today's brief — opt-in toggle. Default off. Gates the dashboard CTA.
-// Per api-contract §3 / product-brief: the agent never auto-fires; this
-// switch only controls whether the "Run today's brief" CTA appears.
-// ---------------------------------------------------------------------------
-
-class _MorningBriefSection extends ConsumerWidget {
-  const _MorningBriefSection();
+class _MorningBriefTile extends ConsumerWidget {
+  const _MorningBriefTile();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
     final profile = ref.watch(userProfileProvider);
     final enabled = profile?.morningBriefEnabled ?? false;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: enabled ? AppColors.ink : AppColors.scaffold,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            alignment: Alignment.center,
-            child: Icon(
-              Icons.wb_sunny_outlined,
-              color: enabled ? AppColors.accent : AppColors.ink,
-              size: 18,
-            ),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Show daily brief CTA',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.ink,
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Adds a "Run today\'s brief" button on the dashboard. '
-                  'The agent still only runs when you tap it.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.4,
-                    color: AppColors.textMuted,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Switch.adaptive(
-            value: enabled,
-            activeThumbColor: AppColors.ink,
-            onChanged: profile == null
-                ? null
-                : (v) => ref
-                    .read(userProfileProvider.notifier)
-                    .setMorningBriefEnabled(v),
-          ),
-        ],
+    return _PreferenceRow(
+      icon: Icons.wb_sunny_outlined,
+      title: "Today's brief",
+      subtitle: enabled ? 'Dashboard CTA on' : 'Dashboard CTA off',
+      trailing: Switch.adaptive(
+        value: enabled,
+        activeThumbColor: brand.ink,
+        onChanged: profile == null
+            ? null
+            : (v) => ref
+                .read(userProfileProvider.notifier)
+                .setMorningBriefEnabled(v),
       ),
     );
   }
 }
 
-// ---------------------------------------------------------------------------
-// Career pipeline section
-// ---------------------------------------------------------------------------
+class _AutonomyTile extends ConsumerWidget {
+  const _AutonomyTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(userProfileProvider);
+    final selected = profile?.autonomyLevel ?? AutonomyLevel.askFirst;
+    final subtitle = switch (selected) {
+      AutonomyLevel.suggest => 'Only suggest',
+      AutonomyLevel.askFirst => 'Ask before acting',
+      AutonomyLevel.autoApply => 'Auto-apply',
+    };
+    return _PreferenceRow(
+      icon: Icons.bolt_rounded,
+      title: 'Agent autonomy',
+      subtitle: subtitle,
+      trailing: _MiniSegmented<AutonomyLevel>(
+        selected: selected,
+        onChanged: (l) =>
+            ref.read(userProfileProvider.notifier).setAutonomyLevel(l),
+        options: const [
+          (AutonomyLevel.suggest, Icons.lightbulb_outline_rounded),
+          (AutonomyLevel.askFirst, Icons.front_hand_outlined),
+          (AutonomyLevel.autoApply, Icons.bolt_rounded),
+        ],
+      ),
+    );
+  }
+}
 
 class _CareerPipelineSection extends ConsumerWidget {
   const _CareerPipelineSection();
@@ -488,10 +497,6 @@ class _CareerPipelineSection extends ConsumerWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Integration section
-// ---------------------------------------------------------------------------
-
 class _IntegrationSection extends StatefulWidget {
   const _IntegrationSection();
 
@@ -512,7 +517,8 @@ class _IntegrationSectionState extends State<_IntegrationSection> {
   void _toggle(int i) {
     setState(() {
       _integrations = List.of(_integrations);
-      _integrations[i] = _integrations[i].copyWith(active: !_integrations[i].active);
+      _integrations[i] =
+          _integrations[i].copyWith(active: !_integrations[i].active);
     });
   }
 
@@ -540,6 +546,7 @@ class _IntegrationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
@@ -549,12 +556,12 @@ class _IntegrationTile extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: integration.active ? AppColors.accent : AppColors.scaffold,
+              color: integration.active ? brand.accent : brand.surfaceMuted,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
               integration.icon,
-              color: integration.active ? AppColors.ink : AppColors.textSoft,
+              color: integration.active ? brand.onAccent : brand.textSoft,
               size: 18,
             ),
           ),
@@ -565,18 +572,18 @@ class _IntegrationTile extends StatelessWidget {
               children: [
                 Text(
                   integration.title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
-                    color: AppColors.ink,
+                    color: brand.ink,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   integration.subtitle,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
-                    color: AppColors.textMuted,
+                    color: brand.textMuted,
                     height: 1.45,
                     fontWeight: FontWeight.w500,
                   ),
@@ -595,7 +602,7 @@ class _IntegrationTile extends StatelessWidget {
               padding: const EdgeInsets.all(2),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
-                color: integration.active ? AppColors.ink : AppColors.border,
+                color: integration.active ? brand.ink : brand.border,
               ),
               child: AnimatedAlign(
                 duration: const Duration(milliseconds: 280),
@@ -608,10 +615,10 @@ class _IntegrationTile extends StatelessWidget {
                   height: 20,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.white,
+                    color: brand.surface,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.12),
+                        color: brand.shadow,
                         blurRadius: 4,
                         offset: const Offset(0, 1),
                       ),
@@ -648,22 +655,11 @@ class _Integration {
       );
 }
 
-// ---------------------------------------------------------------------------
-// Preferences
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Delete account — confirmation dialog + AuthNotifier.deleteAccount().
-// May fail with 'requires-recent-login'; AuthState surfaces a friendly
-// error message that the SnackBar renders via the listener below.
-// ---------------------------------------------------------------------------
-
 class _DeleteAccountButton extends ConsumerWidget {
   const _DeleteAccountButton();
 
-  static const Color _danger = Color(0xFFD64545);
-
   Future<void> _confirmAndDelete(BuildContext context, WidgetRef ref) async {
+    final brand = context.brand;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -678,7 +674,7 @@ class _DeleteAccountButton extends ConsumerWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: _danger),
+            style: FilledButton.styleFrom(backgroundColor: brand.danger),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Delete'),
           ),
@@ -691,6 +687,7 @@ class _DeleteAccountButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
     final loading = ref.watch(authProvider).isLoading;
     return Material(
       color: Colors.transparent,
@@ -705,20 +702,20 @@ class _DeleteAccountButton extends ConsumerWidget {
             color: Colors.transparent,
             borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
             border: Border.all(
-              color: _danger.withValues(alpha: 0.30),
+              color: brand.danger.withValues(alpha: 0.30),
             ),
           ),
-          child: const Row(
+          child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.delete_outline_rounded, size: 14, color: _danger),
-              SizedBox(width: 8),
+              Icon(Icons.delete_outline_rounded, size: 14, color: brand.danger),
+              const SizedBox(width: 8),
               Text(
                 'Delete account',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
-                  color: _danger,
+                  color: brand.danger,
                   letterSpacing: 0.1,
                 ),
               ),
@@ -729,10 +726,6 @@ class _DeleteAccountButton extends ConsumerWidget {
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// Settings tile
-// ---------------------------------------------------------------------------
 
 class _SettingsTile extends StatelessWidget {
   const _SettingsTile({
@@ -751,6 +744,7 @@ class _SettingsTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final isTappable = onTap != null;
     return Material(
       color: Colors.transparent,
@@ -764,13 +758,13 @@ class _SettingsTile extends StatelessWidget {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: iconActive ? AppColors.ink : AppColors.scaffold,
+                  color: iconActive ? brand.ink : brand.surfaceMuted,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 alignment: Alignment.center,
                 child: Icon(
                   icon,
-                  color: iconActive ? Colors.white : AppColors.ink,
+                  color: iconActive ? brand.inkInverse : brand.ink,
                   size: 18,
                 ),
               ),
@@ -778,18 +772,18 @@ class _SettingsTile extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
-                    color: AppColors.ink,
+                    color: brand.ink,
                   ),
                 ),
               ),
               if (count != null) ...[
                 Text(
                   '$count',
-                  style: const TextStyle(
-                    color: AppColors.textMuted,
+                  style: TextStyle(
+                    color: brand.textMuted,
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
@@ -797,9 +791,9 @@ class _SettingsTile extends StatelessWidget {
                 const SizedBox(width: 6),
               ],
               if (isTappable)
-                const Icon(
+                Icon(
                   Icons.chevron_right_rounded,
-                  color: AppColors.border,
+                  color: brand.border,
                   size: 20,
                 ),
             ],
@@ -810,10 +804,6 @@ class _SettingsTile extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Grouped card container — eliminates per-row borders / shadows
-// ---------------------------------------------------------------------------
-
 class _GroupedCard extends StatelessWidget {
   const _GroupedCard({required this.children});
 
@@ -821,14 +811,15 @@ class _GroupedCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: brand.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: brand.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: brand.shadow,
             blurRadius: 16,
             offset: const Offset(0, 4),
           ),
@@ -845,24 +836,20 @@ class _GroupedDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(left: 64),
-      child: Divider(height: 1, color: AppColors.scaffold),
+    final brand = context.brand;
+    return Padding(
+      padding: const EdgeInsets.only(left: 64),
+      child: Divider(height: 1, color: brand.bg),
     );
   }
 }
 
-// ---------------------------------------------------------------------------
-// Sign out button
-// ---------------------------------------------------------------------------
-
 class _SignOutButton extends ConsumerWidget {
   const _SignOutButton();
 
-  static const Color _danger = Color(0xFFD64545);
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
     final loading = ref.watch(authProvider).isLoading;
     return Material(
       color: Colors.transparent,
@@ -876,33 +863,33 @@ class _SignOutButton extends ConsumerWidget {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 16),
           decoration: BoxDecoration(
-            color: _danger.withValues(alpha: 0.06),
+            color: brand.danger.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
             border: Border.all(
-              color: _danger.withValues(alpha: 0.22),
+              color: brand.danger.withValues(alpha: 0.22),
             ),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               if (loading)
-                const SizedBox(
+                SizedBox(
                   width: 14,
                   height: 14,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation(_danger),
+                    valueColor: AlwaysStoppedAnimation(brand.danger),
                   ),
                 )
               else
-                const Icon(Icons.logout_rounded, size: 16, color: _danger),
+                Icon(Icons.logout_rounded, size: 16, color: brand.danger),
               const SizedBox(width: 10),
               Text(
                 loading ? 'Signing out…' : AppStrings.signOut,
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 14,
-                  color: _danger,
+                  color: brand.danger,
                   letterSpacing: 0.1,
                 ),
               ),

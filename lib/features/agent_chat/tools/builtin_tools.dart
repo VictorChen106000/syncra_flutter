@@ -518,19 +518,16 @@ void _registerSaveToTracker(
     tool: const Tool(
       name: 'save_to_tracker',
       description:
-          "Persist an application to the user's tracker. Use after the user "
-          'has approved the application (or auto-approved if their autonomy '
-          'level allows).',
+          "Persist an application draft to the user's tracker. Use after the "
+          'user has approved the draft (or auto-approved if their autonomy '
+          'level allows). `mark_sent` defaults to false — flip it true only '
+          'when the send actually happens (e.g. send_email succeeded).',
       inputSchema: {
         'type': 'object',
         'properties': {
           'job_id': {'type': 'string'},
           'resume_id': {'type': 'string'},
-          'status': {
-            'type': 'string',
-            'enum': ['submitted', 'drafting'],
-          },
-          'next_step': {'type': 'string'},
+          'mark_sent': {'type': 'boolean'},
         },
         'required': ['job_id'],
       },
@@ -547,18 +544,14 @@ void _registerSaveToTracker(
       final job = await jobsRepo.fetchById(jobId);
       if (job == null) return ToolResult.error('Job not found.');
 
-      final statusName = (args['status'] as String?) ?? 'submitted';
-      final status = JobStatus.values.firstWhere(
-        (s) => s.name == statusName,
-        orElse: () => JobStatus.submitted,
-      );
-
       final appId = await applicationsRepo.createApplication(
         uid: uid,
         job: job,
-        status: status,
-        nextStep: args['next_step'] as String?,
+        resumeId: args['resume_id'] as String?,
       );
+      if (args['mark_sent'] == true) {
+        await applicationsRepo.markSent(uid, appId);
+      }
       return ToolResult(
         summary: 'Saved ${job.company} to tracker',
         data: {'application_id': appId},

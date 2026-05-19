@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../../../../core/constants/app_colors.dart';
+import '../../../../core/theme/brand_theme.dart';
 import '../../../../data/models/job.dart';
 import '../../state/jobs_notifier.dart';
 
@@ -25,6 +25,7 @@ class _JobActionSheetBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
     final state = ref.watch(jobsProvider);
     final notifier = ref.read(jobsProvider.notifier);
     final isSaved = state.isSaved(job.id);
@@ -35,9 +36,9 @@ class _JobActionSheetBody extends ConsumerWidget {
       child: Container(
         margin: const EdgeInsets.fromLTRB(12, 12, 12, 16),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: brand.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: brand.border),
         ),
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Column(
@@ -52,10 +53,10 @@ class _JobActionSheetBody extends ConsumerWidget {
                       label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w900,
-                        color: AppColors.ink,
+                        color: brand.ink,
                       ),
                     ),
                   ),
@@ -129,7 +130,8 @@ class _ActionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = destructive ? AppColors.danger : AppColors.ink;
+    final brand = context.brand;
+    final color = destructive ? brand.danger : brand.ink;
     return Material(
       color: Colors.transparent,
       child: InkWell(

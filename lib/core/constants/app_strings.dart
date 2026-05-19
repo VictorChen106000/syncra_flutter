@@ -39,7 +39,9 @@ class AppStrings {
   // Dashboard
   static const String dashboardGreetingRole = 'UX Designer';
   static const String agentLive = 'Agent Live';
+  static const String agentIdle = 'Agent Ready';
   static const String activeTask = 'Scraping LinkedIn for Senior UX roles...';
+  static const String idleTask = "Tap below to run today's brief";
   static const String askSyncra = 'Ask Syncra anything...';
   static const String askAgentAboutContext = 'Ask agent about this context...';
   static const String approvalPipeline = 'Approval Pipeline';

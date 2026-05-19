@@ -38,6 +38,10 @@ class _AuthRefreshNotifier extends ChangeNotifier {
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
+  ref.read(authProvider.notifier);
+  ref.read(passiveAgentProvider.notifier);
+  ref.read(userProfileProvider.notifier);
+
   final refresh = _AuthRefreshNotifier(ref);
   ref.onDispose(refresh.dispose);
 
@@ -64,21 +68,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         return RouteNames.login;
       }
 
-      // First-time setup: signed-in non-guest whose profile has loaded
-      // but has no `role` yet → send to onboarding once.
-      //
-      // Profile being null means either (a) guest, or (b) the
-      // `users/{uid}` stream hasn't fired its first snapshot yet. In
-      // either case we don't redirect — the refresh listener will
-      // re-evaluate when the profile arrives.
-      final needsOnboarding =
-          isSignedIn && !isGuest && profile != null && (profile.role ?? '').trim().isEmpty;
+      final needsOnboarding = isSignedIn &&
+          !isGuest &&
+          profile != null &&
+          (profile.role ?? '').trim().isEmpty;
       if (needsOnboarding && loc != RouteNames.onboarding) {
         return RouteNames.onboarding;
       }
 
-      // Conversely, if the user has a role and is sitting on onboarding,
-      // bounce them to the dashboard.
       if (!needsOnboarding && loc == RouteNames.onboarding) {
         return RouteNames.dashboard;
       }
@@ -98,116 +95,115 @@ final routerProvider = Provider<GoRouter>((ref) {
 
 List<RouteBase> _routes(Page<void> Function(GoRouterState, Widget) fadePage) =>
     [
-        GoRoute(
-          path: RouteNames.splash,
-          pageBuilder: (context, state) => fadePage(state, const SplashPage()),
-        ),
-        GoRoute(
-          path: RouteNames.login,
-          pageBuilder: (context, state) => fadePage(state, const LoginPage()),
-        ),
-        GoRoute(
-          path: RouteNames.signup,
-          pageBuilder: (context, state) => fadePage(state, const SignUpPage()),
-        ),
-        GoRoute(
-          path: RouteNames.onboarding,
-          pageBuilder: (context, state) =>
-              fadePage(state, const OnboardingPage()),
-        ),
-        GoRoute(
-          path: RouteNames.morningBrief,
-          pageBuilder: (context, state) =>
-              fadePage(state, const MorningBriefPage()),
-        ),
-        GoRoute(
-          path: RouteNames.resumes,
-          pageBuilder: (context, state) =>
-              fadePage(state, const ResumeListsPage()),
-        ),
-        GoRoute(
-          path: RouteNames.resumePreview,
-          pageBuilder: (context, state) {
-            final resume =
-                state.extra is ResumeFile ? state.extra as ResumeFile : null;
-            return fadePage(state, ResumePreviewPage(resume: resume));
-          },
-        ),
-        GoRoute(
-          path: RouteNames.agentChat,
-          pageBuilder: (context, state) =>
-              fadePage(state, const AiChatbotPage()),
-        ),
-        StatefulShellRoute.indexedStack(
-          builder: (context, state, navigationShell) =>
-              AppShellScaffold(navigationShell: navigationShell),
-          branches: [
-            // Branch order must match AppShellScaffold._indexToTab.
-            StatefulShellBranch(
-              routes: [
-                GoRoute(
-                  path: RouteNames.dashboard,
-                  pageBuilder: (context, state) =>
-                      fadePage(state, const DashboardPage()),
-                ),
-              ],
-            ),
-            StatefulShellBranch(
-              routes: [
-                GoRoute(
-                  path: RouteNames.jobs,
-                  pageBuilder: (context, state) =>
-                      fadePage(state, const JobsPage()),
-                ),
-              ],
-            ),
-            StatefulShellBranch(
-              routes: [
-                GoRoute(
-                  path: RouteNames.profile,
-                  pageBuilder: (context, state) =>
-                      fadePage(state, const ProfilePage()),
-                ),
-              ],
-            ),
-          ],
-        ),
-        GoRoute(
-          path: RouteNames.applications,
-          pageBuilder: (context, state) =>
-              fadePage(state, const ApplicationsPage()),
-        ),
-        GoRoute(
-          path: RouteNames.notifications,
-          pageBuilder: (context, state) =>
-              fadePage(state, const NotificationsPage()),
-        ),
-        GoRoute(
-          path: RouteNames.detail,
-          pageBuilder: (context, state) {
-            final job = state.extra is Job ? state.extra as Job : null;
-            return fadePage(state, JobDetailPage(job: job));
-          },
-        ),
-        GoRoute(
-          path: RouteNames.tailor,
-          pageBuilder: (context, state) {
-            final job = state.extra is Job ? state.extra as Job : null;
-            return fadePage(state, TailorPage(job: job));
-          },
-        ),
-        GoRoute(
-          path: RouteNames.review,
-          pageBuilder: (context, state) {
-            final job = state.extra is Job ? state.extra as Job : null;
-            return fadePage(state, ReviewPage(job: job));
-          },
-        ),
-        GoRoute(
-          path: RouteNames.submitted,
-          pageBuilder: (context, state) {
-            final job = state.extra is Job ? state.extra as Job : null;
-            return fadePage(state, SubmittedPage(job: job));
-          },
-        ),
+      GoRoute(
+        path: RouteNames.splash,
+        pageBuilder: (context, state) => fadePage(state, const SplashPage()),
+      ),
+      GoRoute(
+        path: RouteNames.login,
+        pageBuilder: (context, state) => fadePage(state, const LoginPage()),
+      ),
+      GoRoute(
+        path: RouteNames.signup,
+        pageBuilder: (context, state) => fadePage(state, const SignUpPage()),
+      ),
+      GoRoute(
+        path: RouteNames.onboarding,
+        pageBuilder: (context, state) =>
+            fadePage(state, const OnboardingPage()),
+      ),
+      GoRoute(
+        path: RouteNames.morningBrief,
+        pageBuilder: (context, state) =>
+            fadePage(state, const MorningBriefPage()),
+      ),
+      GoRoute(
+        path: RouteNames.resumes,
+        pageBuilder: (context, state) =>
+            fadePage(state, const ResumeListsPage()),
+      ),
+      GoRoute(
+        path: RouteNames.resumePreview,
+        pageBuilder: (context, state) {
+          final resume =
+              state.extra is ResumeFile ? state.extra as ResumeFile : null;
+          return fadePage(state, ResumePreviewPage(resume: resume));
+        },
+      ),
+      GoRoute(
+        path: RouteNames.agentChat,
+        pageBuilder: (context, state) =>
+            fadePage(state, const AiChatbotPage()),
+      ),
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) =>
+            AppShellScaffold(navigationShell: navigationShell),
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: RouteNames.dashboard,
+                pageBuilder: (context, state) =>
+                    fadePage(state, const DashboardPage()),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: RouteNames.jobs,
+                pageBuilder: (context, state) =>
+                    fadePage(state, const JobsPage()),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: RouteNames.profile,
+                pageBuilder: (context, state) =>
+                    fadePage(state, const ProfilePage()),
+              ),
+            ],
+          ),
+        ],
+      ),
+      GoRoute(
+        path: RouteNames.applications,
+        pageBuilder: (context, state) =>
+            fadePage(state, const ApplicationsPage()),
+      ),
+      GoRoute(
+        path: RouteNames.notifications,
+        pageBuilder: (context, state) =>
+            fadePage(state, const NotificationsPage()),
+      ),
+      GoRoute(
+        path: RouteNames.detail,
+        pageBuilder: (context, state) {
+          final job = state.extra is Job ? state.extra as Job : null;
+          return fadePage(state, JobDetailPage(job: job));
+        },
+      ),
+      GoRoute(
+        path: RouteNames.tailor,
+        pageBuilder: (context, state) {
+          final job = state.extra is Job ? state.extra as Job : null;
+          return fadePage(state, TailorPage(job: job));
+        },
+      ),
+      GoRoute(
+        path: RouteNames.review,
+        pageBuilder: (context, state) {
+          final job = state.extra is Job ? state.extra as Job : null;
+          return fadePage(state, ReviewPage(job: job));
+        },
+      ),
+      GoRoute(
+        path: RouteNames.submitted,
+        pageBuilder: (context, state) {
+          final job = state.extra is Job ? state.extra as Job : null;
+          return fadePage(state, SubmittedPage(job: job));
+        },
+      ),
     ];

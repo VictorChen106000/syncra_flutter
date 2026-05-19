@@ -3,20 +3,14 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../shared/widgets/app_back_button.dart';
 import '../../../shared/widgets/glass_pill.dart';
 import '../state/auth_notifier.dart';
 import '../state/user_profile_notifier.dart';
 
-/// First-time setup. Captures the user's target role and persists it to
-/// `users/{uid}.role` via [UserProfileNotifier.setRole]. The brief reasoner
-/// reads this field for match scoring.
-///
-/// Per [team-handoff.md], `autonomy_level` is **not** captured here — it's
-/// deferred to Settings so users have context before choosing.
 class OnboardingPage extends ConsumerStatefulWidget {
   const OnboardingPage({super.key});
 
@@ -33,7 +27,6 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   @override
   void initState() {
     super.initState();
-    // Pre-fill if the user already has a role and re-entered onboarding.
     final existing = ref.read(userProfileProvider)?.role;
     if (existing != null && existing.isNotEmpty) {
       _roleController.text = existing;
@@ -66,7 +59,6 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
       _saving = false;
     });
 
-    // Small beat so the confirmation bubble animates in before nav.
     await Future.delayed(const Duration(milliseconds: 700));
     if (!mounted) return;
     context.go(RouteNames.dashboard);
@@ -74,12 +66,14 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final displayName = ref.watch(authProvider).appUser?.displayName;
-    final firstName =
-        (displayName?.split(' ').first ?? '').isEmpty ? null : displayName!.split(' ').first;
+    final firstName = (displayName?.split(' ').first ?? '').isEmpty
+        ? null
+        : displayName!.split(' ').first;
 
     return Scaffold(
-      backgroundColor: AppColors.scaffold,
+      backgroundColor: brand.bg,
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -87,10 +81,10 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
             Container(
               padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
               decoration: BoxDecoration(
-                color: AppColors.scaffold,
+                color: brand.bg,
                 border: Border(
                   bottom: BorderSide(
-                    color: AppColors.border.withValues(alpha: 0.50),
+                    color: brand.border.withValues(alpha: 0.50),
                   ),
                 ),
               ),
@@ -101,18 +95,18 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                         ref.read(authProvider.notifier).signOut(),
                   ),
                   const Spacer(),
-                  const GlassPill(
+                  GlassPill(
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        _MiniStarChip(),
-                        SizedBox(width: 8),
+                        const _MiniStarChip(),
+                        const SizedBox(width: 8),
                         Text(
                           AppStrings.onboardingHeader,
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w900,
-                            color: AppColors.ink,
+                            color: brand.ink,
                           ),
                         ),
                       ],
@@ -133,18 +127,18 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                         "Let's set up your career profile. Could you upload your latest resume?",
                   ).animate().fadeIn().moveY(begin: 8, end: 0),
                   const SizedBox(height: 16),
-                  const _UserMessage(
+                  _UserMessage(
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.description_rounded,
-                            color: AppColors.accent, size: 16),
-                        SizedBox(width: 6),
+                            color: brand.accent, size: 16),
+                        const SizedBox(width: 6),
                         Flexible(
                           child: Text(
                             'chris_anderson_resume.pdf',
                             style: TextStyle(
-                              color: Colors.white,
+                              color: brand.inkInverse,
                               fontSize: 14.5,
                               fontWeight: FontWeight.w600,
                             ),
@@ -167,8 +161,8 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                     _UserMessage(
                       child: Text(
                         _roleController.text.trim(),
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: brand.inkInverse,
                           fontSize: 14.5,
                           fontWeight: FontWeight.w600,
                         ),
@@ -198,10 +192,10 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                   onPressed:
                       (_hasValidRole && !_saving) ? _saveAndContinue : null,
                   style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.ink,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: AppColors.border,
-                    disabledForegroundColor: AppColors.textMuted,
+                    backgroundColor: brand.ink,
+                    foregroundColor: brand.inkInverse,
+                    disabledBackgroundColor: brand.border,
+                    disabledForegroundColor: brand.textMuted,
                     minimumSize: const Size.fromHeight(56),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
@@ -211,12 +205,12 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       if (_saving)
-                        const SizedBox(
+                        SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: Colors.white,
+                            color: brand.inkInverse,
                           ),
                         )
                       else
@@ -245,8 +239,6 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   }
 }
 
-/// Replaces the hardcoded role bubble. Posts to the AI bubble side (right-
-/// aligned, same shape as `_UserMessage`) but with an editable field.
 class _RoleInput extends StatelessWidget {
   const _RoleInput({
     required this.controller,
@@ -260,6 +252,7 @@ class _RoleInput extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
@@ -270,7 +263,7 @@ class _RoleInput extends StatelessWidget {
             ),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
             decoration: BoxDecoration(
-              color: AppColors.ink,
+              color: brand.ink,
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(22),
                 topRight: Radius.circular(22),
@@ -278,7 +271,7 @@ class _RoleInput extends StatelessWidget {
                 bottomRight: Radius.circular(4),
               ),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.15),
+                color: brand.inkInverse.withValues(alpha: 0.15),
               ),
             ),
             child: TextField(
@@ -287,22 +280,22 @@ class _RoleInput extends StatelessWidget {
               autofocus: true,
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => onSubmitted(),
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: brand.inkInverse,
                 fontSize: 14.5,
                 fontWeight: FontWeight.w600,
               ),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: 'e.g. Senior UX Designer at AI startups',
                 hintStyle: TextStyle(
-                  color: Colors.white54,
+                  color: brand.inkInverse.withValues(alpha: 0.54),
                   fontWeight: FontWeight.w500,
                 ),
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
                 isCollapsed: true,
-                contentPadding: EdgeInsets.symmetric(vertical: 12),
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
           ),
@@ -317,15 +310,16 @@ class _MiniStarChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Container(
       width: 16,
       height: 16,
-      decoration: const BoxDecoration(
-        color: AppColors.ink,
+      decoration: BoxDecoration(
+        color: brand.ink,
         shape: BoxShape.circle,
       ),
       alignment: Alignment.center,
-      child: const Icon(Icons.star_rounded, color: AppColors.accent, size: 10),
+      child: Icon(Icons.star_rounded, color: brand.accent, size: 10),
     );
   }
 }
@@ -337,18 +331,19 @@ class _AiMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Container(
           width: 28,
           height: 28,
-          decoration: const BoxDecoration(
-            color: AppColors.ink,
+          decoration: BoxDecoration(
+            color: brand.ink,
             shape: BoxShape.circle,
           ),
           alignment: Alignment.center,
-          child: const Icon(Icons.star_rounded, color: AppColors.accent, size: 14),
+          child: Icon(Icons.star_rounded, color: brand.accent, size: 14),
         ),
         const SizedBox(width: 10),
         Flexible(
@@ -358,7 +353,7 @@ class _AiMessage extends StatelessWidget {
             ),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: brand.surface,
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(22),
                 topRight: Radius.circular(22),
@@ -367,7 +362,7 @@ class _AiMessage extends StatelessWidget {
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
+                  color: brand.shadow,
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -375,8 +370,8 @@ class _AiMessage extends StatelessWidget {
             ),
             child: Text(
               text,
-              style: const TextStyle(
-                color: AppColors.ink,
+              style: TextStyle(
+                color: brand.ink,
                 fontSize: 14.5,
                 height: 1.55,
                 fontWeight: FontWeight.w500,
@@ -396,6 +391,7 @@ class _UserMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
@@ -405,9 +401,9 @@ class _UserMessage extends StatelessWidget {
               maxWidth: MediaQuery.sizeOf(context).width * 0.72,
             ),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: const BoxDecoration(
-              color: AppColors.ink,
-              borderRadius: BorderRadius.only(
+            decoration: BoxDecoration(
+              color: brand.ink,
+              borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(22),
                 topRight: Radius.circular(22),
                 bottomLeft: Radius.circular(22),
@@ -427,12 +423,15 @@ class _AgentTerminalBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Terminal block is intentionally dark in both themes (it's a "monitor"
+    // visual). Pin to BrandTheme.dark colors directly.
+    const brand = BrandTheme.dark;
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: AppColors.ink,
+        color: brand.bg,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+        border: Border.all(color: brand.ink.withValues(alpha: 0.10)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.20),
@@ -446,11 +445,11 @@ class _AgentTerminalBlock extends StatelessWidget {
         children: [
           Container(
             height: 1,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
                   Colors.transparent,
-                  AppColors.accent,
+                  brand.accent,
                   Colors.transparent,
                 ],
               ),
@@ -463,16 +462,16 @@ class _AgentTerminalBlock extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    _TerminalDot(color: AppColors.danger),
+                    _TerminalDot(color: brand.danger),
                     const SizedBox(width: 6),
-                    _TerminalDot(color: AppColors.warning),
+                    _TerminalDot(color: brand.warning),
                     const SizedBox(width: 6),
-                    _TerminalDot(color: AppColors.success),
+                    _TerminalDot(color: brand.success),
                     const SizedBox(width: 10),
                     Text(
                       'AGENT THOUGHT PROCESS',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.50),
+                        color: brand.ink.withValues(alpha: 0.50),
                         fontSize: 9,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 1.4,
@@ -484,13 +483,13 @@ class _AgentTerminalBlock extends StatelessWidget {
                 _TerminalLine(
                   prefix: '⚙',
                   text: 'Tool Call: ParseDocument(file)',
-                  color: Colors.white.withValues(alpha: 0.80),
+                  color: brand.ink.withValues(alpha: 0.80),
                 ),
                 const SizedBox(height: 4),
-                const _TerminalLine(
+                _TerminalLine(
                   prefix: '↳',
                   text: 'Extracted 420 words.',
-                  color: AppColors.accent,
+                  color: brand.accent,
                   bold: true,
                   indent: 14,
                 ),
@@ -498,22 +497,22 @@ class _AgentTerminalBlock extends StatelessWidget {
                 _TerminalLine(
                   prefix: '⚙',
                   text: 'Tool Call: ExtractSkills()',
-                  color: Colors.white.withValues(alpha: 0.80),
+                  color: brand.ink.withValues(alpha: 0.80),
                 ),
                 const SizedBox(height: 4),
-                const _TerminalLine(
+                _TerminalLine(
                   prefix: '↳',
                   text: 'Found: React, JavaScript, Figma.',
-                  color: AppColors.accent,
+                  color: brand.accent,
                   bold: true,
                   indent: 14,
                 ),
                 const SizedBox(height: 12),
-                const _TerminalLine(
+                _TerminalLine(
                   prefix: '🔍',
                   text:
                       'Agent Decision: Missing Target Role. Asking user for input.',
-                  color: AppColors.warning,
+                  color: brand.warning,
                 ),
               ],
             ),

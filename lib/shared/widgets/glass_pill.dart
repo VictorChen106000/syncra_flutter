@@ -2,10 +2,9 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
-import '../../core/constants/app_colors.dart';
+import '../../core/theme/brand_theme.dart';
 
-/// White translucent capsule pill used as floating headers across screens.
-/// Matches the App.jsx "rounded-full border border-white/40 bg-white/60 backdrop-blur" pattern.
+/// Translucent capsule pill used as floating headers across screens.
 class GlassPill extends StatelessWidget {
   const GlassPill({
     super.key,
@@ -18,6 +17,7 @@ class GlassPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return ClipRRect(
       borderRadius: BorderRadius.circular(99),
       child: BackdropFilter(
@@ -25,14 +25,12 @@ class GlassPill extends StatelessWidget {
         child: Container(
           padding: padding,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.60),
+            color: brand.glassFill,
             borderRadius: BorderRadius.circular(99),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.40),
-            ),
+            border: Border.all(color: brand.glassBorder),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
+                color: brand.shadow,
                 blurRadius: 6,
                 offset: const Offset(0, 2),
               ),
@@ -45,7 +43,7 @@ class GlassPill extends StatelessWidget {
   }
 }
 
-/// Small round white icon button used in headers (settings, notifications, etc).
+/// Small round translucent icon button used in headers.
 class GlassIconButton extends StatelessWidget {
   const GlassIconButton({
     super.key,
@@ -60,6 +58,7 @@ class GlassIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return InkResponse(
       onTap: onTap,
       radius: size / 2 + 4,
@@ -67,18 +66,18 @@ class GlassIconButton extends StatelessWidget {
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.60),
+          color: brand.glassFill,
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.white.withValues(alpha: 0.40)),
+          border: Border.all(color: brand.glassBorder),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
+              color: brand.shadow,
               blurRadius: 6,
               offset: const Offset(0, 2),
             ),
           ],
         ),
-        child: Icon(icon, color: AppColors.ink, size: size * 0.5),
+        child: Icon(icon, color: brand.ink, size: size * 0.5),
       ),
     );
   }

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/constants/app_colors.dart';
+import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/utils/date_formatter.dart';
 import '../../../../core/utils/file_formatter.dart';
 import '../../models/resume_file.dart';
@@ -22,6 +22,7 @@ class ResumeUploadCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final name = resume?.name ?? uploadingItem!.name;
     final size = resume?.size ?? uploadingItem!.size;
     final progress = uploadingItem?.progress ?? 100;
@@ -33,14 +34,18 @@ class ResumeUploadCard extends StatelessWidget {
         children: [
           Container(
             decoration: BoxDecoration(
-              color: hasError ? Colors.red.shade50 : AppColors.surface,
+              color: hasError
+                  ? brand.danger.withValues(alpha: 0.08)
+                  : brand.surface,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: hasError ? Colors.red.shade200 : AppColors.border,
+                color: hasError
+                    ? brand.danger.withValues(alpha: 0.4)
+                    : brand.border,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
+                  color: brand.shadow,
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -58,7 +63,7 @@ class ResumeUploadCard extends StatelessWidget {
                   width: MediaQuery.sizeOf(context).width,
                   child: Container(
                     decoration: BoxDecoration(
-                      color: AppColors.accent.withValues(alpha: 0.18),
+                      color: brand.accent.withValues(alpha: 0.18),
                     ),
                   ),
                 ),
@@ -72,13 +77,13 @@ class ResumeUploadCard extends StatelessWidget {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: hasError ? Colors.red : AppColors.ink,
+                    color: hasError ? brand.danger : brand.ink,
                     shape: BoxShape.circle,
                   ),
                   alignment: Alignment.center,
-                  child: const Icon(
+                  child: Icon(
                     Icons.description_rounded,
-                    color: Colors.white,
+                    color: brand.inkInverse,
                     size: 20,
                   ),
                 ),
@@ -91,17 +96,17 @@ class ResumeUploadCard extends StatelessWidget {
                         name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w800,
                           fontSize: 14,
-                          color: AppColors.ink,
+                          color: brand.ink,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         _subtitle(size, progress, hasError),
-                        style: const TextStyle(
-                          color: AppColors.textMuted,
+                        style: TextStyle(
+                          color: brand.textMuted,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -111,8 +116,8 @@ class ResumeUploadCard extends StatelessWidget {
                           padding: const EdgeInsets.only(top: 2),
                           child: Text(
                             'Uploaded ${DateFormatter.uploadDate(resume!.uploadedAt)}',
-                            style: const TextStyle(
-                              color: AppColors.textSoft,
+                            style: TextStyle(
+                              color: brand.textSoft,
                               fontSize: 11,
                               fontWeight: FontWeight.w500,
                             ),
@@ -127,7 +132,7 @@ class ResumeUploadCard extends StatelessWidget {
                     child: _ActionIconButton(
                       icon: Icons.search_rounded,
                       onTap: onOpen!,
-                      bg: AppColors.surface,
+                      bg: brand.surface,
                       hasBorder: true,
                     ),
                   ),
@@ -137,8 +142,8 @@ class ResumeUploadCard extends StatelessWidget {
                     child: _ActionIconButton(
                       icon: Icons.delete_outline_rounded,
                       onTap: onDelete!,
-                      bg: AppColors.scaffold,
-                      iconColor: AppColors.textMuted,
+                      bg: brand.surfaceMuted,
+                      iconColor: brand.textMuted,
                     ),
                   ),
               ],
@@ -163,18 +168,19 @@ class _ActionIconButton extends StatelessWidget {
     required this.icon,
     required this.onTap,
     required this.bg,
-    this.iconColor = AppColors.ink,
+    this.iconColor,
     this.hasBorder = false,
   });
 
   final IconData icon;
   final VoidCallback onTap;
   final Color bg;
-  final Color iconColor;
+  final Color? iconColor;
   final bool hasBorder;
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Material(
       color: bg,
       shape: const CircleBorder(),
@@ -186,10 +192,10 @@ class _ActionIconButton extends StatelessWidget {
           height: 36,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: hasBorder ? Border.all(color: AppColors.border) : null,
+            border: hasBorder ? Border.all(color: brand.border) : null,
           ),
           alignment: Alignment.center,
-          child: Icon(icon, size: 16, color: iconColor),
+          child: Icon(icon, size: 16, color: iconColor ?? brand.ink),
         ),
       ),
     );

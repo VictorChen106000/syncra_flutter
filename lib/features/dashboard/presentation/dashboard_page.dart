@@ -8,20 +8,20 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_assets.dart';
-import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
-import '../../../core/utils/motion.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/brand_theme.dart';
+import '../../../core/utils/motion.dart';
 import '../../../fixtures/mock_agent_service.dart';
 import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
 import '../../agent/state/passive_agent_notifier.dart';
-import '../../auth/state/auth_notifier.dart';
-import '../../auth/state/user_profile_notifier.dart';
 import '../../agent_chat/models/chat_message.dart';
 import '../../agent_chat/state/agent_chat_notifier.dart';
+import '../../auth/state/auth_notifier.dart';
+import '../../auth/state/user_profile_notifier.dart';
 import '../../notifications/state/notifications_notifier.dart';
 import '../../resumes/presentation/widgets/resume_attachment_chips.dart';
 import '../../resumes/presentation/widgets/select_resumes_bottom_sheet.dart';
@@ -70,10 +70,6 @@ class DashboardPage extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Sticky header — avatar + name + bell, agent live banner sits below as bottom slot
-// ---------------------------------------------------------------------------
-
 class _DashboardHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -82,7 +78,7 @@ class _DashboardHeader extends ConsumerWidget {
     final user = auth.appUser;
     return AppHeader.home(
       avatar: _Avatar(photoUrl: user?.photoUrl),
-      name: user?.displayName ?? 'Daryn',
+      name: user?.displayName ?? 'there',
       role: AppStrings.dashboardGreetingRole,
       unreadCount: notifications.unreadCount,
       onBellTap: () => context.go(RouteNames.notifications),
@@ -98,6 +94,7 @@ class _Avatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final hasNetworkPhoto = photoUrl != null && photoUrl!.isNotEmpty;
     final ImageProvider image = hasNetworkPhoto
         ? NetworkImage(photoUrl!)
@@ -108,8 +105,8 @@ class _Avatar extends StatelessWidget {
       height: 56,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: AppColors.ink,
-        border: Border.all(color: Colors.white, width: 2),
+        color: brand.ink,
+        border: Border.all(color: brand.surface, width: 2),
         image: DecorationImage(
           image: image,
           fit: BoxFit.cover,
@@ -117,7 +114,7 @@ class _Avatar extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
+            color: brand.shadow,
             blurRadius: 12,
             offset: const Offset(0, 3),
           ),
@@ -127,19 +124,25 @@ class _Avatar extends StatelessWidget {
   }
 }
 
-class _AgentLiveBanner extends StatelessWidget {
+class _AgentLiveBanner extends ConsumerWidget {
   const _AgentLiveBanner();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
+    final isRunning = ref.watch(
+      passiveAgentProvider.select((s) => s.isRunning),
+    );
+    final label = isRunning ? AppStrings.agentLive : AppStrings.agentIdle;
+    final detail = isRunning ? AppStrings.activeTask : AppStrings.idleTask;
     return Row(
       children: [
-        const _LiveDot(),
+        _LiveDot(active: isRunning),
         const SizedBox(width: 8),
         Text(
-          AppStrings.agentLive.toUpperCase(),
-          style: const TextStyle(
-            color: AppColors.ink,
+          label.toUpperCase(),
+          style: TextStyle(
+            color: brand.ink,
             fontSize: 11,
             fontWeight: FontWeight.w800,
             letterSpacing: 1.4,
@@ -151,16 +154,16 @@ class _AgentLiveBanner extends StatelessWidget {
           height: 3,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: AppColors.textMuted.withValues(alpha: 0.6),
+            color: brand.textMuted.withValues(alpha: 0.6),
           ),
         ),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            AppStrings.activeTask,
+            detail,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AppColors.textMuted,
+            style: TextStyle(
+              color: brand.textMuted,
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -172,35 +175,39 @@ class _AgentLiveBanner extends StatelessWidget {
 }
 
 class _LiveDot extends StatelessWidget {
-  const _LiveDot();
+  const _LiveDot({this.active = true});
+
+  final bool active;
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return SizedBox(
       width: 8,
       height: 8,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.accentBright.withValues(alpha: 0.55),
-            ),
-          )
-              .animate(onPlay: repeatIfMotion(context))
-              .scale(
-                duration: 1400.ms,
-                begin: const Offset(0.6, 0.6),
-                end: const Offset(1.8, 1.8),
-                curve: Curves.easeOut,
-              )
-              .fadeOut(duration: 1400.ms),
+          if (active)
+            Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: brand.accentBright.withValues(alpha: 0.55),
+              ),
+            )
+                .animate(onPlay: repeatIfMotion(context))
+                .scale(
+                  duration: 1400.ms,
+                  begin: const Offset(0.6, 0.6),
+                  end: const Offset(1.8, 1.8),
+                  curve: Curves.easeOut,
+                )
+                .fadeOut(duration: 1400.ms),
           Container(
             width: 6,
             height: 6,
-            decoration: const BoxDecoration(
-              color: AppColors.accentBright,
+            decoration: BoxDecoration(
+              color: active ? brand.accentBright : brand.textSoft,
               shape: BoxShape.circle,
             ),
           ),
@@ -211,7 +218,7 @@ class _LiveDot extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Agent fan-stack — Brief Ready + Approval Pipeline + Strategic, tappable
+// Agent fan-stack
 // ---------------------------------------------------------------------------
 
 class _AgentCardStack extends ConsumerStatefulWidget {
@@ -226,13 +233,12 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
   static const double _cardHeight = 180;
   static const double _stackHeight = 270;
   static const double _cardLeftInset = 6;
-  // Right-side breathing room reserved for the fanned second card so it never
-  // crosses the screen edge.
   static const double _fanRightMargin = 44;
   static const Duration _animDuration = Duration(milliseconds: 550);
 
   bool _expanded = false;
   bool _prevExpanded = false;
+  bool _everInteracted = false;
   final List<int> _order = [0, 1];
   List<int> _prevOrder = [0, 1];
   int _version = 0;
@@ -243,6 +249,7 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
       _prevOrder = List<int>.from(_order);
       mutate();
       _version++;
+      _everInteracted = true;
     });
   }
 
@@ -271,43 +278,57 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final passive = ref.watch(passiveAgentProvider);
     final cards = <_StackCardData>[
       _StackCardData(
         title: 'Brief Ready',
         kicker: 'Passive Agent',
         count: passive.readyCount,
-        background: AppColors.accent,
-        foreground: AppColors.ink,
+        background: brand.accent,
+        foreground: brand.onAccent,
         icon: Icons.bolt_rounded,
         route: RouteNames.jobs,
       ),
       _StackCardData(
         title: 'Approval Pipeline',
         kicker: 'Pending Review',
-        count: 4,
-        background: AppColors.surface,
-        foreground: AppColors.ink,
+        count: passive.inputNeededCount,
+        background: brand.surface,
+        foreground: brand.ink,
         icon: Icons.work_outline_rounded,
         route: RouteNames.jobs,
       ),
     ];
 
+    // Audit item #9: fade the instruction hint after first interaction.
+    final hint = _everInteracted
+        ? ''
+        : 'TAP THE STACK TO POP OUT';
+    final showHint = hint.isNotEmpty;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 14),
-          child: Text(
-            _expanded
-                ? 'TAP A CARD TO BRING IT FRONT · TAP FRONT TO COLLAPSE'
-                : 'TAP THE STACK TO POP OUT',
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.4,
-              color: AppColors.textMuted,
-            ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            child: showHint
+                ? Padding(
+                    key: const ValueKey('hint'),
+                    padding: const EdgeInsets.only(left: 4, bottom: 14),
+                    child: Text(
+                      hint,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.4,
+                        color: brand.textMuted,
+                      ),
+                    ),
+                  )
+                : const SizedBox(key: ValueKey('empty'), height: 0),
           ),
         ),
         GestureDetector(
@@ -366,13 +387,10 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
     final newExpand = _expanded ? 1.0 : 0.0;
     final expand = _lerp(prevExpand, newExpand, t);
 
-    // Collapsed: tight stack, second card peeks bottom-right with a small tilt.
     final collapsedRot = slot * 6.0;
     final collapsedX = slot * 16.0;
     final collapsedY = slot * 14.0;
 
-    // Expanded: fan to the right and down — the second card splays sideways
-    // and drops so its kicker/title shows below the front card's top edge.
     final expandedRot = -4.0 + slot * 10.0;
     final expandedX = slot * 36.0;
     final expandedY = slot * 32.0;
@@ -441,6 +459,7 @@ class _StackCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final fg = data.foreground;
     return Container(
       width: width,
@@ -449,10 +468,10 @@ class _StackCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: data.background,
         borderRadius: BorderRadius.circular(AppConstants.largeCardRadius),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+        border: Border.all(color: brand.shadow.withValues(alpha: 0.06)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.14),
+            color: brand.shadow,
             blurRadius: 32,
             offset: const Offset(0, 12),
           ),
@@ -572,11 +591,6 @@ class _StackCard extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Run today's brief — user-initiated CTA. The morning brief no longer
-// auto-fires; this is the only way it runs.
-// ---------------------------------------------------------------------------
-
 class _RunBriefCta extends ConsumerWidget {
   const _RunBriefCta();
 
@@ -590,9 +604,7 @@ class _RunBriefCta extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Gate on the user's opt-in setting (Settings → "Today's brief").
-    // Default false: brand-new accounts see nothing until they enable it,
-    // matching the "opt-in, never auto-fires" contract.
+    final brand = context.brand;
     final enabled =
         ref.watch(userProfileProvider)?.morningBriefEnabled ?? false;
     if (!enabled) return const SizedBox.shrink();
@@ -611,12 +623,12 @@ class _RunBriefCta extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(AppConstants.cardPadding),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: brand.surface,
         borderRadius: BorderRadius.circular(AppConstants.cardRadius),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: brand.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: brand.shadow,
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
@@ -628,13 +640,13 @@ class _RunBriefCta extends ConsumerWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: AppColors.ink,
+              color: brand.ink,
               borderRadius: BorderRadius.circular(14),
             ),
             alignment: Alignment.center,
-            child: const Icon(
+            child: Icon(
               Icons.bolt_rounded,
-              color: AppColors.accent,
+              color: brand.accent,
               size: 20,
             ),
           ),
@@ -643,12 +655,12 @@ class _RunBriefCta extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   "Run today's brief",
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
-                    color: AppColors.ink,
+                    color: brand.ink,
                     letterSpacing: -0.2,
                   ),
                 ),
@@ -657,10 +669,10 @@ class _RunBriefCta extends ConsumerWidget {
                   subtitle,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
-                    color: AppColors.textMuted,
+                    color: brand.textMuted,
                     height: 1.4,
                   ),
                 ),
@@ -670,8 +682,8 @@ class _RunBriefCta extends ConsumerWidget {
           const SizedBox(width: 10),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: running ? AppColors.softSurface : AppColors.ink,
-              foregroundColor: running ? AppColors.textMuted : Colors.white,
+              backgroundColor: running ? brand.surfaceMuted : brand.ink,
+              foregroundColor: running ? brand.textMuted : brand.inkInverse,
               padding:
                   const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               shape: RoundedRectangleBorder(
@@ -685,12 +697,12 @@ class _RunBriefCta extends ConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (running)
-                  const SizedBox(
+                  SizedBox(
                     width: 12,
                     height: 12,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: AppColors.ink,
+                      color: brand.ink,
                     ),
                   )
                 else
@@ -711,10 +723,6 @@ class _RunBriefCta extends ConsumerWidget {
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// Floating agent area — prompt preview cards stacked above the input bar
-// ---------------------------------------------------------------------------
 
 class _FloatingAgentArea extends StatelessWidget {
   const _FloatingAgentArea();
@@ -741,10 +749,6 @@ class _FloatingAgentArea extends StatelessWidget {
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// Prompt suggestion preview cards
-// ---------------------------------------------------------------------------
 
 class _PromptSuggestions extends StatelessWidget {
   const _PromptSuggestions();
@@ -814,6 +818,7 @@ class _PromptSuggestionCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -826,12 +831,12 @@ class _PromptSuggestionCard extends ConsumerWidget {
           width: 230,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: brand.surface,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: brand.border),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
+                color: brand.shadow,
                 blurRadius: 28,
                 offset: const Offset(0, 12),
               ),
@@ -846,13 +851,13 @@ class _PromptSuggestionCard extends ConsumerWidget {
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: AppColors.ink,
+                      color: brand.ink,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     alignment: Alignment.center,
                     child: Icon(
                       data.icon,
-                      color: AppColors.accent,
+                      color: brand.accent,
                       size: 18,
                     ),
                   ),
@@ -861,14 +866,14 @@ class _PromptSuggestionCard extends ConsumerWidget {
                     width: 26,
                     height: 26,
                     decoration: BoxDecoration(
-                      color: AppColors.scaffold,
+                      color: brand.surfaceMuted,
                       shape: BoxShape.circle,
                     ),
                     alignment: Alignment.center,
-                    child: const Icon(
+                    child: Icon(
                       Icons.north_east_rounded,
                       size: 14,
-                      color: AppColors.ink,
+                      color: brand.ink,
                     ),
                   ),
                 ],
@@ -876,11 +881,11 @@ class _PromptSuggestionCard extends ConsumerWidget {
               const Spacer(),
               Text(
                 data.kicker,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 1.4,
-                  color: AppColors.textMuted,
+                  color: brand.textMuted,
                 ),
               ),
               const SizedBox(height: 8),
@@ -888,10 +893,10 @@ class _PromptSuggestionCard extends ConsumerWidget {
                 data.prompt,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
-                  color: AppColors.ink,
+                  color: brand.ink,
                   letterSpacing: -0.2,
                   height: 1.35,
                 ),
@@ -903,10 +908,6 @@ class _PromptSuggestionCard extends ConsumerWidget {
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// Glass AI input bar
-// ---------------------------------------------------------------------------
 
 class _AgentInputBar extends ConsumerStatefulWidget {
   const _AgentInputBar();
@@ -978,6 +979,7 @@ class _AgentInputBarState extends ConsumerState<_AgentInputBar>
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final resumeState = ref.watch(resumeProvider);
     final resumeNotifier = ref.read(resumeProvider.notifier);
     final hasText = _textController.text.trim().isNotEmpty;
@@ -991,14 +993,12 @@ class _AgentInputBarState extends ConsumerState<_AgentInputBar>
       child: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.78),
+          color: brand.glassFill,
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.40),
-          ),
+          border: Border.all(color: brand.glassBorder),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.12),
+              color: brand.shadow,
               blurRadius: 40,
               offset: const Offset(0, 12),
             ),
@@ -1020,13 +1020,13 @@ class _AgentInputBarState extends ConsumerState<_AgentInputBar>
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: AppColors.scaffold,
+                      color: brand.surfaceMuted,
                       borderRadius: BorderRadius.circular(14),
                     ),
                     alignment: Alignment.center,
-                    child: const Icon(
+                    child: Icon(
                       Icons.add_rounded,
-                      color: AppColors.ink,
+                      color: brand.ink,
                       size: 20,
                     ),
                   ),
@@ -1039,8 +1039,8 @@ class _AgentInputBarState extends ConsumerState<_AgentInputBar>
                     onChanged: (_) => setState(() {}),
                     onSubmitted: (_) => _send(),
                     textInputAction: TextInputAction.send,
-                    style: const TextStyle(
-                      color: AppColors.ink,
+                    style: TextStyle(
+                      color: brand.ink,
                       fontWeight: FontWeight.w600,
                       fontSize: 14,
                     ),
@@ -1048,8 +1048,8 @@ class _AgentInputBarState extends ConsumerState<_AgentInputBar>
                       hintText: resumeState.selectedResumes.isNotEmpty
                           ? AppStrings.askAgentAboutContext
                           : AppStrings.askSyncra,
-                      hintStyle: const TextStyle(
-                        color: AppColors.textSoft,
+                      hintStyle: TextStyle(
+                        color: brand.textSoft,
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
                       ),
@@ -1070,13 +1070,13 @@ class _AgentInputBarState extends ConsumerState<_AgentInputBar>
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: hasText ? AppColors.ink : AppColors.scaffold,
+                      color: hasText ? brand.ink : brand.surfaceMuted,
                       borderRadius: BorderRadius.circular(14),
                     ),
                     alignment: Alignment.center,
                     child: Icon(
                       Icons.send_rounded,
-                      color: hasText ? Colors.white : AppColors.textSoft,
+                      color: hasText ? brand.inkInverse : brand.textSoft,
                       size: 16,
                     ),
                   ),

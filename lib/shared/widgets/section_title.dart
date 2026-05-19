@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../core/constants/app_colors.dart';
+import '../../core/theme/brand_theme.dart';
 
 class SectionTitle extends StatelessWidget {
   const SectionTitle({
@@ -16,6 +16,7 @@ class SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Padding(
       padding: EdgeInsets.only(left: 4, right: 4, bottom: bottomPadding),
       child: Row(
@@ -24,7 +25,7 @@ class SectionTitle extends StatelessWidget {
             child: Text(
               title.toUpperCase(),
               style: TextStyle(
-                color: AppColors.ink.withValues(alpha: 0.40),
+                color: brand.ink.withValues(alpha: 0.40),
                 fontSize: 12,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 1.6,

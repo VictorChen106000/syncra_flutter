@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/theme/brand_theme.dart';
 import 'app_bottom_nav.dart';
 
 class AppScreen extends StatelessWidget {
@@ -11,19 +11,20 @@ class AppScreen extends StatelessWidget {
     this.showBottomNav = false,
     this.activeTab = BottomNavTab.home,
     this.extendBehindBottomNav = false,
-    this.backgroundColor = AppColors.scaffold,
+    this.backgroundColor,
   });
 
   final Widget child;
   final bool showBottomNav;
   final BottomNavTab activeTab;
   final bool extendBehindBottomNav;
-  final Color backgroundColor;
+  final Color? backgroundColor;
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Scaffold(
-      backgroundColor: backgroundColor,
+      backgroundColor: backgroundColor ?? brand.bg,
       body: SafeArea(
         bottom: false,
         child: Stack(

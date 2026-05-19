@@ -3,14 +3,12 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/theme/brand_theme.dart';
 import 'app_bottom_nav.dart';
 
 /// Wraps the three bottom-nav branches (Home, Agent, Profile) so the nav
-/// stays mounted while the body swaps. This is what lets the nav animate
-/// between tabs — without a shell route, the whole widget tree is torn
-/// down on every navigation.
+/// stays mounted while the body swaps.
 class AppShellScaffold extends StatelessWidget {
   const AppShellScaffold({super.key, required this.navigationShell});
 
@@ -26,22 +24,20 @@ class AppShellScaffold extends StatelessWidget {
     final targetIndex = _indexToTab.indexOf(tab);
     navigationShell.goBranch(
       targetIndex,
-      // Tapping the already-active tab returns to that branch's initial route.
       initialLocation: targetIndex == navigationShell.currentIndex,
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final activeTab = _indexToTab[navigationShell.currentIndex];
 
-    // Height of the blurred fade region behind the floating nav. Tall enough
-    // that scrolled content softens before reaching the pills.
     const scrimHeight =
         AppConstants.bottomNavHeight + AppConstants.bottomNavInset + 56;
 
     return Scaffold(
-      backgroundColor: AppColors.scaffold,
+      backgroundColor: brand.bg,
       body: Stack(
         children: [
           Positioned.fill(child: navigationShell),
@@ -70,8 +66,8 @@ class AppShellScaffold extends StatelessWidget {
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
-                            AppColors.scaffold.withValues(alpha: 0.0),
-                            AppColors.scaffold.withValues(alpha: 0.6),
+                            brand.bg.withValues(alpha: 0.0),
+                            brand.bg.withValues(alpha: 0.6),
                           ],
                         ),
                       ),

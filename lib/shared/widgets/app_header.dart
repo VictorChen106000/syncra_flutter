@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/theme/brand_theme.dart';
 import 'app_back_button.dart';
 import 'notification_bell.dart';
 
@@ -18,6 +18,7 @@ class AppHeader extends StatelessWidget {
     this.bottom,
     this.bottomPadding = 16,
     this.topPadding = 14,
+    this.leadingGap = 12,
   });
 
   /// Home (Dashboard) — avatar + name/role + notification bell.
@@ -31,47 +32,19 @@ class AppHeader extends StatelessWidget {
   }) {
     return AppHeader._(
       leading: avatar,
-      titleWidget: Padding(
-        padding: const EdgeInsets.only(left: 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              name,
-              style: const TextStyle(
-                color: AppColors.ink,
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.5,
-                height: 1.05,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              role,
-              style: const TextStyle(
-                color: AppColors.textMuted,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.1,
-              ),
-            ),
-          ],
-        ),
-      ),
+      titleWidget: _HomeTitle(name: name, role: role),
       trailing: NotificationBell(
         onTap: onBellTap,
         showDot: unreadCount > 0,
       ),
       bottom: bottom,
-      topPadding: 18,
-      bottomPadding: bottom == null ? 18 : 16,
+      topPadding: 16,
+      bottomPadding: 16,
+      leadingGap: 14,
     );
   }
 
   /// Bottom-nav tab page — clean title with optional trailing widget.
-  /// No back arrow, no bell.
   factory AppHeader.tab({
     required String title,
     String? subtitle,
@@ -79,34 +52,7 @@ class AppHeader extends StatelessWidget {
     Widget? bottom,
   }) {
     return AppHeader._(
-      titleWidget: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w900,
-              color: AppColors.ink,
-              letterSpacing: -0.6,
-              height: 1,
-            ),
-          ),
-          if (subtitle != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              subtitle,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: AppColors.textMuted,
-                height: 1.45,
-              ),
-            ),
-          ],
-        ],
-      ),
+      titleWidget: _TabTitle(title: title, subtitle: subtitle),
       trailing: trailing,
       bottom: bottom,
       topPadding: 18,
@@ -114,8 +60,7 @@ class AppHeader extends StatelessWidget {
     );
   }
 
-  /// Pushed page — back arrow + centered/leading title.
-  /// Kicker is a small uppercase label above the title (e.g. company name).
+  /// Pushed page — back arrow + leading title with optional kicker.
   factory AppHeader.page({
     required String title,
     String? kicker,
@@ -125,41 +70,7 @@ class AppHeader extends StatelessWidget {
   }) {
     return AppHeader._(
       leading: AppBackButton(onPressed: onBack),
-      titleWidget: Padding(
-        padding: const EdgeInsets.only(left: 4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (kicker != null) ...[
-              Text(
-                kicker.toUpperCase(),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.textMuted,
-                  letterSpacing: 1.2,
-                ),
-              ),
-              const SizedBox(height: 4),
-            ],
-            Text(
-              title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: kicker == null ? 20 : 19,
-                fontWeight: FontWeight.w900,
-                color: AppColors.ink,
-                letterSpacing: -0.4,
-                height: 1.05,
-              ),
-            ),
-          ],
-        ),
-      ),
+      titleWidget: _PageTitle(title: title, kicker: kicker),
       trailing: trailing,
       bottom: bottom,
       bottomPadding: bottom == null ? 14 : 12,
@@ -172,11 +83,13 @@ class AppHeader extends StatelessWidget {
   final Widget? bottom;
   final double bottomPadding;
   final double topPadding;
+  final double leadingGap;
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Container(
-      color: AppColors.scaffold,
+      color: brand.bg,
       padding: EdgeInsets.fromLTRB(
         AppConstants.screenHorizontalPadding,
         topPadding,
@@ -190,14 +103,139 @@ class AppHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               ?leading,
+              if (leading != null && titleWidget != null)
+                SizedBox(width: leadingGap),
               if (titleWidget != null) Expanded(child: titleWidget!),
               ?trailing,
             ],
           ),
           if (bottom != null) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 18),
             bottom!,
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeTitle extends StatelessWidget {
+  const _HomeTitle({required this.name, required this.role});
+  final String name;
+  final String role;
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: brand.ink,
+            fontSize: 24,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.5,
+            height: 1.05,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          role,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: brand.textMuted,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.1,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TabTitle extends StatelessWidget {
+  const _TabTitle({required this.title, this.subtitle});
+  final String title;
+  final String? subtitle;
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 26,
+            fontWeight: FontWeight.w900,
+            color: brand.ink,
+            letterSpacing: -0.6,
+            height: 1,
+          ),
+        ),
+        if (subtitle != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            subtitle!,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: brand.textMuted,
+              height: 1.45,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _PageTitle extends StatelessWidget {
+  const _PageTitle({required this.title, this.kicker});
+  final String title;
+  final String? kicker;
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (kicker != null) ...[
+            Text(
+              kicker!.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+                color: brand.textMuted,
+                letterSpacing: 1.4,
+              ),
+            ),
+            const SizedBox(height: 4),
+          ],
+          Text(
+            title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: kicker == null ? 20 : 19,
+              fontWeight: FontWeight.w900,
+              color: brand.ink,
+              letterSpacing: -0.4,
+              height: 1.05,
+            ),
+          ),
         ],
       ),
     );
