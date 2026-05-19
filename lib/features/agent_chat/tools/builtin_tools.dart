@@ -39,6 +39,7 @@ void registerBuiltinTools(ToolRegistry registry) {
 
   _registerSearchJobs(registry, jobs);
   _registerReadResume(registry, orchestrator);
+  _registerRememberFact(registry);
   _registerMatchJobs(registry, jobs, anthropic);
   _registerSaveToPipeline(registry, jobs, pipeline);
   _registerTailorResume(registry, jobs, paraphrase, orchestrator);
@@ -156,6 +157,7 @@ void _registerReadResume(
       }
 
       final paths = FirestorePaths(FirebaseFirestore.instance);
+      final learnedFacts = await _readLearnedFacts(paths, uid);
       String? resumeId = (args['resume_id'] as String?)?.trim();
 
       // No id provided → use the most recent manual resume.
@@ -168,8 +170,10 @@ void _registerReadResume(
             .get();
         if (snap.docs.isEmpty) {
           return ToolResult(
-            summary: 'No resume uploaded yet — using sample',
-            data: kFakeResumeJson,
+            summary: learnedFacts.isEmpty
+                ? 'No resume uploaded yet — using sample'
+                : 'No resume uploaded yet — using sample · ${learnedFacts.length} learned facts',
+            data: _resumeWithLearnedFacts(kFakeResumeJson, learnedFacts),
           );
         }
         resumeId = snap.docs.first.id;
@@ -181,16 +185,95 @@ void _registerReadResume(
           resumeId: resumeId,
         );
         return ToolResult(
-          summary:
-              '${json.experience.length} roles · ${json.skills.length} skills',
-          data: json.toJson(),
+          summary: learnedFacts.isEmpty
+              ? '${json.experience.length} roles · ${json.skills.length} skills'
+              : '${json.experience.length} roles · ${json.skills.length} skills · ${learnedFacts.length} learned facts',
+          data: _resumeWithLearnedFacts(json.toJson(), learnedFacts),
         );
       } catch (e) {
         return ToolResult(
-          summary: 'Parse failed — using sample resume',
-          data: kFakeResumeJson,
+          summary: learnedFacts.isEmpty
+              ? 'Parse failed — using sample resume'
+              : 'Parse failed — using sample resume · ${learnedFacts.length} learned facts',
+          data: _resumeWithLearnedFacts(kFakeResumeJson, learnedFacts),
         );
       }
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// remember_fact — REAL: persists reusable user facts for future agent turns
+// ---------------------------------------------------------------------------
+
+void _registerRememberFact(ToolRegistry registry) {
+  registry.register(
+    tool: const Tool(
+      name: 'remember_fact',
+      description:
+          'Persist a reusable fact about the user that came up during the '
+          'conversation, such as skills, experience, preferences, constraints, '
+          'or missing experience they disclosed. Use after ask_user when the '
+          'answer should help future matching, tailoring, or outreach. Do not '
+          'store one-off task instructions, temporary job choices, or sensitive '
+          'personal attributes.',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'topic': {
+            'type': 'string',
+            'description':
+                'Short snake_case topic slug, e.g. "ab_testing", '
+                '"remote_preference", or "salary_floor".',
+          },
+          'detail': {
+            'type': 'string',
+            'description':
+                'One or two clear sentences describing the reusable fact.',
+          },
+        },
+        'required': ['topic', 'detail'],
+      },
+      uiLabel: 'Remembering context…',
+      uiIcon: Icons.psychology_alt_rounded,
+    ),
+    handler: (args) async {
+      final user = FirebaseAuth.instance.currentUser;
+      final uid = user?.uid;
+
+      if (uid == null || user!.isAnonymous) {
+        return ToolResult.error('Sign in to remember facts.');
+      }
+
+      final topic = _normalizeFactTopic(args['topic']?.toString() ?? '');
+      final detail = (args['detail']?.toString() ?? '').trim();
+
+      if (topic.isEmpty) {
+        return ToolResult.error('topic is required.');
+      }
+
+      if (detail.isEmpty) {
+        return ToolResult.error('detail is required.');
+      }
+
+      final paths = FirestorePaths(FirebaseFirestore.instance);
+      final ref = paths.learnedFacts(uid).doc();
+
+      await ref.set({
+        'topic': topic,
+        'detail': detail,
+        'source': 'agent',
+        'created_at': FieldValue.serverTimestamp(),
+      });
+
+      return ToolResult(
+        summary: 'Remembered $topic',
+        data: {
+          'fact_id': ref.id,
+          'topic': topic,
+          'detail': detail,
+        },
+      );
     },
   );
 }
@@ -735,3 +818,53 @@ void _registerSendEmail(ToolRegistry registry) {
   );
 }
 
+String _normalizeFactTopic(String raw) {
+  return raw
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+      .replaceAll(RegExp(r'_+'), '_')
+      .replaceAll(RegExp(r'^_|_$'), '');
+}
+
+Future<List<Map<String, dynamic>>> _readLearnedFacts(
+  FirestorePaths paths,
+  String uid,
+) async {
+  try {
+    final snap = await paths
+        .learnedFacts(uid)
+        .orderBy('created_at', descending: true)
+        .limit(12)
+        .get();
+
+    return snap.docs
+        .map((doc) {
+          final data = doc.data();
+          return {
+            'id': doc.id,
+            'topic': (data['topic'] as String?) ?? '',
+            'detail': (data['detail'] as String?) ?? '',
+          };
+        })
+        .where((fact) =>
+            (fact['topic'] as String).isNotEmpty &&
+            (fact['detail'] as String).isNotEmpty)
+        .toList(growable: false);
+  } catch (e) {
+    debugPrint('read learned facts failed: $e');
+    return const [];
+  }
+}
+
+Map<String, dynamic> _resumeWithLearnedFacts(
+  Map<String, dynamic> resume,
+  List<Map<String, dynamic>> learnedFacts,
+) {
+  if (learnedFacts.isEmpty) return resume;
+
+  return {
+    ...resume,
+    'learned_facts': learnedFacts,
+  };
+}
