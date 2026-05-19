@@ -9,7 +9,6 @@ import '../../../data/firestore/resumes_repository.dart';
 import '../../auth/state/auth_notifier.dart';
 import '../models/resume_file.dart';
 import '../models/upload_queue_item.dart';
-import '../services/resume_session_storage.dart';
 
 /// Outcome of a notifier operation surfaced through SnackBars.
 class ResumeActionResult {
@@ -67,6 +66,15 @@ class ResumeNotifier extends Notifier<ResumeState> {
   StreamSubscription<List<ResumeFile>>? _subscription;
   String? _boundUid;
 
+  /// In-memory bytes cache keyed by resume id. Seeded on upload/tailor so
+  /// the user never re-downloads bytes they just produced, and populated
+  /// on first preview for resumes uploaded from another device/session.
+  final Map<String, Uint8List> _bytesCache = {};
+
+  /// Inflight downloads keyed by resume id, so concurrent `bytesFor` calls
+  /// share a single network request instead of fanning out.
+  final Map<String, Future<Uint8List?>> _inflight = {};
+
   @override
   ResumeState build() {
     final auth = ref.watch(authProvider);
@@ -88,44 +96,21 @@ class ResumeNotifier extends Notifier<ResumeState> {
 
     if (uid == null || isGuest) {
       _boundUid = null;
-      // Don't read/write `state` here — this is called from build() before
-      // the initial state is published. build()'s return value resets state.
+      _bytesCache.clear();
+      _inflight.clear();
       return;
+    }
+
+    if (uid != _boundUid) {
+      // Switching accounts — drop the previous user's cached bytes.
+      _bytesCache.clear();
+      _inflight.clear();
     }
 
     _boundUid = uid;
     _subscription = _repository.watchResumes(uid).listen(
-      (resumes) async {
-        final hydrated = <ResumeFile>[];
-
-        for (final resume in resumes) {
-          if (!resume.isPdf || resume.isAvailableLocally) {
-            hydrated.add(resume);
-            continue;
-          }
-
-          final bytes = await ResumeSessionStorage.readBytes(
-            uid: uid,
-            resumeId: resume.id,
-          );
-
-          hydrated.add(
-            bytes == null
-                ? resume
-                : ResumeFile(
-                    id: resume.id,
-                    name: resume.name,
-                    size: resume.size,
-                    type: resume.type,
-                    uploadedAt: resume.uploadedAt,
-                    source: resume.source,
-                    path: resume.path,
-                    bytes: bytes,
-                  ),
-          );
-        }
-
-        state = state.copyWith(allResumes: hydrated);
+      (resumes) {
+        state = state.copyWith(allResumes: resumes);
       },
       onError: (Object e) {
         debugPrint('resumes stream error: $e');
@@ -139,6 +124,31 @@ class ResumeNotifier extends Notifier<ResumeState> {
       state = state.copyWith(clearLastAction: true);
     }
     return result;
+  }
+
+  /// Returns the PDF/DOC bytes for [resume], downloading from Firebase
+  /// Storage on cache miss. Returns `null` if the blob is missing or the
+  /// download fails — callers should render a metadata-only fallback.
+  Future<Uint8List?> bytesFor(ResumeFile resume) {
+    final cached = _bytesCache[resume.id];
+    if (cached != null) return Future.value(cached);
+
+    final pending = _inflight[resume.id];
+    if (pending != null) return pending;
+
+    if (!resume.hasStorageBlob) return Future.value(null);
+
+    final future = _repository
+        .downloadBytes(resume.storagePath!)
+        .then((bytes) {
+      if (bytes != null) _bytesCache[resume.id] = bytes;
+      return bytes;
+    }).whenComplete(() {
+      _inflight.remove(resume.id);
+    });
+
+    _inflight[resume.id] = future;
+    return future;
   }
 
   Future<void> pickAndUploadResumes() async {
@@ -230,16 +240,14 @@ class ResumeNotifier extends Notifier<ResumeState> {
       lastAction: ResumeActionResult(message: '${target.name} deleted'),
     );
 
+    _bytesCache.remove(resumeId);
+    _inflight.remove(resumeId);
+
     try {
       await _repository.deleteResume(
         uid: uid,
         resumeId: resumeId,
-        localPath: target.path,
-      );
-
-      await ResumeSessionStorage.removeBytes(
-        uid: uid,
-        resumeId: resumeId,
+        storagePath: target.storagePath,
       );
     } catch (e) {
       debugPrint('delete resume failed: $e');
@@ -296,13 +304,8 @@ class ResumeNotifier extends Notifier<ResumeState> {
         contentType: type,
       );
 
-      if (uploaded.isPdf) {
-        await ResumeSessionStorage.saveBytes(
-          uid: uid,
-          resumeId: uploaded.id,
-          bytes: bytes,
-        );
-      }
+      // Seed the cache so the immediate preview after upload is instant.
+      _bytesCache[uploaded.id] = bytes;
 
       final currentResumes = [...state.allResumes];
       final existingIndex =
@@ -340,6 +343,13 @@ class ResumeNotifier extends Notifier<ResumeState> {
         ),
       );
     }
+  }
+
+  /// Seed the cache with bytes for a resume the caller just produced
+  /// (e.g. the tailor orchestrator after rendering a PDF). Avoids a
+  /// redundant Storage download when the user opens the result.
+  void primeBytes(String resumeId, Uint8List bytes) {
+    _bytesCache[resumeId] = bytes;
   }
 
   bool _isResumeFile(String name) {

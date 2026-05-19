@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 enum ResumeSource {
   manual,
   tailored,
@@ -13,8 +11,7 @@ class ResumeFile {
     required this.type,
     required this.uploadedAt,
     required this.source,
-    this.path,
-    this.bytes,
+    this.storagePath,
   });
 
   final String id;
@@ -24,18 +21,13 @@ class ResumeFile {
   final DateTime uploadedAt;
   final ResumeSource source;
 
-  /// Absolute path to the PDF on this device, under the app's documents
-  /// directory. May be `null` if the resume was uploaded from a different
-  /// device (the Firestore metadata exists, the local file doesn't).
-  final String? path;
-
-  /// In-memory bytes — set immediately after upload so the preview screen
-  /// can render without a disk round-trip. Subsequent loads use `path`.
-  final Uint8List? bytes;
+  /// Path of the blob inside the Firebase Storage bucket
+  /// (e.g. `users/{uid}/resumes/{resumeId}.pdf`). `null` only for legacy
+  /// docs created before the Storage migration.
+  final String? storagePath;
 
   bool get isPdf =>
       type == 'application/pdf' || name.toLowerCase().endsWith('.pdf');
 
-  bool get isAvailableLocally =>
-      bytes != null || (path != null && path!.isNotEmpty);
+  bool get hasStorageBlob => storagePath != null && storagePath!.isNotEmpty;
 }
