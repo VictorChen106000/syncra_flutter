@@ -294,10 +294,11 @@ void _registerTailorResume(
     tool: const Tool(
       name: 'tailor_resume',
       description:
-          "Rewrite the user's resume for a specific job AND render a new "
-          'tailored PDF that gets saved to their resume list with '
-          "source='tailored'. Returns the new resume id so subsequent tools "
-          '(draft_email, send_email) can reference it. NEVER invents experience.',
+        'Proposes targeted PR-style edits to the user\'s resume for a '
+        'specific job. Does not modify the resume, render a PDF, save a file, '
+        'or overwrite anything. The user reviews each proposed edit in a diff '
+        'viewer before accepted edits are applied. Returns '
+        '{ proposed_edits: [...] }. NEVER invents experience.',
       inputSchema: {
         'type': 'object',
         'properties': {
@@ -319,61 +320,55 @@ void _registerTailorResume(
       if (jobId == null || jobId.isEmpty) {
         return ToolResult.error('job_id is required.');
       }
+
       final job = await jobsRepo.fetchById(jobId);
       if (job == null) return ToolResult.error('Job not found.');
 
       final uid = FirebaseAuth.instance.currentUser?.uid;
       final resumeId = (args['resume_id'] as String?)?.trim();
 
-      // Full orchestrated path — parses if needed, renders PDF, saves to
-      // Firestore + local disk. Requires a real resume_id + signed-in user.
+      Map<String, dynamic> resumeJson = kFakeResumeJson;
+
       if (uid != null && resumeId != null && resumeId.isNotEmpty) {
         try {
-          final saved = await orchestrator.tailorForJob(
+          final parsed = await orchestrator.readResumeJson(
             uid: uid,
             resumeId: resumeId,
-            jobId: jobId,
           );
-          return ToolResult(
-            summary: 'Saved ${saved.name}',
-            data: {
-              'tailored_resume_id': saved.id,
-              'file_name': saved.name,
-              'tailored_for_job_id': jobId,
-            },
-          );
+          resumeJson = parsed.toJson();
         } catch (e) {
-          // Fall through to paraphrase-only fallback below so the demo
-          // still produces something useful when, e.g., the PDF has no
-          // extractable text.
-          debugPrint('orchestrator.tailorForJob failed, falling back: $e');
+          debugPrint('readResumeJson failed, falling back to sample resume: $e');
         }
       }
 
-      // Paraphrase-only fallback — returns the tailored JSON but doesn't
-      // produce a PDF or persist anything. Used when no resume_id is
-      // available (e.g. unsigned-in demo) or the orchestrator failed.
       if (!paraphrase.hasApiKey) {
         return ToolResult(
-          summary: 'Tailored (placeholder — no API key)',
+          summary: 'No API key — proposed edits unavailable',
           data: {
-            'tailored_resume_json': kFakeResumeJson,
+            'proposed_edits': <Map<String, dynamic>>[],
+            'job_id': jobId,
+            if (resumeId != null && resumeId.isNotEmpty) 'resume_id': resumeId,
             'note':
-                'Stub output. Set ANTHROPIC_API_KEY and pass resume_id to get a real PDF.',
+                'Set ANTHROPIC_API_KEY to generate proposed resume edits.',
           },
         );
       }
 
       try {
-        final tailored = await paraphrase.tailorResume(
-          resumeJson: kFakeResumeJson,
+        final result = await paraphrase.tailorResume(
+          resumeJson: resumeJson,
           job: job,
         );
+
+        final proposedEdits =
+            List<Map<String, dynamic>>.from(result['proposed_edits'] as List);
+
         return ToolResult(
-          summary: 'Tailored JSON for ${job.company} (no PDF saved)',
+          summary: '${proposedEdits.length} proposed edits',
           data: {
-            'tailored_resume_json': tailored,
-            'tailored_for_job_id': jobId,
+            'proposed_edits': proposedEdits,
+            'job_id': jobId,
+            if (resumeId != null && resumeId.isNotEmpty) 'resume_id': resumeId,
           },
         );
       } catch (e) {

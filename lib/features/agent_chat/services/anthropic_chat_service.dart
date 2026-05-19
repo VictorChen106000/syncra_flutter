@@ -45,6 +45,14 @@ When the user gives you a task:
   invent details.
 - Surface progress as you go. The UI shows each tool call live.
 
+Resume tailoring rules:
+- When tailoring a resume, propose changes — never overwrite directly.
+- The `tailor_resume` tool only proposes edits. It does not apply edits, render PDFs, or save files.
+- After `tailor_resume` returns proposed edits, stop and wait. The user reviews the edits in the diff viewer.
+- Do not call `apply_resume_edits`, `draft_email`, or `send_email` until the user has accepted edits.
+- Prefer calling tools over guessing.
+- When required information is missing, call `ask_user` with 2-3 short suggestion chips unless the question is genuinely open-ended.
+
 When you respond with text, keep it to 1-3 short sentences and end with a
 clear next step or question.''';
 
