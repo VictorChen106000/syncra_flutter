@@ -8,6 +8,7 @@ import '../models/agent_block.dart';
 import '../models/chat_message.dart';
 import '../tools/tool_registry.dart';
 import 'agent_service.dart';
+import '../../resumes/models/proposed_edit.dart';
 
 /// Real-Anthropic implementation of [AgentService] with **tool use**.
 ///
@@ -173,6 +174,15 @@ clear next step or question.''';
                 if (!result.isError &&
                     name == 'tailor_resume' &&
                     _hasProposedEditsPayload(result.data)) {
+                  final editsBlock = _proposedEditsBlockFromData(
+                    id: nextBlockId('edits'),
+                    data: result.data,
+                  );
+
+                  if (editsBlock != null) {
+                    yield BlockAdded(editsBlock);
+                  }
+
                   shouldPauseAfterTailorResume = true;
                   tailorPauseMessage = _tailorPauseMessage(result.data);
                 }
@@ -279,6 +289,31 @@ clear next step or question.''';
       throw Exception(_extractError(response.body, response.statusCode));
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  ProposedEditsBlock? _proposedEditsBlockFromData({
+    required String id,
+    required Object? data,
+  }) {
+    if (data is! Map) return null;
+
+    final rawEdits = data['proposed_edits'];
+    if (rawEdits is! List) return null;
+
+    final edits = rawEdits
+        .whereType<Map>()
+        .map((raw) => ProposedEdit.fromJson(Map<String, dynamic>.from(raw)))
+        .where((edit) => edit.isValid)
+        .toList(growable: false);
+
+    if (edits.isEmpty) return null;
+
+    return ProposedEditsBlock(
+      id: id,
+      edits: edits,
+      jobId: data['job_id']?.toString(),
+      resumeId: data['resume_id']?.toString(),
+    );
   }
 
   bool _hasProposedEditsPayload(Object? data) {
