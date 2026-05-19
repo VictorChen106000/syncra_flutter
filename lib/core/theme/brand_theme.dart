@@ -88,28 +88,31 @@ class BrandTheme extends ThemeExtension<BrandTheme> {
     glassBorder: Color(0x66FFFFFF),
   );
 
+  // Dark palette — modeled on a true-black "AI assistant" aesthetic:
+  // pure black backdrop, near-black surface chip, pure-white type,
+  // and a single lime accent that's meant to glow against the void.
   static const dark = BrandTheme(
     brightness: Brightness.dark,
-    bg: Color(0xFF0B0B0D),
-    surface: Color(0xFF16171A),
-    surfaceMuted: Color(0xFF1E2024),
-    surfaceSubtle: Color(0xFF101114),
-    border: Color(0xFF2A2D32),
-    outline: Color(0xFF3A3E44),
-    ink: Color(0xFFF5F7F6),
-    inkInverse: Color(0xFF0A0B0A),
-    textMuted: Color(0xFFA6A9AD),
-    textSoft: Color(0xFF6E7177),
+    bg: Color(0xFF000000),
+    surface: Color(0xFF1A1A1C),
+    surfaceMuted: Color(0xFF2C2C2E),
+    surfaceSubtle: Color(0xFF0F0F11),
+    border: Color(0xFF28292C),
+    outline: Color(0xFF3A3B3E),
+    ink: Color(0xFFFFFFFF),
+    inkInverse: Color(0xFF000000),
+    textMuted: Color(0xFF8A8A8E),
+    textSoft: Color(0xFF5C5D60),
     accent: Color(0xFFA0FE08),
     accentBright: Color(0xFFB7FF3A),
     accentMuted: Color(0x33A0FE08),
-    onAccent: Color(0xFF0A0B0A),
+    onAccent: Color(0xFF000000),
     danger: Color(0xFFFF6B62),
     warning: Color(0xFFFFC857),
     success: Color(0xFF4ADE80),
-    shadow: Color(0x66000000),
-    glassFill: Color(0xCC16171A),
-    glassBorder: Color(0x332A2D32),
+    shadow: Color(0x99000000),
+    glassFill: Color(0xCC1A1A1C),
+    glassBorder: Color(0x3328292C),
   );
 
   @override

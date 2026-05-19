@@ -100,6 +100,47 @@ class AuthNotifier extends Notifier<AuthState> {
     state = state.copyWith(appUser: AppUser.guest(), clearError: true);
   }
 
+  /// Email/password sign-in.
+  ///
+  /// Backend wiring (Firebase Auth `signInWithEmailAndPassword`) lives in
+  /// the auth service. For now this stub validates inputs and falls through
+  /// to a guest session keyed by the email so the demo flow continues —
+  /// swap the body for `_authService.signInWithEmail(...)` once the
+  /// service method is implemented.
+  Future<void> signInWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    if (state.isLoading) return;
+    final trimmedEmail = email.trim();
+    if (trimmedEmail.isEmpty || password.isEmpty) {
+      state = state.copyWith(error: 'Enter both email and password.');
+      return;
+    }
+
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      final namePart = trimmedEmail.split('@').first;
+      final displayName = namePart.isEmpty ? 'You' : namePart;
+      state = state.copyWith(
+        appUser: AppUser(
+          uid: 'email-${trimmedEmail.hashCode.abs()}',
+          displayName: displayName,
+          email: trimmedEmail,
+          isGuest: true,
+        ),
+        isLoading: false,
+      );
+    } catch (e) {
+      debugPrint('Email Sign-In Error: $e');
+      state = state.copyWith(
+        isLoading: false,
+        error: 'Sign-in failed. Check your details.',
+      );
+    }
+  }
+
   Future<void> signOut() async {
     state = state.copyWith(isLoading: true);
 

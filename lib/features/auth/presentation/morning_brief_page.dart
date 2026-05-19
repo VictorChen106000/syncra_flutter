@@ -2,15 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
-import '../../../core/utils/motion.dart';
 import '../../../data/models/job.dart';
 import '../../agent/state/passive_agent_notifier.dart';
 import '../models/app_user.dart';
 import '../state/auth_notifier.dart';
+
+// Slightly off-white "ink" used across this page. Pure #FFFFFF on the brand's
+// pure-black background was reading as harsh / fatiguing — backing off ~6%
+// keeps the dark aesthetic without strobing the eye.
+const Color _softInk = Color(0xFFF1F1F3);
 
 /// The morning briefing the agent delivers right after sign-in.
 ///
@@ -58,129 +63,61 @@ class _MorningBriefPageState extends ConsumerState<MorningBriefPage> {
     final firstName = _firstName(widget.userName, auth.appUser);
     return Scaffold(
       backgroundColor: _brand.bg,
-      body: Stack(
-        children: [
-          Positioned(
-            top: MediaQuery.sizeOf(context).height * 0.18,
-            right: -100,
-            child: Container(
-              width: 360,
-              height: 360,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _brand.accent.withValues(alpha: 0.20),
-              ),
-            )
-                .animate(onPlay: repeatIfMotion(context, reverse: true))
-                .scale(
-                  duration: 4.seconds,
-                  begin: const Offset(1, 1),
-                  end: const Offset(1.15, 1.15),
-                  curve: Curves.easeInOut,
-                )
-                .fadeIn(duration: 1.seconds),
-          ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(28, 24, 28, 32),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      _LiveBadge(isLive: agent.isLiveModeEnabled),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: _continue,
-                        child: Text(
-                          'Skip',
-                          style: TextStyle(
-                            color: _brand.ink.withValues(alpha: 0.70),
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Spacer(),
-                  Text(
-                    '${AppStrings.goodMorning}\n$firstName.',
-                    style: TextStyle(
-                      color: _brand.ink,
-                      fontSize: 40,
-                      fontWeight: FontWeight.w900,
-                      height: 1.1,
-                      letterSpacing: -1.4,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: _continue,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
                     ),
-                  )
-                      .animate()
-                      .fadeIn(duration: 600.ms)
-                      .moveY(begin: 14, end: 0),
-                  const SizedBox(height: 28),
-                  _BriefBody(agent: agent),
-                  const Spacer(),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(child: _BriefStatusLine(agent: agent)),
-                      const SizedBox(width: 12),
-                      _NextButton(onTap: _continue)
-                          .animate(delay: 700.ms)
-                          .scale(
-                            begin: const Offset(0.8, 0.8),
-                            end: const Offset(1, 1),
-                            curve: Curves.easeOutBack,
-                          )
-                          .fadeIn(),
-                    ],
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                ],
+                  child: Text(
+                    'Skip',
+                    style: TextStyle(
+                      color: _softInk.withValues(alpha: 0.62),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      letterSpacing: 0.1,
+                    ),
+                  ),
+                ),
               ),
-            ),
+              const Spacer(),
+              Text(
+                '${AppStrings.goodMorning}\n$firstName.',
+                style: GoogleFonts.inter(
+                  color: _softInk,
+                  fontSize: 42,
+                  fontWeight: FontWeight.w900,
+                  height: 1.08,
+                  letterSpacing: -1.1,
+                ),
+              )
+                  .animate()
+                  .fadeIn(duration: 500.ms)
+                  .moveY(begin: 12, end: 0, curve: Curves.easeOutCubic),
+              const SizedBox(height: 28),
+              _BriefBody(agent: agent),
+              const Spacer(),
+              _BriefStatusLine(agent: agent),
+              const SizedBox(height: 16),
+              _ContinueButton(onTap: _continue, ready: agent.hasPipeline)
+                  .animate(delay: 400.ms)
+                  .fadeIn(duration: 360.ms)
+                  .moveY(begin: 10, end: 0, curve: Curves.easeOutCubic),
+            ],
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LiveBadge extends StatelessWidget {
-  const _LiveBadge({required this.isLive});
-
-  final bool isLive;
-
-  @override
-  Widget build(BuildContext context) {
-    const brand = BrandTheme.dark;
-    final label = isLive ? 'CLAUDE HAIKU · LIVE' : 'DEMO MODE';
-    final color =
-        isLive ? brand.accent : brand.ink.withValues(alpha: 0.40);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: brand.ink.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: color),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w900,
-              fontSize: 10,
-              letterSpacing: 1.4,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -217,64 +154,39 @@ class _RunningBody extends StatelessWidget {
       case AgentBriefStatus.scanning:
         return 'Scanning fresh roles…';
       case AgentBriefStatus.matching:
-        return 'Asking Claude to score each role…';
+        return 'Scoring each role against your profile…';
       case AgentBriefStatus.done:
         return 'Wrapping up your brief…';
       case AgentBriefStatus.error:
         return 'Brief failed.';
       case AgentBriefStatus.idle:
-        return 'Warming up your brief…';
+        return 'Warming up…';
     }
   }
 
   @override
   Widget build(BuildContext context) {
     const brand = BrandTheme.dark;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: brand.ink.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: brand.ink.withValues(alpha: 0.12)),
-          ),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.4,
-                  color: brand.accent,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  _line,
-                  style: TextStyle(
-                    color: brand.ink,
-                    fontSize: 14.5,
-                    height: 1.45,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
+        SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(
+            strokeWidth: 2.2,
+            color: brand.accent,
           ),
         ),
-        const SizedBox(height: 16),
-        Text(
-          agent.isLiveModeEnabled
-              ? 'Claude Haiku is checking each role against your resume.'
-              : 'Running in demo mode. Set ANTHROPIC_API_KEY to call Claude live.',
-          style: TextStyle(
-            color: brand.ink.withValues(alpha: 0.55),
-            fontSize: 13,
-            height: 1.4,
-            fontWeight: FontWeight.w500,
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            _line,
+            style: TextStyle(
+              color: _softInk.withValues(alpha: 0.72),
+              fontSize: 14.5,
+              fontWeight: FontWeight.w500,
+              height: 1.5,
+            ),
           ),
         ),
       ],
@@ -293,60 +205,75 @@ class _MatchBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        RichText(
-          text: TextSpan(
-            style: TextStyle(
-              fontSize: 20,
-              height: 1.45,
-              fontWeight: FontWeight.w500,
-              color: brand.ink,
-            ),
-            children: [
-              TextSpan(
-                text: '${job.company} ',
+        Text(
+          'TOP MATCH',
+          style: TextStyle(
+            color: _softInk.withValues(alpha: 0.48),
+            fontSize: 10.5,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.6,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              '${job.matchScore}',
+              style: GoogleFonts.inter(
+                color: brand.accent,
+                fontSize: 92,
+                fontWeight: FontWeight.w900,
+                height: 0.95,
+                letterSpacing: -3.2,
+              ),
+            )
+                .animate(delay: 200.ms)
+                .scale(
+                  begin: const Offset(0.92, 0.92),
+                  end: const Offset(1, 1),
+                  curve: Curves.easeOutCubic,
+                  duration: 600.ms,
+                )
+                .fadeIn(),
+            Padding(
+              padding: const EdgeInsets.only(left: 6, bottom: 16),
+              child: Text(
+                '%',
                 style: TextStyle(
-                  color: brand.accent,
-                  fontWeight: FontWeight.w900,
+                  color: brand.accent.withValues(alpha: 0.70),
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.4,
                 ),
               ),
-              const TextSpan(text: 'matched your profile.'),
-            ],
-          ),
-        ).animate(delay: 200.ms).fadeIn().moveY(begin: 8, end: 0),
-        const SizedBox(height: 12),
-        Text(
-          '${job.matchScore}%',
-          style: TextStyle(
-            color: brand.accent,
-            fontSize: 72,
-            fontWeight: FontWeight.w900,
-            height: 1.05,
-            letterSpacing: -3,
-          ),
-        )
-            .animate(delay: 350.ms)
-            .scale(
-              begin: const Offset(0.9, 0.9),
-              end: const Offset(1, 1),
-              curve: Curves.easeOutBack,
-              duration: 700.ms,
-            )
-            .fadeIn(),
-        const SizedBox(height: 8),
-        Container(
-          constraints: const BoxConstraints(maxWidth: 320),
-          child: Text(
-            job.agentJustification.isNotEmpty
-                ? job.agentJustification
-                : '${job.title} at ${job.company} looks like a strong fit.',
-            style: TextStyle(
-              color: brand.ink.withValues(alpha: 0.70),
-              fontSize: 16,
-              height: 1.45,
-              fontWeight: FontWeight.w500,
             ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        Text(
+          '${job.title} · ${job.company}',
+          style: TextStyle(
+            color: _softInk,
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.3,
+            height: 1.35,
           ),
-        ).animate(delay: 500.ms).fadeIn(),
+        ).animate(delay: 320.ms).fadeIn().moveY(begin: 6, end: 0),
+        const SizedBox(height: 10),
+        Text(
+          job.agentJustification.isNotEmpty
+              ? job.agentJustification
+              : '${job.title} at ${job.company} looks like a strong fit.',
+          style: TextStyle(
+            color: _softInk.withValues(alpha: 0.68),
+            fontSize: 15,
+            height: 1.6,
+            fontWeight: FontWeight.w500,
+            letterSpacing: -0.05,
+          ),
+        ).animate(delay: 420.ms).fadeIn(),
       ],
     );
   }
@@ -360,46 +287,41 @@ class _ErrorBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const brand = BrandTheme.dark;
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: brand.danger.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: brand.danger.withValues(alpha: 0.50)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          Icons.error_outline_rounded,
+          color: brand.danger,
+          size: 18,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                Icons.error_outline_rounded,
-                color: brand.ink,
-                size: 18,
-              ),
-              const SizedBox(width: 8),
               Text(
                 'Brief failed',
                 style: TextStyle(
-                  color: brand.ink.withValues(alpha: 0.95),
+                  color: _softInk,
                   fontWeight: FontWeight.w900,
                   fontSize: 14,
                 ),
               ),
+              const SizedBox(height: 4),
+              Text(
+                message,
+                style: TextStyle(
+                  color: _softInk.withValues(alpha: 0.65),
+                  fontSize: 13.5,
+                  height: 1.55,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            message,
-            style: TextStyle(
-              color: brand.ink.withValues(alpha: 0.75),
-              fontSize: 13,
-              height: 1.45,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -411,53 +333,58 @@ class _BriefStatusLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const brand = BrandTheme.dark;
-    if (!agent.hasPipeline) {
-      return Text(
-        agent.isRunning ? 'Brief in progress…' : 'Tap → to skip',
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: brand.ink.withValues(alpha: 0.55),
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-        ),
-      );
-    }
+    final text = !agent.hasPipeline
+        ? (agent.isRunning ? 'Brief in progress…' : 'No matches yet')
+        : '${agent.readyCount} ready · ${agent.inputNeededCount} need input · ${agent.explorationCount} strategic';
     return Text(
-      '${agent.readyCount} ready · ${agent.inputNeededCount} need input · ${agent.explorationCount} strategic',
+      text,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
-        color: brand.ink.withValues(alpha: 0.80),
-        fontSize: 12,
-        fontWeight: FontWeight.w700,
+        color: _softInk.withValues(alpha: 0.58),
+        fontSize: 12.5,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.1,
+        height: 1.5,
       ),
     );
   }
 }
 
-class _NextButton extends StatelessWidget {
-  const _NextButton({required this.onTap});
+class _ContinueButton extends StatelessWidget {
+  const _ContinueButton({required this.onTap, required this.ready});
 
   final VoidCallback onTap;
+  final bool ready;
 
   @override
   Widget build(BuildContext context) {
     const brand = BrandTheme.dark;
-    return Material(
-      color: brand.accent,
-      shape: const CircleBorder(),
-      elevation: 6,
-      shadowColor: brand.accent.withValues(alpha: 0.40),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: SizedBox(
-          width: 64,
-          height: 64,
-          child: Icon(
-            Icons.chevron_right_rounded,
-            color: brand.onAccent,
-            size: 32,
+    // Icon-only round button anchored to the right edge — the headline and
+    // brief body already carry the verbal context; this is just the action.
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Semantics(
+        button: true,
+        label: ready ? 'Continue' : 'Skip for now',
+        child: Material(
+          color: ready ? brand.accent : brand.surface,
+          shape: const CircleBorder(),
+          child: InkWell(
+            onTap: onTap,
+            customBorder: const CircleBorder(),
+            child: Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: ready ? null : Border.all(color: brand.border),
+              ),
+              child: Icon(
+                Icons.arrow_forward_rounded,
+                color: ready ? brand.onAccent : _softInk,
+                size: 26,
+              ),
+            ),
           ),
         ),
       ),

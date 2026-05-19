@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/dev/dev_flags_notifier.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../core/theme/theme_mode_notifier.dart';
@@ -39,21 +41,26 @@ class ProfilePage extends StatelessWidget {
                 AppConstants.screenHorizontalPadding,
                 140,
               ),
-              children: const [
-                _ProfileHeaderCard(),
-                SizedBox(height: 24),
-                SectionTitle(title: AppStrings.careerPipeline),
-                _CareerPipelineSection(),
-                SizedBox(height: 24),
-                SectionTitle(title: 'Connections'),
-                _IntegrationSection(),
-                SizedBox(height: 24),
-                SectionTitle(title: 'Preferences'),
-                _PreferencesSection(),
-                SizedBox(height: 24),
-                _SignOutButton(),
-                SizedBox(height: 12),
-                _DeleteAccountButton(),
+              children: [
+                const _ProfileHeaderCard(),
+                const SizedBox(height: 24),
+                const SectionTitle(title: AppStrings.careerPipeline),
+                const _CareerPipelineSection(),
+                const SizedBox(height: 24),
+                const SectionTitle(title: 'Connections'),
+                const _IntegrationSection(),
+                const SizedBox(height: 24),
+                const SectionTitle(title: 'Preferences'),
+                const _PreferencesSection(),
+                if (kDebugMode) ...const [
+                  SizedBox(height: 24),
+                  SectionTitle(title: 'Developer'),
+                  _DevFlagsSection(),
+                ],
+                const SizedBox(height: 24),
+                const _SignOutButton(),
+                const SizedBox(height: 12),
+                const _DeleteAccountButton(),
               ],
             ),
           ),
@@ -457,6 +464,59 @@ class _AutonomyTile extends ConsumerWidget {
           (AutonomyLevel.autoApply, Icons.bolt_rounded),
         ],
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Developer toggles — only rendered when `kDebugMode == true`, so they're
+// stripped from release builds. Used to skip onboarding / morning brief and
+// to force the notification bell's unread dot while iterating on UI.
+// ---------------------------------------------------------------------------
+
+class _DevFlagsSection extends ConsumerWidget {
+  const _DevFlagsSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final flags = ref.watch(devFlagsProvider);
+    final notifier = ref.read(devFlagsProvider.notifier);
+    final brand = context.brand;
+    return _GroupedCard(
+      children: [
+        _PreferenceRow(
+          icon: Icons.flag_outlined,
+          title: 'Skip onboarding',
+          subtitle: 'Bypass the role-setup gate after sign-in',
+          trailing: Switch.adaptive(
+            value: flags.skipOnboarding,
+            activeThumbColor: brand.ink,
+            onChanged: notifier.setSkipOnboarding,
+          ),
+        ),
+        const _GroupedDivider(),
+        _PreferenceRow(
+          icon: Icons.wb_twilight_outlined,
+          title: 'Skip morning brief',
+          subtitle: 'Land on dashboard, not the brief',
+          trailing: Switch.adaptive(
+            value: flags.skipMorningBrief,
+            activeThumbColor: brand.ink,
+            onChanged: notifier.setSkipMorningBrief,
+          ),
+        ),
+        const _GroupedDivider(),
+        _PreferenceRow(
+          icon: Icons.notifications_active_outlined,
+          title: 'Force notification dot',
+          subtitle: 'Show unread indicator on the bell',
+          trailing: Switch.adaptive(
+            value: flags.forceNotificationDot,
+            activeThumbColor: brand.ink,
+            onChanged: notifier.setForceNotificationDot,
+          ),
+        ),
+      ],
     );
   }
 }

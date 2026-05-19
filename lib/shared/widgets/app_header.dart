@@ -28,6 +28,7 @@ class AppHeader extends StatelessWidget {
     required String role,
     required VoidCallback onBellTap,
     int unreadCount = 0,
+    bool forceUnreadDot = false,
     Widget? bottom,
   }) {
     return AppHeader._(
@@ -35,7 +36,7 @@ class AppHeader extends StatelessWidget {
       titleWidget: _HomeTitle(name: name, role: role),
       trailing: NotificationBell(
         onTap: onBellTap,
-        showDot: unreadCount > 0,
+        showDot: forceUnreadDot || unreadCount > 0,
       ),
       bottom: bottom,
       topPadding: 16,
