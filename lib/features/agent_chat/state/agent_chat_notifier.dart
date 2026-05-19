@@ -232,6 +232,11 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     state = state.copyWith(items: [...state.items], isStreaming: false);
   }
 
+  void stopStreaming() {
+    if (!state.isStreaming) return;
+    _finishTurn();
+  }
+
   void acceptProposal(String blockId) {
     final block = _findProposal(blockId);
     if (block == null) return;

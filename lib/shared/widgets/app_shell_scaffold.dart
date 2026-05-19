@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/brand_theme.dart';
+import 'agent_activity_banner.dart';
 import 'app_bottom_nav.dart';
 
 /// Wraps the three bottom-nav branches (Home, Agent, Profile) so the nav
@@ -85,6 +86,14 @@ class AppShellScaffold extends StatelessWidget {
               activeTab: activeTab,
               onTap: _onTabSelected,
             ),
+          ),
+          // Global top banner: floats above every nav branch so agent
+          // intercepts surface no matter which tab the user is on.
+          const Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: AgentActivityBanner(),
           ),
         ],
       ),

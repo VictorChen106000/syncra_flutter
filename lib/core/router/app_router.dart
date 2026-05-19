@@ -70,32 +70,37 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (!isSignedIn && !isAuthRoute) {
         return RouteNames.login;
       }
+      if (!isSignedIn) return null;
 
-      final needsOnboarding = isSignedIn &&
-          !isGuest &&
-          !dev.skipOnboarding &&
+      // Dev: force-show toggles take priority over normal routing so devs
+      // can preview onboarding / morning brief at will. Each page's exit
+      // handler clears its flag so the user isn't trapped.
+      if (dev.showOnboarding && loc != RouteNames.onboarding) {
+        return RouteNames.onboarding;
+      }
+      if (dev.showMorningBrief && loc != RouteNames.morningBrief) {
+        return RouteNames.morningBrief;
+      }
+
+      final needsOnboarding = !isGuest &&
           profile != null &&
           (profile.role ?? '').trim().isEmpty;
       if (needsOnboarding && loc != RouteNames.onboarding) {
         return RouteNames.onboarding;
       }
 
-      if (!needsOnboarding && loc == RouteNames.onboarding) {
+      // Boot the user off onboarding when it isn't needed AND a dev override
+      // isn't actively keeping them there.
+      if (!needsOnboarding &&
+          !dev.showOnboarding &&
+          loc == RouteNames.onboarding) {
         return RouteNames.dashboard;
       }
 
-      if (isSignedIn &&
-          (loc == RouteNames.login || loc == RouteNames.signup)) {
-        if (dev.skipMorningBrief || passive.morningBriefShown) {
-          return RouteNames.dashboard;
-        }
-        return RouteNames.morningBrief;
-      }
-
-      // If the user is already on the morning brief but has the dev skip on,
-      // bounce them to the dashboard.
-      if (dev.skipMorningBrief && loc == RouteNames.morningBrief) {
-        return RouteNames.dashboard;
+      if (loc == RouteNames.login || loc == RouteNames.signup) {
+        return passive.morningBriefShown
+            ? RouteNames.dashboard
+            : RouteNames.morningBrief;
       }
 
       return null;

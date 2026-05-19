@@ -9,24 +9,36 @@ import 'package:shared_preferences/shared_preferences.dart';
 @immutable
 class DevFlags {
   const DevFlags({
-    this.skipOnboarding = false,
-    this.skipMorningBrief = false,
-    this.forceNotificationDot = false,
+    this.showOnboarding = false,
+    this.showMorningBrief = false,
+    this.showMockNotifications = false,
   });
 
-  final bool skipOnboarding;
-  final bool skipMorningBrief;
-  final bool forceNotificationDot;
+  /// When ON, the router force-routes the user to onboarding regardless of
+  /// whether their profile already has a role. The page's submit handler
+  /// auto-clears this flag so the user isn't trapped.
+  final bool showOnboarding;
+
+  /// When ON, the router force-routes the user to the morning brief even if
+  /// it has already been marked shown. The page's Continue/Skip handler
+  /// auto-clears this flag.
+  final bool showMorningBrief;
+
+  /// When ON, the inbox is seeded with sample agent activity so the
+  /// notification bell, banner, and inbox UI can be previewed before the
+  /// real agent is wired up.
+  final bool showMockNotifications;
 
   DevFlags copyWith({
-    bool? skipOnboarding,
-    bool? skipMorningBrief,
-    bool? forceNotificationDot,
+    bool? showOnboarding,
+    bool? showMorningBrief,
+    bool? showMockNotifications,
   }) {
     return DevFlags(
-      skipOnboarding: skipOnboarding ?? this.skipOnboarding,
-      skipMorningBrief: skipMorningBrief ?? this.skipMorningBrief,
-      forceNotificationDot: forceNotificationDot ?? this.forceNotificationDot,
+      showOnboarding: showOnboarding ?? this.showOnboarding,
+      showMorningBrief: showMorningBrief ?? this.showMorningBrief,
+      showMockNotifications:
+          showMockNotifications ?? this.showMockNotifications,
     );
   }
 
@@ -34,19 +46,19 @@ class DevFlags {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is DevFlags &&
-          other.skipOnboarding == skipOnboarding &&
-          other.skipMorningBrief == skipMorningBrief &&
-          other.forceNotificationDot == forceNotificationDot;
+          other.showOnboarding == showOnboarding &&
+          other.showMorningBrief == showMorningBrief &&
+          other.showMockNotifications == showMockNotifications;
 
   @override
   int get hashCode =>
-      Object.hash(skipOnboarding, skipMorningBrief, forceNotificationDot);
+      Object.hash(showOnboarding, showMorningBrief, showMockNotifications);
 }
 
 class DevFlagsNotifier extends Notifier<DevFlags> {
-  static const _kSkipOnboarding = 'syncra.dev.skipOnboarding';
-  static const _kSkipMorningBrief = 'syncra.dev.skipMorningBrief';
-  static const _kForceNotificationDot = 'syncra.dev.forceNotificationDot';
+  static const _kShowOnboarding = 'syncra.dev.showOnboarding';
+  static const _kShowMorningBrief = 'syncra.dev.showMorningBrief';
+  static const _kShowMockNotifications = 'syncra.dev.showMockNotifications';
 
   @override
   DevFlags build() {
@@ -57,29 +69,29 @@ class DevFlagsNotifier extends Notifier<DevFlags> {
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final loaded = DevFlags(
-      skipOnboarding: prefs.getBool(_kSkipOnboarding) ?? false,
-      skipMorningBrief: prefs.getBool(_kSkipMorningBrief) ?? false,
-      forceNotificationDot: prefs.getBool(_kForceNotificationDot) ?? false,
+      showOnboarding: prefs.getBool(_kShowOnboarding) ?? false,
+      showMorningBrief: prefs.getBool(_kShowMorningBrief) ?? false,
+      showMockNotifications: prefs.getBool(_kShowMockNotifications) ?? false,
     );
     if (loaded != state) state = loaded;
   }
 
-  Future<void> setSkipOnboarding(bool value) async {
-    state = state.copyWith(skipOnboarding: value);
+  Future<void> setShowOnboarding(bool value) async {
+    state = state.copyWith(showOnboarding: value);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kSkipOnboarding, value);
+    await prefs.setBool(_kShowOnboarding, value);
   }
 
-  Future<void> setSkipMorningBrief(bool value) async {
-    state = state.copyWith(skipMorningBrief: value);
+  Future<void> setShowMorningBrief(bool value) async {
+    state = state.copyWith(showMorningBrief: value);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kSkipMorningBrief, value);
+    await prefs.setBool(_kShowMorningBrief, value);
   }
 
-  Future<void> setForceNotificationDot(bool value) async {
-    state = state.copyWith(forceNotificationDot: value);
+  Future<void> setShowMockNotifications(bool value) async {
+    state = state.copyWith(showMockNotifications: value);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kForceNotificationDot, value);
+    await prefs.setBool(_kShowMockNotifications, value);
   }
 }
 

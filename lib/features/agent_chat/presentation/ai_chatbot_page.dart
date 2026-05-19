@@ -8,6 +8,7 @@ import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/motion.dart';
 import '../../../data/models/job.dart';
 import '../../../fixtures/mock_agent_service.dart';
+import '../models/agent_block.dart';
 import '../models/chat_message.dart';
 import '../state/agent_chat_notifier.dart';
 import 'widgets/agent_turn_view.dart';
@@ -56,6 +57,12 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
 
     final onlyInitial =
         state.items.length == 1 && state.items.first is AgentTurn;
+    final stickyPrompt = _latestUserMessage(state.items);
+    final pendingProposal = _pendingProposal(state.items);
+    final transcriptForList = _transcriptExcludingStickyPrompt(
+      state.items,
+      stickyPrompt,
+    );
 
     return Scaffold(
       backgroundColor: brand.surface,
@@ -69,6 +76,7 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
                 job: state.threadJob!,
                 onClear: notifier.clearThread,
               ),
+            if (stickyPrompt != null) _StickyUserPrompt(message: stickyPrompt),
             Expanded(
               child: onlyInitial && state.threadJob == null
                   ? _EmptyState(
@@ -77,9 +85,9 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
                     )
                   : ListView(
                       controller: _scrollController,
-                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                      padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
                       children: [
-                        for (final item in state.items)
+                        for (final item in transcriptForList)
                           switch (item) {
                             UserMessage() => UserMessageView(message: item),
                             AgentTurn() => AgentTurnView(turn: item),
@@ -87,8 +95,297 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
                       ],
                     ),
             ),
+            if (pendingProposal != null)
+              _DockedActionProposal(block: pendingProposal),
             const ChatInputBar(),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// The most recent [UserMessage] in the transcript, or null if none yet.
+  static UserMessage? _latestUserMessage(List<ChatItem> items) {
+    for (var i = items.length - 1; i >= 0; i--) {
+      final item = items[i];
+      if (item is UserMessage) return item;
+    }
+    return null;
+  }
+
+  /// Pending action proposal hoisted from the latest agent turn into the
+  /// docked island. Only the most recent unresolved proposal surfaces.
+  static ActionProposalBlock? _pendingProposal(List<ChatItem> items) {
+    for (var i = items.length - 1; i >= 0; i--) {
+      final item = items[i];
+      if (item is! AgentTurn) continue;
+      for (var j = item.blocks.length - 1; j >= 0; j--) {
+        final block = item.blocks[j];
+        if (block is ActionProposalBlock &&
+            block.state == ActionState.pending) {
+          return block;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Strip the sticky prompt from the in-list transcript so we don't render
+  /// it twice. Everything else (older prompts, agent turns) still flows in
+  /// chronological order in the scroll view.
+  static List<ChatItem> _transcriptExcludingStickyPrompt(
+    List<ChatItem> items,
+    UserMessage? sticky,
+  ) {
+    if (sticky == null) return items;
+    return [
+      for (final item in items)
+        if (!(item is UserMessage && item.id == sticky.id)) item,
+    ];
+  }
+}
+
+/// Pinned latest-prompt banner: gives the agent's reasoning timeline a
+/// persistent "what you asked" header, Claude-Code style.
+class _StickyUserPrompt extends StatelessWidget {
+  const _StickyUserPrompt({required this.message});
+
+  final UserMessage message;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+      decoration: BoxDecoration(
+        color: brand.surface,
+        border: Border(
+          bottom: BorderSide(color: brand.border, width: 0.6),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 3,
+            height: 32,
+            margin: const EdgeInsets.only(top: 2, right: 12),
+            decoration: BoxDecoration(
+              color: brand.ink,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'YOU ASKED',
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.4,
+                    color: brand.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  message.text,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: brand.ink,
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w700,
+                    height: 1.35,
+                    letterSpacing: -0.15,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ).animate(key: ValueKey(message.id)).fadeIn(duration: 220.ms).moveY(
+          begin: -6,
+          end: 0,
+          duration: 220.ms,
+          curve: Curves.easeOutCubic,
+        );
+  }
+}
+
+/// Pending [ActionProposalBlock] hoisted out of the chat list into a docked
+/// island above the input — feels like Claude Code's "Accept changes" pill.
+class _DockedActionProposal extends ConsumerWidget {
+  const _DockedActionProposal({required this.block});
+
+  final ActionProposalBlock block;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
+    final notifier = ref.read(agentChatProvider.notifier);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      decoration: BoxDecoration(
+        color: brand.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: brand.outline, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: brand.shadow.withValues(alpha: 0.18),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: brand.accent,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                alignment: Alignment.center,
+                child: Icon(block.icon, size: 14, color: brand.onAccent),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: brand.accent,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        'PROPOSED CHANGE',
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.4,
+                          color: brand.onAccent,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      block.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: brand.ink,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.2,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            block.description,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: brand.textMuted,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w500,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _DockedActionButton(
+                  label: block.editLabel,
+                  filled: false,
+                  onTap: () => notifier.dismissProposal(block.id),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _DockedActionButton(
+                  label: block.acceptLabel,
+                  filled: true,
+                  onTap: () => notifier.acceptProposal(block.id),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    )
+        .animate(key: ValueKey(block.id))
+        .fadeIn(duration: 220.ms)
+        .moveY(
+          begin: 12,
+          end: 0,
+          duration: 220.ms,
+          curve: Curves.easeOutCubic,
+        );
+  }
+}
+
+class _DockedActionButton extends StatelessWidget {
+  const _DockedActionButton({
+    required this.label,
+    required this.filled,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool filled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final bg = filled ? brand.ink : Colors.transparent;
+    final fg = filled ? brand.inkInverse : brand.ink;
+    return Material(
+      color: bg,
+      borderRadius: BorderRadius.circular(11),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(11),
+        child: Container(
+          height: 38,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(
+              color: filled ? brand.ink : brand.border,
+            ),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: fg,
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
+              letterSpacing: -0.1,
+            ),
+          ),
         ),
       ),
     );
@@ -169,14 +466,17 @@ class _ThreadContextChip extends StatelessWidget {
             button: true,
             child: InkResponse(
               onTap: onClear,
-              radius: 22,
+              radius: 24,
               excludeFromSemantics: true,
-              child: Padding(
-                padding: const EdgeInsets.all(6),
-                child: Icon(
-                  Icons.close_rounded,
-                  size: 18,
-                  color: brand.textMuted,
+              child: SizedBox(
+                width: 44,
+                height: 44,
+                child: Center(
+                  child: Icon(
+                    Icons.close_rounded,
+                    size: 18,
+                    color: brand.textMuted,
+                  ),
                 ),
               ),
             ),
@@ -211,45 +511,87 @@ class _ChatHeader extends StatelessWidget {
           ),
           Expanded(
             child: Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 22,
-                    height: 22,
-                    decoration: BoxDecoration(
-                      color: brand.ink,
-                      shape: BoxShape.circle,
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(
-                      Icons.auto_awesome_rounded,
-                      color: brand.accent,
-                      size: 12,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Syncra',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: brand.ink,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  if (isStreaming) ...[
-                    const SizedBox(width: 10),
-                    const _LiveDot(),
-                  ],
-                ],
-              ),
+              child: _UsageDynamicIsland(active: isStreaming),
             ),
           ),
           const SizedBox(width: 40),
         ],
       ),
     );
+  }
+}
+
+/// Compact "dynamic island"-style status pill that surfaces the active model
+/// + a mock context-window percentage. Single source of truth for "which
+/// model am I talking to and how much room is left."
+class _UsageDynamicIsland extends StatelessWidget {
+  const _UsageDynamicIsland({required this.active});
+  final bool active;
+
+  static const _modelLabel = 'Syncra Opus';
+  static const _contextPercent = 32;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
+      decoration: BoxDecoration(
+        color: brand.ink,
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _PulseDot(active: active, color: brand.accent),
+          const SizedBox(width: 8),
+          Text(
+            _modelLabel,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w800,
+              color: brand.inkInverse,
+              letterSpacing: -0.15,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            width: 1,
+            height: 12,
+            color: brand.inkInverse.withValues(alpha: 0.2),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '$_contextPercent% ctx',
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              color: brand.inkInverse.withValues(alpha: 0.72),
+              letterSpacing: -0.1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PulseDot extends StatelessWidget {
+  const _PulseDot({required this.active, required this.color});
+  final bool active;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final dot = Container(
+      width: 7,
+      height: 7,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    );
+    if (!active) return dot;
+    return dot
+        .animate(onPlay: repeatIfMotion(context, reverse: true))
+        .fadeIn(begin: 0.45, duration: 700.ms);
   }
 }
 
@@ -277,34 +619,6 @@ class _IconBtn extends StatelessWidget {
   }
 }
 
-class _LiveDot extends StatelessWidget {
-  const _LiveDot();
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Container(
-      width: 8,
-      height: 8,
-      decoration: BoxDecoration(
-        color: brand.accentBright,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: brand.accentBright.withValues(alpha: 0.45),
-            blurRadius: 6,
-            spreadRadius: 1,
-          ),
-        ],
-      ),
-    )
-        .animate(onPlay: repeatIfMotion(context, reverse: true))
-        .fadeIn(duration: 500.ms)
-        .then()
-        .fadeOut(duration: 500.ms);
-  }
-}
-
 class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.onPromptTap});
 
@@ -319,25 +633,42 @@ class _EmptyState extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(24, 60, 24, 24),
       children: [
         Center(
-          child: Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: brand.ink,
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: [
-                BoxShadow(
-                  color: brand.ink.withValues(alpha: 0.12),
-                  blurRadius: 24,
-                  offset: const Offset(0, 10),
+          child: SizedBox(
+            width: 96,
+            height: 96,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 96,
+                  height: 96,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: brand.accent.withValues(alpha: 0.18),
+                  ),
+                ),
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: brand.ink,
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(
+                        color: brand.ink.withValues(alpha: 0.18),
+                        blurRadius: 24,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.auto_awesome_rounded,
+                    color: brand.accent,
+                    size: 26,
+                  ),
                 ),
               ],
-            ),
-            alignment: Alignment.center,
-            child: Icon(
-              Icons.auto_awesome_rounded,
-              color: brand.accent,
-              size: 26,
             ),
           ),
         )

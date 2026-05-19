@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_strings.dart';
+import '../../../core/dev/dev_flags_notifier.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../shared/widgets/app_back_button.dart';
@@ -60,6 +61,13 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     });
 
     await Future.delayed(const Duration(milliseconds: 700));
+    if (!mounted) return;
+    // Auto-clear the dev "Show onboarding" toggle so the redirect doesn't
+    // bounce the user straight back here.
+    final dev = ref.read(devFlagsProvider);
+    if (dev.showOnboarding) {
+      await ref.read(devFlagsProvider.notifier).setShowOnboarding(false);
+    }
     if (!mounted) return;
     context.go(RouteNames.dashboard);
   }

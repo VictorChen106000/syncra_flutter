@@ -169,18 +169,13 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                         ? null
                         : () => SelectResumesBottomSheet.show(context),
                   ),
-                  const SizedBox(width: 6),
-                  _CircleAction(
-                    icon: Icons.mic_none_rounded,
-                    tooltip: 'Voice input',
-                    onTap: streaming ? null : () {},
-                  ),
-                  const SizedBox(width: 8),
-                  const _ModelPill(),
                   const Spacer(),
                   _SendButton(
-                    enabled: !streaming && hasText,
-                    onTap: _send,
+                    streaming: streaming,
+                    enabled: streaming || hasText,
+                    onTap: streaming
+                        ? ref.read(agentChatProvider.notifier).stopStreaming
+                        : _send,
                   ),
                 ],
               ),
@@ -235,68 +230,34 @@ class _CircleAction extends StatelessWidget {
   }
 }
 
-class _ModelPill extends StatelessWidget {
-  const _ModelPill();
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Container(
-      height: 36,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(99),
-        color: brand.surfaceMuted,
-      ),
-      alignment: Alignment.center,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.auto_awesome_rounded, size: 13, color: brand.ink),
-          const SizedBox(width: 6),
-          Text(
-            'Syncra 2.5',
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-              color: brand.ink,
-              letterSpacing: -0.1,
-            ),
-          ),
-          const SizedBox(width: 2),
-          Icon(
-            Icons.expand_more_rounded,
-            size: 14,
-            color: brand.textMuted,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _SendButton extends StatelessWidget {
-  const _SendButton({required this.enabled, required this.onTap});
+  const _SendButton({
+    required this.streaming,
+    required this.enabled,
+    required this.onTap,
+  });
 
+  final bool streaming;
   final bool enabled;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
+    final active = enabled;
     return Semantics(
-      label: 'Send message',
+      label: streaming ? 'Stop generating' : 'Send message',
       button: true,
-      enabled: enabled,
+      enabled: active,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: enabled ? brand.ink : brand.surfaceMuted,
+          color: active ? brand.ink : brand.surfaceMuted,
           shape: BoxShape.circle,
-          boxShadow: enabled
+          boxShadow: active
               ? [
                   BoxShadow(
                     color: brand.ink.withValues(alpha: 0.22),
@@ -310,13 +271,28 @@ class _SendButton extends StatelessWidget {
           color: Colors.transparent,
           shape: const CircleBorder(),
           child: InkWell(
-            onTap: enabled ? onTap : null,
+            onTap: active ? onTap : null,
             customBorder: const CircleBorder(),
             excludeFromSemantics: true,
-            child: Icon(
-              Icons.arrow_upward_rounded,
-              color: enabled ? brand.inkInverse : brand.textSoft,
-              size: 20,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 160),
+              transitionBuilder: (child, anim) => ScaleTransition(
+                scale: anim,
+                child: FadeTransition(opacity: anim, child: child),
+              ),
+              child: streaming
+                  ? Icon(
+                      Icons.stop_rounded,
+                      key: const ValueKey('stop'),
+                      color: brand.inkInverse,
+                      size: 20,
+                    )
+                  : Icon(
+                      Icons.arrow_upward_rounded,
+                      key: const ValueKey('send'),
+                      color: active ? brand.inkInverse : brand.textSoft,
+                      size: 20,
+                    ),
             ),
           ),
         ),
