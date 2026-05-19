@@ -180,6 +180,10 @@ class _NavPillState extends State<_NavPill>
           elevation: 8,
           child: InkWell(
             borderRadius: BorderRadius.circular(31),
+            splashColor: Colors.transparent,
+            highlightColor: Colors.transparent,
+            hoverColor: Colors.transparent,
+            focusColor: Colors.transparent,
             onTap: _handleTap,
             child: AnimatedContainer(
               duration: _shapeDuration,

@@ -39,6 +39,7 @@ class AppShellScaffold extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: brand.bg,
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           Positioned.fill(child: navigationShell),

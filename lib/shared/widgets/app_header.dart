@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/brand_theme.dart';
 import 'app_back_button.dart';
-import 'notification_bell.dart';
 
 /// Single source of truth for the top-of-page chrome.
 ///
@@ -21,22 +20,20 @@ class AppHeader extends StatelessWidget {
     this.leadingGap = 12,
   });
 
-  /// Home (Dashboard) — avatar + name/role + notification bell.
+  /// Home (Dashboard) — avatar + name/role. The notifications surface
+  /// is opened by tapping the avatar (caller wraps it as needed) or by
+  /// swiping from the left edge into the scaffold drawer.
   factory AppHeader.home({
     required Widget avatar,
     required String name,
     required String role,
-    required VoidCallback onBellTap,
-    int unreadCount = 0,
+    Widget? trailing,
     Widget? bottom,
   }) {
     return AppHeader._(
       leading: avatar,
       titleWidget: _HomeTitle(name: name, role: role),
-      trailing: NotificationBell(
-        onTap: onBellTap,
-        showDot: unreadCount > 0,
-      ),
+      trailing: trailing,
       bottom: bottom,
       topPadding: 16,
       bottomPadding: 16,

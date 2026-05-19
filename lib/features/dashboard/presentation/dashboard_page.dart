@@ -21,11 +21,18 @@ import '../../agent/state/passive_agent_notifier.dart';
 import '../../agent_chat/models/chat_message.dart';
 import '../../agent_chat/state/agent_chat_notifier.dart';
 import '../../auth/state/auth_notifier.dart';
-import '../../auth/state/user_profile_notifier.dart';
+import '../../notifications/presentation/notifications_drawer.dart';
 import '../../notifications/state/notifications_notifier.dart';
 import '../../resumes/presentation/widgets/resume_attachment_chips.dart';
 import '../../resumes/presentation/widgets/select_resumes_bottom_sheet.dart';
 import '../../resumes/state/resume_notifier.dart';
+
+/// Approximate vertical footprint of the bottom-anchored agent area
+/// (prompt suggestions + input bar + bottom inset). Used as scroll-view
+/// bottom padding so content never disappears behind the floating block
+/// on short screens.
+const double _kFloatingAreaReservedHeight =
+    AppConstants.floatingInputBottom + 140 + AppConstants.smallGap + 72;
 
 class DashboardPage extends StatelessWidget {
   const DashboardPage({super.key});
@@ -36,32 +43,26 @@ class DashboardPage extends StatelessWidget {
       showBottomNav: false,
       activeTab: BottomNavTab.home,
       extendBehindBottomNav: true,
+      drawer: const NotificationsDrawer(),
+      drawerEdgeDragWidth: 48,
       child: Stack(
         children: [
-          Positioned.fill(
-            child: Column(
-              children: [
-                _DashboardHeader(),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(
+          Column(
+            children: [
+              _DashboardHeader(),
+              Expanded(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(
                     AppConstants.screenHorizontalPadding,
-                    AppConstants.screenTopPadding,
+                    12,
                     AppConstants.screenHorizontalPadding,
-                    0,
+                    _kFloatingAreaReservedHeight,
                   ),
-                  child: _AgentCardStack(),
+                  child: const _AgentCardStack(),
                 ),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    AppConstants.screenHorizontalPadding,
-                    16,
-                    AppConstants.screenHorizontalPadding,
-                    0,
-                  ),
-                  child: _RunBriefCta(),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
           const _FloatingAgentArea(),
         ],
@@ -74,23 +75,33 @@ class _DashboardHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authProvider);
-    final notifications = ref.watch(notificationsProvider);
+    final hasUnread = ref.watch(
+      notificationsProvider.select((s) => s.unreadCount > 0),
+    );
     final user = auth.appUser;
     return AppHeader.home(
-      avatar: _Avatar(photoUrl: user?.photoUrl),
+      avatar: _Avatar(
+        photoUrl: user?.photoUrl,
+        showBadge: hasUnread,
+        onTap: () => Scaffold.of(context).openDrawer(),
+      ),
       name: user?.displayName ?? 'there',
       role: AppStrings.dashboardGreetingRole,
-      unreadCount: notifications.unreadCount,
-      onBellTap: () => context.go(RouteNames.notifications),
       bottom: const _AgentLiveBanner(),
     );
   }
 }
 
 class _Avatar extends StatelessWidget {
-  const _Avatar({required this.photoUrl});
+  const _Avatar({
+    required this.photoUrl,
+    required this.showBadge,
+    required this.onTap,
+  });
 
   final String? photoUrl;
+  final bool showBadge;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -100,25 +111,56 @@ class _Avatar extends StatelessWidget {
         ? NetworkImage(photoUrl!)
         : const AssetImage(AppAssets.profileImage);
 
-    return Container(
-      width: 56,
-      height: 56,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: brand.ink,
-        border: Border.all(color: brand.surface, width: 2),
-        image: DecorationImage(
-          image: image,
-          fit: BoxFit.cover,
-          onError: (_, _) {},
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: brand.shadow,
-            blurRadius: 12,
-            offset: const Offset(0, 3),
+    return Semantics(
+      label: showBadge ? 'Notifications, unread' : 'Notifications',
+      button: true,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: SizedBox(
+          width: 56,
+          height: 56,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: brand.ink,
+                  border: Border.all(color: brand.surface, width: 2),
+                  image: DecorationImage(
+                    image: image,
+                    fit: BoxFit.cover,
+                    onError: (_, _) {},
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: brand.shadow,
+                      blurRadius: 12,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+              ),
+              if (showBadge)
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  child: Container(
+                    width: 14,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: brand.danger,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: brand.bg, width: 2),
+                    ),
+                  ),
+                ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -135,41 +177,63 @@ class _AgentLiveBanner extends ConsumerWidget {
     );
     final label = isRunning ? AppStrings.agentLive : AppStrings.agentIdle;
     final detail = isRunning ? AppStrings.activeTask : AppStrings.idleTask;
-    return Row(
-      children: [
-        _LiveDot(active: isRunning),
-        const SizedBox(width: 8),
-        Text(
-          label.toUpperCase(),
-          style: TextStyle(
-            color: brand.ink,
-            fontSize: 11,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.4,
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isRunning
+              ? brand.accent.withValues(alpha: 0.14)
+              : brand.surfaceMuted,
+          borderRadius: BorderRadius.circular(AppConstants.pillRadius),
+          border: Border.all(
+            color: isRunning
+                ? brand.accent.withValues(alpha: 0.30)
+                : brand.border,
           ),
         ),
-        const SizedBox(width: 8),
-        Container(
-          width: 3,
-          height: 3,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: brand.textMuted.withValues(alpha: 0.6),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            detail,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: brand.textMuted,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _LiveDot(active: isRunning),
+            const SizedBox(width: 8),
+            Text(
+              label.toUpperCase(),
+              style: TextStyle(
+                color: brand.ink,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.2,
+              ),
             ),
-          ),
+            const SizedBox(width: 8),
+            Container(
+              width: 3,
+              height: 3,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: brand.textMuted.withValues(alpha: 0.5),
+              ),
+            ),
+            const SizedBox(width: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 220),
+              child: Text(
+                detail,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                style: TextStyle(
+                  color: brand.textMuted,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -231,7 +295,7 @@ class _AgentCardStack extends ConsumerStatefulWidget {
 class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
   static const double _maxCardWidth = 320;
   static const double _cardHeight = 180;
-  static const double _stackHeight = 270;
+  static const double _stackHeight = 260;
   static const double _cardLeftInset = 6;
   static const double _fanRightMargin = 44;
   static const Duration _animDuration = Duration(milliseconds: 550);
@@ -317,7 +381,7 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
             child: showHint
                 ? Padding(
                     key: const ValueKey('hint'),
-                    padding: const EdgeInsets.only(left: 4, bottom: 14),
+                    padding: const EdgeInsets.only(left: 4, bottom: 8),
                     child: Text(
                       hint,
                       style: TextStyle(
@@ -584,139 +648,6 @@ class _StackCard extends StatelessWidget {
                 ),
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RunBriefCta extends ConsumerWidget {
-  const _RunBriefCta();
-
-  String _relativeTime(DateTime then) {
-    final delta = DateTime.now().difference(then);
-    if (delta.inMinutes < 1) return 'just now';
-    if (delta.inMinutes < 60) return '${delta.inMinutes}m ago';
-    if (delta.inHours < 24) return '${delta.inHours}h ago';
-    return '${delta.inDays}d ago';
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final brand = context.brand;
-    final enabled =
-        ref.watch(userProfileProvider)?.morningBriefEnabled ?? false;
-    if (!enabled) return const SizedBox.shrink();
-
-    final state = ref.watch(passiveAgentProvider);
-    final running = state.isRunning;
-    final lastBrief = state.lastBriefAt;
-
-    final subtitle = running
-        ? 'Scanning roles and scoring matches…'
-        : lastBrief == null
-            ? 'Tap to scan for fresh roles matching your profile.'
-            : 'Last brief ${_relativeTime(lastBrief)} · '
-                '${state.readyCount} ready · ${state.inputNeededCount} need input';
-
-    return Container(
-      padding: const EdgeInsets.all(AppConstants.cardPadding),
-      decoration: BoxDecoration(
-        color: brand.surface,
-        borderRadius: BorderRadius.circular(AppConstants.cardRadius),
-        border: Border.all(color: brand.border),
-        boxShadow: [
-          BoxShadow(
-            color: brand.shadow,
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: brand.ink,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            alignment: Alignment.center,
-            child: Icon(
-              Icons.bolt_rounded,
-              color: brand.accent,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Run today's brief",
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
-                    color: brand.ink,
-                    letterSpacing: -0.2,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: brand.textMuted,
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: running ? brand.surfaceMuted : brand.ink,
-              foregroundColor: running ? brand.textMuted : brand.inkInverse,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            onPressed: running
-                ? null
-                : () => ref.read(passiveAgentProvider.notifier).runBrief(),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (running)
-                  SizedBox(
-                    width: 12,
-                    height: 12,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: brand.ink,
-                    ),
-                  )
-                else
-                  const Icon(Icons.play_arrow_rounded, size: 16),
-                const SizedBox(width: 6),
-                Text(
-                  running ? 'Running' : 'Run',
-                  style: const TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
           ),
         ],
       ),

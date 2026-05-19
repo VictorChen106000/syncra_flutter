@@ -16,6 +16,7 @@ import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/section_title.dart';
+import '../../agent/state/passive_agent_notifier.dart';
 import '../../auth/models/user_profile.dart';
 import '../../auth/state/auth_notifier.dart';
 import '../../auth/state/user_profile_notifier.dart';
@@ -421,18 +422,28 @@ class _MorningBriefTile extends ConsumerWidget {
     final brand = context.brand;
     final profile = ref.watch(userProfileProvider);
     final enabled = profile?.morningBriefEnabled ?? false;
+    final running = ref.watch(
+      passiveAgentProvider.select((s) => s.isRunning),
+    );
     return _PreferenceRow(
       icon: Icons.wb_sunny_outlined,
       title: "Today's brief",
-      subtitle: enabled ? 'Dashboard CTA on' : 'Dashboard CTA off',
+      subtitle: enabled
+          ? (running ? 'Running now…' : 'On — runs automatically')
+          : 'Off',
       trailing: Switch.adaptive(
         value: enabled,
         activeThumbColor: brand.ink,
         onChanged: profile == null
             ? null
-            : (v) => ref
-                .read(userProfileProvider.notifier)
-                .setMorningBriefEnabled(v),
+            : (v) {
+                ref
+                    .read(userProfileProvider.notifier)
+                    .setMorningBriefEnabled(v);
+                if (v && !running) {
+                  ref.read(passiveAgentProvider.notifier).runBrief();
+                }
+              },
       ),
     );
   }
