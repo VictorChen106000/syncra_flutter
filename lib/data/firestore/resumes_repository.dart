@@ -1,24 +1,23 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 import '../../features/resumes/models/resume_file.dart';
 import 'firestore_paths.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 
-/// Stores resume **metadata** in Firestore and the actual **PDF bytes** in
-/// the app's documents directory on the device. Firebase Storage is not
-/// used — keeps the project on the free Spark plan.
+/// Stores resume **metadata** in Firestore and the actual **PDF/DOC bytes**
+/// in Firebase Storage at `users/{uid}/resumes/{resumeId}.{ext}`. The two
+/// writes are coordinated so a Firestore doc only ever points at bytes
+/// that successfully landed in Storage.
 class ResumesRepository {
-  ResumesRepository({FirebaseFirestore? db})
-      : _paths = FirestorePaths(db ?? FirebaseFirestore.instance);
+  ResumesRepository({FirebaseFirestore? db, FirebaseStorage? storage})
+      : _paths = FirestorePaths(db ?? FirebaseFirestore.instance),
+        _storage = storage ?? FirebaseStorage.instance;
 
   final FirestorePaths _paths;
+  final FirebaseStorage _storage;
 
-  /// Stream the user's resumes. Each emitted [ResumeFile] has [path]
-  /// populated when the file exists on this device.
   Stream<List<ResumeFile>> watchResumes(String uid) {
     return _paths
         .resumes(uid)
@@ -27,9 +26,6 @@ class ResumesRepository {
         .map((snap) => snap.docs.map(_fromDoc).toList());
   }
 
-  /// Persists [bytes] to local disk + writes a Firestore doc with the
-  /// metadata + local file path. Returns the newly created [ResumeFile]
-  /// with [path] and [bytes] populated for immediate preview.
   Future<ResumeFile> uploadResume({
     required String uid,
     required String name,
@@ -38,23 +34,31 @@ class ResumesRepository {
     ResumeSource source = ResumeSource.manual,
   }) async {
     final docRef = _paths.resumes(uid).doc();
-    final String? localPath = kIsWeb
-    ? null
-    : await _writeBytesToAppDocs(
-        resumeId: docRef.id,
-        name: name,
-        bytes: bytes,
-      );
-    final uploadedAt = DateTime.now();
+    final storagePath =
+        _storagePathFor(uid: uid, resumeId: docRef.id, name: name);
 
-    await docRef.set({
-      'name': name,
-      'size': bytes.length,
-      'mime_type': contentType,
-      'source': source == ResumeSource.tailored ? 'tailored' : 'manual',
-      'local_path': localPath,
-      'uploaded_at': Timestamp.fromDate(uploadedAt),
-    });
+    await _uploadBytesToStorage(
+      path: storagePath,
+      bytes: bytes,
+      contentType: contentType,
+    );
+
+    final uploadedAt = DateTime.now();
+    try {
+      await docRef.set({
+        'name': name,
+        'size': bytes.length,
+        'mime_type': contentType,
+        'source': source == ResumeSource.tailored ? 'tailored' : 'manual',
+        'storage_path': storagePath,
+        'uploaded_at': Timestamp.fromDate(uploadedAt),
+      });
+    } catch (_) {
+      // Firestore write failed — clean up the orphaned blob so we don't
+      // leak bytes that no UI can ever reach.
+      await _safeDeleteBlob(storagePath);
+      rethrow;
+    }
 
     return ResumeFile(
       id: docRef.id,
@@ -63,33 +67,21 @@ class ResumesRepository {
       type: contentType,
       uploadedAt: uploadedAt,
       source: source,
-      path: localPath,
-      bytes: bytes,
+      storagePath: storagePath,
     );
   }
 
-  /// Deletes the Firestore doc and the local file (if present). Safe to
-  /// call even when the local file is missing.
   Future<void> deleteResume({
     required String uid,
     required String resumeId,
-    String? localPath,
+    String? storagePath,
   }) async {
-    if (!kIsWeb && localPath != null && localPath.isNotEmpty) {
-      try {
-        final file = File(localPath);
-        if (await file.exists()) {
-          await file.delete();
-        }
-      } catch (_) {
-        // Ignore — Firestore deletion below is what drives the UI.
-      }
-    }
     await _paths.resumes(uid).doc(resumeId).delete();
+    if (storagePath != null && storagePath.isNotEmpty) {
+      await _safeDeleteBlob(storagePath);
+    }
   }
 
-  /// Persists already-rendered PDF [bytes] (e.g. a tailored output) as a
-  /// new resume under [uid]. Skips the file picker path entirely.
   Future<ResumeFile> saveGeneratedResume({
     required String uid,
     required String name,
@@ -99,25 +91,31 @@ class ResumesRepository {
     String? tailoredForJobId,
   }) async {
     final docRef = _paths.resumes(uid).doc();
-    final String? localPath = kIsWeb
-    ? null
-    : await _writeBytesToAppDocs(
-        resumeId: docRef.id,
-        name: name,
-        bytes: bytes,
-      );
-    final uploadedAt = DateTime.now();
+    final storagePath =
+        _storagePathFor(uid: uid, resumeId: docRef.id, name: name);
 
-    await docRef.set({
-      'name': name,
-      'size': bytes.length,
-      'mime_type': contentType,
-      'source': 'tailored',
-      'local_path': localPath,
-      'uploaded_at': Timestamp.fromDate(uploadedAt),
-      'parent_resume_id': ?parentResumeId,
-      'tailored_for_job_id': ?tailoredForJobId,
-    });
+    await _uploadBytesToStorage(
+      path: storagePath,
+      bytes: bytes,
+      contentType: contentType,
+    );
+
+    final uploadedAt = DateTime.now();
+    try {
+      await docRef.set({
+        'name': name,
+        'size': bytes.length,
+        'mime_type': contentType,
+        'source': 'tailored',
+        'storage_path': storagePath,
+        'uploaded_at': Timestamp.fromDate(uploadedAt),
+        'parent_resume_id': ?parentResumeId,
+        'tailored_for_job_id': ?tailoredForJobId,
+      });
+    } catch (_) {
+      await _safeDeleteBlob(storagePath);
+      rethrow;
+    }
 
     return ResumeFile(
       id: docRef.id,
@@ -126,26 +124,49 @@ class ResumesRepository {
       type: contentType,
       uploadedAt: uploadedAt,
       source: ResumeSource.tailored,
-      path: localPath,
-      bytes: bytes,
+      storagePath: storagePath,
     );
   }
 
-  Future<String> _writeBytesToAppDocs({
+  /// Download the PDF/DOC bytes for [storagePath]. Returns `null` if the
+  /// blob is missing (e.g. legacy Firestore doc from before the migration).
+  Future<Uint8List?> downloadBytes(String storagePath) async {
+    try {
+      return await _storage.ref(storagePath).getData(
+            // Storage rules cap uploads at 5MB; allow slack for tailored
+            // PDFs that may grow slightly after rendering.
+            10 * 1024 * 1024,
+          );
+    } on FirebaseException {
+      return null;
+    }
+  }
+
+  Future<void> _uploadBytesToStorage({
+    required String path,
+    required Uint8List bytes,
+    required String contentType,
+  }) async {
+    await _storage.ref(path).putData(
+          bytes,
+          SettableMetadata(contentType: contentType),
+        );
+  }
+
+  Future<void> _safeDeleteBlob(String storagePath) async {
+    try {
+      await _storage.ref(storagePath).delete();
+    } catch (_) {
+      // Best-effort. A leaked blob is harmless; the Firestore doc drives UI.
+    }
+  }
+
+  String _storagePathFor({
+    required String uid,
     required String resumeId,
     required String name,
-    required Uint8List bytes,
-  }) async {
-    final docsDir = await getApplicationDocumentsDirectory();
-    final resumesDir = Directory('${docsDir.path}/resumes');
-    if (!await resumesDir.exists()) {
-      await resumesDir.create(recursive: true);
-    }
-    final ext = _extensionFor(name);
-    final filePath = '${resumesDir.path}/$resumeId$ext';
-    final file = File(filePath);
-    await file.writeAsBytes(bytes, flush: true);
-    return filePath;
+  }) {
+    return 'users/$uid/resumes/$resumeId${_extensionFor(name)}';
   }
 
   String _extensionFor(String name) {
@@ -168,7 +189,7 @@ ResumeFile _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     source: (data['source'] as String?) == 'tailored'
         ? ResumeSource.tailored
         : ResumeSource.manual,
-    path: data['local_path'] as String?,
+    storagePath: data['storage_path'] as String?,
   );
 }
 

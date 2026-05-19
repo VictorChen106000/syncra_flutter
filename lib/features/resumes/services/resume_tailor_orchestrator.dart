@@ -60,14 +60,21 @@ class ResumeTailorOrchestrator {
       return ResumeJson.fromJson(cached.cast<String, dynamic>());
     }
 
-    final localPath = data['local_path'] as String?;
-    if (localPath == null || localPath.isEmpty) {
+    final storagePath = data['storage_path'] as String?;
+    if (storagePath == null || storagePath.isEmpty) {
       throw const TailorOrchestratorException(
-        "This resume isn't on this device — re-upload it to continue.",
+        'This resume has no file attached — re-upload it to continue.',
       );
     }
 
-    final rawText = await _extractor.extractFromFile(localPath);
+    final bytes = await _resumes.downloadBytes(storagePath);
+    if (bytes == null) {
+      throw const TailorOrchestratorException(
+        'Could not download the resume from storage.',
+      );
+    }
+
+    final rawText = _extractor.extractFromBytes(bytes);
     final parsed = await _parser.parse(rawText);
     if (parsed == null) {
       throw const TailorOrchestratorException(

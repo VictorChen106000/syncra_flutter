@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -165,54 +165,63 @@ class ResumePreviewPage extends ConsumerWidget {
   }
 }
 
-class _ResumePreviewBody extends StatelessWidget {
+class _ResumePreviewBody extends ConsumerWidget {
   const _ResumePreviewBody({required this.resume});
 
   final ResumeFile resume;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final brand = context.brand;
-    if (resume.isPdf && resume.isAvailableLocally) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: brand.shadow,
-                blurRadius: 30,
-                offset: const Offset(0, 12),
-              ),
-            ],
-          ),
-          child: SizedBox.expand(
-            child: resume.bytes != null
-                ? SfPdfViewer.memory(
-                    resume.bytes!,
-                    key: ValueKey('${resume.id}-${resume.bytes!.length}'),
-                    onDocumentLoaded: (details) {
-                      debugPrint(
-                        'PDF loaded: ${details.document.pages.count} pages',
-                      );
-                    },
-                    onDocumentLoadFailed: (details) {
-                      debugPrint(
-                        'PDF load failed: ${details.error} ${details.description}',
-                      );
-                    },
-                  )
-                : SfPdfViewer.file(
-                    File(resume.path!),
-                    key: ValueKey('${resume.id}-${resume.path}'),
-                  ),
+    if (!resume.isPdf || !resume.hasStorageBlob) {
+      return _MetadataPaperPreview(resume: resume);
+    }
+
+    final bytesFuture = ref.read(resumeProvider.notifier).bytesFor(resume);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: brand.shadow,
+              blurRadius: 30,
+              offset: const Offset(0, 12),
+            ),
+          ],
+        ),
+        child: SizedBox.expand(
+          child: FutureBuilder<Uint8List?>(
+            future: bytesFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final bytes = snapshot.data;
+              if (bytes == null) {
+                return _MetadataPaperPreview(resume: resume);
+              }
+              return SfPdfViewer.memory(
+                bytes,
+                key: ValueKey('${resume.id}-${bytes.length}'),
+                onDocumentLoaded: (details) {
+                  debugPrint(
+                    'PDF loaded: ${details.document.pages.count} pages',
+                  );
+                },
+                onDocumentLoadFailed: (details) {
+                  debugPrint(
+                    'PDF load failed: ${details.error} ${details.description}',
+                  );
+                },
+              );
+            },
           ),
         ),
-      );
-    }
-    return _MetadataPaperPreview(resume: resume);
+      ),
+    );
   }
 }
 
