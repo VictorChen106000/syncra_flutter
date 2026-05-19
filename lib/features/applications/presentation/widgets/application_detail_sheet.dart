@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../../../core/constants/app_colors.dart';
+import '../../../../core/theme/brand_theme.dart';
 import '../../../../data/models/tracked_application.dart';
 import '../../state/applications_notifier.dart';
 
@@ -25,7 +25,8 @@ class ApplicationDetailSheet extends ConsumerStatefulWidget {
       _ApplicationDetailSheetState();
 }
 
-class _ApplicationDetailSheetState extends ConsumerState<ApplicationDetailSheet> {
+class _ApplicationDetailSheetState
+    extends ConsumerState<ApplicationDetailSheet> {
   final _noteCtrl = TextEditingController();
 
   @override
@@ -44,6 +45,7 @@ class _ApplicationDetailSheetState extends ConsumerState<ApplicationDetailSheet>
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final state = ref.watch(applicationsProvider);
     final notifier = ref.read(applicationsProvider.notifier);
     final app = state.items.firstWhere(
@@ -54,9 +56,9 @@ class _ApplicationDetailSheetState extends ConsumerState<ApplicationDetailSheet>
     return Padding(
       padding: EdgeInsets.only(bottom: viewport.viewInsets.bottom),
       child: Container(
-        decoration: const BoxDecoration(
-          color: AppColors.scaffold,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        decoration: BoxDecoration(
+          color: brand.bg,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         ),
         padding: EdgeInsets.only(
           left: 20,
@@ -74,7 +76,7 @@ class _ApplicationDetailSheetState extends ConsumerState<ApplicationDetailSheet>
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: AppColors.border,
+                    color: brand.border,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -82,19 +84,19 @@ class _ApplicationDetailSheetState extends ConsumerState<ApplicationDetailSheet>
               const SizedBox(height: 16),
               Text(
                 app.job.title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
-                  color: AppColors.ink,
+                  color: brand.ink,
                   letterSpacing: -0.3,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
                 '${app.job.company} · ${app.job.location}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
-                  color: AppColors.textMuted,
+                  color: brand.textMuted,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -118,13 +120,13 @@ class _ApplicationDetailSheetState extends ConsumerState<ApplicationDetailSheet>
                 onSubmit: () => _submitNote(notifier),
               ),
               if (app.notes.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.only(top: 10),
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
                   child: Text(
                     'No notes yet. Add reminders or interview prep here.',
                     style: TextStyle(
                       fontSize: 12.5,
-                      color: AppColors.textMuted,
+                      color: brand.textMuted,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -148,13 +150,14 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Text(
       label,
       style: TextStyle(
         fontSize: 11,
         fontWeight: FontWeight.w900,
         letterSpacing: 1.4,
-        color: AppColors.ink.withValues(alpha: 0.7),
+        color: brand.ink.withValues(alpha: 0.7),
       ),
     );
   }
@@ -169,6 +172,7 @@ class _Timeline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final events = <(String, String)>[
       ('Drafted', _fmt(app.draftedAt)),
       if (app.sentAt != null) ('Sent', _fmt(app.sentAt!)),
@@ -185,17 +189,17 @@ class _Timeline extends StatelessWidget {
                 Container(
                   width: 6,
                   height: 6,
-                  decoration: const BoxDecoration(
-                    color: AppColors.accentBright,
+                  decoration: BoxDecoration(
+                    color: brand.accentBright,
                     shape: BoxShape.circle,
                   ),
                 ),
                 const SizedBox(width: 10),
                 Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
-                    color: AppColors.ink,
+                    color: brand.ink,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -203,9 +207,9 @@ class _Timeline extends StatelessWidget {
                 Expanded(
                   child: Text(
                     time,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
-                      color: AppColors.textMuted,
+                      color: brand.textMuted,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -231,6 +235,7 @@ class _StatusControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Column(
       children: [
         if (app.sentAt == null)
@@ -238,18 +243,20 @@ class _StatusControls extends StatelessWidget {
             label: 'Mark as sent',
             description: 'Flips sent_at to now. Use after you submit manually.',
             trailing: Material(
-              color: AppColors.ink,
+              color: brand.ink,
               borderRadius: BorderRadius.circular(99),
               child: InkWell(
                 onTap: onMarkSent,
                 borderRadius: BorderRadius.circular(99),
-                child: const Padding(
-                  padding:
-                      EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
                   child: Text(
                     'Mark sent',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: brand.inkInverse,
                       fontSize: 12.5,
                       fontWeight: FontWeight.w800,
                     ),
@@ -264,7 +271,7 @@ class _StatusControls extends StatelessWidget {
           trailing: Switch.adaptive(
             value: app.gotReply,
             onChanged: onToggleReply,
-            activeThumbColor: AppColors.ink,
+            activeThumbColor: brand.ink,
           ),
         ),
       ],
@@ -285,13 +292,14 @@ class _ActionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: brand.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: brand.border),
       ),
       child: Row(
         children: [
@@ -301,18 +309,18 @@ class _ActionRow extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w800,
-                    color: AppColors.ink,
+                    color: brand.ink,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   description,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11.5,
-                    color: AppColors.textMuted,
+                    color: brand.textMuted,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -335,12 +343,13 @@ class _NoteComposer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: brand.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: brand.border),
       ),
       child: Row(
         children: [
@@ -351,19 +360,19 @@ class _NoteComposer extends StatelessWidget {
               maxLines: 3,
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => onSubmit(),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: 'Add a note',
                 hintStyle: TextStyle(
-                  color: AppColors.textSoft,
+                  color: brand.textSoft,
                   fontWeight: FontWeight.w500,
                 ),
                 border: InputBorder.none,
                 isCollapsed: true,
-                contentPadding: EdgeInsets.symmetric(vertical: 10),
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
               ),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
-                color: AppColors.ink,
+                color: brand.ink,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -371,8 +380,7 @@ class _NoteComposer extends StatelessWidget {
           IconButton(
             tooltip: 'Add note',
             onPressed: onSubmit,
-            icon: const Icon(Icons.send_rounded,
-                size: 18, color: AppColors.ink),
+            icon: Icon(Icons.send_rounded, size: 18, color: brand.ink),
           ),
         ],
       ),
@@ -387,23 +395,24 @@ class _NoteRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final fmt = DateFormat('MMM d · h:mm a').format(note.createdAt);
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: brand.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
+        border: Border.all(color: brand.border.withValues(alpha: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             note.body,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
-              color: AppColors.ink,
+              color: brand.ink,
               height: 1.4,
               fontWeight: FontWeight.w500,
             ),
@@ -411,9 +420,9 @@ class _NoteRow extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             fmt,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
-              color: AppColors.textSoft,
+              color: brand.textSoft,
               fontWeight: FontWeight.w700,
             ),
           ),

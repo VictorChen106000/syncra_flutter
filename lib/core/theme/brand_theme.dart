@@ -3,9 +3,7 @@ import 'package:flutter/material.dart';
 /// Semantic design tokens for both light and dark modes.
 ///
 /// Polished widgets and pages read from `Theme.of(context).extension<BrandTheme>()!`
-/// instead of the legacy `AppColors` constants. The legacy constants stay as
-/// light-mode values so unpolished screens keep rendering correctly when wrapped
-/// in [LightThemeScope].
+/// instead of the legacy `AppColors` constants.
 @immutable
 class BrandTheme extends ThemeExtension<BrandTheme> {
   const BrandTheme({

@@ -35,27 +35,21 @@ class ProfilePage extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(
                 AppConstants.screenHorizontalPadding,
-                20,
+                16,
                 AppConstants.screenHorizontalPadding,
                 140,
               ),
               children: const [
                 _ProfileHeaderCard(),
                 SizedBox(height: 24),
-                SectionTitle(title: AppStrings.agentAutonomy),
-                _AutonomySection(),
-                SizedBox(height: 24),
-                SectionTitle(title: "Today's brief"),
-                _MorningBriefSection(),
-                SizedBox(height: 24),
-                SectionTitle(title: 'Appearance'),
-                _ThemeModeSection(),
-                SizedBox(height: 24),
                 SectionTitle(title: AppStrings.careerPipeline),
                 _CareerPipelineSection(),
                 SizedBox(height: 24),
-                SectionTitle(title: AppStrings.agentPermissions),
+                SectionTitle(title: 'Connections'),
                 _IntegrationSection(),
+                SizedBox(height: 24),
+                SectionTitle(title: 'Preferences'),
+                _PreferencesSection(),
                 SizedBox(height: 24),
                 _SignOutButton(),
                 SizedBox(height: 12),
@@ -63,6 +57,149 @@ class ProfilePage extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Preferences — a single grouped card with three compact tiles:
+// Dark mode · Today's brief · Agent autonomy.
+// ---------------------------------------------------------------------------
+
+class _PreferencesSection extends StatelessWidget {
+  const _PreferencesSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _GroupedCard(
+      children: [
+        _ThemeModeTile(),
+        _GroupedDivider(),
+        _MorningBriefTile(),
+        _GroupedDivider(),
+        _AutonomyTile(),
+      ],
+    );
+  }
+}
+
+/// Standard row layout used by every preference tile.
+/// Icon · title (+ optional subtitle) · trailing control.
+class _PreferenceRow extends StatelessWidget {
+  const _PreferenceRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.trailing,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Widget trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: brand.surfaceMuted,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, size: 18, color: brand.ink),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                    color: brand.ink,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: brand.textMuted,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          trailing,
+        ],
+      ),
+    );
+  }
+}
+
+/// Tiny icon-only segmented selector — three choices in a single pill.
+/// Active option flips to ink background with accent-colored icon.
+class _MiniSegmented<T> extends StatelessWidget {
+  const _MiniSegmented({
+    required this.options,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final List<(T, IconData)> options;
+  final T selected;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: brand.surfaceMuted,
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final (value, icon) in options)
+            GestureDetector(
+              onTap: () => onChanged(value),
+              behavior: HitTestBehavior.opaque,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                width: 30,
+                height: 28,
+                margin: const EdgeInsets.symmetric(horizontal: 1),
+                decoration: BoxDecoration(
+                  color: value == selected ? brand.ink : Colors.transparent,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  icon,
+                  size: 14,
+                  color: value == selected ? brand.accent : brand.textMuted,
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -240,305 +377,84 @@ class _PulsingActiveDot extends StatelessWidget {
   }
 }
 
-class _AutonomySection extends ConsumerWidget {
-  const _AutonomySection();
-
-  static const _options = <(AutonomyLevel, String, String, IconData)>[
-    (
-      AutonomyLevel.suggest,
-      AppStrings.autonomySuggest,
-      AppStrings.autonomySuggestBody,
-      Icons.lightbulb_outline_rounded,
-    ),
-    (
-      AutonomyLevel.askFirst,
-      AppStrings.autonomyAskFirst,
-      AppStrings.autonomyAskFirstBody,
-      Icons.front_hand_outlined,
-    ),
-    (
-      AutonomyLevel.autoApply,
-      AppStrings.autonomyAutoApply,
-      AppStrings.autonomyAutoApplyBody,
-      Icons.bolt_rounded,
-    ),
-  ];
+class _ThemeModeTile extends ConsumerWidget {
+  const _ThemeModeTile();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final brand = context.brand;
-    final profile = ref.watch(userProfileProvider);
-    final selected = profile?.autonomyLevel ?? AutonomyLevel.askFirst;
-    final activeIndex = _options.indexWhere((o) => o.$1 == selected);
-    final body = _options[activeIndex.clamp(0, _options.length - 1)].$3;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: brand.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: brand.border),
-        boxShadow: [
-          BoxShadow(
-            color: brand.shadow,
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: brand.border.withValues(alpha: 0.40),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Row(
-              children: List.generate(_options.length, (i) {
-                final (level, label, _, icon) = _options[i];
-                final active = level == selected;
-                return Expanded(
-                  child: GestureDetector(
-                    onTap: () => ref
-                        .read(userProfileProvider.notifier)
-                        .setAutonomyLevel(level),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 220),
-                      curve: Curves.easeOutCubic,
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: active ? brand.ink : Colors.transparent,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            icon,
-                            size: 14,
-                            color: active ? brand.accent : brand.textMuted,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            label,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              color: active ? brand.inkInverse : brand.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              }),
-            ),
-          ),
-          const SizedBox(height: 14),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 180),
-            child: Text(
-              body,
-              key: ValueKey(selected),
-              style: TextStyle(
-                color: brand.textMuted,
-                fontSize: 13,
-                height: 1.5,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
+    final selected = ref.watch(themeModeProvider);
+    final subtitle = switch (selected) {
+      ThemeMode.light => 'Always light',
+      ThemeMode.dark => 'Always dark',
+      ThemeMode.system => 'Match device',
+    };
+    return _PreferenceRow(
+      icon: Icons.contrast_rounded,
+      title: 'Appearance',
+      subtitle: subtitle,
+      trailing: _MiniSegmented<ThemeMode>(
+        selected: selected,
+        onChanged: (m) =>
+            ref.read(themeModeProvider.notifier).setMode(m),
+        options: const [
+          (ThemeMode.light, Icons.wb_sunny_outlined),
+          (ThemeMode.dark, Icons.dark_mode_outlined),
+          (ThemeMode.system, Icons.brightness_auto_outlined),
         ],
       ),
     );
   }
 }
 
-class _MorningBriefSection extends ConsumerWidget {
-  const _MorningBriefSection();
+class _MorningBriefTile extends ConsumerWidget {
+  const _MorningBriefTile();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final brand = context.brand;
     final profile = ref.watch(userProfileProvider);
     final enabled = profile?.morningBriefEnabled ?? false;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: brand.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: brand.border),
-        boxShadow: [
-          BoxShadow(
-            color: brand.shadow,
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: enabled ? brand.ink : brand.surfaceMuted,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            alignment: Alignment.center,
-            child: Icon(
-              Icons.wb_sunny_outlined,
-              color: enabled ? brand.accent : brand.ink,
-              size: 18,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Show daily brief CTA',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                    color: brand.ink,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Adds a "Run today\'s brief" button on the dashboard. '
-                  'The agent still only runs when you tap it.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.4,
-                    color: brand.textMuted,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Switch.adaptive(
-            value: enabled,
-            activeThumbColor: brand.ink,
-            onChanged: profile == null
-                ? null
-                : (v) => ref
-                    .read(userProfileProvider.notifier)
-                    .setMorningBriefEnabled(v),
-          ),
-        ],
+    return _PreferenceRow(
+      icon: Icons.wb_sunny_outlined,
+      title: "Today's brief",
+      subtitle: enabled ? 'Dashboard CTA on' : 'Dashboard CTA off',
+      trailing: Switch.adaptive(
+        value: enabled,
+        activeThumbColor: brand.ink,
+        onChanged: profile == null
+            ? null
+            : (v) => ref
+                .read(userProfileProvider.notifier)
+                .setMorningBriefEnabled(v),
       ),
     );
   }
 }
 
-// ---------------------------------------------------------------------------
-// Theme mode toggle — segmented Light / Dark / System with persistence.
-// ---------------------------------------------------------------------------
-
-class _ThemeModeSection extends ConsumerWidget {
-  const _ThemeModeSection();
-
-  static const _options = <(ThemeMode, String, IconData)>[
-    (ThemeMode.light, 'Light', Icons.wb_sunny_outlined),
-    (ThemeMode.dark, 'Dark', Icons.dark_mode_outlined),
-    (ThemeMode.system, 'System', Icons.brightness_auto_outlined),
-  ];
+class _AutonomyTile extends ConsumerWidget {
+  const _AutonomyTile();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final brand = context.brand;
-    final selected = ref.watch(themeModeProvider);
-    final body = switch (selected) {
-      ThemeMode.light => 'Always use the light palette.',
-      ThemeMode.dark => 'Always use the dark palette.',
-      ThemeMode.system => 'Match your device theme setting.',
+    final profile = ref.watch(userProfileProvider);
+    final selected = profile?.autonomyLevel ?? AutonomyLevel.askFirst;
+    final subtitle = switch (selected) {
+      AutonomyLevel.suggest => 'Only suggest',
+      AutonomyLevel.askFirst => 'Ask before acting',
+      AutonomyLevel.autoApply => 'Auto-apply',
     };
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: brand.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: brand.border),
-        boxShadow: [
-          BoxShadow(
-            color: brand.shadow,
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: brand.border.withValues(alpha: 0.40),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Row(
-              children: List.generate(_options.length, (i) {
-                final (mode, label, icon) = _options[i];
-                final active = mode == selected;
-                return Expanded(
-                  child: GestureDetector(
-                    onTap: () =>
-                        ref.read(themeModeProvider.notifier).setMode(mode),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 220),
-                      curve: Curves.easeOutCubic,
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: active ? brand.ink : Colors.transparent,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            icon,
-                            size: 14,
-                            color: active ? brand.accent : brand.textMuted,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            label,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              color: active
-                                  ? brand.inkInverse
-                                  : brand.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              }),
-            ),
-          ),
-          const SizedBox(height: 14),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 180),
-            child: Text(
-              body,
-              key: ValueKey(selected),
-              style: TextStyle(
-                color: brand.textMuted,
-                fontSize: 13,
-                height: 1.5,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
+    return _PreferenceRow(
+      icon: Icons.bolt_rounded,
+      title: 'Agent autonomy',
+      subtitle: subtitle,
+      trailing: _MiniSegmented<AutonomyLevel>(
+        selected: selected,
+        onChanged: (l) =>
+            ref.read(userProfileProvider.notifier).setAutonomyLevel(l),
+        options: const [
+          (AutonomyLevel.suggest, Icons.lightbulb_outline_rounded),
+          (AutonomyLevel.askFirst, Icons.front_hand_outlined),
+          (AutonomyLevel.autoApply, Icons.bolt_rounded),
         ],
       ),
     );

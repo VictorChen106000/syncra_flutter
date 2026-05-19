@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/constants/app_colors.dart';
+import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/utils/file_formatter.dart';
 import '../../models/chat_message.dart';
 
-/// Right-aligned bubble for a user's message. Claude-style: soft fill, no
-/// border, generous rounded corners with a subtle "tail" via asymmetric radius.
+/// Right-aligned bubble for a user's message.
 class UserMessageView extends StatelessWidget {
   const UserMessageView({super.key, required this.message});
 
@@ -13,6 +12,7 @@ class UserMessageView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Padding(
       padding: const EdgeInsets.only(bottom: 24, top: 4),
       child: Row(
@@ -28,9 +28,9 @@ class UserMessageView extends StatelessWidget {
                   horizontal: 16,
                   vertical: 12,
                 ),
-                decoration: const BoxDecoration(
-                  color: AppColors.softSurface,
-                  borderRadius: BorderRadius.only(
+                decoration: BoxDecoration(
+                  color: brand.surfaceMuted,
+                  borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(20),
                     topRight: Radius.circular(20),
                     bottomLeft: Radius.circular(20),
@@ -51,16 +51,16 @@ class UserMessageView extends StatelessWidget {
                               vertical: 6,
                             ),
                             decoration: BoxDecoration(
-                              color: AppColors.surface,
+                              color: brand.surface,
                               borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: AppColors.border),
+                              border: Border.all(color: brand.border),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Icon(
+                                Icon(
                                   Icons.description_rounded,
-                                  color: AppColors.ink,
+                                  color: brand.ink,
                                   size: 13,
                                 ),
                                 const SizedBox(width: 6),
@@ -69,8 +69,8 @@ class UserMessageView extends StatelessWidget {
                                     FileFormatter.cleanName(attachment.name),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: AppColors.ink,
+                                    style: TextStyle(
+                                      color: brand.ink,
                                       fontSize: 12,
                                       fontWeight: FontWeight.w700,
                                     ),
@@ -85,8 +85,8 @@ class UserMessageView extends StatelessWidget {
                     ],
                     SelectableText(
                       message.text,
-                      style: const TextStyle(
-                        color: AppColors.ink,
+                      style: TextStyle(
+                        color: brand.ink,
                         fontSize: 15,
                         height: 1.5,
                         fontWeight: FontWeight.w500,

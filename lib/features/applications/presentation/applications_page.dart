@@ -4,10 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../data/models/tracked_application.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/empty_state_card.dart';
@@ -19,6 +19,7 @@ class ApplicationsPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
     ref.listen<ApplicationsState>(applicationsProvider, (prev, next) {
       if (next.lastMessage == null || next.lastMessage == prev?.lastMessage) {
         return;
@@ -26,12 +27,7 @@ class ApplicationsPage extends ConsumerWidget {
       ref.read(applicationsProvider.notifier).consumeMessage();
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            content: Text(next.lastMessage!),
-          ),
-        );
+        ..showSnackBar(SnackBar(content: Text(next.lastMessage!)));
     });
 
     final state = ref.watch(applicationsProvider);
@@ -40,7 +36,7 @@ class ApplicationsPage extends ConsumerWidget {
     final allItems = state.items;
 
     return Scaffold(
-      backgroundColor: AppColors.scaffold,
+      backgroundColor: brand.bg,
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -62,8 +58,8 @@ class ApplicationsPage extends ConsumerWidget {
                   const SizedBox(height: 20),
                   Text(
                     AppStrings.applicationsSubtitle,
-                    style: const TextStyle(
-                      color: AppColors.textMuted,
+                    style: TextStyle(
+                      color: brand.textMuted,
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
                       height: 1.45,
@@ -119,26 +115,27 @@ class _SummaryStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     int countOf(ApplicationPhase p) =>
         apps.where((a) => a.phase == p).length;
     final cells = <(int, String, Color, Color)>[
       (
         countOf(ApplicationPhase.draft),
         'Drafts',
-        AppColors.softSurface,
-        AppColors.ink,
+        brand.surfaceMuted,
+        brand.ink,
       ),
       (
         countOf(ApplicationPhase.sent),
         'Sent',
-        AppColors.ink,
-        AppColors.accent,
+        brand.ink,
+        brand.accent,
       ),
       (
         countOf(ApplicationPhase.replied),
         'Replied',
-        AppColors.accent,
-        AppColors.ink,
+        brand.accent,
+        brand.onAccent,
       ),
     ];
     return Row(
@@ -174,12 +171,13 @@ class _SummaryTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border.withValues(alpha: 0.6)),
+        border: Border.all(color: brand.border.withValues(alpha: 0.6)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -249,8 +247,9 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Material(
-      color: active ? AppColors.ink : AppColors.surface,
+      color: active ? brand.ink : brand.surface,
       borderRadius: BorderRadius.circular(99),
       child: InkWell(
         onTap: onTap,
@@ -260,7 +259,7 @@ class _FilterChip extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(99),
             border: Border.all(
-              color: active ? Colors.transparent : AppColors.border,
+              color: active ? Colors.transparent : brand.border,
             ),
           ),
           child: Text(
@@ -268,7 +267,7 @@ class _FilterChip extends StatelessWidget {
             style: TextStyle(
               fontSize: 12.5,
               fontWeight: FontWeight.w800,
-              color: active ? Colors.white : AppColors.ink,
+              color: active ? brand.inkInverse : brand.ink,
             ),
           ),
         ),
@@ -282,23 +281,24 @@ class _EmptyFiltered extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: brand.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: brand.border),
       ),
-      child: const Column(
+      child: Column(
         children: [
           Icon(Icons.filter_alt_off_outlined,
-              color: AppColors.textMuted, size: 26),
-          SizedBox(height: 8),
+              color: brand.textMuted, size: 26),
+          const SizedBox(height: 8),
           Text(
             'No applications match this filter',
             style: TextStyle(
               fontWeight: FontWeight.w800,
-              color: AppColors.ink,
+              color: brand.ink,
             ),
           ),
         ],
@@ -330,10 +330,11 @@ class _TrackerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
-        color: AppColors.surface,
+        color: brand.surface,
         borderRadius: BorderRadius.circular(20),
         child: InkWell(
           onTap: onTap,
@@ -342,7 +343,7 @@ class _TrackerCard extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppColors.border),
+              border: Border.all(color: brand.border),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -356,11 +357,11 @@ class _TrackerCard extends StatelessWidget {
                         children: [
                           Text(
                             app.job.company,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w800,
                               letterSpacing: 0.4,
-                              color: AppColors.textMuted,
+                              color: brand.textMuted,
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -368,10 +369,10 @@ class _TrackerCard extends StatelessWidget {
                             app.job.title,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w800,
-                              color: AppColors.ink,
+                              color: brand.ink,
                               letterSpacing: -0.2,
                               height: 1.25,
                             ),
@@ -385,37 +386,37 @@ class _TrackerCard extends StatelessWidget {
                 const SizedBox(height: 12),
                 Text(
                   _phaseLine(app),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12.5,
-                    color: AppColors.textMuted,
+                    color: brand.textMuted,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 10),
-                const Divider(color: AppColors.border, height: 1),
+                Divider(color: brand.border, height: 1),
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.mark_email_read_outlined,
                       size: 16,
-                      color: AppColors.textMuted,
+                      color: brand.textMuted,
                     ),
                     const SizedBox(width: 8),
-                    const Expanded(
+                    Expanded(
                       child: Text(
                         'Got a reply',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.ink,
+                          color: brand.ink,
                         ),
                       ),
                     ),
                     Switch.adaptive(
                       value: app.gotReply,
                       onChanged: onToggleReply,
-                      activeThumbColor: AppColors.ink,
+                      activeThumbColor: brand.ink,
                     ),
                   ],
                 ),
@@ -435,10 +436,11 @@ class _PhaseBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final (bg, fg) = switch (phase) {
-      ApplicationPhase.draft => (AppColors.softSurface, AppColors.ink),
-      ApplicationPhase.sent => (AppColors.ink, AppColors.accent),
-      ApplicationPhase.replied => (AppColors.accent, AppColors.ink),
+      ApplicationPhase.draft => (brand.surfaceMuted, brand.ink),
+      ApplicationPhase.sent => (brand.ink, brand.accent),
+      ApplicationPhase.replied => (brand.accent, brand.onAccent),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -447,7 +449,7 @@ class _PhaseBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(99),
         border: Border.all(
           color: phase == ApplicationPhase.draft
-              ? AppColors.border
+              ? brand.border
               : Colors.transparent,
         ),
       ),

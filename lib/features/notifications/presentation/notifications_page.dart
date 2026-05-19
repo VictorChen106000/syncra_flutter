@@ -7,6 +7,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../models/app_notification.dart';
 import '../state/notifications_notifier.dart';
@@ -28,6 +29,7 @@ class NotificationsPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
     ref.listen<NotificationsState>(notificationsProvider, (prev, next) {
       if (next.lastMessage == null || next.lastMessage == prev?.lastMessage) {
         return;
@@ -35,12 +37,7 @@ class NotificationsPage extends ConsumerWidget {
       ref.read(notificationsProvider.notifier).consumeMessage();
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            content: Text(next.lastMessage!),
-          ),
-        );
+        ..showSnackBar(SnackBar(content: Text(next.lastMessage!)));
     });
 
     final state = ref.watch(notificationsProvider);
@@ -49,7 +46,7 @@ class NotificationsPage extends ConsumerWidget {
     final items = state.filtered;
 
     return Scaffold(
-      backgroundColor: AppColors.scaffold,
+      backgroundColor: brand.bg,
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -151,8 +148,9 @@ class _TabChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Material(
-      color: active ? AppColors.ink : AppColors.surface,
+      color: active ? brand.ink : brand.surface,
       borderRadius: BorderRadius.circular(99),
       child: InkWell(
         onTap: onTap,
@@ -162,7 +160,7 @@ class _TabChip extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(99),
             border: Border.all(
-              color: active ? AppColors.ink : AppColors.border,
+              color: active ? brand.ink : brand.border,
             ),
           ),
           child: Text(
@@ -170,7 +168,7 @@ class _TabChip extends StatelessWidget {
             style: TextStyle(
               fontSize: 12.5,
               fontWeight: FontWeight.w800,
-              color: active ? Colors.white : AppColors.ink,
+              color: active ? brand.inkInverse : brand.ink,
             ),
           ),
         ),
@@ -182,12 +180,11 @@ class _TabChip extends StatelessWidget {
 class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.hasAnyEver});
 
-  /// When false: brand-new user, agent hasn't run anything yet.
-  /// When true: the Unread filter is active but everything's been read.
   final bool hasAnyEver;
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final title = hasAnyEver ? "You're all caught up" : 'Nothing here yet';
     final body = hasAnyEver
         ? 'Switch to "All" to see your history.'
@@ -199,31 +196,31 @@ class _EmptyState extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: brand.surface,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: brand.border),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.notifications_none_rounded,
-                  size: 28, color: AppColors.textMuted),
+              Icon(Icons.notifications_none_rounded,
+                  size: 28, color: brand.textMuted),
               const SizedBox(height: 10),
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w900,
-                  color: AppColors.ink,
+                  color: brand.ink,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
                 body,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
-                  color: AppColors.textMuted,
+                  color: brand.textMuted,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -242,6 +239,7 @@ class _ReadAllChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Material(
       color: Colors.transparent,
       borderRadius: BorderRadius.circular(99),
@@ -251,16 +249,16 @@ class _ReadAllChip extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: brand.surface,
             borderRadius: BorderRadius.circular(99),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: brand.border),
           ),
-          child: const Text(
+          child: Text(
             AppStrings.markAllRead,
             style: TextStyle(
               fontSize: 11.5,
               fontWeight: FontWeight.w800,
-              color: AppColors.ink,
+              color: brand.ink,
             ),
           ),
         ),
@@ -282,26 +280,27 @@ class _NotificationCard extends StatelessWidget {
   final VoidCallback onAction;
   final VoidCallback onMarkRead;
 
-  (IconData, Color, Color) get _icon => switch (notification.kind) {
+  (IconData, Color, Color) _icon(BrandTheme brand) =>
+      switch (notification.kind) {
         NotificationKind.intercept => (
             Icons.front_hand_outlined,
-            AppColors.warning.withValues(alpha: 0.20),
+            brand.warning.withValues(alpha: 0.20),
             AppColors.categoryInputDeep,
           ),
         NotificationKind.reply => (
             Icons.mark_email_unread_outlined,
-            AppColors.accent.withValues(alpha: 0.30),
-            AppColors.ink,
+            brand.accent.withValues(alpha: 0.30),
+            brand.ink,
           ),
         NotificationKind.drafted => (
             Icons.edit_note_rounded,
-            AppColors.softSurface,
-            AppColors.ink,
+            brand.surfaceMuted,
+            brand.ink,
           ),
         NotificationKind.undo => (
             Icons.undo_rounded,
-            AppColors.softSurface,
-            AppColors.ink,
+            brand.surfaceMuted,
+            brand.ink,
           ),
         NotificationKind.match => (
             Icons.auto_awesome_rounded,
@@ -312,9 +311,10 @@ class _NotificationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (icon, bg, fg) = _icon;
+    final brand = context.brand;
+    final (icon, bg, fg) = _icon(brand);
     return Material(
-      color: AppColors.surface,
+      color: brand.surface,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: onTap,
@@ -325,12 +325,12 @@ class _NotificationCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: notification.unread
-                  ? AppColors.ink.withValues(alpha: 0.15)
-                  : AppColors.border.withValues(alpha: 0.60),
+                  ? brand.ink.withValues(alpha: 0.15)
+                  : brand.border.withValues(alpha: 0.60),
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
+                color: brand.shadow,
                 blurRadius: 16,
                 offset: const Offset(0, 4),
               ),
@@ -359,10 +359,10 @@ class _NotificationCard extends StatelessWidget {
                         Expanded(
                           child: Text(
                             notification.title,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w900,
-                              color: AppColors.ink,
+                              color: brand.ink,
                             ),
                           ),
                         ),
@@ -373,8 +373,8 @@ class _NotificationCard extends StatelessWidget {
                             child: Container(
                               width: 10,
                               height: 10,
-                              decoration: const BoxDecoration(
-                                color: AppColors.danger,
+                              decoration: BoxDecoration(
+                                color: brand.danger,
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -384,9 +384,9 @@ class _NotificationCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       notification.body,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12.5,
-                        color: AppColors.textMuted,
+                        color: brand.textMuted,
                         height: 1.45,
                         fontWeight: FontWeight.w500,
                       ),
@@ -396,10 +396,10 @@ class _NotificationCard extends StatelessWidget {
                       children: [
                         Text(
                           notification.timestamp,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
-                            color: AppColors.textSoft,
+                            color: brand.textSoft,
                           ),
                         ),
                         if (notification.actionLabel != null) ...[
@@ -430,6 +430,7 @@ class _InlineAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Material(
       color: Colors.transparent,
       borderRadius: BorderRadius.circular(99),
@@ -439,7 +440,7 @@ class _InlineAction extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
-            color: AppColors.ink,
+            color: brand.ink,
             borderRadius: BorderRadius.circular(99),
           ),
           child: Row(
@@ -447,17 +448,17 @@ class _InlineAction extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w900,
-                  color: Colors.white,
+                  color: brand.inkInverse,
                 ),
               ),
               const SizedBox(width: 4),
-              const Icon(
+              Icon(
                 Icons.arrow_forward_rounded,
                 size: 12,
-                color: AppColors.accent,
+                color: brand.accent,
               ),
             ],
           ),

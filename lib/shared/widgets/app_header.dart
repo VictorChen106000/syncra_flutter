@@ -18,6 +18,7 @@ class AppHeader extends StatelessWidget {
     this.bottom,
     this.bottomPadding = 16,
     this.topPadding = 14,
+    this.leadingGap = 12,
   });
 
   /// Home (Dashboard) — avatar + name/role + notification bell.
@@ -37,8 +38,9 @@ class AppHeader extends StatelessWidget {
         showDot: unreadCount > 0,
       ),
       bottom: bottom,
-      topPadding: 18,
-      bottomPadding: bottom == null ? 18 : 16,
+      topPadding: 16,
+      bottomPadding: 16,
+      leadingGap: 14,
     );
   }
 
@@ -81,6 +83,7 @@ class AppHeader extends StatelessWidget {
   final Widget? bottom;
   final double bottomPadding;
   final double topPadding;
+  final double leadingGap;
 
   @override
   Widget build(BuildContext context) {
@@ -100,12 +103,14 @@ class AppHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               ?leading,
+              if (leading != null && titleWidget != null)
+                SizedBox(width: leadingGap),
               if (titleWidget != null) Expanded(child: titleWidget!),
               ?trailing,
             ],
           ),
           if (bottom != null) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 18),
             bottom!,
           ],
         ],
@@ -121,34 +126,35 @@ class _HomeTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    return Padding(
-      padding: const EdgeInsets.only(left: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            name,
-            style: TextStyle(
-              color: brand.ink,
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -0.5,
-              height: 1.05,
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: brand.ink,
+            fontSize: 24,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.5,
+            height: 1.05,
           ),
-          const SizedBox(height: 4),
-          Text(
-            role,
-            style: TextStyle(
-              color: brand.textMuted,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.1,
-            ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          role,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: brand.textMuted,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.1,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

@@ -3,8 +3,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/constants/app_colors.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/motion.dart';
 import '../../../fixtures/mock_agent_service.dart';
 import '../models/chat_message.dart';
@@ -44,18 +44,20 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<AgentChatState>(agentChatProvider, (_, _) => _scheduleScrollToBottom());
+    final brand = context.brand;
+    ref.listen<AgentChatState>(
+      agentChatProvider,
+      (_, _) => _scheduleScrollToBottom(),
+    );
 
     final state = ref.watch(agentChatProvider);
     final notifier = ref.read(agentChatProvider.notifier);
 
-    // Empty/intro state — only the initial greeting turn exists
-    // and the user hasn't sent anything yet.
     final onlyInitial =
         state.items.length == 1 && state.items.first is AgentTurn;
 
     return Scaffold(
-      backgroundColor: AppColors.surface,
+      backgroundColor: brand.surface,
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -87,10 +89,6 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Header — minimal Claude-style top bar: back + centered title + new chat
-// ---------------------------------------------------------------------------
-
 class _ChatHeader extends StatelessWidget {
   const _ChatHeader({required this.isStreaming});
 
@@ -98,12 +96,13 @@ class _ChatHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Container(
       padding: const EdgeInsets.fromLTRB(8, 10, 12, 10),
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
+      decoration: BoxDecoration(
+        color: brand.surface,
         border: Border(
-          bottom: BorderSide(color: AppColors.border, width: 0.6),
+          bottom: BorderSide(color: brand.border, width: 0.6),
         ),
       ),
       child: Row(
@@ -120,24 +119,24 @@ class _ChatHeader extends StatelessWidget {
                   Container(
                     width: 22,
                     height: 22,
-                    decoration: const BoxDecoration(
-                      color: AppColors.ink,
+                    decoration: BoxDecoration(
+                      color: brand.ink,
                       shape: BoxShape.circle,
                     ),
                     alignment: Alignment.center,
-                    child: const Icon(
+                    child: Icon(
                       Icons.auto_awesome_rounded,
-                      color: AppColors.accent,
+                      color: brand.accent,
                       size: 12,
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Text(
+                  Text(
                     'Syncra',
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w800,
-                      color: AppColors.ink,
+                      color: brand.ink,
                       letterSpacing: -0.2,
                     ),
                   ),
@@ -163,6 +162,7 @@ class _IconBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Material(
       color: Colors.transparent,
       borderRadius: BorderRadius.circular(99),
@@ -172,7 +172,7 @@ class _IconBtn extends StatelessWidget {
         child: SizedBox(
           width: 40,
           height: 40,
-          child: Icon(icon, size: 18, color: AppColors.ink),
+          child: Icon(icon, size: 18, color: brand.ink),
         ),
       ),
     );
@@ -184,15 +184,16 @@ class _LiveDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Container(
       width: 8,
       height: 8,
       decoration: BoxDecoration(
-        color: AppColors.accentBright,
+        color: brand.accentBright,
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: AppColors.accentBright.withValues(alpha: 0.45),
+            color: brand.accentBright.withValues(alpha: 0.45),
             blurRadius: 6,
             spreadRadius: 1,
           ),
@@ -206,10 +207,6 @@ class _LiveDot extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Empty state — centered greeting + suggested prompt cards
-// ---------------------------------------------------------------------------
-
 class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.onPromptTap});
 
@@ -217,31 +214,31 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     const prompts = MockAgentService.dashboardPrompts;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 60, 24, 24),
       children: [
-        // Sparkle mark
         Center(
           child: Container(
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              color: AppColors.ink,
+              color: brand.ink,
               borderRadius: BorderRadius.circular(18),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.ink.withValues(alpha: 0.12),
+                  color: brand.ink.withValues(alpha: 0.12),
                   blurRadius: 24,
                   offset: const Offset(0, 10),
                 ),
               ],
             ),
             alignment: Alignment.center,
-            child: const Icon(
+            child: Icon(
               Icons.auto_awesome_rounded,
-              color: AppColors.accent,
+              color: brand.accent,
               size: 26,
             ),
           ),
@@ -250,13 +247,13 @@ class _EmptyState extends StatelessWidget {
             .fadeIn(duration: 380.ms)
             .scale(begin: const Offset(0.85, 0.85), end: const Offset(1, 1)),
         const SizedBox(height: 22),
-        const Text(
+        Text(
           'How can I help today?',
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 26,
             fontWeight: FontWeight.w800,
-            color: AppColors.ink,
+            color: brand.ink,
             letterSpacing: -0.6,
             height: 1.1,
           ),
@@ -273,12 +270,11 @@ class _EmptyState extends StatelessWidget {
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w500,
-            color: AppColors.textMuted,
+            color: brand.textMuted,
             height: 1.45,
           ),
         ).animate(delay: 160.ms).fadeIn(duration: 380.ms),
         const SizedBox(height: 36),
-        // Prompt cards
         for (var i = 0; i < prompts.length; i++) ...[
           _PromptCard(
             text: prompts[i],
@@ -320,8 +316,9 @@ class _PromptCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Material(
-      color: AppColors.softSurface,
+      color: brand.surfaceMuted,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
@@ -330,7 +327,7 @@ class _PromptCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.border.withValues(alpha: 0.7)),
+            border: Border.all(color: brand.border.withValues(alpha: 0.7)),
           ),
           child: Row(
             children: [
@@ -338,31 +335,31 @@ class _PromptCard extends StatelessWidget {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: brand.surface,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: brand.border),
                 ),
                 alignment: Alignment.center,
-                child: Icon(icon, size: 16, color: AppColors.ink),
+                child: Icon(icon, size: 16, color: brand.ink),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   text,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.ink,
+                    color: brand.ink,
                     letterSpacing: -0.15,
                     height: 1.35,
                   ),
                 ),
               ),
               const SizedBox(width: 8),
-              const Icon(
+              Icon(
                 Icons.arrow_forward_rounded,
                 size: 16,
-                color: AppColors.textSoft,
+                color: brand.textSoft,
               ),
             ],
           ),

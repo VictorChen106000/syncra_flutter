@@ -5,8 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
-import '../../../core/constants/app_colors.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/brand_theme.dart';
 import '../../../shared/widgets/app_back_button.dart';
 import '../models/resume_file.dart';
 import '../state/resume_notifier.dart';
@@ -17,6 +17,7 @@ class ResumePreviewPage extends ConsumerWidget {
   final ResumeFile? resume;
 
   void _confirmDelete(BuildContext context, WidgetRef ref, ResumeFile r) {
+    final brand = context.brand;
     showDialog<void>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
@@ -28,17 +29,14 @@ class ResumePreviewPage extends ConsumerWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            style: FilledButton.styleFrom(backgroundColor: brand.danger),
             onPressed: () {
               Navigator.of(dialogCtx).pop();
               ref.read(resumeProvider.notifier).deleteResume(r.id);
               ScaffoldMessenger.of(context)
                 ..clearSnackBars()
                 ..showSnackBar(
-                  SnackBar(
-                    behavior: SnackBarBehavior.floating,
-                    content: Text('${r.name} deleted'),
-                  ),
+                  SnackBar(content: Text('${r.name} deleted')),
                 );
               context.go(RouteNames.resumes);
             },
@@ -51,6 +49,7 @@ class ResumePreviewPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
     final allResumes = ref.watch(resumeProvider).allResumes;
     final latestResume = resume == null
         ? null
@@ -60,7 +59,7 @@ class ResumePreviewPage extends ConsumerWidget {
             );
 
     return Scaffold(
-      backgroundColor: AppColors.scaffold,
+      backgroundColor: brand.bg,
       body: SafeArea(
         bottom: false,
         child: Stack(
@@ -76,8 +75,8 @@ class ResumePreviewPage extends ConsumerWidget {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      AppColors.scaffold.withValues(alpha: 0.95),
-                      AppColors.scaffold.withValues(alpha: 0),
+                      brand.bg.withValues(alpha: 0.95),
+                      brand.bg.withValues(alpha: 0),
                     ],
                   ),
                 ),
@@ -91,8 +90,8 @@ class ResumePreviewPage extends ConsumerWidget {
                       Container(
                         width: 40,
                         height: 40,
-                        decoration: const BoxDecoration(
-                          color: AppColors.surface,
+                        decoration: BoxDecoration(
+                          color: brand.surface,
                           shape: BoxShape.circle,
                         ),
                         child: IconButton(
@@ -100,9 +99,9 @@ class ResumePreviewPage extends ConsumerWidget {
                           tooltip: 'Delete resume',
                           onPressed: () =>
                               _confirmDelete(context, ref, latestResume),
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.delete_outline_rounded,
-                            color: AppColors.textMuted,
+                            color: brand.textMuted,
                             size: 18,
                           ),
                         ),
@@ -128,18 +127,18 @@ class ResumePreviewPage extends ConsumerWidget {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                     decoration: BoxDecoration(
-                      color: AppColors.ink.withValues(alpha: 0.80),
+                      color: brand.ink.withValues(alpha: 0.80),
                       borderRadius: BorderRadius.circular(99),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.20),
+                        color: brand.inkInverse.withValues(alpha: 0.20),
                       ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.description_rounded,
-                          color: AppColors.accent,
+                          color: brand.accent,
                           size: 14,
                         ),
                         const SizedBox(width: 6),
@@ -147,8 +146,8 @@ class ResumePreviewPage extends ConsumerWidget {
                           child: Text(
                             latestResume.name,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: brand.inkInverse,
                               fontSize: 12,
                               fontWeight: FontWeight.w800,
                             ),
@@ -166,8 +165,6 @@ class ResumePreviewPage extends ConsumerWidget {
   }
 }
 
-/// Renders the actual PDF when bytes/path are available; falls back to a
-/// metadata placeholder for DOC/DOCX or seeded mock files.
 class _ResumePreviewBody extends StatelessWidget {
   const _ResumePreviewBody({required this.resume});
 
@@ -175,6 +172,7 @@ class _ResumePreviewBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     if (resume.isPdf && resume.isAvailableLocally) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(20),
@@ -184,7 +182,7 @@ class _ResumePreviewBody extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
+                color: brand.shadow,
                 blurRadius: 30,
                 offset: const Offset(0, 12),
               ),
@@ -225,13 +223,14 @@ class _MetadataPaperPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: brand.surface,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
+            color: brand.shadow,
             blurRadius: 30,
             offset: const Offset(0, 12),
           ),
@@ -244,18 +243,18 @@ class _MetadataPaperPreview extends StatelessWidget {
           children: [
             Text(
               resume.name.replaceAll(RegExp(r'\.(pdf|docx?)$'), ''),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w900,
-                color: AppColors.ink,
+                color: brand.ink,
                 letterSpacing: -0.5,
               ),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'Document preview · open the file to view its contents',
               style: TextStyle(
-                color: AppColors.textMuted,
+                color: brand.textMuted,
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
               ),
@@ -285,6 +284,7 @@ class _PreviewSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Column(
@@ -296,14 +296,14 @@ class _PreviewSection extends StatelessWidget {
               fontSize: 10.5,
               fontWeight: FontWeight.w900,
               letterSpacing: 1.6,
-              color: AppColors.ink.withValues(alpha: 0.70),
+              color: brand.ink.withValues(alpha: 0.70),
             ),
           ),
           const SizedBox(height: 6),
           Text(
             body,
-            style: const TextStyle(
-              color: AppColors.ink,
+            style: TextStyle(
+              color: brand.ink,
               fontSize: 13,
               height: 1.5,
               fontWeight: FontWeight.w500,
@@ -318,13 +318,14 @@ class _PreviewSection extends StatelessWidget {
 class _EmptyPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Center(
       child: Container(
         padding: const EdgeInsets.all(28),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: brand.surface,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: brand.border),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -333,31 +334,31 @@ class _EmptyPreview extends StatelessWidget {
               width: 56,
               height: 56,
               decoration: BoxDecoration(
-                color: AppColors.ink,
+                color: brand.ink,
                 borderRadius: BorderRadius.circular(18),
               ),
               alignment: Alignment.center,
-              child: const Icon(
+              child: Icon(
                 Icons.description_rounded,
-                color: Colors.white,
+                color: brand.inkInverse,
                 size: 24,
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'No resume selected',
               style: TextStyle(
                 fontWeight: FontWeight.w900,
                 fontSize: 16,
-                color: AppColors.ink,
+                color: brand.ink,
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Go back to your resume list and choose a file to preview.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: AppColors.textMuted,
+                color: brand.textMuted,
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
                 height: 1.5,

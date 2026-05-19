@@ -7,12 +7,10 @@ import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/router/route_names.dart';
+import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/utils/motion.dart';
 import '../../state/passive_agent_notifier.dart';
 
-/// Status card for the passive agent's brief pipeline. Shows the latest
-/// scan state, lets the user trigger a new brief, and surfaces a 3-tier
-/// breakdown of pipeline results.
 class PassiveAgentCard extends ConsumerWidget {
   const PassiveAgentCard({super.key});
 
@@ -33,112 +31,112 @@ class PassiveAgentCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
     final state = ref.watch(passiveAgentProvider);
     final notifier = ref.read(passiveAgentProvider.notifier);
     final running = state.isRunning;
     final lastBrief = state.lastBriefAt;
     return Container(
-          padding: const EdgeInsets.all(AppConstants.cardPadding),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius:
-                BorderRadius.circular(AppConstants.largeCardRadius),
-            border: Border.all(color: AppColors.border),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-              ),
-            ],
+      padding: const EdgeInsets.all(AppConstants.cardPadding),
+      decoration: BoxDecoration(
+        color: brand.surface,
+        borderRadius: BorderRadius.circular(AppConstants.largeCardRadius),
+        border: Border.all(color: brand.border),
+        boxShadow: [
+          BoxShadow(
+            color: brand.shadow,
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  _StatusOrb(running: running),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'PASSIVE AGENT',
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.4,
-                            color: AppColors.textMuted,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _statusLabel(state.status),
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.ink,
-                            letterSpacing: -0.2,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  _BriefButton(
-                    running: running,
-                    onPressed: notifier.runBrief,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              _PipelineBreakdown(
-                ready: state.readyCount,
-                inputNeeded: state.inputNeededCount,
-                exploration: state.explorationCount,
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      lastBrief == null
-                          ? 'Tap “Run brief” to scan overnight matches.'
-                          : 'Last brief at ${DateFormat('h:mm a').format(lastBrief)}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textMuted,
-                        fontWeight: FontWeight.w600,
+              _StatusOrb(running: running),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'PASSIVE AGENT',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.4,
+                        color: brand.textMuted,
                       ),
                     ),
-                  ),
-                  TextButton(
-                    onPressed: () => context.go(RouteNames.jobs),
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppColors.ink,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
+                    const SizedBox(height: 2),
+                    Text(
+                      _statusLabel(state.status),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: brand.ink,
+                        letterSpacing: -0.2,
+                      ),
                     ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'Open pipeline',
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        SizedBox(width: 4),
-                        Icon(Icons.arrow_forward_rounded, size: 14),
-                      ],
-                    ),
-                  ),
-                ],
+                  ],
+                ),
+              ),
+              _BriefButton(
+                running: running,
+                onPressed: notifier.runBrief,
               ),
             ],
           ),
-        );
+          const SizedBox(height: 14),
+          _PipelineBreakdown(
+            ready: state.readyCount,
+            inputNeeded: state.inputNeededCount,
+            exploration: state.explorationCount,
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  lastBrief == null
+                      ? 'Tap "Run brief" to scan overnight matches.'
+                      : 'Last brief at ${DateFormat('h:mm a').format(lastBrief)}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: brand.textMuted,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () => context.go(RouteNames.jobs),
+                style: TextButton.styleFrom(
+                  foregroundColor: brand.ink,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 6),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Open pipeline',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    SizedBox(width: 4),
+                    Icon(Icons.arrow_forward_rounded, size: 14),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -149,17 +147,18 @@ class _StatusOrb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final core = Container(
       width: 36,
       height: 36,
       decoration: BoxDecoration(
-        color: AppColors.ink,
+        color: brand.ink,
         borderRadius: BorderRadius.circular(12),
       ),
       alignment: Alignment.center,
       child: Icon(
         running ? Icons.radar_rounded : Icons.bolt_rounded,
-        color: AppColors.accent,
+        color: brand.accent,
         size: 18,
       ),
     );
@@ -183,10 +182,11 @@ class _BriefButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return FilledButton(
       style: FilledButton.styleFrom(
-        backgroundColor: running ? AppColors.softSurface : AppColors.ink,
-        foregroundColor: running ? AppColors.ink : Colors.white,
+        backgroundColor: running ? brand.surfaceMuted : brand.ink,
+        foregroundColor: running ? brand.ink : brand.inkInverse,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
@@ -197,12 +197,12 @@ class _BriefButton extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (running)
-            const SizedBox(
+            SizedBox(
               width: 12,
               height: 12,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: AppColors.ink,
+                color: brand.ink,
               ),
             )
           else
@@ -234,14 +234,15 @@ class _PipelineBreakdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Row(
       children: [
         Expanded(
           child: _BreakdownTile(
             label: 'Ready',
             count: ready,
-            color: AppColors.accent,
-            fg: AppColors.ink,
+            color: brand.accent,
+            fg: brand.onAccent,
           ),
         ),
         const SizedBox(width: 8),

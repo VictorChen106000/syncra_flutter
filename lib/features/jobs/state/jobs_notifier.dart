@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/firestore/applications_repository.dart';
 import '../../../data/firestore/pipeline_repository.dart';
 import '../../../data/models/job.dart';
+import '../../../fixtures/mock_jobs.dart';
 import '../../auth/state/auth_notifier.dart';
 
 @immutable
@@ -65,14 +66,35 @@ class JobsNotifier extends Notifier<JobsState> {
   @override
   JobsState build() {
     final auth = ref.watch(authProvider);
-    _bindTo(auth.appUser?.uid, auth.appUser?.isGuest ?? true);
+    final uid = auth.appUser?.uid;
+    final isGuest = auth.appUser?.isGuest ?? true;
+    _bindTo(uid, isGuest);
 
     ref.onDispose(() {
       _subscription?.cancel();
       _subscription = null;
     });
 
-    return const JobsState();
+    // Seed with mock pipeline cards when there's no real subscription —
+    // guest mode, signed-out, or before the Firestore stream emits its
+    // first snapshot. Real data will override via the listener below.
+    final hasLiveSubscription = uid != null && !isGuest;
+    return JobsState(
+      cards: hasLiveSubscription ? const [] : _mockCards(),
+    );
+  }
+
+  static List<PipelineCard> _mockCards() {
+    final now = DateTime.now();
+    return [
+      for (var i = 0; i < MockJobs.all.length; i++)
+        PipelineCard(
+          id: 'mock_${MockJobs.all[i].id}',
+          job: MockJobs.all[i],
+          status: PipelineCardStatus.pending,
+          createdAt: now.subtract(Duration(minutes: i * 7)),
+        ),
+    ];
   }
 
   void _bindTo(String? uid, bool isGuest) {

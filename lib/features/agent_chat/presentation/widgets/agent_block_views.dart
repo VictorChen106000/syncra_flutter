@@ -2,13 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/constants/app_colors.dart';
+import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/utils/motion.dart';
 import '../../models/agent_block.dart';
 import '../../state/agent_chat_notifier.dart';
 
-/// Routes an [AgentBlock] to its renderer. Add a new branch here when a new
-/// block type lands.
 class AgentBlockView extends StatelessWidget {
   const AgentBlockView({super.key, required this.block});
 
@@ -27,11 +25,6 @@ class AgentBlockView extends StatelessWidget {
     };
   }
 }
-
-// ---------------------------------------------------------------------------
-// Input request — inline text field + suggestion chips. Surfaces when the
-// agent calls `ask_user` mid-loop and is paused waiting for the answer.
-// ---------------------------------------------------------------------------
 
 class InputRequestView extends ConsumerStatefulWidget {
   const InputRequestView({super.key, required this.block});
@@ -65,14 +58,15 @@ class _InputRequestViewState extends ConsumerState<InputRequestView> {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final answered = widget.block.state == InputRequestState.answered;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: answered ? AppColors.softSurface : AppColors.surface,
+        color: answered ? brand.surfaceMuted : brand.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: answered ? AppColors.border : AppColors.accent,
+          color: answered ? brand.border : brand.accent,
           width: answered ? 1 : 1.5,
         ),
       ),
@@ -86,16 +80,16 @@ class _InputRequestViewState extends ConsumerState<InputRequestView> {
                     ? Icons.check_circle_rounded
                     : Icons.question_answer_rounded,
                 size: 16,
-                color: answered ? AppColors.textMuted : AppColors.ink,
+                color: answered ? brand.textMuted : brand.ink,
               ),
               const SizedBox(width: 8),
-              const Text(
+              Text(
                 'AGENT NEEDS YOUR INPUT',
                 style: TextStyle(
                   fontSize: 10.5,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 1.2,
-                  color: AppColors.textMuted,
+                  color: brand.textMuted,
                 ),
               ),
             ],
@@ -103,10 +97,10 @@ class _InputRequestViewState extends ConsumerState<InputRequestView> {
           const SizedBox(height: 10),
           Text(
             widget.block.question,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14.5,
               fontWeight: FontWeight.w700,
-              color: AppColors.ink,
+              color: brand.ink,
               height: 1.4,
               letterSpacing: -0.1,
             ),
@@ -116,15 +110,15 @@ class _InputRequestViewState extends ConsumerState<InputRequestView> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: brand.surface,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: brand.border),
               ),
               child: Text(
                 widget.block.answer ?? '',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13.5,
-                  color: AppColors.ink,
+                  color: brand.ink,
                   fontWeight: FontWeight.w500,
                   height: 1.4,
                 ),
@@ -138,20 +132,20 @@ class _InputRequestViewState extends ConsumerState<InputRequestView> {
               maxLines: null,
               textInputAction: TextInputAction.send,
               onSubmitted: _submit,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: AppColors.ink,
+                color: brand.ink,
               ),
               decoration: InputDecoration(
                 hintText: 'Type your answer…',
-                hintStyle: const TextStyle(
-                  color: AppColors.textSoft,
+                hintStyle: TextStyle(
+                  color: brand.textSoft,
                   fontWeight: FontWeight.w500,
                   fontSize: 14,
                 ),
                 filled: true,
-                fillColor: AppColors.softSurface,
+                fillColor: brand.surfaceMuted,
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 14,
                   vertical: 12,
@@ -162,7 +156,7 @@ class _InputRequestViewState extends ConsumerState<InputRequestView> {
                 ),
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.arrow_upward_rounded, size: 18),
-                  color: AppColors.ink,
+                  color: brand.ink,
                   onPressed: () => _submit(_controller.text),
                 ),
               ),
@@ -199,8 +193,9 @@ class _SuggestionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Material(
-      color: AppColors.surface,
+      color: brand.surface,
       borderRadius: BorderRadius.circular(99),
       child: InkWell(
         onTap: onTap,
@@ -209,14 +204,14 @@ class _SuggestionChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(99),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: brand.border),
           ),
           child: Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12.5,
               fontWeight: FontWeight.w700,
-              color: AppColors.ink,
+              color: brand.ink,
             ),
           ),
         ),
@@ -225,20 +220,17 @@ class _SuggestionChip extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Text
-// ---------------------------------------------------------------------------
-
 class _TextBlockView extends StatelessWidget {
   const _TextBlockView({required this.text});
   final String text;
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return SelectableText(
       text,
-      style: const TextStyle(
-        color: AppColors.ink,
+      style: TextStyle(
+        color: brand.ink,
         fontSize: 15.5,
         height: 1.6,
         fontWeight: FontWeight.w400,
@@ -247,11 +239,6 @@ class _TextBlockView extends StatelessWidget {
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// Thinking — Claude-style inline disclosure. No card; just a tap-to-expand
-// row with a dim left rule revealing italic chain-of-thought underneath.
-// ---------------------------------------------------------------------------
 
 class ThinkingBlockView extends StatefulWidget {
   const ThinkingBlockView({super.key, required this.content});
@@ -266,6 +253,7 @@ class _ThinkingBlockViewState extends State<ThinkingBlockView> {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -288,10 +276,10 @@ class _ThinkingBlockViewState extends State<ThinkingBlockView> {
                   AnimatedRotation(
                     duration: const Duration(milliseconds: 180),
                     turns: _expanded ? 0.5 : 0,
-                    child: const Icon(
+                    child: Icon(
                       Icons.expand_more_rounded,
                       size: 16,
-                      color: AppColors.textSoft,
+                      color: brand.textSoft,
                     ),
                   ),
                 ],
@@ -314,7 +302,7 @@ class _ThinkingBlockViewState extends State<ThinkingBlockView> {
                   Container(
                     width: 2,
                     decoration: BoxDecoration(
-                      color: AppColors.border,
+                      color: brand.border,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -322,8 +310,8 @@ class _ThinkingBlockViewState extends State<ThinkingBlockView> {
                   Expanded(
                     child: Text(
                       widget.content,
-                      style: const TextStyle(
-                        color: AppColors.textMuted,
+                      style: TextStyle(
+                        color: brand.textMuted,
                         fontSize: 13.5,
                         height: 1.6,
                         fontWeight: FontWeight.w400,
@@ -349,12 +337,13 @@ class _ShimmerText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final base = Text(
       text,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 13,
         fontWeight: FontWeight.w600,
-        color: AppColors.textMuted,
+        color: brand.textMuted,
         letterSpacing: -0.1,
       ),
     );
@@ -363,16 +352,10 @@ class _ShimmerText extends StatelessWidget {
         .animate(onPlay: repeatIfMotion(context))
         .shimmer(
           duration: 1600.ms,
-          color: AppColors.ink.withValues(alpha: 0.55),
+          color: brand.ink.withValues(alpha: 0.55),
         );
   }
 }
-
-// ---------------------------------------------------------------------------
-// Tool call — Claude-style inline status line. Running shows a small spinner
-// + dim label; finished collapses to a checkmark + label and an optional
-// italic result summary.
-// ---------------------------------------------------------------------------
 
 class ToolCallBlockView extends StatelessWidget {
   const ToolCallBlockView({super.key, required this.block});
@@ -381,6 +364,7 @@ class ToolCallBlockView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final running = block.status == ToolCallStatus.running;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
@@ -398,7 +382,7 @@ class ToolCallBlockView extends StatelessWidget {
                     : Icon(
                         Icons.check_rounded,
                         size: 14,
-                        color: AppColors.textMuted,
+                        color: brand.textMuted,
                       ),
               ),
               const SizedBox(width: 10),
@@ -407,10 +391,10 @@ class ToolCallBlockView extends StatelessWidget {
                     ? _ShimmerText(text: block.label, active: true)
                     : Text(
                         block.label,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
-                          color: AppColors.textMuted,
+                          color: brand.textMuted,
                           letterSpacing: -0.1,
                         ),
                       ),
@@ -423,8 +407,8 @@ class ToolCallBlockView extends StatelessWidget {
               padding: const EdgeInsets.only(left: 26),
               child: Text(
                 block.resultSummary!,
-                style: const TextStyle(
-                  color: AppColors.textSoft,
+                style: TextStyle(
+                  color: brand.textSoft,
                   fontSize: 12.5,
                   fontWeight: FontWeight.w400,
                   fontStyle: FontStyle.italic,
@@ -444,19 +428,16 @@ class _Spinner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Icon(
       Icons.refresh_rounded,
       size: 14,
-      color: AppColors.textMuted.withValues(alpha: 0.85),
+      color: brand.textMuted.withValues(alpha: 0.85),
     )
         .animate(onPlay: repeatIfMotion(context))
         .rotate(duration: 900.ms, curve: Curves.linear);
   }
 }
-
-// ---------------------------------------------------------------------------
-// Action proposal — accept / make changes
-// ---------------------------------------------------------------------------
 
 class ActionProposalView extends StatelessWidget {
   const ActionProposalView({super.key, required this.block});
@@ -465,6 +446,7 @@ class ActionProposalView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     final accepted = block.state == ActionState.accepted;
     final dismissed = block.state == ActionState.dismissed;
     final settled = accepted || dismissed;
@@ -473,15 +455,15 @@ class ActionProposalView extends StatelessWidget {
       duration: const Duration(milliseconds: 220),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: accepted ? AppColors.ink : AppColors.surface,
+        color: accepted ? brand.ink : brand.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: accepted ? AppColors.ink : AppColors.border,
+          color: accepted ? brand.ink : brand.border,
         ),
         boxShadow: accepted
             ? [
                 BoxShadow(
-                  color: AppColors.ink.withValues(alpha: 0.18),
+                  color: brand.ink.withValues(alpha: 0.18),
                   blurRadius: 18,
                   offset: const Offset(0, 8),
                 ),
@@ -497,16 +479,14 @@ class ActionProposalView extends StatelessWidget {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: accepted
-                      ? AppColors.accent
-                      : AppColors.softSurface,
+                  color: accepted ? brand.accent : brand.surfaceMuted,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 alignment: Alignment.center,
                 child: Icon(
                   block.icon,
                   size: 18,
-                  color: AppColors.ink,
+                  color: accepted ? brand.onAccent : brand.ink,
                 ),
               ),
               const SizedBox(width: 12),
@@ -519,7 +499,7 @@ class ActionProposalView extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
-                        color: accepted ? Colors.white : AppColors.ink,
+                        color: accepted ? brand.inkInverse : brand.ink,
                         letterSpacing: -0.2,
                       ),
                     ),
@@ -530,8 +510,8 @@ class ActionProposalView extends StatelessWidget {
                         fontSize: 12.5,
                         fontWeight: FontWeight.w500,
                         color: accepted
-                            ? Colors.white.withValues(alpha: 0.78)
-                            : AppColors.textMuted,
+                            ? brand.inkInverse.withValues(alpha: 0.78)
+                            : brand.textMuted,
                         height: 1.4,
                       ),
                     ),
@@ -590,22 +570,21 @@ class _SettledFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Row(
       children: [
         Icon(
           accepted ? Icons.check_circle_rounded : Icons.history_rounded,
           size: 14,
-          color: accepted
-              ? AppColors.accent
-              : AppColors.textMuted,
+          color: accepted ? brand.accent : brand.textMuted,
         ),
         const SizedBox(width: 6),
         Text(
           accepted ? 'Accepted · running now' : 'Reverted — tell me how to adjust',
           style: TextStyle(
             color: accepted
-                ? Colors.white.withValues(alpha: 0.88)
-                : AppColors.textMuted,
+                ? brand.inkInverse.withValues(alpha: 0.88)
+                : brand.textMuted,
             fontSize: 12,
             fontWeight: FontWeight.w700,
             letterSpacing: -0.1,
@@ -631,8 +610,9 @@ class _ProposalButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = filled ? AppColors.ink : Colors.transparent;
-    final fg = filled ? Colors.white : AppColors.ink;
+    final brand = context.brand;
+    final bg = filled ? brand.ink : Colors.transparent;
+    final fg = filled ? brand.inkInverse : brand.ink;
     return Material(
       color: bg,
       borderRadius: BorderRadius.circular(12),
@@ -644,7 +624,7 @@ class _ProposalButton extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: filled ? AppColors.ink : AppColors.border,
+              color: filled ? brand.ink : brand.border,
             ),
           ),
           alignment: Alignment.center,

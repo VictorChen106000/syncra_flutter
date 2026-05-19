@@ -9,26 +9,20 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/empty_state_card.dart';
+import '../../../shared/widgets/section_title.dart';
 import '../models/resume_file.dart';
 import '../state/resume_notifier.dart';
 import 'widgets/resume_upload_card.dart';
 
-class ResumeListsPage extends ConsumerStatefulWidget {
+class ResumeListsPage extends ConsumerWidget {
   const ResumeListsPage({super.key});
 
-  @override
-  ConsumerState<ResumeListsPage> createState() => _ResumeListsPageState();
-}
-
-class _ResumeListsPageState extends ConsumerState<ResumeListsPage> {
-  int _tabIndex = 0;
-
-  void _openPreview(ResumeFile resume) {
+  void _openPreview(BuildContext context, ResumeFile resume) {
     context.go(RouteNames.resumePreview, extra: resume);
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final brand = context.brand;
     ref.listen<ResumeState>(resumeProvider, (prev, next) {
       final result = next.lastAction;
@@ -46,8 +40,10 @@ class _ResumeListsPageState extends ConsumerState<ResumeListsPage> {
 
     final state = ref.watch(resumeProvider);
     final notifier = ref.read(resumeProvider.notifier);
-    final visibleResumes =
-        _tabIndex == 0 ? state.resumes : state.tailoredResumes;
+    final uploads = state.resumes;
+    final tailored = state.tailoredResumes;
+    final isEmpty =
+        uploads.isEmpty && tailored.isEmpty && state.uploadQueue.isEmpty;
 
     return Scaffold(
       backgroundColor: brand.bg,
@@ -58,163 +54,79 @@ class _ResumeListsPageState extends ConsumerState<ResumeListsPage> {
             AppHeader.page(
               title: AppStrings.resumeListsTitle,
               onBack: () => context.go(RouteNames.profile),
-              bottom: _TabSwitcher(
-                selectedIndex: _tabIndex,
-                onChanged: (i) => setState(() => _tabIndex = i),
-              ),
             ),
             Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
-                child: ListView(
-                  key: ValueKey(_tabIndex),
-                  padding: const EdgeInsets.fromLTRB(
-                    AppConstants.screenHorizontalPadding,
-                    20,
-                    AppConstants.screenHorizontalPadding,
-                    36,
-                  ),
-                  children: [
-                    if (_tabIndex == 0) ...[
-                      _UploadDropZone(
-                        onTap: notifier.pickAndUploadResumes,
-                      ),
-                      const SizedBox(height: 14),
-                    ],
-                    for (final item in state.uploadQueue)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: ResumeUploadCard(uploadingItem: item),
-                      ),
-                    if (visibleResumes.isEmpty && state.uploadQueue.isEmpty)
-                      _tabIndex == 0
-                          ? EmptyStateCard(
-                              icon: Icons.upload_rounded,
-                              title: AppStrings.noResumesTitle,
-                              body: AppStrings.noResumesBody,
-                              actionLabel: 'Upload resume',
-                              actionIcon: Icons.add_rounded,
-                              onAction: notifier.pickAndUploadResumes,
-                            )
-                          : EmptyStateCard(
-                              icon: Icons.auto_awesome_rounded,
-                              title: AppStrings.noTailoredTitle,
-                              body: AppStrings.noTailoredBody,
-                              actionLabel: 'Open chat',
-                              onAction: () =>
-                                  context.go(RouteNames.agentChat),
-                            ),
-                    for (final resume in visibleResumes)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: ResumeUploadCard(
-                          resume: resume,
-                          onOpen: () => _openPreview(resume),
-                          onDelete: _tabIndex == 0
-                              ? () => notifier.deleteResume(resume.id)
-                              : null,
-                        )
-                            .animate()
-                            .fadeIn(duration: 220.ms)
-                            .moveY(begin: 8, end: 0),
-                      ),
-                  ],
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(
+                  AppConstants.screenHorizontalPadding,
+                  16,
+                  AppConstants.screenHorizontalPadding,
+                  36,
                 ),
+                children: [
+                  _UploadDropZone(onTap: notifier.pickAndUploadResumes),
+                  for (final item in state.uploadQueue)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: ResumeUploadCard(uploadingItem: item),
+                    ),
+                  if (isEmpty) ...[
+                    const SizedBox(height: 16),
+                    EmptyStateCard(
+                      icon: Icons.upload_rounded,
+                      title: AppStrings.noResumesTitle,
+                      body: AppStrings.noResumesBody,
+                      actionLabel: 'Upload resume',
+                      actionIcon: Icons.add_rounded,
+                      onAction: notifier.pickAndUploadResumes,
+                    ),
+                  ] else ...[
+                    if (uploads.isNotEmpty) ...[
+                      const SizedBox(height: 24),
+                      const SectionTitle(title: 'Your uploads'),
+                      for (final r in uploads)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: ResumeUploadCard(
+                            resume: r,
+                            onOpen: () => _openPreview(context, r),
+                            onDelete: () => notifier.deleteResume(r.id),
+                          )
+                              .animate()
+                              .fadeIn(duration: 220.ms)
+                              .moveY(begin: 8, end: 0),
+                        ),
+                    ],
+                    if (tailored.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      const SectionTitle(title: 'Agent-tailored'),
+                      for (final r in tailored)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: ResumeUploadCard(
+                            resume: r,
+                            onOpen: () => _openPreview(context, r),
+                          )
+                              .animate()
+                              .fadeIn(duration: 220.ms)
+                              .moveY(begin: 8, end: 0),
+                        ),
+                    ] else if (uploads.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      const SectionTitle(title: 'Agent-tailored'),
+                      EmptyStateCard(
+                        icon: Icons.auto_awesome_rounded,
+                        title: AppStrings.noTailoredTitle,
+                        body: AppStrings.noTailoredBody,
+                        actionLabel: 'Open chat',
+                        onAction: () => context.go(RouteNames.agentChat),
+                      ),
+                    ],
+                  ],
+                ],
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _TabSwitcher extends StatelessWidget {
-  const _TabSwitcher({
-    required this.selectedIndex,
-    required this.onChanged,
-  });
-
-  final int selectedIndex;
-  final ValueChanged<int> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: brand.border.withValues(alpha: 0.40),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          _TabButton(
-            label: AppStrings.myUploads,
-            active: selectedIndex == 0,
-            onTap: () => onChanged(0),
-          ),
-          _TabButton(
-            label: AppStrings.aiTailored,
-            active: selectedIndex == 1,
-            onTap: () => onChanged(1),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TabButton extends StatelessWidget {
-  const _TabButton({
-    required this.label,
-    required this.active,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Expanded(
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 240),
-        curve: Curves.easeOutCubic,
-        decoration: BoxDecoration(
-          color: active ? brand.surface : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: active
-              ? [
-                  BoxShadow(
-                    color: brand.shadow,
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : null,
-        ),
-        child: Material(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: active ? brand.ink : brand.textMuted,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 13.5,
-                ),
-              ),
-            ),
-          ),
         ),
       ),
     );

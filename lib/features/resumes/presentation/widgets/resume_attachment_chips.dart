@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/constants/app_colors.dart';
+import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/utils/file_formatter.dart';
 import '../../models/resume_file.dart';
 
@@ -16,6 +16,7 @@ class ResumeAttachmentChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     if (resumes.isEmpty) return const SizedBox.shrink();
 
     return AnimatedSize(
@@ -34,21 +35,22 @@ class ResumeAttachmentChips extends StatelessWidget {
               constraints: const BoxConstraints(maxWidth: 170),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
               decoration: BoxDecoration(
-                color: AppColors.accent.withValues(alpha: 0.20),
+                color: brand.accent.withValues(alpha: 0.20),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.accent),
+                border: Border.all(color: brand.accent),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.description_rounded, size: 15, color: AppColors.ink),
+                  Icon(Icons.description_rounded,
+                      size: 15, color: brand.ink),
                   const SizedBox(width: 6),
                   Flexible(
                     child: Text(
                       FileFormatter.cleanName(resume.name),
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.ink,
+                      style: TextStyle(
+                        color: brand.ink,
                         fontSize: 12,
                         fontWeight: FontWeight.w800,
                       ),
@@ -57,7 +59,8 @@ class ResumeAttachmentChips extends StatelessWidget {
                   const SizedBox(width: 4),
                   GestureDetector(
                     onTap: () => onRemove(resume.id),
-                    child: const Icon(Icons.close_rounded, size: 15, color: AppColors.textMuted),
+                    child: Icon(Icons.close_rounded,
+                        size: 15, color: brand.textMuted),
                   ),
                 ],
               ),
