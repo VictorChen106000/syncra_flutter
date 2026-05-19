@@ -92,6 +92,7 @@ clear next step or question.''';
     ];
 
     try {
+      var consecutiveFailedToolTurns = 0;
       for (var iteration = 0; iteration < _maxLoopIterations; iteration++) {
         final response = await _callAnthropic(messages);
         final content = response['content'] as List? ?? const [];
@@ -101,6 +102,8 @@ clear next step or question.''';
         messages.add({'role': 'assistant', 'content': content});
 
         final toolResults = <Map<String, dynamic>>[];
+        var toolFailuresThisTurn = 0;
+        var toolSuccessesThisTurn = 0;
         bool shouldPauseAfterTailorResume = false;
         String? tailorPauseMessage;
         for (final raw in content) {
@@ -135,6 +138,7 @@ clear next step or question.''';
                 'tool_use_id': toolUseId,
                 'content': answer,
               });
+              toolSuccessesThisTurn += 1;
             } else {
               final tool = registry.toolFor(name);
               final handler = registry.handlerFor(name);
@@ -158,6 +162,7 @@ clear next step or question.''';
                   'content': 'Error: tool "$name" is not registered.',
                   'is_error': true,
                 });
+                toolFailuresThisTurn += 1;
                 continue;
               }
 
@@ -171,6 +176,11 @@ clear next step or question.''';
                       : ToolCallStatus.done,
                 );
 
+                if (result.isError) {
+                  toolFailuresThisTurn += 1;
+                } else {
+                  toolSuccessesThisTurn += 1;
+                } 
                 if (!result.isError &&
                     name == 'tailor_resume' &&
                     _hasProposedEditsPayload(result.data)) {
@@ -205,6 +215,7 @@ clear next step or question.''';
                   'content': 'Error: $e',
                   'is_error': true,
                 });
+                toolFailuresThisTurn += 1;
               }
             }
           }
@@ -212,6 +223,22 @@ clear next step or question.''';
 
         // No tools used → conversation is done.
         if (stopReason != 'tool_use' || toolResults.isEmpty) {
+          yield const TurnCompleted();
+          return;
+        }
+
+        if (toolFailuresThisTurn > 0 && toolSuccessesThisTurn == 0) {
+          consecutiveFailedToolTurns += 1;
+        } else {
+          consecutiveFailedToolTurns = 0;
+        }
+
+        if (consecutiveFailedToolTurns >= 2) {
+          yield BlockAdded(TextBlock(
+            id: nextBlockId('text'),
+            text:
+                'I hit repeated tool failures while trying to complete that. Try narrowing the request, or give me the job/resume details directly.',
+          ));
           yield const TurnCompleted();
           return;
         }
@@ -236,8 +263,8 @@ clear next step or question.''';
       // Safety net: too many iterations.
       yield BlockAdded(TextBlock(
         id: nextBlockId('text'),
-        text: "I got stuck in a loop — let's try that again with more detail.",
-      ));
+        text:
+            'I reached my safety limit before finishing that request. Try narrowing the task, for example: “find 5 UX jobs” or “tailor my resume for this specific job.”',      ));
       yield const TurnCompleted();
     } catch (e) {
       yield BlockAdded(TextBlock(
