@@ -15,6 +15,7 @@ import '../state/agent_chat_notifier.dart';
 import 'widgets/agent_turn_view.dart';
 import 'widgets/chat_input_bar.dart';
 import 'widgets/chat_message_bubble.dart';
+import 'widgets/docked_panels.dart';
 
 class AiChatbotPage extends ConsumerStatefulWidget {
   const AiChatbotPage({super.key});
@@ -90,6 +91,7 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
         state.items.length == 1 && state.items.first is AgentTurn;
     final stickyPrompt = _latestUserMessage(state.items);
     final pendingProposal = _pendingProposal(state.items);
+    final pendingInput = _pendingInputRequest(state.items);
     final transcriptForList = _transcriptExcludingStickyPrompt(
       state.items,
       stickyPrompt,
@@ -105,7 +107,10 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
     double topInset = topSafe + 56;
     if (state.threadJob != null) topInset += 58;
     if (stickyPrompt != null) topInset += 80;
-    final bottomInset = media.padding.bottom + 152;
+    double bottomInset = media.padding.bottom + 152;
+    // A docked panel sits above the composer — give the transcript extra
+    // clearance so the last message isn't buried behind it.
+    if (pendingInput != null || pendingProposal != null) bottomInset += 132;
 
     return Scaffold(
       backgroundColor: brand.surface,
@@ -184,7 +189,9 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
             ),
           ),
 
-          // Floating bottom chrome: docked proposal + composer.
+          // Floating bottom chrome: a single docked panel — whatever the
+          // agent needs from the user — sits directly above the composer.
+          // An unanswered question outranks a proposal: it blocks the loop.
           Positioned(
             bottom: 0,
             left: 0,
@@ -192,8 +199,10 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (pendingProposal != null)
-                  _DockedActionProposal(block: pendingProposal),
+                if (pendingInput != null)
+                  DockedInputRequest(block: pendingInput)
+                else if (pendingProposal != null)
+                  DockedActionProposal(block: pendingProposal),
                 const ChatInputBar(),
               ],
             ),
@@ -222,6 +231,23 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
         final block = item.blocks[j];
         if (block is ActionProposalBlock &&
             block.state == ActionState.pending) {
+          return block;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Pending `ask_user` request hoisted from the latest agent turn into the
+  /// docked island. Only the most recent unanswered question surfaces.
+  static InputRequestBlock? _pendingInputRequest(List<ChatItem> items) {
+    for (var i = items.length - 1; i >= 0; i--) {
+      final item = items[i];
+      if (item is! AgentTurn) continue;
+      for (var j = item.blocks.length - 1; j >= 0; j--) {
+        final block = item.blocks[j];
+        if (block is InputRequestBlock &&
+            block.state == InputRequestState.pending) {
           return block;
         }
       }
@@ -307,182 +333,6 @@ class _StickyUserPrompt extends StatelessWidget {
           duration: 220.ms,
           curve: Curves.easeOutCubic,
         );
-  }
-}
-
-/// Pending [ActionProposalBlock] hoisted out of the chat list into a docked
-/// island above the input — feels like Claude Code's "Accept changes" pill.
-class _DockedActionProposal extends ConsumerWidget {
-  const _DockedActionProposal({required this.block});
-
-  final ActionProposalBlock block;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final brand = context.brand;
-    final notifier = ref.read(agentChatProvider.notifier);
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
-      decoration: BoxDecoration(
-        color: brand.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: brand.outline, width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: brand.shadow.withValues(alpha: 0.18),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: brand.accent,
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                alignment: Alignment.center,
-                child: Icon(block.icon, size: 14, color: brand.onAccent),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: brand.accent,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        'PROPOSED CHANGE',
-                        style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.4,
-                          color: brand.onAccent,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      block.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: brand.ink,
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.2,
-                        height: 1.2,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            block.description,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: brand.textMuted,
-              fontSize: 12.5,
-              fontWeight: FontWeight.w500,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _DockedActionButton(
-                  label: block.editLabel,
-                  filled: false,
-                  onTap: () => notifier.dismissProposal(block.id),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _DockedActionButton(
-                  label: block.acceptLabel,
-                  filled: true,
-                  onTap: () => notifier.acceptProposal(block.id),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    )
-        .animate(key: ValueKey(block.id))
-        .fadeIn(duration: 220.ms)
-        .moveY(
-          begin: 12,
-          end: 0,
-          duration: 220.ms,
-          curve: Curves.easeOutCubic,
-        );
-  }
-}
-
-class _DockedActionButton extends StatelessWidget {
-  const _DockedActionButton({
-    required this.label,
-    required this.filled,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool filled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final bg = filled ? brand.ink : Colors.transparent;
-    final fg = filled ? brand.inkInverse : brand.ink;
-    return Material(
-      color: bg,
-      borderRadius: BorderRadius.circular(11),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(11),
-        child: Container(
-          height: 38,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(11),
-            border: Border.all(
-              color: filled ? brand.ink : brand.border,
-            ),
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: TextStyle(
-              color: fg,
-              fontWeight: FontWeight.w800,
-              fontSize: 13,
-              letterSpacing: -0.1,
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 
