@@ -119,16 +119,7 @@ clear next step or question.''';
           if (raw is! Map<String, dynamic>) continue;
           final type = raw['type'] as String?;
 
-          if (type == 'thinking') {
-            // Extended-thinking block — the agent's own reasoning. Empty and
-            // `redacted_thinking` blocks carry no readable content; skip them
-            // (they still ride along verbatim in `messages` for signing).
-            final thinking = (raw['thinking'] as String?)?.trim() ?? '';
-            if (thinking.isEmpty) continue;
-            yield BlockAdded(
-              ThinkingBlock(id: nextBlockId('think'), content: thinking),
-            );
-          } else if (type == 'text') {
+          if (type == 'text') {
             final text = (raw['text'] as String?)?.trim() ?? '';
             if (text.isEmpty) continue;
             yield BlockAdded(TextBlock(id: nextBlockId('text'), text: text));
@@ -314,11 +305,7 @@ clear next step or question.''';
 
     final payload = {
       'model': model,
-      // Extended thinking surfaces the agent's reasoning as `thinking`
-      // content blocks. `max_tokens` must exceed `budget_tokens`, and the
-      // budget itself must be >= 1024.
-      'max_tokens': 4096,
-      'thinking': {'type': 'enabled', 'budget_tokens': 2048},
+      'max_tokens': 1024,
       'system': _system,
       'tools': tools,
       'messages': messages,
