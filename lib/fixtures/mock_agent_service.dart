@@ -92,6 +92,13 @@ class MockAgentService implements AgentService {
           detail: detail,
         ),
       TextBlock(:final text) => TextBlock(id: id, text: text),
+      ProposedEditsBlock(:final edits, :final jobId, :final resumeId) =>
+      ProposedEditsBlock(
+        id: id,
+        edits: edits,
+        jobId: jobId,
+        resumeId: resumeId,
+      ),
       ActionProposalBlock(
         :final icon,
         :final title,

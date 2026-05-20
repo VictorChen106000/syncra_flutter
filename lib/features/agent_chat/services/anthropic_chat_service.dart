@@ -8,6 +8,7 @@ import '../models/agent_block.dart';
 import '../models/chat_message.dart';
 import '../tools/tool_registry.dart';
 import 'agent_service.dart';
+import '../../resumes/models/proposed_edit.dart';
 
 /// Real-Anthropic implementation of [AgentService] with **tool use**.
 ///
@@ -44,6 +45,20 @@ When the user gives you a task:
   resume to use, recipient email, etc.), call the `ask_user` tool. Never
   invent details.
 - Surface progress as you go. The UI shows each tool call live.
+
+Learning rules:
+- When the user answers ask_user with reusable career information, call remember_fact before continuing.
+- Good remember_fact candidates: skills they have, experience they confirm, missing experience, preferred roles, target locations, salary floor, work authorization constraints, or outreach preferences.
+- Do not call remember_fact for one-off task instructions, temporary job choices, or sensitive personal attributes.
+- Future read_resume calls include learned_facts, so use them instead of asking the same question again.
+
+Resume tailoring rules:
+- When tailoring a resume, propose changes — never overwrite directly.
+- The `tailor_resume` tool only proposes edits. It does not apply edits, render PDFs, or save files.
+- After `tailor_resume` returns proposed edits, stop and wait. The user reviews the edits in the diff viewer.
+- Do not call `apply_resume_edits`, `draft_email`, or `send_email` until the user has accepted edits.
+- Prefer calling tools over guessing.
+- When required information is missing, call `ask_user` with 2-3 short suggestion chips unless the question is genuinely open-ended.
 
 When you respond with text, keep it to 1-3 short sentences and end with a
 clear next step or question.''';
@@ -83,6 +98,7 @@ clear next step or question.''';
     ];
 
     try {
+      var consecutiveFailedToolTurns = 0;
       for (var iteration = 0; iteration < _maxLoopIterations; iteration++) {
         final response = await _callAnthropic(messages);
         final content = response['content'] as List? ?? const [];
@@ -92,7 +108,10 @@ clear next step or question.''';
         messages.add({'role': 'assistant', 'content': content});
 
         final toolResults = <Map<String, dynamic>>[];
-
+        var toolFailuresThisTurn = 0;
+        var toolSuccessesThisTurn = 0;
+        bool shouldPauseAfterTailorResume = false;
+        String? tailorPauseMessage;
         for (final raw in content) {
           if (raw is! Map<String, dynamic>) continue;
           final type = raw['type'] as String?;
@@ -125,6 +144,7 @@ clear next step or question.''';
                 'tool_use_id': toolUseId,
                 'content': answer,
               });
+              toolSuccessesThisTurn += 1;
             } else {
               final tool = registry.toolFor(name);
               final handler = registry.handlerFor(name);
@@ -148,6 +168,7 @@ clear next step or question.''';
                   'content': 'Error: tool "$name" is not registered.',
                   'is_error': true,
                 });
+                toolFailuresThisTurn += 1;
                 continue;
               }
 
@@ -160,6 +181,28 @@ clear next step or question.''';
                       ? ToolCallStatus.failed
                       : ToolCallStatus.done,
                 );
+
+                if (result.isError) {
+                  toolFailuresThisTurn += 1;
+                } else {
+                  toolSuccessesThisTurn += 1;
+                } 
+                if (!result.isError &&
+                    name == 'tailor_resume' &&
+                    _hasProposedEditsPayload(result.data)) {
+                  final editsBlock = _proposedEditsBlockFromData(
+                    id: nextBlockId('edits'),
+                    data: result.data,
+                  );
+
+                  if (editsBlock != null) {
+                    yield BlockAdded(editsBlock);
+                  }
+
+                  shouldPauseAfterTailorResume = true;
+                  tailorPauseMessage = _tailorPauseMessage(result.data);
+                }
+
                 toolResults.add({
                   'type': 'tool_result',
                   'tool_use_id': toolUseId,
@@ -178,6 +221,7 @@ clear next step or question.''';
                   'content': 'Error: $e',
                   'is_error': true,
                 });
+                toolFailuresThisTurn += 1;
               }
             }
           }
@@ -189,12 +233,44 @@ clear next step or question.''';
           return;
         }
 
+        if (toolFailuresThisTurn > 0 && toolSuccessesThisTurn == 0) {
+          consecutiveFailedToolTurns += 1;
+        } else {
+          consecutiveFailedToolTurns = 0;
+        }
+
+        if (consecutiveFailedToolTurns >= 2) {
+          yield BlockAdded(TextBlock(
+            id: nextBlockId('text'),
+            text:
+                'I hit repeated tool failures while trying to complete that. Try narrowing the request, or give me the job/resume details directly.',
+          ));
+          yield const TurnCompleted();
+          return;
+        }
+
+        // `tailor_resume` is user-gated under the PR-style diff flow.
+        // Once proposed edits exist, stop here and let the diff viewer handle
+        // accept/reject/apply. Do not feed the result back to Claude yet, because
+        // that can make it immediately call draft_email or apply_resume_edits.
+        if (shouldPauseAfterTailorResume) {
+          yield BlockAdded(TextBlock(
+            id: nextBlockId('text'),
+            text: tailorPauseMessage ??
+                'I found proposed resume edits. Review them before I continue.',
+          ));
+          yield const TurnCompleted();
+          return;
+        }
+
         messages.add({'role': 'user', 'content': toolResults});
       }
 
       // Safety net: too many iterations.
       yield TurnFailed(
-        'The agent got stuck in a loop. Try rephrasing your question.',
+        'I reached my safety limit before finishing that request. Try '
+        'narrowing the task, for example: “find 5 UX jobs” or “tailor my '
+        'resume for this specific job.”',
       );
     } catch (e) {
       yield TurnFailed("Couldn't reach Claude — ${_shortError(e)}");
@@ -242,6 +318,52 @@ clear next step or question.''';
       throw Exception(_extractError(response.body, response.statusCode));
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  ProposedEditsBlock? _proposedEditsBlockFromData({
+    required String id,
+    required Object? data,
+  }) {
+    if (data is! Map) return null;
+
+    final rawEdits = data['proposed_edits'];
+    if (rawEdits is! List) return null;
+
+    final edits = rawEdits
+        .whereType<Map>()
+        .map((raw) => ProposedEdit.fromJson(Map<String, dynamic>.from(raw)))
+        .where((edit) => edit.isValid)
+        .toList(growable: false);
+
+    if (edits.isEmpty) return null;
+
+    return ProposedEditsBlock(
+      id: id,
+      edits: edits,
+      jobId: data['job_id']?.toString(),
+      resumeId: data['resume_id']?.toString(),
+    );
+  }
+
+  bool _hasProposedEditsPayload(Object? data) {
+    if (data is! Map) return false;
+    final proposedEdits = data['proposed_edits'];
+    return proposedEdits is List;
+  }
+
+  String _tailorPauseMessage(Object? data) {
+    var count = 0;
+    if (data is Map && data['proposed_edits'] is List) {
+      count = (data['proposed_edits'] as List).length;
+    }
+
+    if (count <= 0) {
+      return 'I tried to prepare resume edits, but no proposed edits were returned. Review the result before I continue.';
+    }
+
+    final plural = count == 1 ? 'edit' : 'edits';
+    final pronoun = count == 1 ? 'it' : 'them';
+    return 'I found $count proposed resume $plural. Review $pronoun before I continue.';
   }
 
   String _serialize(Object? data) {

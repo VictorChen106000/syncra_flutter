@@ -1,3 +1,4 @@
+import '../../../data/firestore/pipeline_repository.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -25,6 +26,7 @@ import 'tool_registry.dart';
 void registerBuiltinTools(ToolRegistry registry) {
   final jobs = JobsRepository();
   final applications = ApplicationsRepository();
+  final pipeline = PipelineRepository();
   final resumes = ResumesRepository();
   final anthropic = AnthropicService();
   final paraphrase = AnthropicParaphraseService();
@@ -37,7 +39,9 @@ void registerBuiltinTools(ToolRegistry registry) {
 
   _registerSearchJobs(registry, jobs);
   _registerReadResume(registry, orchestrator);
+  _registerRememberFact(registry);
   _registerMatchJobs(registry, jobs, anthropic);
+  _registerSaveToPipeline(registry, jobs, pipeline);
   _registerTailorResume(registry, jobs, paraphrase, orchestrator);
   _registerDraftEmail(registry, jobs, paraphrase);
   _registerLookupHiringManager(registry);
@@ -153,6 +157,7 @@ void _registerReadResume(
       }
 
       final paths = FirestorePaths(FirebaseFirestore.instance);
+      final learnedFacts = await _readLearnedFacts(paths, uid);
       String? resumeId = (args['resume_id'] as String?)?.trim();
 
       // No id provided → use the most recent manual resume.
@@ -165,8 +170,10 @@ void _registerReadResume(
             .get();
         if (snap.docs.isEmpty) {
           return ToolResult(
-            summary: 'No resume uploaded yet — using sample',
-            data: kFakeResumeJson,
+            summary: learnedFacts.isEmpty
+                ? 'No resume uploaded yet — using sample'
+                : 'No resume uploaded yet — using sample · ${learnedFacts.length} learned facts',
+            data: _resumeWithLearnedFacts(kFakeResumeJson, learnedFacts),
           );
         }
         resumeId = snap.docs.first.id;
@@ -178,16 +185,95 @@ void _registerReadResume(
           resumeId: resumeId,
         );
         return ToolResult(
-          summary:
-              '${json.experience.length} roles · ${json.skills.length} skills',
-          data: json.toJson(),
+          summary: learnedFacts.isEmpty
+              ? '${json.experience.length} roles · ${json.skills.length} skills'
+              : '${json.experience.length} roles · ${json.skills.length} skills · ${learnedFacts.length} learned facts',
+          data: _resumeWithLearnedFacts(json.toJson(), learnedFacts),
         );
       } catch (e) {
         return ToolResult(
-          summary: 'Parse failed — using sample resume',
-          data: kFakeResumeJson,
+          summary: learnedFacts.isEmpty
+              ? 'Parse failed — using sample resume'
+              : 'Parse failed — using sample resume · ${learnedFacts.length} learned facts',
+          data: _resumeWithLearnedFacts(kFakeResumeJson, learnedFacts),
         );
       }
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// remember_fact — REAL: persists reusable user facts for future agent turns
+// ---------------------------------------------------------------------------
+
+void _registerRememberFact(ToolRegistry registry) {
+  registry.register(
+    tool: const Tool(
+      name: 'remember_fact',
+      description:
+          'Persist a reusable fact about the user that came up during the '
+          'conversation, such as skills, experience, preferences, constraints, '
+          'or missing experience they disclosed. Use after ask_user when the '
+          'answer should help future matching, tailoring, or outreach. Do not '
+          'store one-off task instructions, temporary job choices, or sensitive '
+          'personal attributes.',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'topic': {
+            'type': 'string',
+            'description':
+                'Short snake_case topic slug, e.g. "ab_testing", '
+                '"remote_preference", or "salary_floor".',
+          },
+          'detail': {
+            'type': 'string',
+            'description':
+                'One or two clear sentences describing the reusable fact.',
+          },
+        },
+        'required': ['topic', 'detail'],
+      },
+      uiLabel: 'Remembering context…',
+      uiIcon: Icons.psychology_alt_rounded,
+    ),
+    handler: (args) async {
+      final user = FirebaseAuth.instance.currentUser;
+      final uid = user?.uid;
+
+      if (uid == null || user!.isAnonymous) {
+        return ToolResult.error('Sign in to remember facts.');
+      }
+
+      final topic = _normalizeFactTopic(args['topic']?.toString() ?? '');
+      final detail = (args['detail']?.toString() ?? '').trim();
+
+      if (topic.isEmpty) {
+        return ToolResult.error('topic is required.');
+      }
+
+      if (detail.isEmpty) {
+        return ToolResult.error('detail is required.');
+      }
+
+      final paths = FirestorePaths(FirebaseFirestore.instance);
+      final ref = paths.learnedFacts(uid).doc();
+
+      await ref.set({
+        'topic': topic,
+        'detail': detail,
+        'source': 'agent',
+        'created_at': FieldValue.serverTimestamp(),
+      });
+
+      return ToolResult(
+        summary: 'Remembered $topic',
+        data: {
+          'fact_id': ref.id,
+          'topic': topic,
+          'detail': detail,
+        },
+      );
     },
   );
 }
@@ -280,6 +366,129 @@ void _registerMatchJobs(
 }
 
 // ---------------------------------------------------------------------------
+// save_to_pipeline — REAL: creates a pending pipeline card in Firestore
+// ---------------------------------------------------------------------------
+
+void _registerSaveToPipeline(
+  ToolRegistry registry,
+  JobsRepository jobsRepo,
+  PipelineRepository pipelineRepo,
+) {
+  registry.register(
+    tool: const Tool(
+      name: 'save_to_pipeline',
+      description:
+          'Save a matched job as a pending pipeline card for the user to '
+          'review. Use during the brief flow after search_jobs and match_jobs. '
+          'Does NOT create an application, tailor a resume, draft email, or '
+          'send anything.',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'job_id': {
+            'type': 'string',
+            'description': 'Job id returned by search_jobs.',
+          },
+          'category': {
+            'type': 'string',
+            'enum': ['ready', 'input_needed', 'exploration'],
+            'description':
+                'Match category from match_jobs. Defaults to ready.',
+          },
+          'match_score': {
+            'type': 'integer',
+            'description': '0-100 score from match_jobs.',
+          },
+          'agent_action': {
+            'type': 'string',
+            'description':
+                'Short action label, e.g. "Ready to send" or "Needs input".',
+          },
+          'agent_justification': {
+            'type': 'string',
+            'description':
+                'One-sentence explanation for why this job belongs in the pipeline.',
+          },
+          'matched_skills': {
+            'type': 'array',
+            'items': {'type': 'string'},
+          },
+          'missing_skills': {
+            'type': 'array',
+            'items': {'type': 'string'},
+          },
+        },
+        'required': ['job_id'],
+      },
+      uiLabel: 'Saving to pipeline…',
+      uiIcon: Icons.playlist_add_check_rounded,
+    ),
+    handler: (args) async {
+      final user = FirebaseAuth.instance.currentUser;
+      final uid = user?.uid;
+      if (uid == null || user!.isAnonymous) {
+        return ToolResult.error('Sign in to save jobs to the pipeline.');
+      }
+
+      final jobId = args['job_id'] as String?;
+      if (jobId == null || jobId.isEmpty) {
+        return ToolResult.error('job_id is required.');
+      }
+
+      final job = await jobsRepo.fetchById(jobId);
+      if (job == null) return ToolResult.error('Job not found.');
+
+      final category = _jobCategoryFromWire(
+        args['category'] as String?,
+        fallback: job.category,
+      );
+
+      final matchScore =
+          (args['match_score'] as num?)?.toInt() ?? job.matchScore;
+
+      final agentAction =
+          ((args['agent_action'] as String?) ?? job.agentAction).trim();
+
+      final agentJustification =
+          ((args['agent_justification'] as String?) ??
+                  job.agentJustification)
+              .trim();
+
+      final matchedSkills = List<String>.from(
+        (args['matched_skills'] as List?) ?? job.skills,
+      );
+
+      final missingSkills = List<String>.from(
+        (args['missing_skills'] as List?) ?? job.missingSkills,
+      );
+
+      await pipelineRepo.createCard(
+        uid: uid,
+        job: job,
+        category: category,
+        matchScore: matchScore.clamp(0, 100),
+        agentAction: agentAction.isEmpty ? 'Review match' : agentAction,
+        agentJustification: agentJustification.isEmpty
+            ? 'Saved by Syncra for review.'
+            : agentJustification,
+        matchedSkills: matchedSkills,
+        missingSkills: missingSkills,
+      );
+
+      return ToolResult(
+        summary: 'Saved ${job.company} to pipeline',
+        data: {
+          'saved': true,
+          'job_id': job.id,
+          'category': category.name,
+          'match_score': matchScore.clamp(0, 100),
+        },
+      );
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
 // tailor_resume — REAL prompt (paraphrase), returns ResumeJSON.
 // Track B will add: render to PDF + save as a new resume doc.
 // ---------------------------------------------------------------------------
@@ -294,10 +503,11 @@ void _registerTailorResume(
     tool: const Tool(
       name: 'tailor_resume',
       description:
-          "Rewrite the user's resume for a specific job AND render a new "
-          'tailored PDF that gets saved to their resume list with '
-          "source='tailored'. Returns the new resume id so subsequent tools "
-          '(draft_email, send_email) can reference it. NEVER invents experience.',
+        'Proposes targeted PR-style edits to the user\'s resume for a '
+        'specific job. Does not modify the resume, render a PDF, save a file, '
+        'or overwrite anything. The user reviews each proposed edit in a diff '
+        'viewer before accepted edits are applied. Returns '
+        '{ proposed_edits: [...] }. NEVER invents experience.',
       inputSchema: {
         'type': 'object',
         'properties': {
@@ -319,61 +529,55 @@ void _registerTailorResume(
       if (jobId == null || jobId.isEmpty) {
         return ToolResult.error('job_id is required.');
       }
+
       final job = await jobsRepo.fetchById(jobId);
       if (job == null) return ToolResult.error('Job not found.');
 
       final uid = FirebaseAuth.instance.currentUser?.uid;
       final resumeId = (args['resume_id'] as String?)?.trim();
 
-      // Full orchestrated path — parses if needed, renders PDF, saves to
-      // Firestore + local disk. Requires a real resume_id + signed-in user.
+      Map<String, dynamic> resumeJson = kFakeResumeJson;
+
       if (uid != null && resumeId != null && resumeId.isNotEmpty) {
         try {
-          final saved = await orchestrator.tailorForJob(
+          final parsed = await orchestrator.readResumeJson(
             uid: uid,
             resumeId: resumeId,
-            jobId: jobId,
           );
-          return ToolResult(
-            summary: 'Saved ${saved.name}',
-            data: {
-              'tailored_resume_id': saved.id,
-              'file_name': saved.name,
-              'tailored_for_job_id': jobId,
-            },
-          );
+          resumeJson = parsed.toJson();
         } catch (e) {
-          // Fall through to paraphrase-only fallback below so the demo
-          // still produces something useful when, e.g., the PDF has no
-          // extractable text.
-          debugPrint('orchestrator.tailorForJob failed, falling back: $e');
+          debugPrint('readResumeJson failed, falling back to sample resume: $e');
         }
       }
 
-      // Paraphrase-only fallback — returns the tailored JSON but doesn't
-      // produce a PDF or persist anything. Used when no resume_id is
-      // available (e.g. unsigned-in demo) or the orchestrator failed.
       if (!paraphrase.hasApiKey) {
         return ToolResult(
-          summary: 'Tailored (placeholder — no API key)',
+          summary: 'No API key — proposed edits unavailable',
           data: {
-            'tailored_resume_json': kFakeResumeJson,
+            'proposed_edits': <Map<String, dynamic>>[],
+            'job_id': jobId,
+            if (resumeId != null && resumeId.isNotEmpty) 'resume_id': resumeId,
             'note':
-                'Stub output. Set ANTHROPIC_API_KEY and pass resume_id to get a real PDF.',
+                'Set ANTHROPIC_API_KEY to generate proposed resume edits.',
           },
         );
       }
 
       try {
-        final tailored = await paraphrase.tailorResume(
-          resumeJson: kFakeResumeJson,
+        final result = await paraphrase.tailorResume(
+          resumeJson: resumeJson,
           job: job,
         );
+
+        final proposedEdits =
+            List<Map<String, dynamic>>.from(result['proposed_edits'] as List);
+
         return ToolResult(
-          summary: 'Tailored JSON for ${job.company} (no PDF saved)',
+          summary: '${proposedEdits.length} proposed edits',
           data: {
-            'tailored_resume_json': tailored,
-            'tailored_for_job_id': jobId,
+            'proposed_edits': proposedEdits,
+            'job_id': jobId,
+            if (resumeId != null && resumeId.isNotEmpty) 'resume_id': resumeId,
           },
         );
       } catch (e) {
@@ -456,6 +660,19 @@ void _registerDraftEmail(
       }
     },
   );
+}
+
+JobCategory _jobCategoryFromWire(
+  String? value, {
+  JobCategory fallback = JobCategory.ready,
+}) {
+  return switch (value) {
+    'ready' => JobCategory.ready,
+    'input_needed' => JobCategory.inputNeeded,
+    'inputNeeded' => JobCategory.inputNeeded,
+    'exploration' => JobCategory.exploration,
+    _ => fallback,
+  };
 }
 
 String _domainGuess(String company) {
@@ -601,3 +818,53 @@ void _registerSendEmail(ToolRegistry registry) {
   );
 }
 
+String _normalizeFactTopic(String raw) {
+  return raw
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+      .replaceAll(RegExp(r'_+'), '_')
+      .replaceAll(RegExp(r'^_|_$'), '');
+}
+
+Future<List<Map<String, dynamic>>> _readLearnedFacts(
+  FirestorePaths paths,
+  String uid,
+) async {
+  try {
+    final snap = await paths
+        .learnedFacts(uid)
+        .orderBy('created_at', descending: true)
+        .limit(12)
+        .get();
+
+    return snap.docs
+        .map((doc) {
+          final data = doc.data();
+          return {
+            'id': doc.id,
+            'topic': (data['topic'] as String?) ?? '',
+            'detail': (data['detail'] as String?) ?? '',
+          };
+        })
+        .where((fact) =>
+            (fact['topic'] as String).isNotEmpty &&
+            (fact['detail'] as String).isNotEmpty)
+        .toList(growable: false);
+  } catch (e) {
+    debugPrint('read learned facts failed: $e');
+    return const [];
+  }
+}
+
+Map<String, dynamic> _resumeWithLearnedFacts(
+  Map<String, dynamic> resume,
+  List<Map<String, dynamic>> learnedFacts,
+) {
+  if (learnedFacts.isEmpty) return resume;
+
+  return {
+    ...resume,
+    'learned_facts': learnedFacts,
+  };
+}

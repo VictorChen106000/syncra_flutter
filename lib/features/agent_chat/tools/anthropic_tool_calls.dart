@@ -28,8 +28,19 @@ class AnthropicParaphraseService {
 
   bool get hasApiKey => _apiKey.isNotEmpty;
 
-  /// Returns a tailored `ResumeJSON` with the same shape as the input.
-  /// Only `summary`, `experience[].bullets`, and `skills` order may change.
+  /// Returns PR-style proposed edits for a target job.
+  ///
+  /// Shape:
+  /// {
+  ///   "proposed_edits": [
+  ///     {
+  ///       "target_path": "experience[0].bullets[2]",
+  ///       "original_text": "...",
+  ///       "proposed_text": "...",
+  ///       "reason": "..."
+  ///     }
+  ///   ]
+  /// }
   Future<Map<String, dynamic>> tailorResume({
     required Map<String, dynamic> resumeJson,
     required Job job,
@@ -37,24 +48,46 @@ class AnthropicParaphraseService {
     final response = await _call(
       system: _tailorSystem,
       user: '''
-Resume (JSON):
-${const JsonEncoder.withIndent('  ').convert(resumeJson)}
+  Resume (JSON):
+  ${const JsonEncoder.withIndent('  ').convert(resumeJson)}
 
-Target job:
-- title: ${job.title}
-- company: ${job.company}
-- location: ${job.location}
-- description: ${job.why}
+  Target job:
+  - title: ${job.title}
+  - company: ${job.company}
+  - location: ${job.location}
+  - description: ${job.why}
 
-Return ONLY the tailored ResumeJSON, no prose.''',
+  Return ONLY a JSON object with this exact shape:
+  {
+    "proposed_edits": [
+      {
+        "target_path": "experience[0].bullets[2]",
+        "original_text": "exact text copied verbatim from the resume",
+        "proposed_text": "rewritten text",
+        "reason": "one sentence explaining why this helps for this job"
+      }
+    ]
+  }
+  ''',
       maxTokens: 1200,
     );
+
     final cleaned = _stripFences(response);
+
     try {
-      return jsonDecode(cleaned) as Map<String, dynamic>;
+      final decoded = jsonDecode(cleaned) as Map<String, dynamic>;
+      final rawEdits = decoded['proposed_edits'];
+
+      if (rawEdits is! List) {
+        throw const FormatException('Missing proposed_edits array.');
+      }
+
+      return {
+        'proposed_edits': rawEdits,
+      };
     } catch (e) {
-      debugPrint('tailorResume parse failed: $e\nRaw: $response');
-      throw Exception('Could not parse tailored resume JSON.');
+      debugPrint('tailorResume proposed_edits parse failed: $e\nRaw: $response');
+      throw Exception('Could not parse proposed resume edits JSON.');
     }
   }
 
@@ -153,20 +186,31 @@ Return ONLY a JSON object: {"subject": "...", "body": "..."}.''',
     }
   }
 
-  static const _tailorSystem = '''
-You are Syncra's resume tailor. Given a ResumeJSON and a target job, return
-a tailored ResumeJSON with the SAME SHAPE as the input.
+static const _tailorSystem = '''
+You are Syncra's resume tailoring assistant.
+
+Your job is NOT to rewrite the whole resume.
+Your job is to propose a small pull-request-style list of targeted edits.
 
 Rules:
-- Keep all keys and structure identical to the input.
-- Rewrite `profile.summary` to lead with traits the job description emphasizes.
-- Reorder `skills` so the matching ones appear first.
-- For `experience[]` (if present), rewrite `bullets` to surface keywords from
-  the job — but NEVER invent experience, NEVER fabricate companies, dates, or
-  outcomes. If a bullet has nothing to lean on, leave it close to original.
-- Do not add new sections. Do not output any prose or markdown fences.
-
-Output: a single JSON object matching the input ResumeJSON schema.''';
+- Return ONLY valid JSON.
+- The top-level shape must be:
+  {"proposed_edits":[{"target_path":"...","original_text":"...","proposed_text":"...","reason":"..."}]}
+- Propose 3 to 8 edits maximum.
+- Prioritize edits that directly improve fit for the target job.
+- Prefer individual bullet rewrites over full-section rewrites.
+- `target_path` must point to a specific editable field in the ResumeJSON, such as:
+  - profile.summary
+  - experience[0].bullets[2]
+  - skills[3]
+- `original_text` must be copied verbatim from the provided resume.
+- `proposed_text` may rephrase the original text, but must not invent experience.
+- Never invent employers, titles, dates, metrics, tools, certifications, degrees, or achievements.
+- If the resume does not support a stronger claim, keep the proposed text close to the original.
+- `reason` must be one sentence explaining why the edit helps for this specific job.
+- Do not output markdown fences.
+- Do not output prose outside the JSON object.
+''';
 
   static const _emailSystem = '''
 You are Syncra's outreach drafter. Write a tight cold email from the candidate

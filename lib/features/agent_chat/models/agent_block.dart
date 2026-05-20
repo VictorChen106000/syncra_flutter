@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../resumes/models/proposed_edit.dart';
 
 /// One unit of agent output inside an [AgentTurn].
 ///
@@ -48,6 +49,23 @@ class ToolCallBlock extends AgentBlock {
 class TextBlock extends AgentBlock {
   TextBlock({required super.id, required this.text});
   final String text;
+}
+
+/// PR-style resume edits proposed by `tailor_resume`.
+///
+/// This is read-only for now. R2 will replace the simple renderer with the
+/// final Accept / Reject / Apply N edits diff viewer.
+class ProposedEditsBlock extends AgentBlock {
+  ProposedEditsBlock({
+    required super.id,
+    required this.edits,
+    this.jobId,
+    this.resumeId,
+  });
+
+  final List<ProposedEdit> edits;
+  final String? jobId;
+  final String? resumeId;
 }
 
 enum InputRequestState { pending, answered }

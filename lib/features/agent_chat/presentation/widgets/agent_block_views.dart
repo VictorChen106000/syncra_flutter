@@ -10,6 +10,7 @@ import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/utils/motion.dart';
 import '../../models/agent_block.dart';
 import '../../state/agent_chat_notifier.dart';
+import '../../../resumes/models/proposed_edit.dart';
 
 class AgentBlockView extends StatelessWidget {
   const AgentBlockView({
@@ -30,11 +31,229 @@ class AgentBlockView extends StatelessWidget {
       ThinkingBlock(:final content) => ThinkingBlockView(content: content),
       ToolCallBlock() => ToolCallBlockView(block: block as ToolCallBlock),
       TextBlock(:final text) => _TextBlockView(text: text, animate: animateText),
+      ProposedEditsBlock() =>
+        _ProposedEditsBlockView(block: block as ProposedEditsBlock),
       InputRequestBlock() =>
         InputRequestView(block: block as InputRequestBlock),
       ActionProposalBlock() =>
         ActionProposalView(block: block as ActionProposalBlock),
     };
+  }
+}
+
+class _ProposedEditsBlockView extends StatelessWidget {
+  const _ProposedEditsBlockView({required this.block});
+
+  final ProposedEditsBlock block;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final count = block.edits.length;
+    final plural = count == 1 ? 'edit' : 'edits';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: brand.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: brand.border),
+        boxShadow: [
+          BoxShadow(
+            color: brand.shadow.withValues(alpha: 0.18),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: brand.ink,
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.difference_rounded,
+                  color: brand.accent,
+                  size: 17,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '$count proposed resume $plural',
+                  style: TextStyle(
+                    color: brand.ink,
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 9,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: brand.surfaceMuted,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: Text(
+                  'Preview',
+                  style: TextStyle(
+                    color: brand.textMuted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Read-only preview. Accept / reject controls will be added by the diff viewer.',
+            style: TextStyle(
+              color: brand.textMuted,
+              fontSize: 12.5,
+              height: 1.4,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 12),
+          for (var i = 0; i < block.edits.length; i++) ...[
+            _ProposedEditPreviewCard(
+              index: i + 1,
+              edit: block.edits[i],
+            ),
+            if (i < block.edits.length - 1) const SizedBox(height: 10),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ProposedEditPreviewCard extends StatelessWidget {
+  const _ProposedEditPreviewCard({
+    required this.index,
+    required this.edit,
+  });
+
+  final int index;
+  final ProposedEdit edit;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: brand.surfaceMuted,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: brand.border.withValues(alpha: 0.7)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'EDIT $index · ${edit.targetPath}',
+            style: TextStyle(
+              color: brand.textMuted,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.0,
+            ),
+          ),
+          const SizedBox(height: 10),
+          _DiffTextRow(
+            label: 'Original',
+            text: edit.originalText,
+            muted: true,
+          ),
+          const SizedBox(height: 8),
+          _DiffTextRow(
+            label: 'Proposed',
+            text: edit.proposedText,
+            muted: false,
+          ),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.lightbulb_outline_rounded,
+                size: 15,
+                color: brand.textMuted,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  edit.reason,
+                  style: TextStyle(
+                    color: brand.textMuted,
+                    fontSize: 12.5,
+                    height: 1.4,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DiffTextRow extends StatelessWidget {
+  const _DiffTextRow({
+    required this.label,
+    required this.text,
+    required this.muted,
+  });
+
+  final String label;
+  final String text;
+  final bool muted;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: brand.textSoft,
+            fontSize: 10.5,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          text,
+          style: TextStyle(
+            color: muted ? brand.textMuted : brand.ink,
+            fontSize: 13,
+            height: 1.4,
+            fontWeight: muted ? FontWeight.w500 : FontWeight.w700,
+            decoration: muted ? TextDecoration.lineThrough : null,
+            decorationColor: muted ? brand.textMuted : null,
+          ),
+        ),
+      ],
+    );
   }
 }
 
