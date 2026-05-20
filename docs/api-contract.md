@@ -2,7 +2,7 @@
 
 **Status:** Draft v1.3 — adds PR-diff resume tailoring + opt-in morning brief, replaces v1.1
 **Demo target:** June 16, 2026
-**Last updated:** 2026-05-17
+**Last updated:** 2026-05-20
 
 Single source of truth for how Syncra is wired. If code disagrees with this
 file, this file wins. Product context lives in [product-brief.md](./product-brief.md);
@@ -505,6 +505,11 @@ Same device = both work. New device = Firestore doc exists, file missing, UI off
 - Tool use: pass tool definitions in the request; loop on `tool_use` responses
 - Header: `x-api-key`, `anthropic-version: 2023-06-01`, `anthropic-dangerous-direct-browser-access: true`
 - Key: `--dart-define=ANTHROPIC_API_KEY=sk-ant-...`
+- `max_tokens: 4096` — must stay above the thinking budget below.
+- **Extended thinking: enabled.** Request carries `thinking: { type: "enabled", budget_tokens: 2048 }`. The response `content` array gains `thinking` blocks (and occasionally `redacted_thinking`); the loop emits each `thinking` block as a `ThinkingBlock` and renders it as the collapsed "Thought for a moment" timeline step. `redacted_thinking` blocks are skipped from the UI but kept in history.
+  - With tool use, thinking blocks **must** be returned verbatim in the next assistant message — the loop already records assistant `content` as-is, which satisfies this. Do not strip thinking blocks when persisting/replaying history.
+  - Thinking shows once per turn (before the first response), not before each tool retry. Reasoning between tool calls would need interleaved thinking — beta header `anthropic-beta: interleaved-thinking-2025-05-14` (not currently enabled).
+- **Retry:** transient failures (429 / 5xx / 529 "Overloaded") retry up to 4 attempts with exponential backoff (~1s/2s/4s), honoring `Retry-After`. Permanent errors (auth, bad request) fail immediately.
 
 ### 5.2 JSearch (RapidAPI)
 - Endpoint: `https://jsearch.p.rapidapi.com/search`
