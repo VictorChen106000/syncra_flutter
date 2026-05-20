@@ -34,6 +34,9 @@ class AnthropicChatService implements AgentService {
   static const _version = '2023-06-01';
   static const _maxLoopIterations = 8;
 
+  /// Per-request retry budget for transient API failures (429 / 5xx / 529).
+  static const _maxApiAttempts = 3;
+
   static const _system = '''
 You are Syncra, an AI career copilot inside a Flutter app. Your job is to help
 the user find, tailor, and apply to jobs. Be calm, capable, and concise.
@@ -320,24 +323,65 @@ clear next step or question.''';
       'tools': tools,
       'messages': messages,
     };
+    final body = jsonEncode(payload);
 
-    final response = await _client
-        .post(
-          Uri.parse(_endpoint),
-          headers: {
-            'content-type': 'application/json',
-            'x-api-key': _apiKey,
-            'anthropic-version': _version,
-            'anthropic-dangerous-direct-browser-access': 'true',
-          },
-          body: jsonEncode(payload),
-        )
-        .timeout(const Duration(seconds: 45));
+    // Transient failures (429 rate-limit, 529 "Overloaded", 5xx, timeouts)
+    // are retried with exponential backoff instead of failing the turn on
+    // the first blip. Permanent errors (auth, bad request) fail immediately.
+    Object lastError = Exception('Anthropic request failed');
+    for (var attempt = 1; attempt <= _maxApiAttempts; attempt++) {
+      try {
+        final response = await _client
+            .post(
+              Uri.parse(_endpoint),
+              headers: {
+                'content-type': 'application/json',
+                'x-api-key': _apiKey,
+                'anthropic-version': _version,
+                'anthropic-dangerous-direct-browser-access': 'true',
+              },
+              body: body,
+            )
+            .timeout(const Duration(seconds: 45));
 
-    if (response.statusCode != 200) {
-      throw Exception(_extractError(response.body, response.statusCode));
+        if (response.statusCode == 200) {
+          return jsonDecode(response.body) as Map<String, dynamic>;
+        }
+
+        final error = Exception(
+          _extractError(response.body, response.statusCode),
+        );
+        // Permanent error, or retries exhausted → surface it.
+        if (!_isRetryableStatus(response.statusCode) ||
+            attempt == _maxApiAttempts) {
+          throw error;
+        }
+        lastError = error;
+        await Future<void>.delayed(
+          _backoffDelay(attempt, response.headers['retry-after']),
+        );
+      } on TimeoutException catch (e) {
+        if (attempt == _maxApiAttempts) rethrow;
+        lastError = e;
+        await Future<void>.delayed(_backoffDelay(attempt, null));
+      }
     }
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    throw lastError;
+  }
+
+  /// Transient HTTP statuses worth retrying: 429 rate-limit and any 5xx
+  /// server error (529 "Overloaded" included).
+  static bool _isRetryableStatus(int code) =>
+      code == 429 || (code >= 500 && code < 600);
+
+  /// Exponential backoff — ~1s then 2s between attempts. Honors a server
+  /// `Retry-After` header (in seconds) when present.
+  Duration _backoffDelay(int attempt, String? retryAfterHeader) {
+    final retryAfter = int.tryParse(retryAfterHeader ?? '');
+    if (retryAfter != null && retryAfter > 0) {
+      return Duration(seconds: retryAfter.clamp(1, 30));
+    }
+    return Duration(milliseconds: 500 * (1 << attempt));
   }
 
   ProposedEditsBlock? _proposedEditsBlockFromData({
