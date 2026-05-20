@@ -14,9 +14,13 @@ import 'agent_block_views.dart';
 /// Plain text output and inline input requests render below the timeline.
 bool _isTimelineStep(AgentBlock b) => b is ThinkingBlock || b is ToolCallBlock;
 
-/// Action proposals are hoisted out of the turn into a docked island above
-/// the input bar — see [AiChatbotPage]. Skip rendering them here.
-bool _isDocked(AgentBlock b) => b is ActionProposalBlock;
+/// Blocks hoisted out of the turn into the docked island above the input bar
+/// — see [AiChatbotPage]. Action proposals always dock; an input request
+/// docks only while pending, then settles back inline as a Q&A record once
+/// the user has answered.
+bool _isDocked(AgentBlock b) =>
+    b is ActionProposalBlock ||
+    (b is InputRequestBlock && b.state == InputRequestState.pending);
 
 /// One renderable chunk of a turn — see [AgentTurnView._segmentize].
 sealed class _Segment {

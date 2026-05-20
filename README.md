@@ -46,7 +46,7 @@ No other build-time env vars. Firebase project + Google Sign-In OAuth client IDs
 |----------|--------|
 | iOS Simulator | ✅ primary dev target |
 | Android emulator | ✅ |
-| Flutter Web | ✅ — resume preview uses `sessionStorage` for PDF cache |
+| Flutter Web | ✅ — resume files load from Firebase Storage |
 
 ## Common commands
 
@@ -103,4 +103,4 @@ Riverpod `Notifier<T>` with immutable state classes. See [docs/roles/04-app-shel
 - **`Tried to read the state of an uninitialized provider`** during navigation → check that [app_router.dart](lib/core/router/app_router.dart) eagerly reads each `.notifier` referenced in the redirect.
 - **iOS simulator runtime missing** → Xcode → Settings → Components → install the iOS runtime that matches the simulator you picked.
 - **Google Sign-In hangs** → confirm the iOS URL scheme in `Info.plist` matches the `REVERSED_CLIENT_ID` in `GoogleService-Info.plist`.
-- **Web resume preview blank after refresh** → expected; the PDF bytes live in `sessionStorage` and clear on tab close.
+- **Resume preview blank** → check the Firestore doc has a `storage_path`; legacy pre-migration docs lack it and need re-uploading.

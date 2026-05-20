@@ -133,7 +133,7 @@ Everything is client logic + free Firebase services + a handful of third-party A
 | Feature | In v1 demo |
 |---|---|
 | Google sign-in | ✅ |
-| Resume upload (local-cache) | ✅ |
+| Resume upload (Firebase Storage) | ✅ |
 | Agent chat with tool use | ✅ |
 | Job search (JSearch + Firestore cache) | ✅ |
 | Job matching & ranking | ✅ |

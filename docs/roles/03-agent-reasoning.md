@@ -25,6 +25,8 @@ Stack: Flutter, Anthropic Claude (Haiku 4.5) direct from Flutter via
 | Piece | Status |
 |---|---|
 | `AnthropicChatService` with tool-use loop | ✅ |
+| Extended thinking — `ThinkingBlock` in the reasoning timeline | ✅ (see [api-contract.md §5.1](../api-contract.md)) |
+| Transient-failure retry (429 / 5xx / 529) with backoff | ✅ |
 | `ask_user` mid-flow input (text field in chat) | ✅ |
 | Tool registry + 8 tools registered | ✅ (some stubs) |
 | Brief reasoner (Claude scores jobs) | ✅ |

@@ -48,7 +48,7 @@ class ApplicationsRepository {
   }) async {
     await _paths.applications(uid).doc(applicationId).update({
       'sent_at': FieldValue.serverTimestamp(),
-      if (sentEmailId != null) 'sent_email_id': sentEmailId,
+      'sent_email_id': ?sentEmailId,
     });
   }
 
