@@ -18,7 +18,7 @@ viewer and imports your contracts.
 
 Stack: Flutter (iOS / Android / Web), Firebase Auth + Firestore (Spark),
 Anthropic Claude (Haiku 4.5) called direct from Flutter. No backend server.
-Resume PDFs live on-device via `path_provider`.
+Resume PDFs live in Firebase Cloud Storage; Firestore holds only metadata.
 
 ---
 
@@ -27,7 +27,7 @@ Resume PDFs live on-device via `path_provider`.
 | Piece | Status |
 |---|---|
 | PDF text extraction (`syncfusion_flutter_pdf`) | ✅ |
-| Resume upload via `path_provider` (local file + Firestore metadata) | ✅ |
+| Resume upload to Firebase Storage (blob + Firestore metadata) | ✅ |
 | Resume parser (PDF text → Claude → `ResumeJSON`, lazy + cached) | ✅ |
 | Fixed ATS-safe PDF template (`pdf_template.dart`) | ✅ |
 | Wholesale tailor orchestrator (v1.2) | ⚠️ — gut this; replaced by diff model |
@@ -102,8 +102,9 @@ Also in `builtin_tools.dart`. Input `{ resume_id, accepted_edits[] }`. This tool
 1. Loads the original `ResumeJSON` via `resumes_repository`.
 2. Calls `ResumeDiffService.applyEdits` to build V2.
 3. Renders V2 through `pdf_template.dart`.
-4. Saves the local file + creates a new Firestore resume doc with
-   `source='tailored'`, `parent_resume_id=<original>`, `tailored_for_job_id=<job>`.
+4. Uploads the rendered PDF to Firebase Storage + creates a new Firestore resume doc with
+   `source='tailored'`, `storage_path=<blob>`, `parent_resume_id=<original>`, `tailored_for_job_id=<job>`
+   (via `resumes_repository.saveGeneratedResume`).
 5. Returns `{ tailored_resume_id }`.
 
 **Claude must never call this tool directly** — it's user-gated. The chat
@@ -167,7 +168,7 @@ Group original + tailored variants on the resume list page.
 - **Don't render any PDF inside `tailor_resume`.** Render only inside `apply_resume_edits`.
 - **Don't mutate the original `ResumeJSON` anywhere.** `applyEdits` must return a fresh object.
 - **`target_path` parsing is fiddly.** Test bracket indices, dotted keys, and nested cases before A starts prompting.
-- **Don't add `firebase_storage` back.** Local-cache only.
+- **Resume bytes go to Firebase Storage**, metadata to Firestore — go through `resumes_repository`, never write blobs from anywhere else.
 - **Don't change the PDF template** without team vote — consistency between original and tailored is a feature.
 - **Don't add new fields to `resume_json`** without updating [api-contract.md §2.4](../api-contract.md).
 
@@ -180,7 +181,7 @@ Group original + tailored variants on the resume list page.
 - [api-contract.md §2.4](../api-contract.md) — `tailor_resume` (new schema)
 - [api-contract.md §2.4b](../api-contract.md) — `apply_resume_edits` (new tool)
 - [api-contract.md §3](../api-contract.md) — `users/{uid}/resumes` schema
-- [api-contract.md §4](../api-contract.md) — local device storage layout
+- [api-contract.md §4](../api-contract.md) — resume file storage (Firebase Storage)
 - [api-contract.md §7](../api-contract.md) — PDF template spec
 
 ---

@@ -50,7 +50,7 @@ reference; delete after).
 | Anthropic chat with full tool-use loop | ✅ |
 | `ask_user` mid-flow input (text field in chat) | ✅ |
 | Tool registry + 8 tools registered | ✅ (some stubs, some real) |
-| Resume upload via `path_provider` on mobile/desktop + web `sessionStorage` preview cache; Firestore stores metadata only | ✅ |
+| Resume upload to Firebase Storage (PDF/DOC blob); Firestore stores metadata only | ✅ |
 | PDF text extraction (`syncfusion_flutter_pdf`) | ✅ |
 | Resume parser (PDF text → Claude → ResumeJSON, lazy + cached) | ✅ |
 | Resume tailor service + fixed PDF template | ✅ |
@@ -138,7 +138,7 @@ syncra_flutter/
 │   │   │   ├── applications_repository.dart ✅
 │   │   │   ├── pipeline_repository.dart  ✅
 │   │   │   ├── jobs_repository.dart      ✅
-│   │   │   └── resumes_repository.dart   ✅ — local-cache via path_provider  (B1)
+│   │   │   └── resumes_repository.dart   ✅ — Firebase Storage blob + Firestore metadata  (B1)
 │   │   └── models/
 │   │       ├── job.dart, tracked_application.dart  ✅
 │   │
@@ -198,14 +198,11 @@ syncra_flutter/
 │   │   │   │   ├── resume_parser_service.dart    ✅ — lazy parse
 │   │   │   │   ├── resume_tailor_service.dart    ✅
 │   │   │   │   ├── pdf_template.dart             ✅ — fixed layout
-│   │   │   │   ├── resume_tailor_orchestrator.dart  ✅ — full chain  (B1)
-│   │   │   │   ├── resume_session_storage.dart       ✅ — platform export
-│   │   │   │   ├── resume_session_storage_web.dart   ✅ — web sessionStorage PDF-byte cache
-│   │   │   │   └── resume_session_storage_stub.dart  ✅ — non-web no-op
-│   │   │   ├── state/resume_notifier.dart  ✅ — local-cache wired
+│   │   │   │   └── resume_tailor_orchestrator.dart  ✅ — full chain  (B1)
+│   │   │   ├── state/resume_notifier.dart  ✅ — Firebase Storage wired
 │   │   │   └── presentation/
 │   │   │       ├── resume_lists_page.dart  ✅
-│   │   │       ├── resume_preview_page.dart ✅ — local file viewer
+│   │   │       ├── resume_preview_page.dart ✅ — Storage-backed PDF viewer
 │   │   │       └── widgets/                 ✅
 │   │   │
 │   │   └── email/                    ⏳ — does not exist yet, create  (FE2 + B2)
@@ -286,8 +283,8 @@ mutated.**
 5. **New tool `apply_resume_edits`** — input `{ resume_id, accepted_edits[] }`.
    This is the tool that does the render: builds V2 `ResumeJSON` via
    `resume_diff_service`, runs through [pdf_template.dart](../lib/features/resumes/services/pdf_template.dart),
-   saves local file + Firestore doc with `source='tailored'`, returns
-   `{ tailored_resume_id }`. **Only this tool produces a new resume document.**
+   uploads the PDF to Firebase Storage + Firestore doc with `source='tailored'`,
+   returns `{ tailored_resume_id }`. **Only this tool produces a new resume document.**
 
 6. **Scanned-PDF edge case** — if `PdfTextExtractor` returns an empty string,
    surface a friendly "this PDF looks like a scan — please upload a text PDF"
@@ -320,7 +317,7 @@ mutated.**
 - Don't render any PDF inside `tailor_resume`. Render only inside `apply_resume_edits`.
 - Don't mutate the original `ResumeJSON` anywhere — `resume_diff_service.applyEdits` must return a fresh object.
 - `target_path` parsing is fiddly (bracket indices vs. dotted keys). Lock the grammar in a test.
-- Don't add `firebase_storage` back. Local-cache only.
+- Resume bytes go to Firebase Storage via `resumes_repository` — don't write blobs from anywhere else.
 - Don't change the PDF template layout without team vote — consistency is a feature.
 - Don't add new fields to `resume_json` without updating [api-contract.md §2.4](./api-contract.md).
 
@@ -696,7 +693,7 @@ dies here. Three pieces of UI gate the critical actions:
    {recipient}" button. Tap → `confirmAndSendEmail(token)` → triggers B2's
    `send_email` tool with a one-shot UUID confirmation token. Coordinate with B2 on the token shape.
 
-7. **Resume preview improvements** — when the local file is missing (different device), show a clear "this resume isn't on this device" state with a re-upload button.
+7. **Resume preview improvements** — for legacy docs with no `storage_path` (pre-migration), `downloadBytes` returns `null`; show a clear "this resume needs re-uploading" state with a re-upload button.
 
 8. **`tailor_page.dart`** — drop or repurpose as a simple entry point that pre-fills a chat prompt ("Tailor my resume for {Job Title}"). The review itself now happens in the inline `ProposedEditsBlock`, not on a separate page.
 

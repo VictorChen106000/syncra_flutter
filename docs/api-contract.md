@@ -19,7 +19,7 @@ team ownership in [team-handoff.md](./team-handoff.md) (per-track work) and
 | Server | **None.** No FastAPI, no Cloud Functions. |
 | Auth | Firebase Auth — Google Sign-In only |
 | Database | Cloud Firestore (Spark plan) |
-| File storage | **Local device/session storage**. Mobile/desktop use `path_provider`; web uses browser `sessionStorage` as a temporary PDF-byte cache. No Firebase Cloud Storage. |
+| File storage | **Firebase Cloud Storage.** Resume PDF/DOC bytes live at `users/{uid}/resumes/{resumeId}.{ext}`; Firestore holds only the metadata doc. |
 | LLM | Anthropic Claude (Haiku 4.5) — direct from Flutter |
 | Job source | JSearch via RapidAPI — direct from Flutter |
 | Email send | Gmail API (user's own account, OAuth) |
@@ -28,21 +28,29 @@ team ownership in [team-handoff.md](./team-handoff.md) (per-track work) and
 | Agent paradigm | **Tool use** — Claude picks tools, client executes them, loop continues |
 | Human-in-the-loop | Agent never sends external traffic without explicit user tap in v1 |
 | Resume canonical form | `ResumeJSON` in Firestore (lazy-populated on first tailor) |
-| Resume PDF | Local file at `${appDocs}/resumes/{resumeId}.pdf` |
+| Resume PDF | Firebase Storage blob at `users/{uid}/resumes/{resumeId}.pdf` |
 | PDF template | One fixed single-column ATS-safe layout |
 | Authorization | Owner-only Firestore rules on `users/{uid}/**` |
 
 ---
 
-### Web preview cache
+### Resume file storage
 
-On Flutter Web, `path_provider` is not used because browser apps do not have a normal app documents directory. The app stores uploaded PDF bytes in browser `sessionStorage` so PDF preview survives hot reload, hot restart, and page reload in the same tab/session.
+Resume files (PDF/DOC bytes) live in **Firebase Cloud Storage**; Firestore
+holds only the metadata doc. This is identical on every platform — mobile,
+desktop, and web — with no `path_provider` or browser `sessionStorage`.
+
+Write order ([ResumesRepository](../lib/data/firestore/resumes_repository.dart)):
+1. Upload bytes to Storage at `users/{uid}/resumes/{resumeId}.{ext}` (`.pdf` / `.docx` / `.doc`).
+2. Write the Firestore metadata doc with `storage_path` pointing at that blob.
+3. If the Firestore write fails, the orphaned blob is deleted — a doc never points at missing bytes.
+
+On delete, the Firestore doc goes first, then the blob is removed best-effort.
+Bytes are read directly via `getData` (no download URLs).
 
 Behavior:
-- Same browser tab/session: PDF preview can survive reload.
-- Closed tab/window: browser `sessionStorage` is cleared, so preview requires re-upload.
-- Different device/browser: Firestore metadata still appears, but the actual PDF bytes are missing.
-- No Firebase Storage is used, keeping the project on the Spark/free-plan-safe architecture.
+- Any device/browser, same account: resume files load — they sync via Storage.
+- Legacy docs from before the migration may lack `storage_path`; `downloadBytes` returns `null` and the UI offers re-upload.
 
 ## 1. Agent loop — the primary UX
 
@@ -246,7 +254,7 @@ name: read_resume
 description: Load the user's parsed resume as structured data. Parses lazily on first call.
 input_schema:
   resume_id: string?    # defaults to most recent manual resume
-backed_by: Firestore users/{uid}/resumes/{id} + lazy parse (syncfusion_flutter_pdf + Anthropic)
+backed_by: Firestore users/{uid}/resumes/{id} metadata + PDF bytes from Firebase Storage + lazy parse (syncfusion_flutter_pdf + Anthropic)
 returns: ResumeJSON
 side_effect: writes resume_json back to the doc the first time it parses
 ```
@@ -304,9 +312,9 @@ input_schema:
   resume_id: string             # the original resume
   accepted_edits: list<ProposedEdit>
 returns: { tailored_resume_id }
-backed_by: resume_diff_service.applyEdits (pure, deterministic) → pdf_template render → resumes_repository
-side_effect: renders to PDF, saves to local disk, creates new Firestore resume
-  doc with source='tailored', parent_resume_id=<original>, tailored_for_job_id=<job>
+backed_by: resume_diff_service.applyEdits (pure, deterministic) → pdf_template render → resumes_repository.saveGeneratedResume
+side_effect: renders to PDF, uploads the PDF to Firebase Storage, creates new Firestore resume
+  doc with source='tailored', storage_path=<blob>, parent_resume_id=<original>, tailored_for_job_id=<job>
 caller: FE2's diff viewer dispatches this via the chat controller. Claude must
   not call this tool directly — it is user-gated.
 ```
@@ -470,7 +478,7 @@ agent turns so the same question isn't asked twice.
 | `name`, `mime_type` | string |
 | `size` | int |
 | `source` | `'manual' \| 'tailored'` |
-| `local_path` | string |
+| `storage_path` | string — Firebase Storage path to the PDF/DOC blob |
 | `uploaded_at` | Timestamp |
 | `resume_json` | map? (lazy) |
 | `parent_resume_id`, `tailored_for_job_id` | string? (tailored only) |
@@ -484,16 +492,18 @@ Filled by `search_jobs` upserts. Pre-seeded by legacy backend's JSearch sync.
 
 ---
 
-## 4. Local device storage
+## 4. Resume file storage (Firebase Storage)
 
 ```
-${appDocumentsDirectory}/
-└── resumes/
-    ├── {manual-resumeId}.pdf       ← user-uploaded
-    └── {tailored-resumeId}.pdf     ← generated by tailor_resume
+gs://<bucket>/users/{uid}/resumes/
+├── {manual-resumeId}.pdf      ← user-uploaded (also .docx / .doc)
+└── {tailored-resumeId}.pdf    ← generated by apply_resume_edits
 ```
 
-Same device = both work. New device = Firestore doc exists, file missing, UI offers re-upload.
+Bytes live in Firebase Storage; the matching `users/{uid}/resumes/{resumeId}`
+Firestore doc carries `storage_path`. Files sync across devices for the same
+account. Legacy docs without `storage_path` resolve to `null` bytes — the UI
+offers re-upload.
 
 ---
 
@@ -536,6 +546,10 @@ Same device = both work. New device = Firestore doc exists, file missing, UI off
 ### `firestore.rules` (deployed)
 - `jobs/{jobId}` — any signed-in user read/write
 - `users/{uid}/**` — owner-only
+
+### `storage.rules` (deployed)
+- `users/{uid}/resumes/**` — owner-only read/write
+- Writes capped at 5 MB and restricted to `application/*` content types
 
 ### Secrets posture for v1 demo
 - API keys ship in the client (compiled in via `--dart-define`).
@@ -604,7 +618,6 @@ concepts. One page, status filters, sorted in-flight first. Lives at
 ### Out of scope for v1
 
 - *Push* notifications (FCM) — in-app inbox only; no system tray.
-- Cross-device resume sync (PDFs are local-cache).
 - Auto-submit applications.
 - LinkedIn integration.
 - Cover-letter generation as a separate document.
@@ -626,7 +639,7 @@ concepts. One page, status filters, sorted in-flight first. Lives at
 | Brief reasoner → Anthropic + Firestore | ✅ Done | Track A |
 | Agent chat → direct Anthropic | ✅ Done | Track A |
 | Pipeline approve → application | ✅ Done | Track D |
-| Resume upload | ⚠️ Has Firebase Storage; **swap to local-cache** | Track B |
+| Resume upload → Firebase Storage | ✅ Done | Track B |
 | Tool registry + executor | ❌ Not built | Track A |
 | `InputRequestBlock` + ask_user UI | ❌ Not built | Track A |
 | Resume parser (lazy) | ❌ Not built | Track B |
