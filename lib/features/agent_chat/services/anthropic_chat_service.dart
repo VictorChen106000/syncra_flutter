@@ -104,7 +104,12 @@ clear next step or question.''';
     // message; assistant + tool_result messages are appended on each loop.
     final attachmentNote = attachments.isEmpty
         ? ''
-        : '\n\n(User attached: ${attachments.map((a) => a.name).join(", ")})';
+        : '''
+
+    User attached resumes:
+    ${attachments.map((a) => '- resume_id: ${a.id}\n  name: ${a.name}').join('\n')}
+    When a resume tool accepts resume_id, use the matching resume_id above.
+    ''';
     final messages = <Map<String, dynamic>>[
       {
         'role': 'user',

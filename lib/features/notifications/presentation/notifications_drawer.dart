@@ -10,6 +10,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../models/app_notification.dart';
 import '../state/notifications_notifier.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
 /// `true` while the dashboard's left drawer is on screen. The shell
 /// scaffold reads this to slide its floating bottom nav out of the way.

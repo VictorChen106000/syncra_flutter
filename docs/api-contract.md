@@ -19,7 +19,7 @@ team ownership in [team-handoff.md](./team-handoff.md) (per-track work) and
 | Server | **None.** No FastAPI, no Cloud Functions. |
 | Auth | Firebase Auth — Google Sign-In only |
 | Database | Cloud Firestore (Spark plan) |
-| File storage | **Firebase Cloud Storage.** Resume PDF/DOC bytes live at `users/{uid}/resumes/{resumeId}.{ext}`; Firestore holds only the metadata doc. |
+| File storage | Firebase Storage for resume bytes + Firestore metadata. Web requires Storage CORS; iOS/Android use native Firebase Storage SDKs. |
 | LLM | Anthropic Claude (Haiku 4.5) — direct from Flutter |
 | Job source | JSearch via RapidAPI — direct from Flutter |
 | Email send | Gmail API (user's own account, OAuth) |
@@ -34,23 +34,23 @@ team ownership in [team-handoff.md](./team-handoff.md) (per-track work) and
 
 ---
 
-### Resume file storage
+### Resume file storage and web CORS
 
-Resume files (PDF/DOC bytes) live in **Firebase Cloud Storage**; Firestore
-holds only the metadata doc. This is identical on every platform — mobile,
-desktop, and web — with no `path_provider` or browser `sessionStorage`.
+Resume metadata lives in Firestore at:
 
-Write order ([ResumesRepository](../lib/data/firestore/resumes_repository.dart)):
-1. Upload bytes to Storage at `users/{uid}/resumes/{resumeId}.{ext}` (`.pdf` / `.docx` / `.doc`).
-2. Write the Firestore metadata doc with `storage_path` pointing at that blob.
-3. If the Firestore write fails, the orphaned blob is deleted — a doc never points at missing bytes.
+`users/{uid}/resumes/{resumeId}`
 
-On delete, the Firestore doc goes first, then the blob is removed best-effort.
-Bytes are read directly via `getData` (no download URLs).
+Resume bytes live in Firebase Storage at:
 
-Behavior:
-- Any device/browser, same account: resume files load — they sync via Storage.
-- Legacy docs from before the migration may lack `storage_path`; `downloadBytes` returns `null` and the UI offers re-upload.
+`users/{uid}/resumes/{resumeId}.{ext}`
+
+Firestore resume docs store `storage_path`, and tools such as `read_resume`,
+`match_jobs`, and `tailor_resume` can load the selected resume through `resume_id`.
+
+On Flutter Web, Firebase Storage CORS must allow browser downloads from the app origin.
+Without CORS, web resume parsing fails with `ClientException: Failed to fetch`.
+iOS and Android do not need CORS because they use native networking, but all platforms
+still require Firebase Storage security rules.
 
 ## 1. Agent loop — the primary UX
 
@@ -253,10 +253,10 @@ returns: list<Job>
 name: read_resume
 description: Load the user's parsed resume as structured data. Parses lazily on first call.
 input_schema:
-  resume_id: string?    # defaults to most recent manual resume
-backed_by: Firestore users/{uid}/resumes/{id} metadata + PDF bytes from Firebase Storage + lazy parse (syncfusion_flutter_pdf + Anthropic)
+  resume_id: string?   # use attached resume_id when available; defaults to latest manual resume
+backed_by: Firestore users/{uid}/resumes/{id} + Firebase Storage bytes + lazy parse
 returns: ResumeJSON
-side_effect: writes resume_json back to the doc the first time it parses
+side_effect: writes resume_json back to the resume doc the first time it parses
 ```
 
 #### 2.3 `match_jobs`
@@ -265,7 +265,7 @@ name: match_jobs
 description: Score each job against the user's resume. Returns rank-ordered list with reasoning.
 input_schema:
   job_ids: list<string>
-  resume_id: string?
+  resume_id: string?    # use attached resume_id when available; defaults to latest manual resume
 backed_by: Anthropic (existing AnthropicService.scoreJobs)
 returns: list<MatchResult>  # category, match_score, justification, missing_skills
 ```
@@ -278,7 +278,7 @@ description: Propose targeted edits to the user's resume for a specific job.
   render any PDF. The user reviews each edit in the diff viewer before
   applying.
 input_schema:
-  resume_id: string
+  resume_id: string?    # preferred; use attached resume_id when available
   job_id: string
 backed_by: Anthropic (paraphrase only — never invents experience, employers, dates, or metrics)
 returns:
@@ -618,7 +618,7 @@ concepts. One page, status filters, sorted in-flight first. Lives at
 ### Out of scope for v1
 
 - *Push* notifications (FCM) — in-app inbox only; no system tray.
-- Auto-submit applications.
+- Cross-device resume sync is now partially supported through Firebase Storage for uploaded resumes.- Auto-submit applications.
 - LinkedIn integration.
 - Cover-letter generation as a separate document.
 - Chat persistence (in-memory only).
