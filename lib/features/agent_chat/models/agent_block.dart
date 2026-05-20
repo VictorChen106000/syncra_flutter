@@ -41,8 +41,10 @@ class ToolCallBlock extends AgentBlock {
   String? resultSummary;
 
   /// Optional drill-down: the tool's inputs/outputs, shown when the user taps
-  /// the call to inspect it. Null when there's nothing more to reveal.
-  final String? detail;
+  /// the call to inspect it. Null when there's nothing more to reveal. Set at
+  /// construction with the input args, then replaced with input + output once
+  /// the call completes — hence mutable, like [status] and [resultSummary].
+  String? detail;
 }
 
 /// Plain prose from the agent (markdown-free for now).

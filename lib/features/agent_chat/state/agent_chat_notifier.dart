@@ -275,11 +275,17 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     switch (event) {
       case BlockAdded(:final block):
         turn.blocks.add(block);
-      case ToolCallCompleted(:final blockId, :final summary, :final status):
+      case ToolCallCompleted(
+          :final blockId,
+          :final summary,
+          :final status,
+          :final detail,
+        ):
         for (final b in turn.blocks) {
           if (b is ToolCallBlock && b.id == blockId) {
             b.status = status;
             b.resultSummary = summary;
+            if (detail != null) b.detail = detail;
             break;
           }
         }

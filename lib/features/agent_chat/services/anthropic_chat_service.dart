@@ -116,7 +116,16 @@ clear next step or question.''';
           if (raw is! Map<String, dynamic>) continue;
           final type = raw['type'] as String?;
 
-          if (type == 'text') {
+          if (type == 'thinking') {
+            // Extended-thinking block — the agent's own reasoning. Empty and
+            // `redacted_thinking` blocks carry no readable content; skip them
+            // (they still ride along verbatim in `messages` for signing).
+            final thinking = (raw['thinking'] as String?)?.trim() ?? '';
+            if (thinking.isEmpty) continue;
+            yield BlockAdded(
+              ThinkingBlock(id: nextBlockId('think'), content: thinking),
+            );
+          } else if (type == 'text') {
             final text = (raw['text'] as String?)?.trim() ?? '';
             if (text.isEmpty) continue;
             yield BlockAdded(TextBlock(id: nextBlockId('text'), text: text));
@@ -153,6 +162,7 @@ clear next step or question.''';
                 name: name,
                 label: tool?.uiLabel ?? '$name…',
                 icon: tool?.uiIcon ?? Icons.bolt_rounded,
+                detail: _formatToolDetail(input),
               );
               yield BlockAdded(toolBlock);
 
@@ -161,6 +171,10 @@ clear next step or question.''';
                   blockId: toolBlock.id,
                   summary: 'Not implemented yet',
                   status: ToolCallStatus.failed,
+                  detail: _formatToolDetail(
+                    input,
+                    output: 'Tool "$name" is not registered.',
+                  ),
                 );
                 toolResults.add({
                   'type': 'tool_result',
@@ -180,6 +194,7 @@ clear next step or question.''';
                   status: result.isError
                       ? ToolCallStatus.failed
                       : ToolCallStatus.done,
+                  detail: _formatToolDetail(input, output: result.data),
                 );
 
                 if (result.isError) {
@@ -214,6 +229,7 @@ clear next step or question.''';
                   blockId: toolBlock.id,
                   summary: 'Failed: ${_shortError(e)}',
                   status: ToolCallStatus.failed,
+                  detail: _formatToolDetail(input, output: 'Error: $e'),
                 );
                 toolResults.add({
                   'type': 'tool_result',
@@ -295,7 +311,11 @@ clear next step or question.''';
 
     final payload = {
       'model': model,
-      'max_tokens': 1024,
+      // Extended thinking surfaces the agent's reasoning as `thinking`
+      // content blocks. `max_tokens` must exceed `budget_tokens`, and the
+      // budget itself must be >= 1024.
+      'max_tokens': 4096,
+      'thinking': {'type': 'enabled', 'budget_tokens': 2048},
       'system': _system,
       'tools': tools,
       'messages': messages,
@@ -364,6 +384,36 @@ clear next step or question.''';
     final plural = count == 1 ? 'edit' : 'edits';
     final pronoun = count == 1 ? 'it' : 'them';
     return 'I found $count proposed resume $plural. Review $pronoun before I continue.';
+  }
+
+  /// Formats a tool call's input args — and, once available, its output — for
+  /// the drill-down panel. Pretty-prints JSON and clamps length so the inline
+  /// panel stays compact.
+  String _formatToolDetail(Map<String, dynamic> input, {Object? output}) {
+    final buf = StringBuffer()
+      ..writeln('▸ Input')
+      ..write(_prettyJson(input));
+    if (output != null) {
+      buf
+        ..writeln()
+        ..writeln()
+        ..writeln('▸ Output')
+        ..write(_prettyJson(output));
+    }
+    final text = buf.toString();
+    return text.length > 1600
+        ? '${text.substring(0, 1600)}\n…(truncated)'
+        : text;
+  }
+
+  String _prettyJson(Object? value) {
+    if (value == null) return 'null';
+    if (value is String) return value;
+    try {
+      return const JsonEncoder.withIndent('  ').convert(value);
+    } catch (_) {
+      return value.toString();
+    }
   }
 
   String _serialize(Object? data) {

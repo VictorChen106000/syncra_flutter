@@ -16,17 +16,22 @@ class BlockAdded extends AgentEvent {
 }
 
 /// A tool call already in the turn finished. Look it up by [blockId] and
-/// flip its status / fill in the [resultSummary].
+/// flip its status / fill in the [resultSummary] and [detail].
 class ToolCallCompleted extends AgentEvent {
   const ToolCallCompleted({
     required this.blockId,
     required this.summary,
     this.status = ToolCallStatus.done,
+    this.detail,
   });
 
   final String blockId;
   final String summary;
   final ToolCallStatus status;
+
+  /// Full inputs + outputs for the tool-call drill-down. Null leaves whatever
+  /// [detail] the block was constructed with (its input args) untouched.
+  final String? detail;
 }
 
 /// The streaming response is done.
