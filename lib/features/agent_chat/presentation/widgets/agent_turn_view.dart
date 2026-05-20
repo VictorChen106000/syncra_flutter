@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/utils/motion.dart';
 import '../../models/agent_block.dart';
 import '../../models/chat_message.dart';
+import '../../state/agent_chat_notifier.dart';
 import 'agent_block_views.dart';
 
 /// Reasoning steps that render inside the vertical timeline rail (dot + line).
@@ -20,11 +23,26 @@ class AgentTurnView extends StatelessWidget {
 
   final AgentTurn turn;
 
+  /// Returns the concatenated prose of a turn — used for the copy action.
+  /// Tool calls / thinking / proposals are excluded; only [TextBlock] content
+  /// makes it to the clipboard.
+  static String plainTextOf(AgentTurn turn) {
+    final buf = StringBuffer();
+    for (final block in turn.blocks) {
+      if (block is TextBlock) {
+        if (buf.isNotEmpty) buf.write('\n\n');
+        buf.write(block.text);
+      }
+    }
+    return buf.toString();
+  }
+
   @override
   Widget build(BuildContext context) {
     final visible = turn.blocks.where((b) => !_isDocked(b)).toList();
     final timeline = visible.where(_isTimelineStep).toList();
     final output = visible.where((b) => !_isTimelineStep(b)).toList();
+    final hasText = turn.blocks.any((b) => b is TextBlock);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 28, top: 4),
@@ -55,7 +73,231 @@ class AgentTurnView extends StatelessWidget {
             const SizedBox(height: 4),
             const _BouncingDots(),
           ],
+          if (turn.status == AgentTurnStatus.failed) ...[
+            const SizedBox(height: 10),
+            _TurnErrorBanner(
+              message: turn.errorMessage ?? 'Something went wrong.',
+            ),
+          ],
+          if (turn.status == AgentTurnStatus.stopped) ...[
+            const SizedBox(height: 8),
+            const _StoppedPill(),
+          ],
+          if (!turn.isStreaming && (hasText || turn.status == AgentTurnStatus.failed)) ...[
+            const SizedBox(height: 10),
+            _TurnActionRow(turn: turn),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+/// Inline error card that replaces the silent failure mode. Surfaces the
+/// service's error message plus a Retry pill that re-runs the user prompt
+/// that triggered this turn.
+class _TurnErrorBanner extends ConsumerWidget {
+  const _TurnErrorBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: brand.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.red.shade300, width: 1),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.error_outline_rounded,
+            size: 16,
+            color: Colors.red.shade400,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                color: brand.ink,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                height: 1.4,
+                letterSpacing: -0.1,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Material(
+            color: brand.ink,
+            borderRadius: BorderRadius.circular(8),
+            child: InkWell(
+              onTap: () =>
+                  ref.read(agentChatProvider.notifier).regenerateLastTurn(),
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.refresh_rounded,
+                      size: 13,
+                      color: brand.inkInverse,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Retry',
+                      style: TextStyle(
+                        color: brand.inkInverse,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Subtle "Stopped by you" pill shown beneath a user-cancelled turn so the
+/// transcript clearly distinguishes interrupted from completed turns.
+class _StoppedPill extends StatelessWidget {
+  const _StoppedPill();
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+          decoration: BoxDecoration(
+            color: brand.surfaceMuted,
+            borderRadius: BorderRadius.circular(99),
+            border: Border.all(color: brand.border, width: 0.8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.stop_circle_rounded, size: 12, color: brand.textMuted),
+              const SizedBox(width: 5),
+              Text(
+                'Stopped by you',
+                style: TextStyle(
+                  color: brand.textMuted,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.1,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Copy + regenerate actions surfaced under a completed agent turn. Only the
+/// most recent turn shows the regenerate affordance — re-running an older
+/// turn would silently delete every turn that came after it.
+class _TurnActionRow extends ConsumerWidget {
+  const _TurnActionRow({required this.turn});
+
+  final AgentTurn turn;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final chat = ref.watch(agentChatProvider);
+    final isLatestTurn = _isLatestTurn(chat);
+    final canRegenerate = isLatestTurn && !chat.isStreaming;
+    return Row(
+      children: [
+        _TurnActionButton(
+          icon: Icons.copy_rounded,
+          tooltip: 'Copy response',
+          onTap: () => _copy(context),
+        ),
+        if (canRegenerate) ...[
+          const SizedBox(width: 4),
+          _TurnActionButton(
+            icon: Icons.refresh_rounded,
+            tooltip: 'Regenerate response',
+            onTap: () =>
+                ref.read(agentChatProvider.notifier).regenerateLastTurn(),
+          ),
+        ],
+      ],
+    );
+  }
+
+  bool _isLatestTurn(AgentChatState chat) {
+    for (var i = chat.items.length - 1; i >= 0; i--) {
+      final item = chat.items[i];
+      if (item is AgentTurn) return item.id == turn.id;
+    }
+    return false;
+  }
+
+  Future<void> _copy(BuildContext context) async {
+    final text = AgentTurnView.plainTextOf(turn);
+    if (text.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(
+        content: Text('Copied to clipboard'),
+        duration: Duration(milliseconds: 1400),
+        behavior: SnackBarBehavior.floating,
+      ));
+  }
+}
+
+class _TurnActionButton extends StatelessWidget {
+  const _TurnActionButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            width: 32,
+            height: 32,
+            alignment: Alignment.center,
+            child: Icon(icon, size: 15, color: brand.textMuted),
+          ),
+        ),
       ),
     );
   }

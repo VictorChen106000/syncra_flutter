@@ -34,17 +34,19 @@ import '../../resumes/state/resume_notifier.dart';
 const double _kFloatingAreaReservedHeight =
     AppConstants.floatingInputBottom + 140 + AppConstants.smallGap + 72;
 
-class DashboardPage extends StatelessWidget {
+class DashboardPage extends ConsumerWidget {
   const DashboardPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return AppScreen(
       showBottomNav: false,
       activeTab: BottomNavTab.home,
       extendBehindBottomNav: true,
       drawer: const NotificationsDrawer(),
       drawerEdgeDragWidth: 48,
+      onDrawerChanged: (open) =>
+          ref.read(notificationsDrawerOpenProvider.notifier).state = open,
       child: Stack(
         children: [
           Column(

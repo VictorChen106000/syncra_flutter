@@ -6,11 +6,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../data/models/job.dart';
 import '../../../fixtures/mock_agent_service.dart';
+import '../../auth/state/auth_notifier.dart';
 import '../../notifications/state/notifications_notifier.dart';
 import '../models/agent_block.dart';
 import '../models/chat_message.dart';
 import '../services/agent_service.dart';
 import '../services/anthropic_chat_service.dart';
+import '../services/chat_history_repository.dart';
 import '../tools/builtin_tools.dart';
 import '../tools/tool_registry.dart';
 
@@ -22,6 +24,12 @@ final agentServiceProvider = Provider<AgentService>((ref) {
   final anthropic = AnthropicChatService(registry: registry);
   return anthropic.hasApiKey ? anthropic : MockAgentService();
 });
+
+/// Persists the text-only transcript so chats survive app restarts. Scoped
+/// to the signed-in user's Firestore subtree.
+final chatHistoryRepositoryProvider = Provider<ChatHistoryRepository>(
+  (ref) => ChatHistoryRepository(),
+);
 
 @immutable
 class AgentChatState {
@@ -54,20 +62,74 @@ class AgentChatState {
 
 class AgentChatNotifier extends Notifier<AgentChatState> {
   late final AgentService _service;
+  late final ChatHistoryRepository _history;
   StreamSubscription<AgentEvent>? _activeSub;
   AgentTurn? _activeTurn;
   int _seq = 0;
+  bool _hydrating = false;
 
   @override
   AgentChatState build() {
     _service = ref.watch(agentServiceProvider);
+    _history = ref.watch(chatHistoryRepositoryProvider);
     ref.onDispose(() {
       _activeSub?.cancel();
     });
 
+    // Hydrate from Firestore in the background. We start from the default
+    // opener and replace once the load completes, *iff* the user hasn't
+    // already started a new conversation in the meantime.
+    _hydrateFromFirestore();
+
     return AgentChatState(
       items: [_buildOpener(null)],
     );
+  }
+
+  String? get _uid {
+    final user = ref.read(authProvider).appUser;
+    if (user == null || user.isGuest) return null;
+    return user.uid;
+  }
+
+  Future<void> _hydrateFromFirestore() async {
+    final uid = _uid;
+    if (uid == null) return;
+    _hydrating = true;
+    try {
+      final saved = await _history.load(uid);
+      if (saved.isEmpty) return;
+      // Only apply hydration if the user hasn't already typed or opened a
+      // thread since build() — otherwise we'd clobber their in-progress work.
+      final current = state;
+      final isUntouched = current.items.length == 1 &&
+          current.items.first is AgentTurn &&
+          current.threadJob == null;
+      if (!isUntouched) return;
+      state = AgentChatState(
+        items: [_buildOpener(null), ...saved],
+      );
+      // Make sure subsequent IDs don't collide with hydrated ones.
+      _seq = saved.length + 1;
+    } catch (_) {
+      // Best-effort hydration; failures are silent so a flaky network never
+      // blocks the chat from working.
+    } finally {
+      _hydrating = false;
+    }
+  }
+
+  void _persist() {
+    if (_hydrating) return;
+    final uid = _uid;
+    if (uid == null) return;
+    // Drop the opener turn from the persisted payload — it's reconstructed
+    // locally on every cold start and writing it would just bloat the doc.
+    final items = state.items.length > 1
+        ? state.items.sublist(1)
+        : const <ChatItem>[];
+    // Fire-and-forget; UI doesn't wait on persistence.
+    unawaited(_history.save(uid, items));
   }
 
   /// Builds the first agent turn shown when the chat opens. Adapts to the
@@ -160,11 +222,14 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     );
   }
 
-  /// Closes the current job thread and resets to the generic welcome.
+  /// Closes the current job thread and resets to the generic welcome. Also
+  /// wipes the persisted history so a "New chat" tap genuinely starts over.
   void clearThread() {
     state = AgentChatState(
       items: [_buildOpener(null)],
     );
+    final uid = _uid;
+    if (uid != null) unawaited(_history.clear(uid));
   }
 
   String _nextId(String prefix) {
@@ -196,7 +261,12 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
 
     _activeSub = _service
         .runPrompt(prompt: clean, attachments: attachments)
-        .listen(_handleEvent, onDone: _finishTurn);
+        .listen(
+          _handleEvent,
+          onDone: _finishTurn,
+          onError: (Object e) =>
+              _failActiveTurn('Something went wrong. $e'),
+        );
   }
 
   void _handleEvent(AgentEvent event) {
@@ -216,6 +286,9 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
       case TurnCompleted():
         _finishTurn();
         return;
+      case TurnFailed(:final message):
+        _failActiveTurn(message);
+        return;
     }
     // Mirror the event to the notifications inbox. NotificationsNotifier
     // decides which events warrant an entry (ask_user, completed tools, …).
@@ -225,16 +298,63 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
   }
 
   void _finishTurn() {
-    _activeTurn?.isStreaming = false;
+    final turn = _activeTurn;
+    if (turn != null && turn.status == AgentTurnStatus.streaming) {
+      turn.status = AgentTurnStatus.done;
+    }
     _activeTurn = null;
     _activeSub?.cancel();
     _activeSub = null;
     state = state.copyWith(items: [...state.items], isStreaming: false);
+    _persist();
+  }
+
+  void _failActiveTurn(String message) {
+    final turn = _activeTurn;
+    if (turn != null) {
+      turn.status = AgentTurnStatus.failed;
+      turn.errorMessage = message;
+    }
+    _activeTurn = null;
+    _activeSub?.cancel();
+    _activeSub = null;
+    state = state.copyWith(items: [...state.items], isStreaming: false);
+    _persist();
   }
 
   void stopStreaming() {
     if (!state.isStreaming) return;
-    _finishTurn();
+    final turn = _activeTurn;
+    if (turn != null) turn.status = AgentTurnStatus.stopped;
+    _activeTurn = null;
+    _activeSub?.cancel();
+    _activeSub = null;
+    state = state.copyWith(items: [...state.items], isStreaming: false);
+    _persist();
+  }
+
+  /// Drops the most recent [AgentTurn] and re-runs the user prompt that
+  /// triggered it. No-op if there is no preceding user message (e.g. only the
+  /// opener turn is present) or if a stream is already in flight.
+  void regenerateLastTurn() {
+    if (state.isStreaming) return;
+    final items = state.items;
+    int lastTurnIdx = -1;
+    for (var i = items.length - 1; i >= 0; i--) {
+      if (items[i] is AgentTurn) {
+        lastTurnIdx = i;
+        break;
+      }
+    }
+    if (lastTurnIdx <= 0) return;
+    final priorUser = items[lastTurnIdx - 1];
+    if (priorUser is! UserMessage) return;
+
+    state = state.copyWith(items: items.sublist(0, lastTurnIdx - 1));
+    sendPrompt(
+      prompt: priorUser.text,
+      attachments: priorUser.attachments,
+    );
   }
 
   void acceptProposal(String blockId) {

@@ -1,13 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/brand_theme.dart';
+import '../../../../core/utils/motion.dart';
 import '../../../resumes/presentation/widgets/resume_attachment_chips.dart';
 import '../../../resumes/presentation/widgets/select_resumes_bottom_sheet.dart';
 import '../../../resumes/state/resume_notifier.dart';
 import '../../models/chat_message.dart';
 import '../../state/agent_chat_notifier.dart';
+
+/// Keyboard intent fired by Cmd+Enter / Ctrl+Enter to submit the composer.
+class _SendIntent extends Intent {
+  const _SendIntent();
+}
 
 class ChatInputBar extends ConsumerStatefulWidget {
   const ChatInputBar({super.key});
@@ -83,9 +91,13 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
     final chatState = ref.watch(agentChatProvider);
     final streaming = chatState.isStreaming;
     final hasText = _textController.text.trim().isNotEmpty;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
-      color: brand.surface,
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        6,
+        16,
+        16 + MediaQuery.paddingOf(context).bottom,
+      ),
       child: AnimatedBuilder(
         animation: _bounceController,
         builder: (context, child) => Transform.scale(
@@ -126,37 +138,59 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                 ),
                 const SizedBox(height: 8),
               ],
-              TextField(
-                controller: _textController,
-                focusNode: _focusNode,
-                enabled: !streaming,
-                maxLines: 6,
-                minLines: 1,
-                textInputAction: TextInputAction.newline,
-                cursorColor: brand.ink,
-                cursorWidth: 1.4,
-                onChanged: (_) => setState(() {}),
-                style: TextStyle(
-                  color: brand.ink,
-                  fontWeight: FontWeight.w500,
-                  fontSize: 16,
-                  height: 1.4,
-                  letterSpacing: -0.1,
-                ),
-                decoration: InputDecoration(
-                  hintText: streaming ? 'Syncra is working…' : 'Message Syncra',
-                  hintStyle: TextStyle(
-                    color: brand.textSoft,
-                    fontWeight: FontWeight.w500,
-                    fontSize: 16,
-                    letterSpacing: -0.1,
+              // Cmd/Ctrl+Enter submits even though Enter inserts a newline.
+              // Keeps mobile/IME behavior intact while making the input feel
+              // native on desktop and web.
+              Shortcuts(
+                shortcuts: <ShortcutActivator, Intent>{
+                  const SingleActivator(LogicalKeyboardKey.enter, meta: true):
+                      const _SendIntent(),
+                  const SingleActivator(LogicalKeyboardKey.enter, control: true):
+                      const _SendIntent(),
+                },
+                child: Actions(
+                  actions: <Type, Action<Intent>>{
+                    _SendIntent: CallbackAction<_SendIntent>(
+                      onInvoke: (_) {
+                        if (!streaming && hasText) _send();
+                        return null;
+                      },
+                    ),
+                  },
+                  child: TextField(
+                    controller: _textController,
+                    focusNode: _focusNode,
+                    enabled: !streaming,
+                    maxLines: 6,
+                    minLines: 1,
+                    textInputAction: TextInputAction.newline,
+                    cursorColor: brand.ink,
+                    cursorWidth: 1.4,
+                    onChanged: (_) => setState(() {}),
+                    style: TextStyle(
+                      color: brand.ink,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 16,
+                      height: 1.4,
+                      letterSpacing: -0.1,
+                    ),
+                    decoration: InputDecoration(
+                      hintText:
+                          streaming ? 'Syncra is working…' : 'Message Syncra',
+                      hintStyle: TextStyle(
+                        color: brand.textSoft,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 16,
+                        letterSpacing: -0.1,
+                      ),
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                    ),
                   ),
-                  isDense: true,
-                  contentPadding: EdgeInsets.zero,
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  disabledBorder: InputBorder.none,
                 ),
               ),
               const SizedBox(height: 12),
@@ -169,6 +203,8 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                         ? null
                         : () => SelectResumesBottomSheet.show(context),
                   ),
+                  const SizedBox(width: 8),
+                  _ModelChip(streaming: streaming),
                   const Spacer(),
                   _SendButton(
                     streaming: streaming,
@@ -184,6 +220,72 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
         ),
       ),
     );
+  }
+}
+
+/// Active-model pill that lives in the composer, beside the attach button —
+/// the chat's single "which model am I talking to" indicator. The dot pulses
+/// while the agent is streaming a response.
+class _ModelChip extends StatelessWidget {
+  const _ModelChip({required this.streaming});
+
+  final bool streaming;
+
+  static const _modelLabel = 'Syncra Opus';
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Semantics(
+      label: streaming
+          ? '$_modelLabel, generating response'
+          : '$_modelLabel, idle',
+      container: true,
+      child: Container(
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 11),
+        decoration: BoxDecoration(
+          color: brand.surfaceMuted,
+          borderRadius: BorderRadius.circular(99),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _MiniPulseDot(active: streaming, color: brand.accent),
+            const SizedBox(width: 7),
+            Text(
+              _modelLabel,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: brand.ink,
+                letterSpacing: -0.1,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniPulseDot extends StatelessWidget {
+  const _MiniPulseDot({required this.active, required this.color});
+
+  final bool active;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final dot = Container(
+      width: 7,
+      height: 7,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    );
+    if (!active) return dot;
+    return dot
+        .animate(onPlay: repeatIfMotion(context, reverse: true))
+        .fadeIn(begin: 0.45, duration: 700.ms);
   }
 }
 

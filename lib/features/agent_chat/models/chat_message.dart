@@ -29,13 +29,41 @@ class UserMessage extends ChatItem {
   final List<ChatAttachment> attachments;
 }
 
+enum AgentTurnStatus {
+  /// Tokens / tool events are still streaming in.
+  streaming,
+
+  /// The turn finished cleanly.
+  done,
+
+  /// The service errored before completing. [AgentTurn.errorMessage] holds
+  /// the short human-readable reason; the UI surfaces a Retry button.
+  failed,
+
+  /// The user pressed Stop. Whatever blocks streamed in stay visible, but
+  /// the UI tags the turn as cancelled.
+  stopped,
+}
+
 class AgentTurn extends ChatItem {
   AgentTurn({
     required super.id,
     List<AgentBlock>? blocks,
-    this.isStreaming = true,
-  }) : blocks = blocks ?? <AgentBlock>[];
+    AgentTurnStatus? status,
+    bool? isStreaming,
+    this.errorMessage,
+  })  : blocks = blocks ?? <AgentBlock>[],
+        status = status ??
+            ((isStreaming ?? true)
+                ? AgentTurnStatus.streaming
+                : AgentTurnStatus.done);
 
   final List<AgentBlock> blocks;
-  bool isStreaming;
+  AgentTurnStatus status;
+  String? errorMessage;
+
+  bool get isStreaming => status == AgentTurnStatus.streaming;
+  set isStreaming(bool value) {
+    status = value ? AgentTurnStatus.streaming : AgentTurnStatus.done;
+  }
 }

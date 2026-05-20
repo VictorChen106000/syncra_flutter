@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/utils/motion.dart';
@@ -227,14 +229,82 @@ class _TextBlockView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    return SelectableText(
-      text,
-      style: TextStyle(
-        color: brand.ink,
-        fontSize: 15.5,
-        height: 1.6,
-        fontWeight: FontWeight.w400,
-        letterSpacing: -0.05,
+    // Agent prose renders in a serif (Source Serif 4) to set the AI's
+    // "voice" apart from the all-Inter UI chrome — the same chrome/serif
+    // split Claude's mobile app uses.
+    final body = GoogleFonts.sourceSerif4(
+      color: brand.ink,
+      fontSize: 16,
+      height: 1.62,
+      fontWeight: FontWeight.w400,
+      letterSpacing: 0,
+    );
+    return MarkdownBody(
+      data: text,
+      selectable: true,
+      shrinkWrap: true,
+      onTapLink: (text, href, title) {
+        // Links are non-actionable for now; surfacing them via launchUrl can
+        // be wired through the router later. Swallowing keeps the chat from
+        // throwing on stray markdown URLs in agent output.
+      },
+      styleSheet: MarkdownStyleSheet(
+        p: body,
+        strong: body.copyWith(fontWeight: FontWeight.w800),
+        em: body.copyWith(fontStyle: FontStyle.italic),
+        a: body.copyWith(
+          color: brand.accent,
+          decoration: TextDecoration.underline,
+        ),
+        h1: body.copyWith(
+          fontSize: 20,
+          fontWeight: FontWeight.w800,
+          height: 1.3,
+          letterSpacing: -0.3,
+        ),
+        h2: body.copyWith(
+          fontSize: 17.5,
+          fontWeight: FontWeight.w800,
+          height: 1.3,
+          letterSpacing: -0.2,
+        ),
+        h3: body.copyWith(
+          fontSize: 15.5,
+          fontWeight: FontWeight.w800,
+          height: 1.35,
+          letterSpacing: -0.15,
+        ),
+        listBullet: body,
+        code: TextStyle(
+          fontFamily: 'monospace',
+          fontFamilyFallback: const ['Menlo', 'Courier'],
+          fontSize: 13.5,
+          color: brand.ink,
+          backgroundColor: brand.surfaceMuted,
+          height: 1.4,
+        ),
+        codeblockDecoration: BoxDecoration(
+          color: brand.surfaceMuted,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: brand.border, width: 0.6),
+        ),
+        codeblockPadding: const EdgeInsets.all(12),
+        blockquote: body.copyWith(
+          color: brand.textMuted,
+          fontStyle: FontStyle.italic,
+        ),
+        blockquoteDecoration: BoxDecoration(
+          color: brand.surfaceMuted,
+          borderRadius: BorderRadius.circular(8),
+          border: Border(
+            left: BorderSide(color: brand.border, width: 3),
+          ),
+        ),
+        blockquotePadding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        blockSpacing: 10,
+        h1Padding: const EdgeInsets.only(top: 6, bottom: 2),
+        h2Padding: const EdgeInsets.only(top: 6, bottom: 2),
+        h3Padding: const EdgeInsets.only(top: 4, bottom: 2),
       ),
     );
   }

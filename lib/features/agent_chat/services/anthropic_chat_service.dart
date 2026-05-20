@@ -193,17 +193,11 @@ clear next step or question.''';
       }
 
       // Safety net: too many iterations.
-      yield BlockAdded(TextBlock(
-        id: nextBlockId('text'),
-        text: "I got stuck in a loop — let's try that again with more detail.",
-      ));
-      yield const TurnCompleted();
+      yield TurnFailed(
+        'The agent got stuck in a loop. Try rephrasing your question.',
+      );
     } catch (e) {
-      yield BlockAdded(TextBlock(
-        id: nextBlockId('text'),
-        text: "I couldn't reach Claude — ${_shortError(e)}.",
-      ));
-      yield const TurnCompleted();
+      yield TurnFailed("Couldn't reach Claude — ${_shortError(e)}");
     }
   }
 

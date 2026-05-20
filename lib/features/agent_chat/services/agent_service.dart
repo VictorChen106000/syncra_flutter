@@ -34,6 +34,14 @@ class TurnCompleted extends AgentEvent {
   const TurnCompleted();
 }
 
+/// The service couldn't complete the turn (network, API error, timeout). The
+/// notifier flips the active turn into [AgentTurnStatus.failed] and surfaces
+/// [message] in the retry banner.
+class TurnFailed extends AgentEvent {
+  const TurnFailed(this.message);
+  final String message;
+}
+
 /// Boundary the chat controller talks to. Swap [MockAgentService] for a
 /// real backend-backed impl without touching the controller or UI.
 abstract class AgentService {

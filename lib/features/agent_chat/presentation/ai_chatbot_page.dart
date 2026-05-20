@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,7 +7,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
-import '../../../core/utils/motion.dart';
 import '../../../data/models/job.dart';
 import '../../../fixtures/mock_agent_service.dart';
 import '../models/agent_block.dart';
@@ -24,9 +25,38 @@ class AiChatbotPage extends ConsumerStatefulWidget {
 
 class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
   final ScrollController _scrollController = ScrollController();
+  bool _showJumpToLatest = false;
+
+  /// Within this many pixels of the bottom we consider the user "pinned" and
+  /// auto-scroll new content into view. Beyond it we leave them alone and
+  /// surface the jump-to-latest FAB instead.
+  static const double _stickyThreshold = 80;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    final distance = pos.maxScrollExtent - pos.pixels;
+    final shouldShow = distance > _stickyThreshold;
+    if (shouldShow != _showJumpToLatest) {
+      setState(() => _showJumpToLatest = shouldShow);
+    }
+  }
 
   void _scheduleScrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      // Only auto-follow when the user is already near the bottom. If they've
+      // scrolled up to read, respect that and let the FAB do the work.
+      final pos = _scrollController.position;
+      if (pos.maxScrollExtent - pos.pixels > _stickyThreshold) return;
+      _scrollToBottom();
+    });
   }
 
   void _scrollToBottom() {
@@ -40,6 +70,7 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
   }
@@ -64,42 +95,110 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
       stickyPrompt,
     );
 
+    final media = MediaQuery.of(context);
+    final topSafe = media.padding.top;
+    final showEmpty = onlyInitial && state.threadJob == null;
+
+    // Reserved scroll insets so the transcript clears the floating chrome.
+    // Slight overlap under the frosted bars is intentional — that's the
+    // "chat seen through the controls" effect.
+    double topInset = topSafe + 56;
+    if (state.threadJob != null) topInset += 58;
+    if (stickyPrompt != null) topInset += 80;
+    final bottomInset = media.padding.bottom + 152;
+
     return Scaffold(
       backgroundColor: brand.surface,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            _ChatHeader(isStreaming: state.isStreaming),
-            if (state.threadJob != null)
-              _ThreadContextChip(
-                job: state.threadJob!,
-                onClear: notifier.clearThread,
-              ),
-            if (stickyPrompt != null) _StickyUserPrompt(message: stickyPrompt),
-            Expanded(
-              child: onlyInitial && state.threadJob == null
-                  ? _EmptyState(
-                      onPromptTap: (text) =>
-                          notifier.sendPrompt(prompt: text),
-                    )
-                  : ListView(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
-                      children: [
-                        for (final item in transcriptForList)
-                          switch (item) {
-                            UserMessage() => UserMessageView(message: item),
-                            AgentTurn() => AgentTurnView(turn: item),
-                          },
-                      ],
-                    ),
+      body: Stack(
+        children: [
+          // Full-bleed transcript — scrolls behind the floating chrome.
+          Positioned.fill(
+            child: showEmpty
+                ? _EmptyState(
+                    topInset: topInset,
+                    bottomInset: bottomInset,
+                    onPromptTap: (text) => notifier.sendPrompt(prompt: text),
+                  )
+                : ListView(
+                    controller: _scrollController,
+                    padding: EdgeInsets.fromLTRB(20, topInset, 20, bottomInset),
+                    children: [
+                      if (state.threadJob != null &&
+                          !state.items.any((i) => i is UserMessage))
+                        _ThreadHero(job: state.threadJob!),
+                      for (final item in transcriptForList)
+                        switch (item) {
+                          UserMessage() => UserMessageView(message: item),
+                          AgentTurn() => AgentTurnView(turn: item),
+                        },
+                    ],
+                  ),
+          ),
+
+          // Top fade scrim keeps the status bar + floating buttons legible.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: topSafe + 60,
+            child: IgnorePointer(child: _FadeScrim(brand: brand, top: true)),
+          ),
+
+          // Bottom fade scrim softens the transcript into the composer.
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: bottomInset,
+            child: IgnorePointer(child: _FadeScrim(brand: brand, top: false)),
+          ),
+
+          // Floating top chrome: header buttons + optional thread chip +
+          // optional sticky prompt.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: _FloatingTop(
+              isStreaming: state.isStreaming,
+              threadJob: state.threadJob,
+              stickyPrompt: stickyPrompt,
+              onClearThread: notifier.clearThread,
             ),
-            if (pendingProposal != null)
-              _DockedActionProposal(block: pendingProposal),
-            const ChatInputBar(),
-          ],
-        ),
+          ),
+
+          // Jump-to-latest pill — sits just above the floating composer.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: bottomInset - 12,
+            child: IgnorePointer(
+              ignoring: !_showJumpToLatest,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 180),
+                opacity: _showJumpToLatest ? 1 : 0,
+                child: Center(
+                  child: _JumpToLatestButton(onTap: _scrollToBottom),
+                ),
+              ),
+            ),
+          ),
+
+          // Floating bottom chrome: docked proposal + composer.
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (pendingProposal != null)
+                  _DockedActionProposal(block: pendingProposal),
+                const ChatInputBar(),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -155,57 +254,52 @@ class _StickyUserPrompt extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
-      decoration: BoxDecoration(
-        color: brand.surface,
-        border: Border(
-          bottom: BorderSide(color: brand.border, width: 0.6),
+    return _FrostedCard(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 11, 14, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 3,
+              height: 32,
+              margin: const EdgeInsets.only(top: 2, right: 12),
+              decoration: BoxDecoration(
+                color: brand.ink,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'YOU ASKED',
+                    style: TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.4,
+                      color: brand.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    message.text,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: brand.ink,
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                      height: 1.35,
+                      letterSpacing: -0.15,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 3,
-            height: 32,
-            margin: const EdgeInsets.only(top: 2, right: 12),
-            decoration: BoxDecoration(
-              color: brand.ink,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'YOU ASKED',
-                  style: TextStyle(
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.4,
-                    color: brand.textMuted,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  message.text,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: brand.ink,
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w700,
-                    height: 1.35,
-                    letterSpacing: -0.15,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     ).animate(key: ValueKey(message.id)).fadeIn(duration: 220.ms).moveY(
           begin: -6,
@@ -403,14 +497,9 @@ class _ThreadContextChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: brand.surfaceMuted,
-        border: Border(
-          bottom: BorderSide(color: brand.border, width: 0.6),
-        ),
-      ),
+    return _FrostedCard(
+      child: Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
       child: Row(
         children: [
           Container(
@@ -422,7 +511,7 @@ class _ThreadContextChip extends StatelessWidget {
             ),
             alignment: Alignment.center,
             child: Text(
-              job.company[0],
+              job.company.isNotEmpty ? job.company[0] : '?',
               style: TextStyle(
                 color: brand.accent,
                 fontWeight: FontWeight.w900,
@@ -483,91 +572,323 @@ class _ThreadContextChip extends StatelessWidget {
           ),
         ],
       ),
+      ),
     );
   }
 }
 
-class _ChatHeader extends StatelessWidget {
-  const _ChatHeader({required this.isStreaming});
+/// Floating top chrome over the full-bleed transcript: a back button and a
+/// new-chat button (frosted circles), plus the optional thread chip and
+/// sticky prompt as frosted cards. No solid bar — the chat scrolls behind it.
+class _FloatingTop extends ConsumerWidget {
+  const _FloatingTop({
+    required this.isStreaming,
+    required this.threadJob,
+    required this.stickyPrompt,
+    required this.onClearThread,
+  });
 
   final bool isStreaming;
+  final Job? threadJob;
+  final UserMessage? stickyPrompt;
+  final VoidCallback onClearThread;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final hasHistory = ref.watch(
+      agentChatProvider.select(
+        (s) => s.items.length > 1 || s.threadJob != null,
+      ),
+    );
+    return SafeArea(
+      bottom: false,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: Row(
+              children: [
+                _IconBtn(
+                  icon: Icons.arrow_back_ios_new_rounded,
+                  tooltip: 'Back',
+                  onTap: () => context.go(RouteNames.dashboard),
+                ),
+                const Spacer(),
+                _IconBtn(
+                  icon: Icons.edit_square,
+                  tooltip: 'New chat',
+                  onTap: hasHistory && !isStreaming
+                      ? () => _confirmNewChat(context, ref)
+                      : null,
+                ),
+              ],
+            ),
+          ),
+          if (threadJob != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: _ThreadContextChip(
+                job: threadJob!,
+                onClear: onClearThread,
+              ),
+            ),
+          if (stickyPrompt != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: _StickyUserPrompt(message: stickyPrompt!),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmNewChat(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Start a new chat?'),
+        content: const Text(
+          'This conversation will be cleared. You can\'t undo this.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('New chat'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      ref.read(agentChatProvider.notifier).clearThread();
+    }
+  }
+}
+
+/// Soft gradient that fades the transcript into the background behind the
+/// floating chrome so scrolled content never hard-clips against a button.
+class _FadeScrim extends StatelessWidget {
+  const _FadeScrim({required this.brand, required this.top});
+
+  final BrandTheme brand;
+  final bool top;
 
   @override
   Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(8, 10, 12, 10),
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: brand.surface,
-        border: Border(
-          bottom: BorderSide(color: brand.border, width: 0.6),
+        gradient: LinearGradient(
+          begin: top ? Alignment.topCenter : Alignment.bottomCenter,
+          end: top ? Alignment.bottomCenter : Alignment.topCenter,
+          colors: [
+            brand.surface,
+            brand.surface.withValues(alpha: 0.0),
+          ],
+          stops: const [0.55, 1.0],
         ),
       ),
-      child: Row(
-        children: [
-          _IconBtn(
-            icon: Icons.arrow_back_ios_new_rounded,
-            onTap: () => context.go(RouteNames.dashboard),
-          ),
-          Expanded(
-            child: Center(
-              child: _UsageDynamicIsland(active: isStreaming),
-            ),
-          ),
-          const SizedBox(width: 40),
-        ],
-      ),
     );
   }
 }
 
-/// Compact "dynamic island"-style status pill that surfaces the active model
-/// + a mock context-window percentage. Single source of truth for "which
-/// model am I talking to and how much room is left."
-class _UsageDynamicIsland extends StatelessWidget {
-  const _UsageDynamicIsland({required this.active});
-  final bool active;
+/// Frosted-glass container — translucent + blurred so the transcript stays
+/// faintly visible through the floating cards.
+class _FrostedCard extends StatelessWidget {
+  const _FrostedCard({required this.child});
 
-  static const _modelLabel = 'Syncra Opus';
-  static const _contextPercent = 32;
+  final Widget child;
+
+  static const double radius = 16;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
     return Container(
-      padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
       decoration: BoxDecoration(
-        color: brand.ink,
-        borderRadius: BorderRadius.circular(99),
+        borderRadius: BorderRadius.circular(radius),
+        boxShadow: [
+          BoxShadow(
+            color: brand.shadow.withValues(alpha: 0.12),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _PulseDot(active: active, color: brand.accent),
-          const SizedBox(width: 8),
-          Text(
-            _modelLabel,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w800,
-              color: brand.inkInverse,
-              letterSpacing: -0.15,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: brand.surface.withValues(alpha: 0.82),
+              borderRadius: BorderRadius.circular(radius),
+              border: Border.all(color: brand.border, width: 0.8),
+            ),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Frosted circular icon button used for the floating header controls.
+class _IconBtn extends StatelessWidget {
+  const _IconBtn({required this.icon, required this.onTap, this.tooltip});
+  final IconData icon;
+  final VoidCallback? onTap;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final enabled = onTap != null;
+    final button = Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: brand.shadow.withValues(alpha: 0.12),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipOval(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+          child: Material(
+            color: brand.surface.withValues(alpha: 0.78),
+            shape: CircleBorder(
+              side: BorderSide(color: brand.border, width: 0.8),
+            ),
+            child: InkWell(
+              onTap: onTap,
+              customBorder: const CircleBorder(),
+              child: SizedBox(
+                width: 42,
+                height: 42,
+                child: Icon(
+                  icon,
+                  size: 18,
+                  color: enabled ? brand.ink : brand.textSoft,
+                ),
+              ),
             ),
           ),
-          const SizedBox(width: 8),
-          Container(
-            width: 1,
-            height: 12,
-            color: brand.inkInverse.withValues(alpha: 0.2),
+        ),
+      ),
+    );
+    if (tooltip == null) return button;
+    return Tooltip(message: tooltip!, child: button);
+  }
+}
+
+/// Scene-setting card shown at the top of a brand-new threaded chat (a
+/// thread opened from a pipeline card with no user messages yet). Once the
+/// user replies, this disappears and the conversation flows as normal.
+class _ThreadHero extends StatelessWidget {
+  const _ThreadHero({required this.job});
+
+  final Job job;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: brand.surfaceMuted,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: brand.border, width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: brand.ink,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  job.company.isNotEmpty ? job.company[0] : '?',
+                  style: TextStyle(
+                    color: brand.accent,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      job.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: brand.ink,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.2,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${job.company} · ${job.location}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: brand.textMuted,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: brand.accent,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: Text(
+                  '${job.matchScore}% match',
+                  style: TextStyle(
+                    color: brand.onAccent,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
+          const SizedBox(height: 12),
           Text(
-            '$_contextPercent% ctx',
+            job.why.isNotEmpty ? job.why : job.agentJustification,
             style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
-              color: brand.inkInverse.withValues(alpha: 0.72),
-              letterSpacing: -0.1,
+              color: brand.textMuted,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              height: 1.5,
+              letterSpacing: -0.05,
             ),
           ),
         ],
@@ -576,43 +897,46 @@ class _UsageDynamicIsland extends StatelessWidget {
   }
 }
 
-class _PulseDot extends StatelessWidget {
-  const _PulseDot({required this.active, required this.color});
-  final bool active;
-  final Color color;
+/// Floating "scroll to latest" pill that appears when the user has scrolled
+/// up far enough that auto-follow is suppressed.
+class _JumpToLatestButton extends StatelessWidget {
+  const _JumpToLatestButton({required this.onTap});
 
-  @override
-  Widget build(BuildContext context) {
-    final dot = Container(
-      width: 7,
-      height: 7,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-    );
-    if (!active) return dot;
-    return dot
-        .animate(onPlay: repeatIfMotion(context, reverse: true))
-        .fadeIn(begin: 0.45, duration: 700.ms);
-  }
-}
-
-class _IconBtn extends StatelessWidget {
-  const _IconBtn({required this.icon, required this.onTap});
-  final IconData icon;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
     return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(99),
+      color: brand.ink,
+      shape: const StadiumBorder(),
+      elevation: 4,
+      shadowColor: brand.shadow.withValues(alpha: 0.35),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(99),
-        child: SizedBox(
-          width: 40,
-          height: 40,
-          child: Icon(icon, size: 18, color: brand.ink),
+        customBorder: const StadiumBorder(),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 14, 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.arrow_downward_rounded,
+                size: 14,
+                color: brand.inkInverse,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Jump to latest',
+                style: TextStyle(
+                  color: brand.inkInverse,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.1,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -620,9 +944,15 @@ class _IconBtn extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.onPromptTap});
+  const _EmptyState({
+    required this.onPromptTap,
+    required this.topInset,
+    required this.bottomInset,
+  });
 
   final void Function(String prompt) onPromptTap;
+  final double topInset;
+  final double bottomInset;
 
   @override
   Widget build(BuildContext context) {
@@ -630,7 +960,7 @@ class _EmptyState extends StatelessWidget {
     const prompts = MockAgentService.dashboardPrompts;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(24, 60, 24, 24),
+      padding: EdgeInsets.fromLTRB(24, topInset + 12, 24, bottomInset + 12),
       children: [
         Center(
           child: SizedBox(
