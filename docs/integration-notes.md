@@ -11,6 +11,20 @@ read your section if you own A, R2, or I.
 
 ## A — Agent Reasoning
 
+### Agent reasoning update — 2026-05-20
+
+Confirmed current behavior:
+
+- `AgentChatNotifier` forwards agent events to `NotificationsNotifier`.
+- `ToolCallCompleted(status: done)` and `InputRequestBlock` can surface in notifications.
+- `PassiveAgentNotifier.runBrief()` now uses the same `AgentService` / tool-loop path as normal chat prompts when an Anthropic key is present.
+- The old direct/mock brief path remains only as no-key fallback.
+- `read_resume`, `match_jobs`, and `tailor_resume` can use attached `resume_id`.
+
+### Firebase Storage note
+
+Resume uploads now use Firebase Storage. Flutter Web requires CORS on the Storage bucket for parsing/preview downloads. iOS and Android do not require CORS, but all platforms require correct Storage security rules.
+
 ### What changed
 `NotificationsNotifier` is no longer a fixture. It now exposes a public
 method that ingests [`AgentEvent`](../lib/features/agent_chat/services/agent_service.dart):

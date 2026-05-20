@@ -759,6 +759,16 @@ Check [api-contract.md](./api-contract.md). If it doesn't answer, ask in chat.
 If still unclear, **don't guess** — pause and clarify. A 5-minute conversation
 saves 5 hours of rework.
 
+### Agent Reasoning handoff — 2026-05-20
+
+A-track branch `victor/agent-reasoning-1906` verified:
+
+- Uploaded resume context works through Firebase Storage.
+- Learned facts persist under `users/{uid}/learned_facts`.
+- `tailor_resume` returns read-only `ProposedEditsBlock` and pauses.
+- `runBrief()` uses the shared agent/tool loop.
+- Remaining handoff: R2 still owns Accept / Reject / Apply UI for proposed edits; R1/R2 still own final `apply_resume_edits` render/apply behavior.
+
 ---
 
 ## 6. Demo day prep (last week of May / first week of June)

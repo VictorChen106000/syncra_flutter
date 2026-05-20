@@ -28,11 +28,12 @@ Stack: Flutter, Anthropic Claude (Haiku 4.5) direct from Flutter via
 | `ask_user` mid-flow input (text field in chat) | ✅ |
 | Tool registry + 8 tools registered | ✅ (some stubs) |
 | Brief reasoner (Claude scores jobs) | ✅ |
-| `tailor_resume` prompt (wholesale rewrite) | ⚠️ — rewrite for diff model |
-| `PassiveAgentController` 24h auto-fire | ⚠️ — remove (token cost) |
-| `save_to_pipeline` tool | ❌ — implement |
-| `remember_fact` tool + `learned_facts/` collection | ❌ — implement |
-| AgentEvent stream for notifications inbox | ❌ — expose |
+| `tailor_resume` diff-style proposed edits | ✅ — returns ProposedEdit records and pauses for review |
+| `PassiveAgentController` / `runBrief()` | ✅ — explicit user-tap brief now uses the shared agent/tool loop |
+| `save_to_pipeline` tool | ✅ — persists matched jobs as pipeline cards |
+| `remember_fact` tool + `learned_facts/` collection | ✅ — persists reusable facts and read_resume includes them |
+| AgentEvent stream for notifications inbox | ✅ — tool/input events are forwarded to notifications |
+| Uploaded resume context | ✅ — read_resume, match_jobs, and tailor_resume can use attached resume_id |
 
 ---
 
@@ -133,6 +134,20 @@ in week 1.
 - Tapping F's "Run today's brief" button produces the brief flow that auto-fired in v1.2, but **only on explicit tap**. Nothing runs on app launch.
 - Vague prompts trigger `ask_user` with suggestion chips, not random tool fires.
 - `remember_fact` writes survive across app restarts and influence the next tailoring call.
+
+---
+
+### Current verification status
+
+Verified on branch `victor/agent-reasoning-1906`:
+
+- `read_resume` loaded an uploaded Firebase Storage resume and returned structured context.
+- `remember_fact` wrote to `users/{uid}/learned_facts` and later `read_resume` included learned facts.
+- `match_jobs` scored jobs using the attached resume context.
+- `tailor_resume` returned 6 proposed edits as a `ProposedEditsBlock`.
+- After `tailor_resume`, the agent stopped and waited for user review.
+- The agent did not auto-call `apply_resume_edits`, `draft_email`, or `send_email`.
+- `flutter analyze lib/` reports only one unrelated info in `applications_repository.dart`.
 
 ---
 
