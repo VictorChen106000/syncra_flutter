@@ -164,11 +164,19 @@ void _registerReadResume(
       if (resumeId == null || resumeId.isEmpty) {
         final snap = await paths
             .resumes(uid)
-            .where('source', isEqualTo: 'manual')
             .orderBy('uploaded_at', descending: true)
-            .limit(1)
+            .limit(10)
             .get();
-        if (snap.docs.isEmpty) {
+
+        QueryDocumentSnapshot<Map<String, dynamic>>? manualDoc;
+        for (final doc in snap.docs) {
+          if (doc.data()['source'] == 'manual') {
+            manualDoc = doc;
+            break;
+          }
+        }
+
+        if (manualDoc == null) {
           return ToolResult(
             summary: learnedFacts.isEmpty
                 ? 'No resume uploaded yet — using sample'
@@ -176,7 +184,8 @@ void _registerReadResume(
             data: _resumeWithLearnedFacts(kFakeResumeJson, learnedFacts),
           );
         }
-        resumeId = snap.docs.first.id;
+
+        resumeId = manualDoc.id;
       }
 
       try {
