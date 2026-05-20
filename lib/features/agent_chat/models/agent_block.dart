@@ -30,6 +30,7 @@ class ToolCallBlock extends AgentBlock {
     required this.icon,
     this.status = ToolCallStatus.running,
     this.resultSummary,
+    this.detail,
   });
 
   final String name;
@@ -37,6 +38,10 @@ class ToolCallBlock extends AgentBlock {
   final IconData icon;
   ToolCallStatus status;
   String? resultSummary;
+
+  /// Optional drill-down: the tool's inputs/outputs, shown when the user taps
+  /// the call to inspect it. Null when there's nothing more to reveal.
+  final String? detail;
 }
 
 /// Plain prose from the agent (markdown-free for now).

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -10,16 +12,24 @@ import '../../models/agent_block.dart';
 import '../../state/agent_chat_notifier.dart';
 
 class AgentBlockView extends StatelessWidget {
-  const AgentBlockView({super.key, required this.block});
+  const AgentBlockView({
+    super.key,
+    required this.block,
+    this.animateText = false,
+  });
 
   final AgentBlock block;
+
+  /// When true, a [TextBlock] types itself in character-by-character. Set by
+  /// [AgentTurnView] only for the final block of a still-streaming turn.
+  final bool animateText;
 
   @override
   Widget build(BuildContext context) {
     return switch (block) {
       ThinkingBlock(:final content) => ThinkingBlockView(content: content),
       ToolCallBlock() => ToolCallBlockView(block: block as ToolCallBlock),
-      TextBlock(:final text) => _TextBlockView(text: text),
+      TextBlock(:final text) => _TextBlockView(text: text, animate: animateText),
       InputRequestBlock() =>
         InputRequestView(block: block as InputRequestBlock),
       ActionProposalBlock() =>
@@ -222,13 +232,65 @@ class _SuggestionChip extends StatelessWidget {
   }
 }
 
-class _TextBlockView extends StatelessWidget {
-  const _TextBlockView({required this.text});
+/// Agent prose. While [animate] is set (the final block of a streaming turn)
+/// the text reveals itself character-by-character with a trailing caret. Once
+/// fully revealed — or for any already-finished turn — it renders instantly,
+/// so scrolling back through history never replays the typewriter.
+class _TextBlockView extends StatefulWidget {
+  const _TextBlockView({required this.text, this.animate = false});
+
   final String text;
+  final bool animate;
+
+  @override
+  State<_TextBlockView> createState() => _TextBlockViewState();
+}
+
+class _TextBlockViewState extends State<_TextBlockView> {
+  int _shown = 0;
+  Timer? _timer;
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    if (widget.animate && widget.text.isNotEmpty && shouldAnimate(context)) {
+      _startTyping();
+    } else {
+      _shown = widget.text.length;
+    }
+  }
+
+  void _startTyping() {
+    final len = widget.text.length;
+    // Reveal in ~1.3s regardless of length so short and long replies both
+    // feel snappy rather than scaling linearly with character count.
+    final step = (len / 80).ceil().clamp(1, len);
+    _timer = Timer.periodic(const Duration(milliseconds: 16), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() => _shown = (_shown + step).clamp(0, len));
+      if (_shown >= len) t.cancel();
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
+    final typing = _shown < widget.text.length;
+    // Trailing block caret while typing — reads as a live cursor.
+    final data =
+        typing ? '${widget.text.substring(0, _shown)}▌' : widget.text;
     // Agent prose renders in a serif (Source Serif 4) to set the AI's
     // "voice" apart from the all-Inter UI chrome — the same chrome/serif
     // split Claude's mobile app uses.
@@ -240,8 +302,9 @@ class _TextBlockView extends StatelessWidget {
       letterSpacing: 0,
     );
     return MarkdownBody(
-      data: text,
-      selectable: true,
+      data: data,
+      // Selection mid-type fights the reveal; enable it once settled.
+      selectable: !typing,
       shrinkWrap: true,
       onTapLink: (text, href, title) {
         // Links are non-actionable for now; surfacing them via launchUrl can

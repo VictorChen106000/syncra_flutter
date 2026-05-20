@@ -83,8 +83,14 @@ class MockAgentService implements AgentService {
     return switch (block) {
       ThinkingBlock(:final content) =>
         ThinkingBlock(id: id, content: content),
-      ToolCallBlock(:final name, :final label, :final icon) =>
-        ToolCallBlock(id: id, name: name, label: label, icon: icon),
+      ToolCallBlock(:final name, :final label, :final icon, :final detail) =>
+        ToolCallBlock(
+          id: id,
+          name: name,
+          label: label,
+          icon: icon,
+          detail: detail,
+        ),
       TextBlock(:final text) => TextBlock(id: id, text: text),
       ActionProposalBlock(
         :final icon,
@@ -135,6 +141,13 @@ class MockAgentService implements AgentService {
         label: 'Searching LinkedIn, Wellfound & company pages…',
         icon: Icons.travel_explore_rounded,
         pendingToolResult: 'Scanned 142 postings · 12 strong matches',
+        detail: '▸ input\n'
+            '   query    "UX designer · AI startups"\n'
+            '   sources  LinkedIn, Wellfound, careers pages\n'
+            '   window   last 48h\n'
+            '▸ output\n'
+            '   scanned  142 postings\n'
+            '   matched  12 roles (AI-native teams)',
         delay: const Duration(milliseconds: 700),
       ),
       _autoFinish(search, delay: const Duration(milliseconds: 1100)),
@@ -143,6 +156,13 @@ class MockAgentService implements AgentService {
         label: 'Scoring matches against your profile…',
         icon: Icons.insights_rounded,
         pendingToolResult: 'Top 3: Linear 94% · Binance 94% · Vercel 98%',
+        detail: '▸ input\n'
+            '   candidates  12 roles\n'
+            '   profile     Daryn — Senior Product Designer\n'
+            '▸ output\n'
+            '   Vercel    98%   design systems + data viz\n'
+            '   Linear    94%   recent redesign overlap\n'
+            '   Binance   94%   motion at scale',
         delay: const Duration(milliseconds: 600),
       ),
       _autoFinish(score, delay: const Duration(milliseconds: 900)),
@@ -180,6 +200,12 @@ class MockAgentService implements AgentService {
         label: 'Parsing Daryn_resume.pdf…',
         icon: Icons.description_rounded,
         pendingToolResult: '7 sections · 18 strong keywords detected',
+        detail: '▸ input\n'
+            '   file     Daryn_resume.pdf (1 page)\n'
+            '▸ output\n'
+            '   sections  7 detected\n'
+            '   keywords  18 strong signals\n'
+            '   gaps      motion, a/b testing',
         delay: const Duration(milliseconds: 600),
       ),
       _autoFinish(analyze, delay: const Duration(milliseconds: 900)),
@@ -188,6 +214,11 @@ class MockAgentService implements AgentService {
         label: 'Extracting requirements from the JD…',
         icon: Icons.filter_alt_rounded,
         pendingToolResult: 'Needs: Design Systems · Motion · A/B Testing',
+        detail: '▸ input\n'
+            '   job   Linear — UX Designer\n'
+            '▸ output\n'
+            '   must-have   Design Systems, Motion, A/B Testing\n'
+            '   bonus       Prototyping, User Research',
         delay: const Duration(milliseconds: 600),
       ),
       _autoFinish(keywords, delay: const Duration(milliseconds: 800)),
@@ -196,6 +227,13 @@ class MockAgentService implements AgentService {
         label: 'Rewriting your project section…',
         icon: Icons.auto_awesome_rounded,
         pendingToolResult: '3 bullets rewritten · 4 keywords added',
+        detail: '▸ input\n'
+            '   base    Daryn_resume.pdf\n'
+            '   target  Linear — UX Designer\n'
+            '▸ output\n'
+            '   rewrote   3 project bullets\n'
+            '   injected  4 missing keywords\n'
+            '   match     81% → 92%',
         delay: const Duration(milliseconds: 700),
       ),
       _autoFinish(tailor, delay: const Duration(milliseconds: 1100)),
@@ -233,6 +271,13 @@ class MockAgentService implements AgentService {
         label: 'Looking up the hiring manager…',
         icon: Icons.person_search_rounded,
         pendingToolResult: 'Karri Saarinen · Head of Design at Linear',
+        detail: '▸ input\n'
+            '   company  Linear\n'
+            '   role     design lead\n'
+            '▸ output\n'
+            '   name   Karri Saarinen\n'
+            '   title  Head of Design\n'
+            '   email  karri@linear.app (verified)',
         delay: const Duration(milliseconds: 600),
       ),
       _autoFinish(contact, delay: const Duration(milliseconds: 900)),
@@ -241,6 +286,12 @@ class MockAgentService implements AgentService {
         label: 'Scanning recent Linear news…',
         icon: Icons.newspaper_rounded,
         pendingToolResult: 'Series C announced 3 weeks ago · 50→80 hires',
+        detail: '▸ input\n'
+            '   company  Linear\n'
+            '   window   last 30 days\n'
+            '▸ output\n'
+            '   • Series C announced — 3 weeks ago\n'
+            '   • Headcount 50 → 80 planned',
         delay: const Duration(milliseconds: 600),
       ),
       _autoFinish(news, delay: const Duration(milliseconds: 900)),
@@ -249,6 +300,12 @@ class MockAgentService implements AgentService {
         label: 'Drafting a 4-sentence cold email…',
         icon: Icons.edit_note_rounded,
         pendingToolResult: 'Subject + body ready · 320 chars',
+        detail: '▸ input\n'
+            '   to     Karri Saarinen\n'
+            '   tone   warm · concise\n'
+            '▸ output\n'
+            '   subject  "Design systems at Linear, post–Series C"\n'
+            '   length   4 sentences · 320 chars',
         delay: const Duration(milliseconds: 800),
       ),
       _autoFinish(draft, delay: const Duration(milliseconds: 1100)),
@@ -284,6 +341,13 @@ class MockAgentService implements AgentService {
         label: 'Analysing your saved roles + apply history…',
         icon: Icons.insights_rounded,
         pendingToolResult: 'Centre: Senior IC · design-led · \$135K median',
+        detail: '▸ input\n'
+            '   saved    12 roles\n'
+            '   applied  5 applications\n'
+            '▸ output\n'
+            '   centre    Senior IC · design-led\n'
+            '   median    \$135K\n'
+            '   adjacent  Design Systems Lead, Data Viz',
         delay: const Duration(milliseconds: 900),
       ),
       _autoFinish(analyze, delay: const Duration(milliseconds: 1300)),
@@ -325,10 +389,17 @@ class MockAgentService implements AgentService {
     required IconData icon,
     required String pendingToolResult,
     required Duration delay,
+    String? detail,
   }) =>
       _AddBlock(
         delay: delay,
-        block: ToolCallBlock(id: id, name: id, label: label, icon: icon),
+        block: ToolCallBlock(
+          id: id,
+          name: id,
+          label: label,
+          icon: icon,
+          detail: detail,
+        ),
         pendingToolResult: pendingToolResult,
       );
 

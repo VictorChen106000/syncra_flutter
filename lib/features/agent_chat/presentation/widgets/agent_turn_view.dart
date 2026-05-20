@@ -18,6 +18,24 @@ bool _isTimelineStep(AgentBlock b) => b is ThinkingBlock || b is ToolCallBlock;
 /// the input bar — see [AiChatbotPage]. Skip rendering them here.
 bool _isDocked(AgentBlock b) => b is ActionProposalBlock;
 
+/// One renderable chunk of a turn — see [AgentTurnView._segmentize].
+sealed class _Segment {
+  const _Segment();
+}
+
+/// A run of consecutive timeline steps (tool calls / thinking) drawn as one
+/// vertical rail.
+class _TimelineSegment extends _Segment {
+  const _TimelineSegment(this.steps);
+  final List<AgentBlock> steps;
+}
+
+/// A single non-timeline block (text / input request) drawn on its own.
+class _OutputSegment extends _Segment {
+  const _OutputSegment(this.block);
+  final AgentBlock block;
+}
+
 class AgentTurnView extends StatelessWidget {
   const AgentTurnView({super.key, required this.turn});
 
@@ -40,36 +58,33 @@ class AgentTurnView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final visible = turn.blocks.where((b) => !_isDocked(b)).toList();
-    final timeline = visible.where(_isTimelineStep).toList();
-    final output = visible.where((b) => !_isTimelineStep(b)).toList();
+    final segments = _segmentize(visible);
     final hasText = turn.blocks.any((b) => b is TextBlock);
+    final lastIdx = segments.length - 1;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 28, top: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (timeline.isNotEmpty)
-            _ReasoningTimeline(
-              steps: timeline,
-              streaming: turn.isStreaming && output.isEmpty,
+          // Blocks render in emission order; consecutive tool/thinking steps
+          // collapse into one rail. A think → tool → text → tool turn now
+          // reads chronologically instead of "all tools, then all text".
+          for (var i = 0; i < segments.length; i++) ...[
+            if (i > 0)
+              SizedBox(
+                height: (segments[i] is _TimelineSegment ||
+                        segments[i - 1] is _TimelineSegment)
+                    ? 18
+                    : 14,
+              ),
+            _segmentView(
+              segments[i],
+              turnStreaming: turn.isStreaming,
+              isLast: i == lastIdx,
             ),
-          if (output.isNotEmpty) ...[
-            if (timeline.isNotEmpty) const SizedBox(height: 18),
-            for (var i = 0; i < output.length; i++) ...[
-              if (i > 0) const SizedBox(height: 14),
-              AgentBlockView(block: output[i])
-                  .animate()
-                  .fadeIn(duration: 220.ms)
-                  .moveY(
-                    begin: 6,
-                    end: 0,
-                    duration: 220.ms,
-                    curve: Curves.easeOutCubic,
-                  ),
-            ],
           ],
-          if (turn.isStreaming && timeline.isEmpty && output.isEmpty) ...[
+          if (turn.isStreaming && segments.isEmpty) ...[
             const SizedBox(height: 4),
             const _BouncingDots(),
           ],
@@ -90,6 +105,57 @@ class AgentTurnView extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// Groups [blocks] into ordered segments: runs of consecutive timeline
+  /// steps (tool calls / thinking) become one [_TimelineSegment]; every other
+  /// block becomes its own [_OutputSegment]. Preserves emission order.
+  static List<_Segment> _segmentize(List<AgentBlock> blocks) {
+    final segs = <_Segment>[];
+    List<AgentBlock>? run;
+    for (final b in blocks) {
+      if (_isTimelineStep(b)) {
+        (run ??= <AgentBlock>[]).add(b);
+      } else {
+        if (run != null) {
+          segs.add(_TimelineSegment(run));
+          run = null;
+        }
+        segs.add(_OutputSegment(b));
+      }
+    }
+    if (run != null) segs.add(_TimelineSegment(run));
+    return segs;
+  }
+
+  Widget _segmentView(
+    _Segment seg, {
+    required bool turnStreaming,
+    required bool isLast,
+  }) {
+    switch (seg) {
+      case _TimelineSegment(:final steps):
+        return _ReasoningTimeline(
+          // The rail only "streams" (pulsing last dot) when it's the final
+          // segment — a rail followed by text is already settled.
+          steps: steps,
+          streaming: turnStreaming && isLast,
+        );
+      case _OutputSegment(:final block):
+        return AgentBlockView(
+          block: block,
+          // Only the last block of a still-streaming turn types itself in.
+          animateText: turnStreaming && isLast,
+        )
+            .animate()
+            .fadeIn(duration: 220.ms)
+            .moveY(
+              begin: 6,
+              end: 0,
+              duration: 220.ms,
+              curve: Curves.easeOutCubic,
+            );
+    }
   }
 }
 
@@ -448,12 +514,21 @@ class _TimelineStepBody extends StatelessWidget {
 }
 
 /// Tool-call row stripped of its own status icon — the rail dot already
-/// signals running/done state, so we just render the label + optional result.
-class _TimelineToolCall extends StatelessWidget {
+/// signals running/done state. Renders the label + optional result, and when
+/// the call carries [ToolCallBlock.detail] it becomes tappable to reveal the
+/// tool's inputs/outputs inline.
+class _TimelineToolCall extends StatefulWidget {
   const _TimelineToolCall({required this.block, required this.active});
 
   final ToolCallBlock block;
   final bool active;
+
+  @override
+  State<_TimelineToolCall> createState() => _TimelineToolCallState();
+}
+
+class _TimelineToolCallState extends State<_TimelineToolCall> {
+  bool _expanded = false;
 
   static final _fileRe = RegExp(
     r'\b[\w.\-]+\.(pdf|docx?|csv|json|md|txt)\b',
@@ -462,10 +537,10 @@ class _TimelineToolCall extends StatelessWidget {
 
   List<String> _detectFiles() {
     final hits = <String>{};
-    for (final m in _fileRe.allMatches(block.label)) {
+    for (final m in _fileRe.allMatches(widget.block.label)) {
       hits.add(m.group(0)!);
     }
-    final summary = block.resultSummary;
+    final summary = widget.block.resultSummary;
     if (summary != null) {
       for (final m in _fileRe.allMatches(summary)) {
         hits.add(m.group(0)!);
@@ -477,12 +552,35 @@ class _TimelineToolCall extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
+    final block = widget.block;
+    final active = widget.active;
     final files = _detectFiles();
-    return Column(
+    final detail = block.detail?.trim();
+    final hasDetail = detail != null && detail.isNotEmpty;
+
+    final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _ToolNameChip(name: block.name, active: active),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _ToolNameChip(name: block.name, active: active),
+            // Chevron only when there's a drill-down to open.
+            if (hasDetail) ...[
+              const SizedBox(width: 6),
+              AnimatedRotation(
+                duration: const Duration(milliseconds: 180),
+                turns: _expanded ? 0.5 : 0,
+                child: Icon(
+                  Icons.expand_more_rounded,
+                  size: 14,
+                  color: brand.textSoft,
+                ),
+              ),
+            ],
+          ],
+        ),
         const SizedBox(height: 6),
         active
             ? _ThinkingLabel(text: block.label, active: true)
@@ -518,7 +616,62 @@ class _TimelineToolCall extends StatelessWidget {
             ),
           ),
         ],
+        if (hasDetail)
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 200),
+            crossFadeState: _expanded
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            firstChild: const SizedBox(width: double.infinity, height: 0),
+            secondChild: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: _ToolDetailBox(text: detail),
+            ),
+          ),
       ],
+    );
+
+    if (!hasDetail) return content;
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: () => setState(() => _expanded = !_expanded),
+        borderRadius: BorderRadius.circular(8),
+        child: content,
+      ),
+    );
+  }
+}
+
+/// Monospace drill-down panel showing a tool call's inputs/outputs.
+class _ToolDetailBox extends StatelessWidget {
+  const _ToolDetailBox({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: brand.surfaceMuted,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: brand.border, width: 0.6),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontFamily: 'monospace',
+          fontFamilyFallback: const ['Menlo', 'Courier'],
+          fontSize: 11.5,
+          height: 1.5,
+          letterSpacing: -0.1,
+          color: brand.textMuted,
+        ),
+      ),
     );
   }
 }
