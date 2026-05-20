@@ -35,7 +35,19 @@ class AnthropicChatService implements AgentService {
   static const _maxLoopIterations = 8;
 
   /// Per-request retry budget for transient API failures (429 / 5xx / 529).
-  static const _maxApiAttempts = 3;
+  /// Kept at 4 so an "Overloaded" blip gets three backoff retries (~1s/2s/4s)
+  /// before the turn fails — extended-thinking requests are slower, so a
+  /// little extra patience here avoids surfacing a transient 529 to the user.
+  static const _maxApiAttempts = 4;
+
+  /// Extended-thinking budget, in tokens. Must be ≥1024 and strictly less
+  /// than [_maxTokens]; the model's visible output (text + tool calls) gets
+  /// whatever is left over.
+  static const _thinkingBudget = 2048;
+
+  /// Total output ceiling. Sits above [_thinkingBudget] so the agent still
+  /// has room for tool calls and a short reply after it finishes reasoning.
+  static const _maxTokens = 4096;
 
   static const _system = '''
 You are Syncra, an AI career copilot inside a Flutter app. Your job is to help
@@ -119,7 +131,16 @@ clear next step or question.''';
           if (raw is! Map<String, dynamic>) continue;
           final type = raw['type'] as String?;
 
-          if (type == 'text') {
+          if (type == 'thinking') {
+            // Extended-thinking block. The full block (with its signature)
+            // is already preserved in `messages` via the verbatim assistant
+            // content above — required when thinking is paired with tools.
+            final thought = (raw['thinking'] as String?)?.trim() ?? '';
+            if (thought.isEmpty) continue;
+            yield BlockAdded(
+              ThinkingBlock(id: nextBlockId('think'), content: thought),
+            );
+          } else if (type == 'text') {
             final text = (raw['text'] as String?)?.trim() ?? '';
             if (text.isEmpty) continue;
             yield BlockAdded(TextBlock(id: nextBlockId('text'), text: text));
@@ -305,7 +326,11 @@ clear next step or question.''';
 
     final payload = {
       'model': model,
-      'max_tokens': 1024,
+      'max_tokens': _maxTokens,
+      'thinking': {
+        'type': 'enabled',
+        'budget_tokens': _thinkingBudget,
+      },
       'system': _system,
       'tools': tools,
       'messages': messages,
