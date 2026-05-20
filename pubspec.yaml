@@ -11,7 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
 
-  flutter_riverpod: ^2.6.1
+  flutter_riverpod: ^3.3.1
   go_router: ^17.2.3
   file_picker: ^11.0.2
   intl: ^0.20.2
@@ -19,10 +19,10 @@ dependencies:
   flutter_animate: ^4.5.2
   flutter_svg: ^2.0.10+1
   shimmer: ^3.0.0
-  syncfusion_flutter_pdfviewer: ^29.1.33
-  syncfusion_flutter_pdf: ^29.1.33
+  syncfusion_flutter_pdfviewer: ^33.2.7
+  syncfusion_flutter_pdf: ^33.2.7
   pdf: ^3.11.1
-  share_plus: ^11.1.0
+  share_plus: ^12.0.2
   http: ^1.5.0
   shared_preferences: ^2.3.2
 

@@ -199,13 +199,17 @@ void _registerReadResume(
           data: _resumeWithLearnedFacts(json.toJson(), learnedFacts),
         );
       } catch (e) {
-        return ToolResult(
-          summary: learnedFacts.isEmpty
-              ? 'Parse failed — using sample resume'
-              : 'Parse failed — using sample resume · ${learnedFacts.length} learned facts',
-          data: _resumeWithLearnedFacts(kFakeResumeJson, learnedFacts),
-        );
-      }
+          debugPrint('read_resume parse failed for resumeId=$resumeId: $e');
+
+          final reason = _shortToolError(e);
+
+          return ToolResult(
+            summary: learnedFacts.isEmpty
+                ? 'Parse failed: $reason — using sample resume'
+                : 'Parse failed: $reason — using sample resume · ${learnedFacts.length} learned facts',
+            data: _resumeWithLearnedFacts(kFakeResumeJson, learnedFacts),
+          );
+        }
     },
   );
 }
@@ -931,4 +935,15 @@ Future<Map<String, dynamic>> _loadResumeContextForAgent({
     debugPrint('load real resume failed, using sample resume: $e');
     return kFakeResumeJson;
   }
+}
+
+String _shortToolError(Object e) {
+  final raw = e.toString()
+      .replaceFirst('Exception: ', '')
+      .replaceFirst('TailorOrchestratorException: ', '')
+      .replaceFirst('ResumeParseException: ', '')
+      .trim();
+
+  if (raw.isEmpty) return 'unknown error';
+  return raw.length > 90 ? '${raw.substring(0, 90)}…' : raw;
 }
