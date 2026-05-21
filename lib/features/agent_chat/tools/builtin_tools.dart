@@ -10,6 +10,7 @@ import '../../../data/firestore/resumes_repository.dart';
 import '../../../data/models/job.dart';
 import '../../agent/data/fake_resume.dart';
 import '../../agent/services/anthropic_service.dart';
+import '../../resumes/models/proposed_edit.dart';
 import '../../resumes/services/resume_parser_service.dart';
 import '../../resumes/services/resume_tailor_orchestrator.dart';
 import '../../resumes/services/resume_tailor_service.dart';
@@ -42,7 +43,8 @@ void registerBuiltinTools(ToolRegistry registry) {
   _registerRememberFact(registry);
   _registerMatchJobs(registry, jobs, anthropic, orchestrator);  _registerSaveToPipeline(registry, jobs, pipeline);
   _registerTailorResume(registry, jobs, paraphrase, orchestrator);
-  _registerDraftEmail(registry, jobs, paraphrase);
+  _registerApplyResumeEdits(registry, orchestrator);
+  _registerDraftEmail(registry, jobs, paraphrase, orchestrator);
   _registerLookupHiringManager(registry);
   _registerSaveToTracker(registry, jobs, applications);
   _registerSendEmail(registry);
@@ -612,6 +614,109 @@ void _registerTailorResume(
 }
 
 // ---------------------------------------------------------------------------
+// apply_resume_edits — REAL: applies the user-accepted edit subset →
+// renders the PDF → saves a new tailored resume doc. USER-GATED: fired by
+// the diff viewer when the user taps "Apply N edits", never by Claude.
+// ---------------------------------------------------------------------------
+
+void _registerApplyResumeEdits(
+  ToolRegistry registry,
+  ResumeTailorOrchestrator orchestrator,
+) {
+  registry.register(
+    tool: const Tool(
+      name: 'apply_resume_edits',
+      description:
+          'Apply a user-approved subset of proposed resume edits, render the '
+          'tailored PDF, and save it as a new resume. The user fires this from '
+          'the diff viewer after reviewing tailor_resume edits — do NOT call '
+          'it yourself. Returns { tailored_resume_id }.',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'resume_id': {
+            'type': 'string',
+            'description': 'Source resume id the edits were proposed against.',
+          },
+          'accepted_edits': {
+            'type': 'array',
+            'description':
+                'The edits the user accepted, each { target_path, '
+                'original_text, proposed_text, reason }.',
+            'items': {
+              'type': 'object',
+              'properties': {
+                'target_path': {'type': 'string'},
+                'original_text': {'type': 'string'},
+                'proposed_text': {'type': 'string'},
+                'reason': {'type': 'string'},
+              },
+              'required': ['target_path', 'original_text', 'proposed_text'],
+            },
+          },
+          'job_id': {
+            'type': 'string',
+            'description':
+                'Optional job this resume is tailored for — links the new '
+                'doc and names the file.',
+          },
+        },
+        'required': ['resume_id', 'accepted_edits'],
+      },
+      uiLabel: 'Applying edits…',
+      uiIcon: Icons.fact_check_rounded,
+    ),
+    handler: (args) async {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) {
+        return ToolResult.error('Sign in to apply resume edits.');
+      }
+
+      final resumeId = (args['resume_id'] as String?)?.trim();
+      if (resumeId == null || resumeId.isEmpty) {
+        return ToolResult.error('resume_id is required.');
+      }
+
+      final rawEdits = args['accepted_edits'] as List? ?? const [];
+      final acceptedEdits = rawEdits
+          .whereType<Map>()
+          .map((m) => ProposedEdit.fromJson(m.cast<String, dynamic>()))
+          .where((e) => e.isValid)
+          .toList();
+
+      if (acceptedEdits.isEmpty) {
+        return ToolResult.error('No valid accepted_edits provided.');
+      }
+
+      final jobId = (args['job_id'] as String?)?.trim();
+
+      try {
+        final result = await orchestrator.applyEdits(
+          uid: uid,
+          resumeId: resumeId,
+          acceptedEdits: acceptedEdits,
+          jobId: jobId == null || jobId.isEmpty ? null : jobId,
+        );
+        final skippedNote = result.skippedCount > 0
+            ? ' (${result.skippedCount} skipped — no verbatim match)'
+            : '';
+        return ToolResult(
+          summary: 'Applied ${result.appliedCount} edits$skippedNote',
+          data: {
+            'tailored_resume_id': result.file.id,
+            'name': result.file.name,
+            'applied_count': result.appliedCount,
+            'skipped_count': result.skippedCount,
+          },
+        );
+      } catch (e) {
+        return ToolResult.error('Apply failed: ${_shortToolError(e)}');
+      }
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
 // draft_email — REAL: composes a cold outreach via Anthropic
 // ---------------------------------------------------------------------------
 
@@ -619,17 +724,27 @@ void _registerDraftEmail(
   ToolRegistry registry,
   JobsRepository jobsRepo,
   AnthropicParaphraseService paraphrase,
+  ResumeTailorOrchestrator orchestrator,
 ) {
   registry.register(
     tool: const Tool(
       name: 'draft_email',
       description:
           'Draft a cold outreach email for a job, optionally to a specific '
-          'recipient. Returns { subject, body, recipient }. Does NOT send.',
+          'recipient. Drafts against the resume identified by resume_id — '
+          'pass the tailored_resume_id from apply_resume_edits when available. '
+          'Returns { subject, body, recipient }. Does NOT send.',
       inputSchema: {
         'type': 'object',
         'properties': {
           'job_id': {'type': 'string'},
+          'resume_id': {
+            'type': 'string',
+            'description':
+                'Resume to draft against. Use the tailored_resume_id from '
+                'apply_resume_edits, or a manual resume id. Defaults to the '
+                'latest manual resume.',
+          },
           'recipient_email': {'type': 'string'},
           'recipient_name': {'type': 'string'},
           'tone': {
@@ -651,6 +766,16 @@ void _registerDraftEmail(
           'careers@${_domainGuess(job.company)}';
       final tone = (args['tone'] as String?) ?? 'warm';
 
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      final resumeId = (args['resume_id'] as String?)?.trim();
+      final resumeJson = uid == null
+          ? kFakeResumeJson
+          : await _loadResumeContextForAgent(
+              uid: uid,
+              orchestrator: orchestrator,
+              resumeId: resumeId,
+            );
+
       if (!paraphrase.hasApiKey) {
         return ToolResult(
           summary: 'Draft ready (placeholder — no API key)',
@@ -658,7 +783,7 @@ void _registerDraftEmail(
             'subject': 'Application for ${job.title}',
             'body':
                 'Hi,\n\nI\'m excited about the ${job.title} role at ${job.company}. '
-                "I've attached my tailored resume.\n\nThanks,\n${kFakeResumeJson['profile']['name']}",
+                "I've attached my tailored resume.\n\nThanks,\n${_resumeName(resumeJson)}",
             'recipient': recipient,
           },
         );
@@ -666,7 +791,7 @@ void _registerDraftEmail(
 
       try {
         final draft = await paraphrase.draftColdEmail(
-          resumeJson: kFakeResumeJson,
+          resumeJson: resumeJson,
           job: job,
           recipientName: args['recipient_name'] as String?,
           tone: tone,
@@ -697,6 +822,16 @@ JobCategory _jobCategoryFromWire(
     'exploration' => JobCategory.exploration,
     _ => fallback,
   };
+}
+
+/// Pulls the candidate's name out of a resume map, tolerating both the
+/// canonical ResumeJSON shape (`header.name`) and the sample's (`profile.name`).
+String _resumeName(Map<String, dynamic> resumeJson) {
+  final fromHeader = (resumeJson['header'] as Map?)?['name'] as String?;
+  if (fromHeader != null && fromHeader.trim().isNotEmpty) return fromHeader;
+  final fromProfile = (resumeJson['profile'] as Map?)?['name'] as String?;
+  if (fromProfile != null && fromProfile.trim().isNotEmpty) return fromProfile;
+  return 'the candidate';
 }
 
 String _domainGuess(String company) {
