@@ -154,8 +154,12 @@ List<RouteBase> _routes(Page<void> Function(GoRouterState, Widget) fadePage) =>
       ),
       GoRoute(
         path: RouteNames.agentChat,
-        pageBuilder: (context, state) =>
-            fadePage(state, const AiChatbotPage()),
+        pageBuilder: (context, state) => fadePage(
+          state,
+          AiChatbotPage(
+            autofocusComposer: state.uri.queryParameters['focus'] == '1',
+          ),
+        ),
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
