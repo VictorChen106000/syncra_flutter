@@ -16,7 +16,7 @@ Five workstreams, one owner each (5-person team). Plain names — no codes.
 | **Resume Diff UI** | The inline accept/reject diff block, resume list/preview, `ResumeState` V1/V2 |
 | **Agent Reasoning** | Claude tool-use loop, prompts, tool descriptions, brief reasoner |
 | **App Shell** | Riverpod, navigation, auth/onboarding, dashboard, settings, applications, notifications |
-| **Integrations** | JSearch, Gmail send, Hunter.io, email review modal |
+| **Integrations** | JSearch, Gmail send, email review modal |
 
 ## ✅ Shipped — don't rebuild
 
@@ -54,14 +54,16 @@ added by the diff viewer").
 - [ ] "Apply N edits" dispatches `apply_resume_edits`; the result block links to the tailored PDF in `resume_preview_page`.
 
 ### Integrations
-Essentially not started — `search_jobs` runs on ~10 seeded jobs; `send_email`
-and `lookup_hiring_manager` are stubs.
+Service layer complete — JSearch, Gmail, and the email review modal all ship.
+One cross-workstream wire remains (see below).
 
-- [ ] **`jsearch_service.dart`** — RapidAPI call, upsert into `jobs/`, 1h in-memory cache. Rewire the `search_jobs` handler to use it.
-- [ ] **`gmail_service.dart`** + `lib/features/email/` — MIME builder, `users.messages.send`. Add the `gmail.send` scope to Google Sign-In (coordinate with App Shell).
-- [ ] Real `send_email` handler — gated behind the email review modal's confirmation token.
-- [ ] **Email review modal** (`email_review_page.dart`) — editable subject/body, "Send to {recipient}", one-shot confirmation token.
-- [ ] Hunter.io `lookup_hiring_manager` — **stretch**, skip if quota is risky.
+- [x] `jsearch_service.dart` — live RapidAPI search, `jobs/` upsert, 1h cache; `search_jobs` uses it (falls back to the seeded catalogue with no key).
+- [x] `gmail_service.dart` + `lib/features/email/` — raw `users.messages.send`, OAuth via `google_sign_in` v7; `gmail.send` scope hinted at sign-in.
+- [x] `email_send_service.dart` — one-shot confirmation-token gate; the real `send_email` handler refuses tokenless (autonomous) calls.
+- [x] `email_review_page.dart` — editable review sheet that mints the token and sends.
+- [x] `lookup_hiring_manager` — returns the company's `careers@` address; no named-contact lookup (Hunter.io considered and dropped 2026-05-21).
+
+- [ ] **Wire the modal in** — `EmailReviewPage.show` has no caller. A `draft_email` chat result needs a "Review & send" button that opens it. This is a chat-block change (Agent Reasoning / Resume Diff UI), not a service — the modal's own header comment flags it as a deliberate handoff. Until it lands, the Gmail send path is built but unreachable.
 
 ### Agent Reasoning
 Loop, prompts, and tools are in place. Remaining:

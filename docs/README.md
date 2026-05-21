@@ -72,7 +72,6 @@ two explicit gates: the diff viewer and the email modal.
 - **Anthropic Claude** (Haiku 4.5) — agent brain, called directly from Flutter
 - **JSearch / RapidAPI** — live job listings
 - **Gmail API** — send drafted emails from the user's own account
-- **Hunter.io** — hiring-manager email lookup (stretch)
 
 No FastAPI, no Cloud Functions. Course rule: Flutter + Firebase only.
 

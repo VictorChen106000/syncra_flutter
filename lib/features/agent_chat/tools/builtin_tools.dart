@@ -10,6 +10,7 @@ import '../../../data/firestore/resumes_repository.dart';
 import '../../../data/models/job.dart';
 import '../../../data/services/jsearch_service.dart';
 import '../../email/services/email_send_service.dart';
+import '../../email/services/recipient_resolver.dart';
 import '../../agent/data/fake_resume.dart';
 import '../../agent/services/anthropic_service.dart';
 import '../../resumes/models/proposed_edit.dart';
@@ -798,8 +799,8 @@ void _registerDraftEmail(
       if (jobId == null) return ToolResult.error('job_id is required.');
       final job = await jobsRepo.fetchById(jobId);
       if (job == null) return ToolResult.error('Job not found.');
-      final recipient = (args['recipient_email'] as String?) ??
-          'careers@${_domainGuess(job.company)}';
+      final recipient =
+          (args['recipient_email'] as String?) ?? resolveRecipient(job.company);
       final tone = (args['tone'] as String?) ?? 'warm';
 
       final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -870,16 +871,11 @@ String _resumeName(Map<String, dynamic> resumeJson) {
   return 'the candidate';
 }
 
-String _domainGuess(String company) {
-  final slug = company
-      .toLowerCase()
-      .replaceAll(RegExp(r'[^a-z0-9]'), '')
-      .trim();
-  return slug.isEmpty ? 'example.com' : '$slug.com';
-}
 
 // ---------------------------------------------------------------------------
-// lookup_hiring_manager — STUB (Track C will wire Hunter.io)
+// lookup_hiring_manager — returns the company's generic careers address.
+// There is no named-contact data source wired, so this is a deterministic
+// domain guess. Gives Claude an explicit recipient instead of inventing one.
 // ---------------------------------------------------------------------------
 
 void _registerLookupHiringManager(ToolRegistry registry) {
@@ -887,9 +883,9 @@ void _registerLookupHiringManager(ToolRegistry registry) {
     tool: const Tool(
       name: 'lookup_hiring_manager',
       description:
-          'Find a likely hiring manager + email at a target company. '
-          'Returns best-effort {name, email, confidence}. May fail if '
-          'no match found.',
+          'Find a contact email for outreach at a target company. Returns '
+          '{name, email, confidence}. There is no named-contact lookup — '
+          "this returns the company's generic careers address.",
       inputSchema: {
         'type': 'object',
         'properties': {
@@ -898,19 +894,21 @@ void _registerLookupHiringManager(ToolRegistry registry) {
         },
         'required': ['company'],
       },
-      uiLabel: 'Looking up hiring manager…',
+      uiLabel: 'Finding a contact…',
       uiIcon: Icons.person_search_rounded,
     ),
     handler: (args) async {
-      final company = args['company'] as String? ?? '';
+      final company = (args['company'] as String? ?? '').trim();
+      if (company.isEmpty) {
+        return ToolResult.error('company is required.');
+      }
       return ToolResult(
-        summary: 'Stub — fallback careers email',
+        summary: 'Careers inbox for $company',
         data: {
           'name': null,
-          'email': 'careers@${_domainGuess(company)}',
+          'email': resolveRecipient(company),
           'confidence': 0.2,
-          'note':
-              'Stub. Hunter.io integration ships with Track C.',
+          'note': 'Generic careers address — no named-contact lookup wired.',
         },
       );
     },

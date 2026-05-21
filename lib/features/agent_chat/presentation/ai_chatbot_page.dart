@@ -9,16 +9,22 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../data/models/job.dart';
 import '../../../fixtures/mock_agent_service.dart';
+import '../../../shared/widgets/gooey_orb.dart';
 import '../models/agent_block.dart';
 import '../models/chat_message.dart';
 import '../state/agent_chat_notifier.dart';
 import 'widgets/agent_turn_view.dart';
+import 'widgets/chat_history_drawer.dart';
 import 'widgets/chat_input_bar.dart';
 import 'widgets/chat_message_bubble.dart';
 import 'widgets/docked_panels.dart';
 
 class AiChatbotPage extends ConsumerStatefulWidget {
-  const AiChatbotPage({super.key});
+  const AiChatbotPage({super.key, this.autofocusComposer = false});
+
+  /// When true, the chat composer grabs focus on open — set when the user
+  /// arrives by tapping the dashboard's "Ask Syncra" bar.
+  final bool autofocusComposer;
 
   @override
   ConsumerState<AiChatbotPage> createState() => _AiChatbotPageState();
@@ -114,6 +120,7 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
 
     return Scaffold(
       backgroundColor: brand.surface,
+      drawer: const ChatHistoryDrawer(),
       body: Stack(
         children: [
           // Full-bleed transcript — scrolls behind the floating chrome.
@@ -168,7 +175,7 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
               isStreaming: state.isStreaming,
               threadJob: state.threadJob,
               stickyPrompt: stickyPrompt,
-              onClearThread: notifier.clearThread,
+              onClearThread: notifier.newConversation,
             ),
           ),
 
@@ -203,7 +210,7 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
                   DockedInputRequest(block: pendingInput)
                 else if (pendingProposal != null)
                   DockedActionProposal(block: pendingProposal),
-                const ChatInputBar(),
+                ChatInputBar(autofocus: widget.autofocusComposer),
               ],
             ),
           ),
@@ -463,12 +470,19 @@ class _FloatingTop extends ConsumerWidget {
                   tooltip: 'Back',
                   onTap: () => context.go(RouteNames.dashboard),
                 ),
+                const SizedBox(width: 8),
+                _IconBtn(
+                  icon: Icons.history_rounded,
+                  tooltip: 'Chat history',
+                  onTap: () => Scaffold.of(context).openDrawer(),
+                ),
                 const Spacer(),
                 _IconBtn(
                   icon: Icons.edit_square,
                   tooltip: 'New chat',
                   onTap: hasHistory && !isStreaming
-                      ? () => _confirmNewChat(context, ref)
+                      ? () =>
+                          ref.read(agentChatProvider.notifier).newConversation()
                       : null,
                 ),
               ],
@@ -492,30 +506,6 @@ class _FloatingTop extends ConsumerWidget {
     );
   }
 
-  Future<void> _confirmNewChat(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Start a new chat?'),
-        content: const Text(
-          'This conversation will be cleared. You can\'t undo this.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('New chat'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true) {
-      ref.read(agentChatProvider.notifier).clearThread();
-    }
-  }
 }
 
 /// Soft gradient that fades the transcript into the background behind the
@@ -813,44 +803,7 @@ class _EmptyState extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(24, topInset + 12, 24, bottomInset + 12),
       children: [
         Center(
-          child: SizedBox(
-            width: 96,
-            height: 96,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Container(
-                  width: 96,
-                  height: 96,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: brand.accent.withValues(alpha: 0.18),
-                  ),
-                ),
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: brand.ink,
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: brand.ink.withValues(alpha: 0.18),
-                        blurRadius: 24,
-                        offset: const Offset(0, 10),
-                      ),
-                    ],
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(
-                    Icons.auto_awesome_rounded,
-                    color: brand.accent,
-                    size: 26,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          child: const GooeyOrb(size: 116),
         )
             .animate()
             .fadeIn(duration: 380.ms)

@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
@@ -18,15 +17,13 @@ import '../../../fixtures/mock_agent_service.dart';
 import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
+import '../../../shared/widgets/gooey_orb.dart';
 import '../../agent/state/passive_agent_notifier.dart';
-import '../../agent_chat/models/chat_message.dart';
 import '../../agent_chat/state/agent_chat_notifier.dart';
 import '../../applications/state/applications_notifier.dart';
 import '../../auth/state/auth_notifier.dart';
 import '../../notifications/presentation/notifications_drawer.dart';
 import '../../notifications/state/notifications_notifier.dart';
-import '../../resumes/presentation/widgets/resume_attachment_chips.dart';
-import '../../resumes/presentation/widgets/select_resumes_bottom_sheet.dart';
 import '../../resumes/state/resume_notifier.dart';
 
 /// Approximate vertical footprint of the bottom-anchored agent area
@@ -63,7 +60,7 @@ class DashboardPage extends ConsumerWidget {
                     AppConstants.screenHorizontalPadding,
                     _kFloatingAreaReservedHeight,
                   ),
-                  child: const _AgentCardStack(),
+                  child: const _AgentSection(),
                 ),
               ),
             ],
@@ -286,6 +283,75 @@ class _LiveDot extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
+// Agent hero area — card fan once a pipeline exists, gooey-orb empty state
+// before the agent has surfaced anything.
+// ---------------------------------------------------------------------------
+
+/// Switches the dashboard's hero area between the agent card fan (once the
+/// agent has built a pipeline) and a calm gooey-orb empty state.
+class _AgentSection extends ConsumerWidget {
+  const _AgentSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final hasPipeline =
+        ref.watch(passiveAgentProvider.select((s) => s.hasPipeline));
+    return hasPipeline
+        ? const _AgentCardStack()
+        : const _DashboardAgentEmptyState();
+  }
+}
+
+/// Shown before the agent has tailored anything into a pipeline — a glassy
+/// orb and a warm greeting, mirroring the chat page's empty state.
+class _DashboardAgentEmptyState extends ConsumerWidget {
+  const _DashboardAgentEmptyState();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
+    final fullName =
+        (ref.watch(authProvider).appUser?.displayName ?? '').trim();
+    final firstName =
+        fullName.isEmpty ? '' : fullName.split(RegExp(r'\s+')).first;
+    final greeting = firstName.isEmpty
+        ? 'How can I help you?'
+        : 'How can I help you, $firstName?';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 44, bottom: 8),
+      child: Column(
+        children: [
+          GooeyOrb(size: 150)
+              .animate()
+              .fadeIn(duration: 500.ms)
+              .scale(
+                begin: const Offset(0.8, 0.8),
+                end: const Offset(1, 1),
+                curve: Curves.easeOutCubic,
+              ),
+          const SizedBox(height: 26),
+          Text(
+            greeting,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: brand.ink,
+              letterSpacing: -0.5,
+              height: 1.2,
+            ),
+          )
+              .animate(delay: 120.ms)
+              .fadeIn(duration: 420.ms)
+              .moveY(begin: 8, end: 0, curve: Curves.easeOutCubic),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Agent fan-stack
 // ---------------------------------------------------------------------------
 
@@ -354,13 +420,17 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
     final sentCount = appState.countOf(ApplicationPhase.sent);
 
     // Green-gradient fan: the front card is the full brand lime; each card
-    // behind it steps lighter, lerping toward white. Backgrounds are a
-    // deliberate branded element (theme-independent) — onAccent (near-black)
-    // stays readable on every step.
+    // behind it steps DOWN into deeper, still-saturated green (lerping toward
+    // a deep forest tone) rather than washing toward white — a white wash
+    // desaturates the neon lime into a sickly pastel. Backgrounds are a
+    // deliberate branded element (theme-independent); onAccent (near-black)
+    // stays readable on every step, with muted text darkened on the deeper
+    // cards so the small kicker label keeps a 4.5:1 contrast ratio.
+    const deepGreen = Color(0xFF1E4D14);
     final cardFg = brand.onAccent;
     final card1Bg = brand.accent;
-    final card2Bg = Color.lerp(brand.accent, Colors.white, 0.42)!;
-    final card3Bg = Color.lerp(brand.accent, Colors.white, 0.66)!;
+    final card2Bg = Color.lerp(brand.accent, deepGreen, 0.30)!;
+    final card3Bg = Color.lerp(brand.accent, deepGreen, 0.52)!;
 
     final cards = <_StackCardData>[
       // 1 — jobs the agent surfaced, awaiting the user's review.
@@ -372,6 +442,7 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
         count: passive.pipeline.length,
         background: card1Bg,
         foreground: cardFg,
+        foregroundMuted: cardFg.withValues(alpha: 0.62),
         icon: Icons.work_outline_rounded,
         route: RouteNames.jobs,
       ),
@@ -383,6 +454,7 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
         count: resumeState.tailoredResumes.length,
         background: card2Bg,
         foreground: cardFg,
+        foregroundMuted: cardFg.withValues(alpha: 0.70),
         icon: Icons.auto_awesome_rounded,
         route: RouteNames.resumes,
       ),
@@ -394,6 +466,7 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
         count: appState.items.length,
         background: card3Bg,
         foreground: cardFg,
+        foregroundMuted: cardFg.withValues(alpha: 0.80),
         icon: Icons.send_rounded,
         route: RouteNames.applications,
       ),
@@ -530,6 +603,7 @@ class _StackCardData {
     required this.count,
     required this.background,
     required this.foreground,
+    required this.foregroundMuted,
     required this.icon,
     required this.route,
   });
@@ -540,6 +614,7 @@ class _StackCardData {
   final int count;
   final Color background;
   final Color foreground;
+  final Color foregroundMuted;
   final IconData icon;
   final String route;
 }
@@ -605,7 +680,7 @@ class _StackCard extends StatelessWidget {
                         fontSize: 10,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 1.6,
-                        color: fg.withValues(alpha: 0.6),
+                        color: data.foregroundMuted,
                       ),
                     ),
                   ],
@@ -653,7 +728,7 @@ class _StackCard extends StatelessWidget {
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600,
                         letterSpacing: -0.1,
-                        color: fg.withValues(alpha: 0.62),
+                        color: data.foregroundMuted,
                       ),
                     ),
                   ],
@@ -894,181 +969,82 @@ class _PromptSuggestionCard extends ConsumerWidget {
   }
 }
 
-class _AgentInputBar extends ConsumerStatefulWidget {
+/// Dashboard "Ask Syncra" bar. Deliberately *not* an editable field — tapping
+/// anywhere on it jumps straight to the chat page with the composer focused.
+/// Typing (and the conversation's history) lives entirely on the chat page, so
+/// the user never has to wonder where the chatbot is.
+class _AgentInputBar extends StatelessWidget {
   const _AgentInputBar();
-
-  @override
-  ConsumerState<_AgentInputBar> createState() => _AgentInputBarState();
-}
-
-class _AgentInputBarState extends ConsumerState<_AgentInputBar>
-    with SingleTickerProviderStateMixin {
-  static const _spring = SpringDescription(
-    mass: 1,
-    stiffness: 320,
-    damping: 11,
-  );
-
-  final TextEditingController _textController = TextEditingController();
-  final FocusNode _focusNode = FocusNode();
-  late final AnimationController _bounceController;
-
-  @override
-  void initState() {
-    super.initState();
-    _bounceController = AnimationController.unbounded(
-      vsync: this,
-      value: 1.0,
-    );
-  }
-
-  @override
-  void dispose() {
-    _bounceController.dispose();
-    _textController.dispose();
-    _focusNode.dispose();
-    super.dispose();
-  }
-
-  void _bounce() {
-    _bounceController.stop();
-    _bounceController.value = 0.94;
-    _bounceController.animateWith(
-      SpringSimulation(_spring, 0.94, 1.0, 0),
-    );
-  }
-
-  void _send() {
-    final text = _textController.text.trim();
-    if (text.isEmpty) return;
-
-    final selected = ref.read(resumeProvider).selectedResumes;
-    final attachments = selected
-        .map((r) => ChatAttachment(id: r.id, name: r.name))
-        .toList();
-
-    ref.read(agentChatProvider.notifier).sendPrompt(
-          prompt: text,
-          attachments: attachments,
-        );
-    _textController.clear();
-    _focusNode.unfocus();
-
-    HapticFeedback.lightImpact();
-    _bounce();
-    Future.delayed(const Duration(milliseconds: 120), () {
-      if (!mounted) return;
-      context.go(RouteNames.agentChat);
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final resumeState = ref.watch(resumeProvider);
-    final resumeNotifier = ref.read(resumeProvider.notifier);
-    final hasText = _textController.text.trim().isNotEmpty;
-    return AnimatedBuilder(
-      animation: _bounceController,
-      builder: (context, child) => Transform.scale(
-        scale: _bounceController.value,
-        alignment: Alignment.bottomCenter,
-        child: child,
-      ),
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: brand.glassFill,
+    return Semantics(
+      button: true,
+      label: 'Ask Syncra — opens chat',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => context.go('${RouteNames.agentChat}?focus=1'),
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: brand.glassBorder),
-          boxShadow: [
-            BoxShadow(
-              color: brand.shadow,
-              blurRadius: 40,
-              offset: const Offset(0, 12),
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: brand.glassFill,
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: brand.glassBorder),
+              boxShadow: [
+                BoxShadow(
+                  color: brand.shadow,
+                  blurRadius: 40,
+                  offset: const Offset(0, 12),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ResumeAttachmentChips(
-              resumes: resumeState.selectedResumes,
-              onRemove: resumeNotifier.removeSelectedResume,
-            ),
-            Row(
+            child: Row(
               children: [
-                InkResponse(
-                  onTap: () => SelectResumesBottomSheet.show(context),
-                  radius: 24,
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: brand.surfaceMuted,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(
-                      Icons.add_rounded,
-                      color: brand.ink,
-                      size: 20,
-                    ),
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: brand.surfaceMuted,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.auto_awesome_rounded,
+                    color: brand.ink,
+                    size: 18,
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
                 Expanded(
-                  child: TextField(
-                    controller: _textController,
-                    focusNode: _focusNode,
-                    onChanged: (_) => setState(() {}),
-                    onSubmitted: (_) => _send(),
-                    textInputAction: TextInputAction.send,
+                  child: Text(
+                    AppStrings.askSyncra,
                     style: TextStyle(
-                      color: brand.ink,
+                      color: brand.textSoft,
                       fontWeight: FontWeight.w600,
                       fontSize: 14,
                     ),
-                    decoration: InputDecoration(
-                      hintText: resumeState.selectedResumes.isNotEmpty
-                          ? AppStrings.askAgentAboutContext
-                          : AppStrings.askSyncra,
-                      hintStyle: TextStyle(
-                        color: brand.textSoft,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                      isCollapsed: true,
-                      contentPadding:
-                          const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                    ),
                   ),
                 ),
-                InkResponse(
-                  onTap: hasText ? _send : null,
-                  radius: 24,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 160),
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: hasText ? brand.ink : brand.surfaceMuted,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(
-                      Icons.send_rounded,
-                      color: hasText ? brand.inkInverse : brand.textSoft,
-                      size: 16,
-                    ),
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: brand.ink,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.arrow_forward_rounded,
+                    color: brand.inkInverse,
+                    size: 18,
                   ),
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );

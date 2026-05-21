@@ -123,6 +123,26 @@ class EmailSendService {
 
     return EmailSendResult(messageId: messageId, sentAt: sentAt);
   }
+
+  /// Creates a draft in the user's Gmail Drafts folder. Returns the draft id.
+  ///
+  /// Unlike [sendConfirmed] this needs no confirmation token: a draft is never
+  /// delivered, so the human-in-the-loop rule (api-contract §1) is satisfied
+  /// by Gmail itself — the user still has to open the draft and hit send.
+  /// Drafting is therefore safe for the agent to surface directly.
+  Future<String> createDraft({
+    required String to,
+    required String subject,
+    required String body,
+    List<EmailAttachment> attachments = const [],
+  }) {
+    return _gmailService.createDraft(
+      to: to,
+      subject: subject,
+      body: body,
+      attachments: attachments,
+    );
+  }
 }
 
 /// Raised when `send_email` is called without a valid confirmation token —

@@ -4,12 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_strings.dart';
+import '../../../data/firestore/jobs_repository.dart';
+import '../../../data/firestore/resumes_repository.dart';
 import '../../../data/models/job.dart';
 import '../../../fixtures/mock_agent_service.dart';
 import '../../auth/state/auth_notifier.dart';
 import '../../notifications/state/notifications_notifier.dart';
+import '../../resumes/services/resume_parser_service.dart';
+import '../../resumes/services/resume_tailor_orchestrator.dart';
+import '../../resumes/services/resume_tailor_service.dart';
+import '../../resumes/state/resume_notifier.dart';
 import '../models/agent_block.dart';
 import '../models/chat_message.dart';
+import '../models/conversation_summary.dart';
 import '../services/agent_service.dart';
 import '../services/anthropic_chat_service.dart';
 import '../services/chat_history_repository.dart';
@@ -31,15 +38,33 @@ final chatHistoryRepositoryProvider = Provider<ChatHistoryRepository>(
   (ref) => ChatHistoryRepository(),
 );
 
+/// Live list of saved conversations for the history drawer. Empty for guests
+/// — they have no Firestore subtree to read.
+final conversationListProvider =
+    StreamProvider.autoDispose<List<ConversationSummary>>((ref) {
+  final repo = ref.watch(chatHistoryRepositoryProvider);
+  final user = ref.watch(authProvider).appUser;
+  if (user == null || user.isGuest) {
+    return Stream.value(const <ConversationSummary>[]);
+  }
+  return repo.watchConversations(user.uid);
+});
+
 @immutable
 class AgentChatState {
   const AgentChatState({
     required this.items,
+    required this.conversationId,
     this.isStreaming = false,
     this.threadJob,
   });
 
   final List<ChatItem> items;
+
+  /// Firestore document id this transcript persists to. Switching chats from
+  /// the history drawer swaps this; "New chat" mints a fresh one.
+  final String conversationId;
+
   final bool isStreaming;
 
   /// When set, the chat is scoped to a single job — surfaces a context chip
@@ -48,12 +73,14 @@ class AgentChatState {
 
   AgentChatState copyWith({
     List<ChatItem>? items,
+    String? conversationId,
     bool? isStreaming,
     Job? threadJob,
     bool clearThreadJob = false,
   }) {
     return AgentChatState(
       items: items ?? this.items,
+      conversationId: conversationId ?? this.conversationId,
       isStreaming: isStreaming ?? this.isStreaming,
       threadJob: clearThreadJob ? null : (threadJob ?? this.threadJob),
     );
@@ -63,6 +90,7 @@ class AgentChatState {
 class AgentChatNotifier extends Notifier<AgentChatState> {
   late final AgentService _service;
   late final ChatHistoryRepository _history;
+  late final ResumeTailorOrchestrator _orchestrator;
   StreamSubscription<AgentEvent>? _activeSub;
   AgentTurn? _activeTurn;
   int _seq = 0;
@@ -72,19 +100,30 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
   AgentChatState build() {
     _service = ref.watch(agentServiceProvider);
     _history = ref.watch(chatHistoryRepositoryProvider);
+    _orchestrator = ResumeTailorOrchestrator(
+      resumesRepository: ResumesRepository(),
+      jobsRepository: JobsRepository(),
+      parser: ResumeParserService(),
+      tailor: ResumeTailorService(),
+    );
     ref.onDispose(() {
       _activeSub?.cancel();
     });
 
-    // Hydrate from Firestore in the background. We start from the default
-    // opener and replace once the load completes, *iff* the user hasn't
-    // already started a new conversation in the meantime.
+    // Hydrate the most recent saved conversation in the background. We start
+    // from a fresh opener and replace once the load completes, *iff* the user
+    // hasn't already started a new conversation in the meantime.
     _hydrateFromFirestore();
 
     return AgentChatState(
       items: [_buildOpener(null)],
+      conversationId: _newConversationId(),
     );
   }
+
+  /// Mints a unique Firestore document id for a new conversation.
+  String _newConversationId() =>
+      'conv-${DateTime.now().microsecondsSinceEpoch}';
 
   String? get _uid {
     final user = ref.read(authProvider).appUser;
@@ -97,8 +136,8 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     if (uid == null) return;
     _hydrating = true;
     try {
-      final saved = await _history.load(uid);
-      if (saved.isEmpty) return;
+      final convos = await _history.listConversations(uid);
+      if (convos.isEmpty) return;
       // Only apply hydration if the user hasn't already typed or opened a
       // thread since build() — otherwise we'd clobber their in-progress work.
       final current = state;
@@ -106,8 +145,12 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
           current.items.first is AgentTurn &&
           current.threadJob == null;
       if (!isUntouched) return;
+      final mostRecent = convos.first;
+      final saved = await _history.load(uid, mostRecent.id);
+      if (saved.isEmpty) return;
       state = AgentChatState(
         items: [_buildOpener(null), ...saved],
+        conversationId: mostRecent.id,
       );
       // Make sure subsequent IDs don't collide with hydrated ones.
       _seq = saved.length + 1;
@@ -128,8 +171,27 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     final items = state.items.length > 1
         ? state.items.sublist(1)
         : const <ChatItem>[];
+    if (items.isEmpty) return;
     // Fire-and-forget; UI doesn't wait on persistence.
-    unawaited(_history.save(uid, items));
+    unawaited(_history.save(
+      uid,
+      state.conversationId,
+      items: items,
+      title: _deriveTitle(items),
+    ));
+  }
+
+  /// A short conversation label drawn from the first user message — what the
+  /// history drawer shows for the row.
+  String _deriveTitle(List<ChatItem> items) {
+    for (final item in items) {
+      if (item is UserMessage) {
+        final text = item.text.trim();
+        if (text.isEmpty) continue;
+        return text.length <= 60 ? text : '${text.substring(0, 60).trim()}…';
+      }
+    }
+    return 'New chat';
   }
 
   /// Builds the first agent turn shown when the chat opens. Adapts to the
@@ -219,19 +281,47 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     _service.resetConversation();
     state = AgentChatState(
       items: [_buildOpener(job)],
+      conversationId: _newConversationId(),
       threadJob: job,
     );
   }
 
-  /// Closes the current job thread and resets to the generic welcome. Also
-  /// wipes the persisted history so a "New chat" tap genuinely starts over.
-  void clearThread() {
+  /// Starts a fresh, generic conversation. The previous one is already saved
+  /// to history (if it had content), so nothing is lost — no confirm needed.
+  void newConversation() {
+    if (state.isStreaming) return;
     _service.resetConversation();
     state = AgentChatState(
       items: [_buildOpener(null)],
+      conversationId: _newConversationId(),
     );
+  }
+
+  /// Loads a saved conversation from history into the live transcript.
+  Future<void> switchConversation(String conversationId) async {
+    if (state.isStreaming) return;
+    if (conversationId == state.conversationId) return;
     final uid = _uid;
-    if (uid != null) unawaited(_history.clear(uid));
+    if (uid == null) return;
+    _service.resetConversation();
+    final saved = await _history.load(uid, conversationId);
+    state = AgentChatState(
+      items: [_buildOpener(null), ...saved],
+      conversationId: conversationId,
+    );
+    // Make sure subsequent IDs don't collide with loaded ones.
+    _seq = saved.length + 1;
+  }
+
+  /// Permanently deletes a saved conversation. If it's the one on screen,
+  /// drops to a fresh chat.
+  Future<void> deleteConversation(String conversationId) async {
+    final uid = _uid;
+    if (uid == null) return;
+    await _history.delete(uid, conversationId);
+    if (conversationId == state.conversationId) {
+      newConversation();
+    }
   }
 
   String _nextId(String prefix) {
@@ -389,6 +479,11 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     return null;
   }
 
+  /// Public lookup for a [ProposedEditsBlock] by id — used by the preview
+  /// screen to read the rendered bytes / saved state reactively.
+  ProposedEditsBlock? proposedEditsBlock(String blockId) =>
+      _findProposedEdits(blockId);
+
   ProposedEditsBlock? _findProposedEdits(String blockId) {
     for (final item in state.items) {
       if (item is! AgentTurn) continue;
@@ -412,22 +507,104 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     state = state.copyWith(items: [...state.items]);
   }
 
-  /// Applies the accepted edits in a [ProposedEditsBlock] and settles the card.
-  ///
-  /// This is the handoff point to the resume-apply logic: the accepted edits
-  /// (with the block's [ProposedEditsBlock.resumeId] / [ProposedEditsBlock.jobId])
-  /// are everything that layer needs to mutate the resume and re-render it.
-  /// Wiring that call is task #2's sibling; for now we settle the UI so the
-  /// diff viewer can be built and demoed against it.
-  void applyProposedEdits(String blockId) {
+  /// Renders the tailored PDF for the accepted edits and moves the card into a
+  /// preview-ready state — **without** saving it to the resume library yet.
+  /// The user previews the result and then either saves it
+  /// ([savePreviewedResume]) or keeps editing by replying in the chat.
+  Future<void> applyProposedEdits(String blockId) async {
     final block = _findProposedEdits(blockId);
     if (block == null) return;
     if (block.state != ProposedEditsState.reviewing) return;
     if (block.acceptedCount == 0) return;
-    // ignore: unused_local_variable
-    final accepted = block.acceptedEdits; // TODO: hand off to resume-apply logic.
-    block.state = ProposedEditsState.applied;
+
+    final uid = _uid;
+    if (uid == null) {
+      block.applyError = 'Sign in to apply resume edits.';
+      state = state.copyWith(items: [...state.items]);
+      return;
+    }
+
+    block.state = ProposedEditsState.applying;
+    block.applyError = null;
     state = state.copyWith(items: [...state.items]);
+
+    try {
+      var resumeId = block.resumeId;
+      if (resumeId == null || resumeId.isEmpty) {
+        resumeId = await _orchestrator.latestManualResumeId(uid);
+      }
+      if (resumeId == null || resumeId.isEmpty) {
+        throw const TailorOrchestratorException(
+          'No source resume found — upload one first.',
+        );
+      }
+
+      final rendered = await _orchestrator.renderEdits(
+        uid: uid,
+        resumeId: resumeId,
+        acceptedEdits: block.acceptedEdits,
+      );
+
+      block.previewBytes = rendered.bytes;
+      block.previewResume = rendered.resume;
+      block.appliedCount = rendered.appliedCount;
+      block.skippedCount = rendered.skippedCount;
+      block.resolvedResumeId = resumeId;
+      block.state = ProposedEditsState.applied;
+      state = state.copyWith(items: [...state.items]);
+    } catch (e) {
+      // Roll back to reviewing so the user can adjust and retry; the error
+      // surfaces inline above the action buttons.
+      block.state = ProposedEditsState.reviewing;
+      block.applyError = _shortError(e);
+      state = state.copyWith(items: [...state.items]);
+    }
+  }
+
+  /// Persists the previewed tailored PDF to the resume library so it appears
+  /// in the user's resumes / profile. No-op until the card has rendered a
+  /// preview ([ProposedEditsState.applied]) and only saves once.
+  Future<void> savePreviewedResume(String blockId) async {
+    final block = _findProposedEdits(blockId);
+    if (block == null) return;
+    if (block.state != ProposedEditsState.applied) return;
+    if (block.previewBytes == null || block.previewResume == null) return;
+    if (block.isSaved) return;
+
+    final uid = _uid;
+    if (uid == null) {
+      block.applyError = 'Sign in to save resumes.';
+      state = state.copyWith(items: [...state.items]);
+      return;
+    }
+
+    try {
+      final saved = await _orchestrator.saveRenderedResume(
+        uid: uid,
+        bytes: block.previewBytes!,
+        resume: block.previewResume!,
+        parentResumeId: block.resolvedResumeId,
+        jobId: block.jobId,
+      );
+      block.savedResumeId = saved.id;
+      block.applyError = null;
+      // Seed the bytes cache so opening it from the resume list is instant.
+      ref.read(resumeProvider.notifier).primeBytes(saved.id, block.previewBytes!);
+      state = state.copyWith(items: [...state.items]);
+    } catch (e) {
+      block.applyError = _shortError(e);
+      state = state.copyWith(items: [...state.items]);
+    }
+  }
+
+  String _shortError(Object e) {
+    final raw = e
+        .toString()
+        .replaceFirst('Exception: ', '')
+        .replaceFirst('TailorOrchestratorException: ', '')
+        .trim();
+    if (raw.isEmpty) return 'Something went wrong.';
+    return raw.length > 120 ? '${raw.substring(0, 120)}…' : raw;
   }
 
   /// Dismisses a [ProposedEditsBlock] without applying anything.
