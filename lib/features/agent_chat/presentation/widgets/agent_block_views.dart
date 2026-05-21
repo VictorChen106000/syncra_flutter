@@ -51,6 +51,7 @@ class _ProposedEditsBlockView extends StatelessWidget {
     final brand = context.brand;
     final count = block.edits.length;
     final plural = count == 1 ? 'edit' : 'edits';
+    final reviewing = block.state == ProposedEditsState.reviewing;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -97,162 +98,463 @@ class _ProposedEditsBlockView extends StatelessWidget {
                   ),
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 9,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: brand.surfaceMuted,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-                child: Text(
-                  'Preview',
-                  style: TextStyle(
-                    color: brand.textMuted,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
+              _StatusPill(block: block),
             ],
           ),
           const SizedBox(height: 12),
-          Text(
-            'Read-only preview. Accept / reject controls will be added by the diff viewer.',
-            style: TextStyle(
-              color: brand.textMuted,
-              fontSize: 12.5,
-              height: 1.4,
-              fontWeight: FontWeight.w500,
+          if (reviewing)
+            Text(
+              'Accept or reject each change below.',
+              style: TextStyle(
+                color: brand.textMuted,
+                fontSize: 12.5,
+                height: 1.4,
+                fontWeight: FontWeight.w500,
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
+          if (reviewing) const SizedBox(height: 12),
           for (var i = 0; i < block.edits.length; i++) ...[
             _ProposedEditPreviewCard(
+              blockId: block.id,
               index: i + 1,
+              editIndex: i,
               edit: block.edits[i],
+              decision: block.decisions[i],
+              interactive: reviewing,
             ),
             if (i < block.edits.length - 1) const SizedBox(height: 10),
           ],
+          const SizedBox(height: 14),
+          _EditsFooter(block: block),
         ],
       ),
     );
   }
 }
 
-class _ProposedEditPreviewCard extends StatelessWidget {
-  const _ProposedEditPreviewCard({
-    required this.index,
-    required this.edit,
-  });
+/// The card's action row. While reviewing it offers "Apply N edits" (enabled
+/// only once at least one edit is accepted) and "Dismiss all"; once settled it
+/// collapses to a one-line outcome.
+class _EditsFooter extends ConsumerWidget {
+  const _EditsFooter({required this.block});
 
-  final int index;
-  final ProposedEdit edit;
+  final ProposedEditsBlock block;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final brand = context.brand;
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: brand.surfaceMuted,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: brand.border.withValues(alpha: 0.7)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    if (block.state != ProposedEditsState.reviewing) {
+      final applied = block.state == ProposedEditsState.applied;
+      return Row(
         children: [
-          Text(
-            'EDIT $index · ${edit.targetPath}',
-            style: TextStyle(
-              color: brand.textMuted,
-              fontSize: 10.5,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.0,
+          Icon(
+            applied ? Icons.check_circle_rounded : Icons.history_rounded,
+            size: 15,
+            color: applied ? brand.success : brand.textMuted,
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              applied
+                  ? 'Applied ${block.acceptedCount} '
+                      '${block.acceptedCount == 1 ? 'edit' : 'edits'} to your resume'
+                  : 'Dismissed — no changes were made',
+              style: TextStyle(
+                color: applied ? brand.ink : brand.textMuted,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.1,
+              ),
             ),
           ),
-          const SizedBox(height: 10),
-          _DiffTextRow(
-            label: 'Original',
-            text: edit.originalText,
-            muted: true,
-          ),
-          const SizedBox(height: 8),
-          _DiffTextRow(
-            label: 'Proposed',
-            text: edit.proposedText,
-            muted: false,
-          ),
-          const SizedBox(height: 10),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.lightbulb_outline_rounded,
-                size: 15,
-                color: brand.textMuted,
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  edit.reason,
-                  style: TextStyle(
-                    color: brand.textMuted,
-                    fontSize: 12.5,
-                    height: 1.4,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ),
         ],
-      ),
-    );
-  }
-}
+      );
+    }
 
-class _DiffTextRow extends StatelessWidget {
-  const _DiffTextRow({
-    required this.label,
-    required this.text,
-    required this.muted,
-  });
+    final count = block.acceptedCount;
+    final canApply = count > 0;
+    final notifier = ref.read(agentChatProvider.notifier);
 
-  final String label;
-  final String text;
-  final bool muted;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: brand.textSoft,
-            fontSize: 10.5,
-            fontWeight: FontWeight.w800,
-          ),
+        _FooterButton(
+          label: 'Dismiss all',
+          filled: false,
+          enabled: true,
+          onTap: () => notifier.dismissProposedEdits(block.id),
         ),
-        const SizedBox(height: 4),
-        Text(
-          text,
-          style: TextStyle(
-            color: muted ? brand.textMuted : brand.ink,
-            fontSize: 13,
-            height: 1.4,
-            fontWeight: muted ? FontWeight.w500 : FontWeight.w700,
-            decoration: muted ? TextDecoration.lineThrough : null,
-            decorationColor: muted ? brand.textMuted : null,
+        const SizedBox(width: 8),
+        Expanded(
+          child: _FooterButton(
+            label: canApply ? 'Apply $count ${count == 1 ? 'edit' : 'edits'}'
+                : 'Apply edits',
+            filled: true,
+            enabled: canApply,
+            onTap: () => notifier.applyProposedEdits(block.id),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _FooterButton extends StatelessWidget {
+  const _FooterButton({
+    required this.label,
+    required this.filled,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool filled;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final bg = filled ? brand.ink : Colors.transparent;
+    final fg = filled ? brand.inkInverse : brand.ink;
+    return Opacity(
+      opacity: enabled ? 1 : 0.4,
+      child: Material(
+        color: bg,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            height: 42,
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: filled ? brand.ink : brand.border),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: fg,
+                fontWeight: FontWeight.w800,
+                fontSize: 13,
+                letterSpacing: -0.1,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Header chip summarising where the card stands: a live accepted count while
+/// reviewing, or a settled label once applied/dismissed.
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.block});
+
+  final ProposedEditsBlock block;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final (label, fg, bg) = switch (block.state) {
+      ProposedEditsState.applied => (
+          'Applied',
+          brand.onAccent,
+          brand.accent,
+        ),
+      ProposedEditsState.dismissed => (
+          'Dismissed',
+          brand.textMuted,
+          brand.surfaceMuted,
+        ),
+      ProposedEditsState.reviewing => (
+          '${block.acceptedCount}/${block.edits.length} accepted',
+          brand.textMuted,
+          brand.surfaceMuted,
+        ),
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: fg,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _ProposedEditPreviewCard extends ConsumerWidget {
+  const _ProposedEditPreviewCard({
+    required this.blockId,
+    required this.index,
+    required this.editIndex,
+    required this.edit,
+    required this.decision,
+    required this.interactive,
+  });
+
+  final String blockId;
+
+  /// 1-based label shown to the user.
+  final int index;
+
+  /// 0-based position in the block's edit list — what the notifier keys on.
+  final int editIndex;
+
+  final ProposedEdit edit;
+  final EditDecision decision;
+
+  /// False once the card has settled; controls render but no longer respond.
+  final bool interactive;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
+    final accepted = decision == EditDecision.accepted;
+    final rejected = decision == EditDecision.rejected;
+
+    final borderColor = accepted
+        ? brand.success
+        : rejected
+            ? brand.danger.withValues(alpha: 0.5)
+            : brand.border.withValues(alpha: 0.7);
+
+    void decide(EditDecision next) =>
+        ref.read(agentChatProvider.notifier).setEditDecision(
+              blockId,
+              editIndex,
+              next,
+            );
+
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 180),
+      // Rejected edits dim back so the eye lands on what's being kept.
+      opacity: rejected ? 0.55 : 1,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: brand.surfaceMuted,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: borderColor,
+            width: accepted || rejected ? 1.4 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'EDIT $index · ${edit.targetPath}',
+              style: TextStyle(
+                color: brand.textMuted,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.0,
+              ),
+            ),
+            const SizedBox(height: 10),
+            _DiffTextRow(
+              text: edit.originalText,
+              isRemoval: true,
+            ),
+            const SizedBox(height: 6),
+            _DiffTextRow(
+              text: edit.proposedText,
+              isRemoval: false,
+            ),
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.lightbulb_outline_rounded,
+                  size: 15,
+                  color: brand.textMuted,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    edit.reason,
+                    style: TextStyle(
+                      color: brand.textMuted,
+                      fontSize: 12.5,
+                      height: 1.4,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            // Once the card settles the per-edit controls disappear — the
+            // green/red borders already record each edit's outcome.
+            if (interactive) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _DecisionButton(
+                      label: 'Reject',
+                      icon: Icons.close_rounded,
+                      selected: rejected,
+                      selectedColor: brand.danger,
+                      enabled: interactive,
+                      onTap: () => decide(EditDecision.rejected),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _DecisionButton(
+                      label: 'Accept',
+                      icon: Icons.check_rounded,
+                      selected: accepted,
+                      selectedColor: brand.success,
+                      enabled: interactive,
+                      onTap: () => decide(EditDecision.accepted),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DecisionButton extends StatelessWidget {
+  const _DecisionButton({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.selectedColor,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final Color selectedColor;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final bg = selected ? selectedColor : Colors.transparent;
+    final fg = selected
+        ? Colors.white
+        : (enabled ? brand.ink : brand.textSoft);
+    final borderColor = selected ? selectedColor : brand.border;
+
+    return Opacity(
+      opacity: enabled || selected ? 1 : 0.6,
+      child: Material(
+        color: bg,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            height: 36,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: borderColor),
+            ),
+            alignment: Alignment.center,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 14, color: fg),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: fg,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12.5,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One side of a PR-style diff. Removals render on a red wash with a `−`
+/// gutter and strikethrough; additions render on a green wash with a `+`
+/// gutter. Colours come from the brand [BrandTheme.danger]/[BrandTheme.success]
+/// tokens so the diff reads the same in light and dark mode.
+class _DiffTextRow extends StatelessWidget {
+  const _DiffTextRow({
+    required this.text,
+    required this.isRemoval,
+  });
+
+  final String text;
+  final bool isRemoval;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final tint = isRemoval ? brand.danger : brand.success;
+    final marker = isRemoval ? '−' : '+';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: tint.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border(
+          left: BorderSide(color: tint, width: 3),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            marker,
+            style: TextStyle(
+              color: tint,
+              fontSize: 13,
+              height: 1.4,
+              fontWeight: FontWeight.w900,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: isRemoval ? brand.textMuted : brand.ink,
+                fontSize: 13,
+                height: 1.4,
+                fontWeight: isRemoval ? FontWeight.w500 : FontWeight.w600,
+                decoration: isRemoval ? TextDecoration.lineThrough : null,
+                decorationColor: brand.danger.withValues(alpha: 0.7),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -53,21 +53,55 @@ class TextBlock extends AgentBlock {
   final String text;
 }
 
+/// Where a single proposed edit stands in the user's review. Each edit starts
+/// [pending] and the user flips it to [accepted] or [rejected] in the diff
+/// viewer before applying.
+enum EditDecision { pending, accepted, rejected }
+
+/// Lifecycle of the whole proposed-edits card. While [reviewing] the user can
+/// toggle individual edits; once they apply the accepted edits (or dismiss the
+/// card) it settles and the controls lock.
+enum ProposedEditsState { reviewing, applied, dismissed }
+
 /// PR-style resume edits proposed by `tailor_resume`.
 ///
-/// This is read-only for now. R2 will replace the simple renderer with the
-/// final Accept / Reject / Apply N edits diff viewer.
+/// The diff viewer renders one row per [edits] entry with Accept / Reject
+/// controls. Per-edit choices live in [decisions] (index-aligned with [edits]);
+/// the overall card lifecycle lives in [state]. Both are mutable so the
+/// notifier can flip them in place and re-emit, matching [ActionProposalBlock].
 class ProposedEditsBlock extends AgentBlock {
   ProposedEditsBlock({
     required super.id,
     required this.edits,
     this.jobId,
     this.resumeId,
-  });
+    List<EditDecision>? decisions,
+    this.state = ProposedEditsState.reviewing,
+  }) : decisions = decisions ??
+            List<EditDecision>.filled(edits.length, EditDecision.pending);
 
   final List<ProposedEdit> edits;
   final String? jobId;
   final String? resumeId;
+
+  /// Per-edit review choice, index-aligned with [edits]. Mutable: the notifier
+  /// updates an entry then re-emits the chat state.
+  final List<EditDecision> decisions;
+
+  /// Whole-card lifecycle. Mutable for the same reason as [decisions].
+  ProposedEditsState state;
+
+  int get acceptedCount =>
+      decisions.where((d) => d == EditDecision.accepted).length;
+
+  bool get hasPending => decisions.any((d) => d == EditDecision.pending);
+
+  /// The edits the user accepted — the payload handed to the resume-apply
+  /// logic when the card is applied.
+  List<ProposedEdit> get acceptedEdits => [
+        for (var i = 0; i < edits.length; i++)
+          if (decisions[i] == EditDecision.accepted) edits[i],
+      ];
 }
 
 enum InputRequestState { pending, answered }
