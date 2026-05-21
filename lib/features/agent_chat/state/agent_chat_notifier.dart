@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../data/models/job.dart';
 import '../../../fixtures/mock_agent_service.dart';
+import '../../../shared/state/running_task_notifier.dart';
 import '../../auth/state/auth_notifier.dart';
 import '../../notifications/state/notifications_notifier.dart';
 import '../models/agent_block.dart';
@@ -117,6 +118,11 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     if (user == null || user.isGuest) return null;
     return user.uid;
   }
+
+  /// The global running-task banner. Driven so a prompt's progress stays
+  /// visible from any page once the user navigates away from the chat.
+  RunningTaskNotifier get _runningTask =>
+      ref.read(runningTaskProvider.notifier);
 
   Future<void> _hydrateFromFirestore() async {
     final uid = _uid;
@@ -337,6 +343,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
       items: [...next, turn],
       isStreaming: true,
     );
+    _runningTask.start('Prompt is running…');
 
     _activeSub = _service
         .runPrompt(prompt: clean, attachments: attachments)
@@ -354,6 +361,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     switch (event) {
       case BlockAdded(:final block):
         turn.blocks.add(block);
+        _reflectRunningTask(block);
       case ToolCallCompleted(
           :final blockId,
           :final summary,
@@ -382,6 +390,18 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     state = state.copyWith(items: [...state.items]);
   }
 
+  /// Mirrors the agent's progress onto the global running-task banner so it
+  /// stays meaningful from any page: each tool call relabels the banner with
+  /// that tool's UI label ("Tailoring resume…", "Searching jobs…"), and an
+  /// `ask_user` pause flips it to a waiting state.
+  void _reflectRunningTask(AgentBlock block) {
+    if (block is ToolCallBlock) {
+      _runningTask.update(block.label);
+    } else if (block is InputRequestBlock) {
+      _runningTask.update('Waiting for your input…');
+    }
+  }
+
   void _finishTurn() {
     final turn = _activeTurn;
     if (turn != null && turn.status == AgentTurnStatus.streaming) {
@@ -391,6 +411,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     _activeSub?.cancel();
     _activeSub = null;
     state = state.copyWith(items: [...state.items], isStreaming: false);
+    _runningTask.complete();
     _persist();
   }
 
@@ -404,6 +425,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     _activeSub?.cancel();
     _activeSub = null;
     state = state.copyWith(items: [...state.items], isStreaming: false);
+    _runningTask.fail();
     _persist();
   }
 
@@ -415,6 +437,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     _activeSub?.cancel();
     _activeSub = null;
     state = state.copyWith(items: [...state.items], isStreaming: false);
+    _runningTask.dismiss();
     _persist();
   }
 

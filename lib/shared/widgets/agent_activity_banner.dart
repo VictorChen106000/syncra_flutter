@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/brand_theme.dart';
 import '../../features/notifications/models/app_notification.dart';
 import '../../features/notifications/state/notifications_notifier.dart';
+import '../state/running_task_notifier.dart';
 
 /// Top-of-screen banner that surfaces the most recent **actionable** agent
 /// notification (intercepts, drafts, undo). Slides in from the top and lets
@@ -17,8 +18,12 @@ class AgentActivityBanner extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // The global running-task pill occupies the same top slot — yield to it
+    // so the two banners never overlap. When the task pill clears, an unread
+    // actionable notification (if any) slides in underneath.
+    final taskRunning = ref.watch(runningTaskProvider).isActive;
     final notifications = ref.watch(notificationsProvider);
-    final active = _pickActive(notifications.items);
+    final active = taskRunning ? null : _pickActive(notifications.items);
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 220),
       switchInCurve: Curves.easeOutCubic,
