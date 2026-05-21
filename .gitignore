@@ -46,3 +46,10 @@ app.*.map.json
 
 # Claude Code local config & skills
 .claude/
+
+# Secrets / API keys — never commit. Rotate after the demo (api-contract §6).
+# Run with: flutter run --dart-define-from-file=dart_define.json
+dart_define.json
+*.env
+firebase_credentials.json
+**/firebase_credentials.json

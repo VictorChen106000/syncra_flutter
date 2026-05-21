@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import '../../email/services/gmail_service.dart';
 import '../models/app_user.dart';
 
 /// Wraps Google Sign-In and FirebaseAuth into a single service.
@@ -52,8 +53,15 @@ Future<AppUser?> signInWithGoogle() async {
       return userToAppUser(userCredential.user);
     }
 
+    // `scopeHint` nudges Google to surface the Gmail send permission during
+    // sign-in so the agent can later send outreach from the user's own
+    // account. It's a hint only — identity sign-in still succeeds if the user
+    // skips it, and GmailService re-requests `gmail.send` on demand at first
+    // send. Send-only scope, never `gmail.readonly` (api-contract §5.3 / §11.5).
     final GoogleSignInAccount googleUser =
-        await GoogleSignIn.instance.authenticate();
+        await GoogleSignIn.instance.authenticate(
+      scopeHint: const [GmailService.sendScope],
+    );
 
     final GoogleSignInAuthentication googleAuth = googleUser.authentication;
 

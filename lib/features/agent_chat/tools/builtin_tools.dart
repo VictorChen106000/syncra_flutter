@@ -8,6 +8,8 @@ import '../../../data/firestore/firestore_paths.dart';
 import '../../../data/firestore/jobs_repository.dart';
 import '../../../data/firestore/resumes_repository.dart';
 import '../../../data/models/job.dart';
+import '../../../data/services/jsearch_service.dart';
+import '../../email/services/email_send_service.dart';
 import '../../agent/data/fake_resume.dart';
 import '../../agent/services/anthropic_service.dart';
 import '../../resumes/services/resume_parser_service.dart';
@@ -25,6 +27,7 @@ import 'tool_registry.dart';
 /// Replace stubs in-place as Tracks B, C, D land.
 void registerBuiltinTools(ToolRegistry registry) {
   final jobs = JobsRepository();
+  final jsearch = JSearchService();
   final applications = ApplicationsRepository();
   final pipeline = PipelineRepository();
   final resumes = ResumesRepository();
@@ -37,7 +40,7 @@ void registerBuiltinTools(ToolRegistry registry) {
     tailor: ResumeTailorService(),
   );
 
-  _registerSearchJobs(registry, jobs);
+  _registerSearchJobs(registry, jsearch, jobs);
   _registerReadResume(registry, orchestrator);
   _registerRememberFact(registry);
   _registerMatchJobs(registry, jobs, anthropic);
@@ -50,16 +53,21 @@ void registerBuiltinTools(ToolRegistry registry) {
 }
 
 // ---------------------------------------------------------------------------
-// search_jobs — REAL: reads global jobs/ collection, filters client-side
+// search_jobs — REAL: live JSearch (RapidAPI), with a fallback to the seeded
+// jobs/ collection when no key is set or the API is unreachable.
 // ---------------------------------------------------------------------------
 
-void _registerSearchJobs(ToolRegistry registry, JobsRepository repo) {
+void _registerSearchJobs(
+  ToolRegistry registry,
+  JSearchService jsearch,
+  JobsRepository repo,
+) {
   registry.register(
     tool: const Tool(
       name: 'search_jobs',
       description:
-          'Search the global jobs catalogue. Returns up to 10 normalized '
-          'job records that match the query. Use this whenever the user '
+          'Search live job listings. Returns up to 10 normalized job '
+          'records that match the query. Use this whenever the user '
           "wants jobs — don't make them up.",
       inputSchema: {
         'type': 'object',
@@ -70,7 +78,8 @@ void _registerSearchJobs(ToolRegistry registry, JobsRepository repo) {
           },
           'location': {
             'type': 'string',
-            'description': 'Optional location filter (e.g. "Remote", "NYC").',
+            'description':
+                'Optional location filter (e.g. "Remote", "Singapore").',
           },
           'limit': {
             'type': 'integer',
@@ -83,37 +92,64 @@ void _registerSearchJobs(ToolRegistry registry, JobsRepository repo) {
       uiIcon: Icons.travel_explore_rounded,
     ),
     handler: (args) async {
-      final query = (args['query'] as String? ?? '').toLowerCase();
-      final loc = (args['location'] as String? ?? '').toLowerCase();
-      final limit = (args['limit'] as num?)?.toInt() ?? 10;
+      final query = (args['query'] as String? ?? '').trim();
+      final locationRaw = (args['location'] as String? ?? '').trim();
+      final location = locationRaw.isEmpty ? null : locationRaw;
+      final limit = ((args['limit'] as num?)?.toInt() ?? 10).clamp(1, 25);
+
+      // Live JSearch when a RapidAPI key is configured. On any failure
+      // (no key, network error, quota exhausted) fall back to the seeded
+      // jobs/ collection so the chat still returns something.
+      if (jsearch.hasApiKey && query.isNotEmpty) {
+        try {
+          final live = await jsearch.search(
+            query: query,
+            location: location,
+            limit: limit,
+          );
+          if (live.isNotEmpty) return _searchJobsResult(live);
+          // Empty live result → fall through to the catalogue.
+        } catch (e) {
+          debugPrint('search_jobs: JSearch failed, using catalogue: $e');
+        }
+      }
 
       final all = await repo.fetchAll(limit: 40);
+      final q = query.toLowerCase();
+      final loc = (location ?? '').toLowerCase();
       final filtered = all.where((j) {
         final hay = '${j.title} ${j.company} ${j.why}'.toLowerCase();
-        if (query.isNotEmpty && !hay.contains(query)) return false;
+        if (q.isNotEmpty && !hay.contains(q)) return false;
         if (loc.isNotEmpty && !j.location.toLowerCase().contains(loc)) {
           return false;
         }
         return true;
-      }).take(limit.clamp(1, 25)).toList();
+      }).take(limit).toList();
 
-      return ToolResult(
-        summary: '${filtered.length} matches',
-        data: {
-          'jobs': filtered
-              .map((j) => {
-                    'id': j.id,
-                    'title': j.title,
-                    'company': j.company,
-                    'location': j.location,
-                    'salary': j.salary,
-                    'description_excerpt': j.why.length > 240
-                        ? '${j.why.substring(0, 240)}…'
-                        : j.why,
-                  })
-              .toList(),
-        },
-      );
+      return _searchJobsResult(filtered);
+    },
+  );
+}
+
+/// Shapes a list of [Job]s into the `search_jobs` tool result. Kept stable
+/// across the live and catalogue paths so Claude's downstream tool calls
+/// (match_jobs, save_to_pipeline) don't have to care which one ran.
+ToolResult _searchJobsResult(List<Job> jobs) {
+  return ToolResult(
+    summary: '${jobs.length} matches',
+    data: {
+      'jobs': jobs
+          .map((j) => {
+                'id': j.id,
+                'title': j.title,
+                'company': j.company,
+                'location': j.location,
+                'salary': j.salary,
+                'description_excerpt': j.why.length > 240
+                    ? '${j.why.substring(0, 240)}…'
+                    : j.why,
+              })
+          .toList(),
     },
   );
 }
@@ -778,8 +814,11 @@ void _registerSaveToTracker(
 }
 
 // ---------------------------------------------------------------------------
-// send_email — STUB until Track D wires Gmail. Always requires user tap;
-// the agent should NOT call this autonomously in v1.
+// send_email — REAL: sends via Gmail, but ONLY behind the email review modal.
+// The handler refuses any call without a one-shot confirmation token, and the
+// modal is the only code path that can mint one. An autonomous call by Claude
+// therefore returns a not-sent result instead of sending. See
+// EmailSendService and email_review_page.dart.
 // ---------------------------------------------------------------------------
 
 void _registerSendEmail(ToolRegistry registry) {
@@ -787,33 +826,91 @@ void _registerSendEmail(ToolRegistry registry) {
     tool: const Tool(
       name: 'send_email',
       description:
-          "Send a drafted email from the user's Gmail. ALWAYS requires "
-          'explicit user confirmation via the review modal — never call '
-          'this autonomously.',
+          "Send a drafted email from the user's Gmail account. This tool "
+          'NEVER sends on its own: it requires a confirmation token that '
+          'only the email review screen can produce after the user taps '
+          'Send. You cannot supply that token — so when the email is ready, '
+          'stop and tell the user to review and send it. Calling this '
+          'directly just returns a not-sent result.',
       inputSchema: {
         'type': 'object',
         'properties': {
-          'to': {'type': 'string'},
+          'to': {'type': 'string', 'description': 'Recipient email address.'},
           'subject': {'type': 'string'},
           'body': {'type': 'string'},
+          'application_id': {
+            'type': 'string',
+            'description':
+                'Optional tracker application id to stamp as sent once the '
+                'email goes out.',
+          },
+          'confirmation_token': {
+            'type': 'string',
+            'description':
+                'Internal one-shot token issued by the review screen. Leave '
+                'this out — you cannot generate it.',
+          },
         },
         'required': ['to', 'subject', 'body'],
       },
-      uiLabel: 'Sending…',
+      uiLabel: 'Sending email…',
       uiIcon: Icons.send_rounded,
       requiresConfirmation: true,
     ),
     handler: (args) async {
-      return ToolResult(
-        summary: 'Not sent (Gmail wiring pending)',
-        data: {
-          'sent': false,
-          'note':
-              'Track D ships Gmail integration. For now, draft is ready '
-              'for the user to copy.',
-        },
-        isError: false,
-      );
+      final to = (args['to'] as String? ?? '').trim();
+      final subject = (args['subject'] as String? ?? '').trim();
+      final body = (args['body'] as String? ?? '').trim();
+      final token = args['confirmation_token'] as String?;
+
+      if (to.isEmpty || subject.isEmpty || body.isEmpty) {
+        return ToolResult.error('to, subject, and body are all required.');
+      }
+
+      // Human-in-the-loop gate. No valid token → this is an autonomous call
+      // (or one from outside the review modal). Refuse and steer Claude to
+      // route the user through the review screen — this is not an error, it's
+      // the designed v1 behaviour (api-contract §1, §2.8).
+      if (!EmailSendService.instance.isValidToken(token)) {
+        return ToolResult(
+          summary: 'Not sent — the user must review and tap Send',
+          data: {
+            'sent': false,
+            'needs_confirmation': true,
+            'note':
+                'send_email cannot fire without an explicit user tap. The '
+                'draft is ready — ask the user to review it and send from '
+                'the review screen.',
+          },
+        );
+      }
+
+      try {
+        final result = await EmailSendService.instance.sendConfirmed(
+          confirmationToken: token,
+          to: to,
+          subject: subject,
+          body: body,
+          uid: FirebaseAuth.instance.currentUser?.uid,
+          applicationId: (args['application_id'] as String?)?.trim(),
+        );
+        return ToolResult(
+          summary: 'Email sent to $to',
+          data: {
+            'sent': true,
+            'message_id': result.messageId,
+            'sent_at': result.sentAt.toIso8601String(),
+          },
+        );
+      } on EmailNotConfirmedException {
+        // Token went stale between the check above and the send (one-shot).
+        return ToolResult(
+          summary: 'Not sent — confirmation expired, ask the user to resend',
+          data: {'sent': false, 'needs_confirmation': true},
+        );
+      } catch (e) {
+        return ToolResult.error('Email send failed: $e');
+      }
     },
   );
 }

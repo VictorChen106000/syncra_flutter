@@ -1,0 +1,6 @@
+{
+  "_comment": "Copy this file to dart_define.json and fill in real keys. dart_define.json is gitignored — never commit real keys. Run the app with: flutter run --dart-define-from-file=dart_define.json",
+  "ANTHROPIC_API_KEY": "sk-ant-api03-...",
+  "RAPIDAPI_KEY": "...",
+  "JSEARCH_HOST": "jsearch.p.rapidapi.com"
+}
