@@ -13,6 +13,7 @@ import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/motion.dart';
+import '../../../data/models/tracked_application.dart';
 import '../../../fixtures/mock_agent_service.dart';
 import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
@@ -20,6 +21,7 @@ import '../../../shared/widgets/app_screen.dart';
 import '../../agent/state/passive_agent_notifier.dart';
 import '../../agent_chat/models/chat_message.dart';
 import '../../agent_chat/state/agent_chat_notifier.dart';
+import '../../applications/state/applications_notifier.dart';
 import '../../auth/state/auth_notifier.dart';
 import '../../notifications/presentation/notifications_drawer.dart';
 import '../../notifications/state/notifications_notifier.dart';
@@ -297,16 +299,16 @@ class _AgentCardStack extends ConsumerStatefulWidget {
 class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
   static const double _maxCardWidth = 320;
   static const double _cardHeight = 180;
-  static const double _stackHeight = 260;
+  static const double _stackHeight = 290;
   static const double _cardLeftInset = 6;
-  static const double _fanRightMargin = 44;
+  static const double _fanRightMargin = 48;
   static const Duration _animDuration = Duration(milliseconds: 550);
 
   bool _expanded = false;
   bool _prevExpanded = false;
   bool _everInteracted = false;
-  final List<int> _order = [0, 1];
-  List<int> _prevOrder = [0, 1];
+  final List<int> _order = [0, 1, 2];
+  List<int> _prevOrder = [0, 1, 2];
   int _version = 0;
 
   void _animate(VoidCallback mutate) {
@@ -346,24 +348,54 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
   Widget build(BuildContext context) {
     final brand = context.brand;
     final passive = ref.watch(passiveAgentProvider);
+    final resumeState = ref.watch(resumeProvider);
+    final appState = ref.watch(applicationsProvider);
+    final draftCount = appState.countOf(ApplicationPhase.draft);
+    final sentCount = appState.countOf(ApplicationPhase.sent);
+
+    // Green-gradient fan: the front card is the full brand lime; each card
+    // behind it steps lighter, lerping toward white. Backgrounds are a
+    // deliberate branded element (theme-independent) — onAccent (near-black)
+    // stays readable on every step.
+    final cardFg = brand.onAccent;
+    final card1Bg = brand.accent;
+    final card2Bg = Color.lerp(brand.accent, Colors.white, 0.42)!;
+    final card3Bg = Color.lerp(brand.accent, Colors.white, 0.66)!;
+
     final cards = <_StackCardData>[
-      _StackCardData(
-        title: 'Brief Ready',
-        kicker: 'Passive Agent',
-        count: passive.readyCount,
-        background: brand.accent,
-        foreground: brand.onAccent,
-        icon: Icons.bolt_rounded,
-        route: RouteNames.jobs,
-      ),
+      // 1 — jobs the agent surfaced, awaiting the user's review.
       _StackCardData(
         title: 'Approval Pipeline',
-        kicker: 'Pending Review',
-        count: passive.inputNeededCount,
-        background: brand.surface,
-        foreground: brand.ink,
+        kicker: 'Needs Review',
+        subtitle:
+            '${passive.readyCount} ready · ${passive.inputNeededCount} need input',
+        count: passive.pipeline.length,
+        background: card1Bg,
+        foreground: cardFg,
         icon: Icons.work_outline_rounded,
         route: RouteNames.jobs,
+      ),
+      // 2 — resumes the agent has already tailored, ready to attach.
+      _StackCardData(
+        title: 'Tailored Resumes',
+        kicker: 'Ready to Send',
+        subtitle: '${resumeState.resumes.length} uploaded',
+        count: resumeState.tailoredResumes.length,
+        background: card2Bg,
+        foreground: cardFg,
+        icon: Icons.auto_awesome_rounded,
+        route: RouteNames.resumes,
+      ),
+      // 3 — applications in flight (drafted / sent).
+      _StackCardData(
+        title: 'Applications',
+        kicker: 'In Progress',
+        subtitle: '$draftCount drafts · $sentCount sent',
+        count: appState.items.length,
+        background: card3Bg,
+        foreground: cardFg,
+        icon: Icons.send_rounded,
+        route: RouteNames.applications,
       ),
     ];
 
@@ -457,9 +489,9 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
     final collapsedX = slot * 16.0;
     final collapsedY = slot * 14.0;
 
-    final expandedRot = -4.0 + slot * 10.0;
-    final expandedX = slot * 36.0;
-    final expandedY = slot * 32.0;
+    final expandedRot = -4.0 + slot * 8.0;
+    final expandedX = slot * 22.0;
+    final expandedY = slot * 22.0;
 
     final rotDeg = _lerp(collapsedRot, expandedRot, expand);
     final tx = _lerp(collapsedX, expandedX, expand);
@@ -494,6 +526,7 @@ class _StackCardData {
   const _StackCardData({
     required this.title,
     required this.kicker,
+    required this.subtitle,
     required this.count,
     required this.background,
     required this.foreground,
@@ -503,6 +536,7 @@ class _StackCardData {
 
   final String title;
   final String kicker;
+  final String subtitle;
   final int count;
   final Color background;
   final Color foreground;
@@ -594,17 +628,35 @@ class _StackCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: Text(
-                  data.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.4,
-                    height: 1.05,
-                    color: fg,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      data.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 23,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.4,
+                        height: 1.05,
+                        color: fg,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      data.subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.1,
+                        color: fg.withValues(alpha: 0.62),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               AnimatedSlide(

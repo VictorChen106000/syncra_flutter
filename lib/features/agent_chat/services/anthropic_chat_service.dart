@@ -34,6 +34,14 @@ class AnthropicChatService implements AgentService {
   static const _version = '2023-06-01';
   static const _maxLoopIterations = 8;
 
+  /// Upper bound on retained conversation messages for a threaded session.
+  /// Prior turns are kept so the agent remembers what it just did; this caps
+  /// how far that memory reaches before the oldest exchanges are dropped, so
+  /// a long session can't grow the request payload — and its token cost —
+  /// without bound. Trimming always leaves the history starting on a real
+  /// user prompt, never an orphaned tool_result.
+  static const _maxConversationMessages = 30;
+
   /// Per-request retry budget for transient API failures (429 / 5xx / 529).
   /// Kept at 4 so an "Overloaded" blip gets three backoff retries (~1s/2s/4s)
   /// before the turn fails — extended-thinking requests are slower, so a
@@ -86,6 +94,13 @@ clear next step or question.''';
   /// Pending `ask_user` calls, keyed by the InputRequestBlock id.
   final Map<String, Completer<String>> _pendingAsks = {};
 
+  /// Running Anthropic message history for threaded turns. Every user prompt,
+  /// assistant turn, and tool_result batch is appended here so a later
+  /// [runPrompt] call sees what the agent did earlier — the jobs it searched,
+  /// the `ask_user` answers, the resume it tailored. Cleared by
+  /// [resetConversation]; non-threaded turns (the brief) never touch it.
+  final List<Map<String, dynamic>> _conversation = [];
+
   int _seq = 0;
 
   bool get hasApiKey => _apiKey.isNotEmpty;
@@ -94,23 +109,37 @@ clear next step or question.''';
   Stream<AgentEvent> runPrompt({
     required String prompt,
     List<ChatAttachment> attachments = const [],
+    bool threaded = true,
   }) async* {
     _seq += 1;
     final turnPrefix = 'turn$_seq-';
     int blockSeq = 0;
     String nextBlockId(String kind) => '$turnPrefix$kind-${++blockSeq}';
 
-    // Build the message history we'll send to Anthropic. Starts with the user
-    // message; assistant + tool_result messages are appended on each loop.
     final attachmentNote = attachments.isEmpty
         ? ''
-        : '\n\n(User attached: ${attachments.map((a) => a.name).join(", ")})';
-    final messages = <Map<String, dynamic>>[
-      {
-        'role': 'user',
-        'content': '$prompt$attachmentNote',
-      }
-    ];
+        : '''
+
+    User attached resumes:
+    ${attachments.map((a) => '- resume_id: ${a.id}\n  name: ${a.name}').join('\n')}
+    When a resume tool accepts resume_id, use the matching resume_id above.
+    ''';
+    final userText = '$prompt$attachmentNote';
+
+    // The list we POST and then mutate during the loop. A threaded turn
+    // continues the running [_conversation] so the agent sees its earlier
+    // turns; a non-threaded turn (the morning brief) runs as an isolated
+    // one-shot that neither reads nor writes shared history.
+    final List<Map<String, dynamic>> messages;
+    if (threaded) {
+      _appendUserMessage(userText);
+      _trimConversation();
+      messages = _conversation;
+    } else {
+      messages = [
+        {'role': 'user', 'content': userText},
+      ];
+    }
 
     try {
       var consecutiveFailedToolTurns = 0;
@@ -271,6 +300,9 @@ clear next step or question.''';
         }
 
         if (consecutiveFailedToolTurns >= 2) {
+          // Record this turn's tool_results before bailing so the threaded
+          // conversation stays well-formed — no tool_use left unanswered.
+          messages.add({'role': 'user', 'content': toolResults});
           yield BlockAdded(TextBlock(
             id: nextBlockId('text'),
             text:
@@ -285,6 +317,12 @@ clear next step or question.''';
         // accept/reject/apply. Do not feed the result back to Claude yet, because
         // that can make it immediately call draft_email or apply_resume_edits.
         if (shouldPauseAfterTailorResume) {
+          // Record the tool_results so the paused turn leaves a well-formed
+          // conversation — every tool_use needs a matching tool_result before
+          // the next threaded turn POSTs. We deliberately do not loop on them
+          // here: the agent must wait for the user's diff review before it can
+          // reach apply_resume_edits or draft_email.
+          messages.add({'role': 'user', 'content': toolResults});
           yield BlockAdded(TextBlock(
             id: nextBlockId('text'),
             text: tailorPauseMessage ??
@@ -315,6 +353,49 @@ clear next step or question.''';
       completer.complete(answer);
     }
   }
+
+  @override
+  void resetConversation() => _conversation.clear();
+
+  /// Appends a user turn to [_conversation]. When the trailing message is
+  /// already a `user` turn — the tool_result batch left by a tailor-resume
+  /// pause or a bailed-out turn — the new prompt is folded into it instead of
+  /// starting a second consecutive user turn, which Anthropic rejects.
+  void _appendUserMessage(String text) {
+    final last = _conversation.isEmpty ? null : _conversation.last;
+    if (last != null && last['role'] == 'user') {
+      final existing = last['content'];
+      last['content'] = <dynamic>[
+        if (existing is List)
+          ...existing
+        else
+          {'type': 'text', 'text': '$existing'},
+        {'type': 'text', 'text': text},
+      ];
+    } else {
+      _conversation.add({'role': 'user', 'content': text});
+    }
+  }
+
+  /// Caps [_conversation] at [_maxConversationMessages] so a long session
+  /// can't grow the request payload without bound. Drops the oldest messages,
+  /// but only down to a real user prompt — never leaving the history starting
+  /// on an orphaned tool_result whose tool_use parent would be gone.
+  void _trimConversation() {
+    if (_conversation.length <= _maxConversationMessages) return;
+    final overflow = _conversation.length - _maxConversationMessages;
+    for (var i = overflow; i < _conversation.length; i++) {
+      final msg = _conversation[i];
+      if (msg['role'] == 'user' && !_carriesToolResult(msg['content'])) {
+        _conversation.removeRange(0, i);
+        return;
+      }
+    }
+  }
+
+  bool _carriesToolResult(Object? content) =>
+      content is List &&
+      content.any((b) => b is Map && b['type'] == 'tool_result');
 
   Future<Map<String, dynamic>> _callAnthropic(
     List<Map<String, dynamic>> messages,

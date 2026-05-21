@@ -12,6 +12,7 @@ import '../../../data/services/jsearch_service.dart';
 import '../../email/services/email_send_service.dart';
 import '../../agent/data/fake_resume.dart';
 import '../../agent/services/anthropic_service.dart';
+import '../../resumes/models/proposed_edit.dart';
 import '../../resumes/services/resume_parser_service.dart';
 import '../../resumes/services/resume_tailor_orchestrator.dart';
 import '../../resumes/services/resume_tailor_service.dart';
@@ -43,10 +44,10 @@ void registerBuiltinTools(ToolRegistry registry) {
   _registerSearchJobs(registry, jsearch, jobs);
   _registerReadResume(registry, orchestrator);
   _registerRememberFact(registry);
-  _registerMatchJobs(registry, jobs, anthropic);
-  _registerSaveToPipeline(registry, jobs, pipeline);
+  _registerMatchJobs(registry, jobs, anthropic, orchestrator);  _registerSaveToPipeline(registry, jobs, pipeline);
   _registerTailorResume(registry, jobs, paraphrase, orchestrator);
-  _registerDraftEmail(registry, jobs, paraphrase);
+  _registerApplyResumeEdits(registry, orchestrator);
+  _registerDraftEmail(registry, jobs, paraphrase, orchestrator);
   _registerLookupHiringManager(registry);
   _registerSaveToTracker(registry, jobs, applications);
   _registerSendEmail(registry);
@@ -176,7 +177,7 @@ void _registerReadResume(
           'resume_id': {
             'type': 'string',
             'description':
-                "Optional. Defaults to the user's most recent manual resume.",
+                'Optional. Use the attached resume_id when available. Defaults to the user\'s most recent manual resume.',
           },
         },
       },
@@ -200,11 +201,19 @@ void _registerReadResume(
       if (resumeId == null || resumeId.isEmpty) {
         final snap = await paths
             .resumes(uid)
-            .where('source', isEqualTo: 'manual')
             .orderBy('uploaded_at', descending: true)
-            .limit(1)
+            .limit(10)
             .get();
-        if (snap.docs.isEmpty) {
+
+        QueryDocumentSnapshot<Map<String, dynamic>>? manualDoc;
+        for (final doc in snap.docs) {
+          if (doc.data()['source'] == 'manual') {
+            manualDoc = doc;
+            break;
+          }
+        }
+
+        if (manualDoc == null) {
           return ToolResult(
             summary: learnedFacts.isEmpty
                 ? 'No resume uploaded yet — using sample'
@@ -212,7 +221,8 @@ void _registerReadResume(
             data: _resumeWithLearnedFacts(kFakeResumeJson, learnedFacts),
           );
         }
-        resumeId = snap.docs.first.id;
+
+        resumeId = manualDoc.id;
       }
 
       try {
@@ -227,13 +237,17 @@ void _registerReadResume(
           data: _resumeWithLearnedFacts(json.toJson(), learnedFacts),
         );
       } catch (e) {
-        return ToolResult(
-          summary: learnedFacts.isEmpty
-              ? 'Parse failed — using sample resume'
-              : 'Parse failed — using sample resume · ${learnedFacts.length} learned facts',
-          data: _resumeWithLearnedFacts(kFakeResumeJson, learnedFacts),
-        );
-      }
+          debugPrint('read_resume parse failed for resumeId=$resumeId: $e');
+
+          final reason = _shortToolError(e);
+
+          return ToolResult(
+            summary: learnedFacts.isEmpty
+                ? 'Parse failed: $reason — using sample resume'
+                : 'Parse failed: $reason — using sample resume · ${learnedFacts.length} learned facts',
+            data: _resumeWithLearnedFacts(kFakeResumeJson, learnedFacts),
+          );
+        }
     },
   );
 }
@@ -322,15 +336,17 @@ void _registerMatchJobs(
   ToolRegistry registry,
   JobsRepository jobsRepo,
   AnthropicService anthropic,
+  ResumeTailorOrchestrator orchestrator,
 ) {
   registry.register(
     tool: const Tool(
       name: 'match_jobs',
       description:
-          'Score a list of jobs against the user\'s resume. Returns each '
-          'job ranked with a category (ready / input_needed / exploration), '
-          'a 0-100 score, a one-sentence justification, and any missing '
-          'skills. Call AFTER search_jobs and read_resume.',
+        'Score a list of jobs against the user\'s resume. Use resume_id '
+        'when the user attached a resume. Returns each job ranked with a '
+        'category (ready / input_needed / exploration), a 0-100 score, a '
+        'one-sentence justification, and any missing skills. Call AFTER '
+        'search_jobs and read_resume.',
       inputSchema: {
         'type': 'object',
         'properties': {
@@ -338,6 +354,11 @@ void _registerMatchJobs(
             'type': 'array',
             'items': {'type': 'string'},
             'description': 'IDs returned by search_jobs.',
+          },
+          'resume_id': {
+            'type': 'string',
+            'description':
+                'Optional resume id. Use the attached resume_id when the user attached a resume. Defaults to the latest manual resume.',
           },
         },
         'required': ['job_ids'],
@@ -376,8 +397,19 @@ void _registerMatchJobs(
         );
       }
 
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      final resumeId = (args['resume_id'] as String?)?.trim();
+
+      final resumeJson = uid == null
+          ? kFakeResumeJson
+          : await _loadResumeContextForAgent(
+              uid: uid,
+              orchestrator: orchestrator,
+              resumeId: resumeId,
+            );
+
       final results = await anthropic.scoreJobs(
-        resume: kFakeResumeJson,
+        resume: resumeJson,
         jobs: jobs,
       );
       if (results == null) {
@@ -572,19 +604,13 @@ void _registerTailorResume(
       final uid = FirebaseAuth.instance.currentUser?.uid;
       final resumeId = (args['resume_id'] as String?)?.trim();
 
-      Map<String, dynamic> resumeJson = kFakeResumeJson;
-
-      if (uid != null && resumeId != null && resumeId.isNotEmpty) {
-        try {
-          final parsed = await orchestrator.readResumeJson(
-            uid: uid,
-            resumeId: resumeId,
-          );
-          resumeJson = parsed.toJson();
-        } catch (e) {
-          debugPrint('readResumeJson failed, falling back to sample resume: $e');
-        }
-      }
+      final resumeJson = uid == null
+          ? kFakeResumeJson
+          : await _loadResumeContextForAgent(
+              uid: uid,
+              orchestrator: orchestrator,
+              resumeId: resumeId,
+            );
 
       if (!paraphrase.hasApiKey) {
         return ToolResult(
@@ -624,6 +650,109 @@ void _registerTailorResume(
 }
 
 // ---------------------------------------------------------------------------
+// apply_resume_edits — REAL: applies the user-accepted edit subset →
+// renders the PDF → saves a new tailored resume doc. USER-GATED: fired by
+// the diff viewer when the user taps "Apply N edits", never by Claude.
+// ---------------------------------------------------------------------------
+
+void _registerApplyResumeEdits(
+  ToolRegistry registry,
+  ResumeTailorOrchestrator orchestrator,
+) {
+  registry.register(
+    tool: const Tool(
+      name: 'apply_resume_edits',
+      description:
+          'Apply a user-approved subset of proposed resume edits, render the '
+          'tailored PDF, and save it as a new resume. The user fires this from '
+          'the diff viewer after reviewing tailor_resume edits — do NOT call '
+          'it yourself. Returns { tailored_resume_id }.',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'resume_id': {
+            'type': 'string',
+            'description': 'Source resume id the edits were proposed against.',
+          },
+          'accepted_edits': {
+            'type': 'array',
+            'description':
+                'The edits the user accepted, each { target_path, '
+                'original_text, proposed_text, reason }.',
+            'items': {
+              'type': 'object',
+              'properties': {
+                'target_path': {'type': 'string'},
+                'original_text': {'type': 'string'},
+                'proposed_text': {'type': 'string'},
+                'reason': {'type': 'string'},
+              },
+              'required': ['target_path', 'original_text', 'proposed_text'],
+            },
+          },
+          'job_id': {
+            'type': 'string',
+            'description':
+                'Optional job this resume is tailored for — links the new '
+                'doc and names the file.',
+          },
+        },
+        'required': ['resume_id', 'accepted_edits'],
+      },
+      uiLabel: 'Applying edits…',
+      uiIcon: Icons.fact_check_rounded,
+    ),
+    handler: (args) async {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) {
+        return ToolResult.error('Sign in to apply resume edits.');
+      }
+
+      final resumeId = (args['resume_id'] as String?)?.trim();
+      if (resumeId == null || resumeId.isEmpty) {
+        return ToolResult.error('resume_id is required.');
+      }
+
+      final rawEdits = args['accepted_edits'] as List? ?? const [];
+      final acceptedEdits = rawEdits
+          .whereType<Map>()
+          .map((m) => ProposedEdit.fromJson(m.cast<String, dynamic>()))
+          .where((e) => e.isValid)
+          .toList();
+
+      if (acceptedEdits.isEmpty) {
+        return ToolResult.error('No valid accepted_edits provided.');
+      }
+
+      final jobId = (args['job_id'] as String?)?.trim();
+
+      try {
+        final result = await orchestrator.applyEdits(
+          uid: uid,
+          resumeId: resumeId,
+          acceptedEdits: acceptedEdits,
+          jobId: jobId == null || jobId.isEmpty ? null : jobId,
+        );
+        final skippedNote = result.skippedCount > 0
+            ? ' (${result.skippedCount} skipped — no verbatim match)'
+            : '';
+        return ToolResult(
+          summary: 'Applied ${result.appliedCount} edits$skippedNote',
+          data: {
+            'tailored_resume_id': result.file.id,
+            'name': result.file.name,
+            'applied_count': result.appliedCount,
+            'skipped_count': result.skippedCount,
+          },
+        );
+      } catch (e) {
+        return ToolResult.error('Apply failed: ${_shortToolError(e)}');
+      }
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
 // draft_email — REAL: composes a cold outreach via Anthropic
 // ---------------------------------------------------------------------------
 
@@ -631,17 +760,27 @@ void _registerDraftEmail(
   ToolRegistry registry,
   JobsRepository jobsRepo,
   AnthropicParaphraseService paraphrase,
+  ResumeTailorOrchestrator orchestrator,
 ) {
   registry.register(
     tool: const Tool(
       name: 'draft_email',
       description:
           'Draft a cold outreach email for a job, optionally to a specific '
-          'recipient. Returns { subject, body, recipient }. Does NOT send.',
+          'recipient. Drafts against the resume identified by resume_id — '
+          'pass the tailored_resume_id from apply_resume_edits when available. '
+          'Returns { subject, body, recipient }. Does NOT send.',
       inputSchema: {
         'type': 'object',
         'properties': {
           'job_id': {'type': 'string'},
+          'resume_id': {
+            'type': 'string',
+            'description':
+                'Resume to draft against. Use the tailored_resume_id from '
+                'apply_resume_edits, or a manual resume id. Defaults to the '
+                'latest manual resume.',
+          },
           'recipient_email': {'type': 'string'},
           'recipient_name': {'type': 'string'},
           'tone': {
@@ -663,6 +802,16 @@ void _registerDraftEmail(
           'careers@${_domainGuess(job.company)}';
       final tone = (args['tone'] as String?) ?? 'warm';
 
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      final resumeId = (args['resume_id'] as String?)?.trim();
+      final resumeJson = uid == null
+          ? kFakeResumeJson
+          : await _loadResumeContextForAgent(
+              uid: uid,
+              orchestrator: orchestrator,
+              resumeId: resumeId,
+            );
+
       if (!paraphrase.hasApiKey) {
         return ToolResult(
           summary: 'Draft ready (placeholder — no API key)',
@@ -670,7 +819,7 @@ void _registerDraftEmail(
             'subject': 'Application for ${job.title}',
             'body':
                 'Hi,\n\nI\'m excited about the ${job.title} role at ${job.company}. '
-                "I've attached my tailored resume.\n\nThanks,\n${kFakeResumeJson['profile']['name']}",
+                "I've attached my tailored resume.\n\nThanks,\n${_resumeName(resumeJson)}",
             'recipient': recipient,
           },
         );
@@ -678,7 +827,7 @@ void _registerDraftEmail(
 
       try {
         final draft = await paraphrase.draftColdEmail(
-          resumeJson: kFakeResumeJson,
+          resumeJson: resumeJson,
           job: job,
           recipientName: args['recipient_name'] as String?,
           tone: tone,
@@ -709,6 +858,16 @@ JobCategory _jobCategoryFromWire(
     'exploration' => JobCategory.exploration,
     _ => fallback,
   };
+}
+
+/// Pulls the candidate's name out of a resume map, tolerating both the
+/// canonical ResumeJSON shape (`header.name`) and the sample's (`profile.name`).
+String _resumeName(Map<String, dynamic> resumeJson) {
+  final fromHeader = (resumeJson['header'] as Map?)?['name'] as String?;
+  if (fromHeader != null && fromHeader.trim().isNotEmpty) return fromHeader;
+  final fromProfile = (resumeJson['profile'] as Map?)?['name'] as String?;
+  if (fromProfile != null && fromProfile.trim().isNotEmpty) return fromProfile;
+  return 'the candidate';
 }
 
 String _domainGuess(String company) {
@@ -964,4 +1123,59 @@ Map<String, dynamic> _resumeWithLearnedFacts(
     ...resume,
     'learned_facts': learnedFacts,
   };
+}
+
+Future<String?> _latestManualResumeId(String uid) async {
+  final paths = FirestorePaths(FirebaseFirestore.instance);
+
+  final snap = await paths
+      .resumes(uid)
+      .orderBy('uploaded_at', descending: true)
+      .limit(10)
+      .get();
+
+  for (final doc in snap.docs) {
+    if (doc.data()['source'] == 'manual') {
+      return doc.id;
+    }
+  }
+
+  return null;
+}
+
+Future<Map<String, dynamic>> _loadResumeContextForAgent({
+  required String uid,
+  required ResumeTailorOrchestrator orchestrator,
+  String? resumeId,
+}) async {
+  final resolvedResumeId =
+      (resumeId == null || resumeId.trim().isEmpty)
+          ? await _latestManualResumeId(uid)
+          : resumeId.trim();
+
+  if (resolvedResumeId == null || resolvedResumeId.isEmpty) {
+    return kFakeResumeJson;
+  }
+
+  try {
+    final parsed = await orchestrator.readResumeJson(
+      uid: uid,
+      resumeId: resolvedResumeId,
+    );
+    return parsed.toJson();
+  } catch (e) {
+    debugPrint('load real resume failed, using sample resume: $e');
+    return kFakeResumeJson;
+  }
+}
+
+String _shortToolError(Object e) {
+  final raw = e.toString()
+      .replaceFirst('Exception: ', '')
+      .replaceFirst('TailorOrchestratorException: ', '')
+      .replaceFirst('ResumeParseException: ', '')
+      .trim();
+
+  if (raw.isEmpty) return 'unknown error';
+  return raw.length > 90 ? '${raw.substring(0, 90)}…' : raw;
 }

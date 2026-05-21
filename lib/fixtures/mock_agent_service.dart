@@ -18,6 +18,11 @@ class MockAgentService implements AgentService {
     // Mock doesn't run a tool-use loop, so ask_user never fires here.
   }
 
+  @override
+  void resetConversation() {
+    // Scripted scenarios are stateless — nothing to reset.
+  }
+
   /// Bumped on every [runPrompt] so block IDs stay unique across repeats of
   /// the same scenario — otherwise [acceptProposal] on the second run would
   /// silently target the first run's card.
@@ -47,6 +52,7 @@ class MockAgentService implements AgentService {
   Stream<AgentEvent> runPrompt({
     required String prompt,
     List<ChatAttachment> attachments = const [],
+    bool threaded = true,
   }) async* {
     _invocation += 1;
     final prefix = 'r$_invocation-';

@@ -216,6 +216,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
   /// turn. Called by the pipeline when a card is tapped — the chatbot is
   /// the single thread for every agentic interaction.
   void openJobThread(Job job) {
+    _service.resetConversation();
     state = AgentChatState(
       items: [_buildOpener(job)],
       threadJob: job,
@@ -225,6 +226,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
   /// Closes the current job thread and resets to the generic welcome. Also
   /// wipes the persisted history so a "New chat" tap genuinely starts over.
   void clearThread() {
+    _service.resetConversation();
     state = AgentChatState(
       items: [_buildOpener(null)],
     );

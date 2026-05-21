@@ -429,21 +429,19 @@ class _MorningBriefTile extends ConsumerWidget {
       icon: Icons.wb_sunny_outlined,
       title: "Today's brief",
       subtitle: enabled
-          ? (running ? 'Running now…' : 'On — runs automatically')
+          ? (running ? 'Running now…' : 'On — greets you after sign-in')
           : 'Off',
       trailing: Switch.adaptive(
         value: enabled,
         activeThumbColor: brand.ink,
+        // Flipping the toggle only stores the preference — it never fires the
+        // brief itself (no surprise token spend). The brief runs when the
+        // user taps "Run today's brief" or sees it after sign-in.
         onChanged: profile == null
             ? null
-            : (v) {
-                ref
-                    .read(userProfileProvider.notifier)
-                    .setMorningBriefEnabled(v);
-                if (v && !running) {
-                  ref.read(passiveAgentProvider.notifier).runBrief();
-                }
-              },
+            : (v) => ref
+                .read(userProfileProvider.notifier)
+                .setMorningBriefEnabled(v),
       ),
     );
   }
