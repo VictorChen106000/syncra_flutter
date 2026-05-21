@@ -196,7 +196,10 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
     String? turnFailure;
 
     try {
-      await for (final event in service.runPrompt(prompt: _briefPrompt)) {
+      // The brief is a self-contained one-shot — run it non-threaded so it
+      // neither inherits nor pollutes the chat's running conversation.
+      await for (final event
+          in service.runPrompt(prompt: _briefPrompt, threaded: false)) {
         ref.read(notificationsProvider.notifier).onAgentEvent(event);
 
         switch (event) {

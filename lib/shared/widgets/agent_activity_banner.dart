@@ -28,7 +28,7 @@ class AgentActivityBanner extends ConsumerWidget {
           opacity: animation,
           child: SizeTransition(
             sizeFactor: animation,
-            alignment: Alignment.topCenter,
+            axisAlignment: -1.0,
             child: child,
           ),
         );

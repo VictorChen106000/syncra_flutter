@@ -53,10 +53,16 @@ abstract class AgentService {
   Stream<AgentEvent> runPrompt({
     required String prompt,
     List<ChatAttachment> attachments = const [],
+    bool threaded = true,
   });
 
   /// Called by the controller when the user submits an answer to an
   /// `ask_user` prompt. Implementations that don't support tool use can
   /// no-op (default).
   void provideUserAnswer(String blockId, String answer) {}
+
+  /// Clears any retained conversation history so the next [runPrompt] starts
+  /// a fresh context. Called when the user starts a new chat or switches job
+  /// threads. Stateless implementations can no-op.
+  void resetConversation() {}
 }

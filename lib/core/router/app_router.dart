@@ -97,10 +97,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         return RouteNames.dashboard;
       }
 
+      // After sign-in, only greet the user with the morning brief when they
+      // have opted in (Profile → "Today's brief"). Off by default — most
+      // sign-ins, and every sign-in during development, land straight on the
+      // dashboard. `morningBriefShown` keeps it to once per app session.
       if (loc == RouteNames.login || loc == RouteNames.signup) {
-        return passive.morningBriefShown
-            ? RouteNames.dashboard
-            : RouteNames.morningBrief;
+        final wantsMorningBrief = profile?.morningBriefEnabled ?? false;
+        if (wantsMorningBrief && !passive.morningBriefShown) {
+          return RouteNames.morningBrief;
+        }
+        return RouteNames.dashboard;
       }
 
       return null;
