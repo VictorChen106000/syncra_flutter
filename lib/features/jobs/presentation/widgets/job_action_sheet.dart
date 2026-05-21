@@ -4,6 +4,8 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/theme/brand_theme.dart';
 import '../../../../data/models/job.dart';
+import '../../../email/presentation/email_review_page.dart';
+import '../../../email/services/recipient_resolver.dart';
 import '../../state/jobs_notifier.dart';
 
 class JobActionSheet {
@@ -64,6 +66,11 @@ class _JobActionSheetBody extends ConsumerWidget {
               ),
             ),
             _ActionTile(
+              icon: Icons.drafts_outlined,
+              label: 'Draft application email',
+              onTap: () => _draftEmail(context, job),
+            ),
+            _ActionTile(
               icon: isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
               label: isSaved ? 'Saved' : 'Save for later',
               onTap: () {
@@ -111,6 +118,39 @@ class _JobActionSheetBody extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Opens the email review sheet pre-filled with a starter draft for [job],
+/// then saves it to the user's Gmail Drafts (nothing is sent). The recipient
+/// is a best-effort guess the user confirms in the sheet.
+Future<void> _draftEmail(BuildContext context, Job job) async {
+  // Capture before popping the action sheet — `context` is gone after pop.
+  final navigator = Navigator.of(context);
+  final messenger = ScaffoldMessenger.of(context);
+  navigator.pop();
+
+  final subject = 'Application for ${job.title}';
+  final body = 'Hi,\n\n'
+      "I'm reaching out about the ${job.title} role at ${job.company}. "
+      'I believe my background is a strong fit and I would welcome the '
+      'chance to contribute.\n\n'
+      "I've attached my resume — I'd love to discuss how I can help the "
+      'team.\n\n'
+      'Best regards,';
+
+  final result = await EmailReviewPage.show(
+    navigator.context,
+    recipient: resolveRecipient(job.company),
+    subject: subject,
+    body: body,
+    mode: EmailReviewMode.draft,
+  );
+
+  if (result?.draftCreated ?? false) {
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Draft saved to your Gmail Drafts.')),
     );
   }
 }

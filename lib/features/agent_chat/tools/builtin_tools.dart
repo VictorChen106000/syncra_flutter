@@ -10,6 +10,7 @@ import '../../../data/firestore/resumes_repository.dart';
 import '../../../data/models/job.dart';
 import '../../../data/services/jsearch_service.dart';
 import '../../email/services/email_send_service.dart';
+import '../../email/services/recipient_resolver.dart';
 import '../../agent/data/fake_resume.dart';
 import '../../agent/services/anthropic_service.dart';
 import '../../resumes/models/proposed_edit.dart';
@@ -798,8 +799,8 @@ void _registerDraftEmail(
       if (jobId == null) return ToolResult.error('job_id is required.');
       final job = await jobsRepo.fetchById(jobId);
       if (job == null) return ToolResult.error('Job not found.');
-      final recipient = (args['recipient_email'] as String?) ??
-          'careers@${_domainGuess(job.company)}';
+      final recipient =
+          (args['recipient_email'] as String?) ?? resolveRecipient(job.company);
       final tone = (args['tone'] as String?) ?? 'warm';
 
       final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -870,13 +871,6 @@ String _resumeName(Map<String, dynamic> resumeJson) {
   return 'the candidate';
 }
 
-String _domainGuess(String company) {
-  final slug = company
-      .toLowerCase()
-      .replaceAll(RegExp(r'[^a-z0-9]'), '')
-      .trim();
-  return slug.isEmpty ? 'example.com' : '$slug.com';
-}
 
 // ---------------------------------------------------------------------------
 // lookup_hiring_manager — returns the company's generic careers address.
@@ -912,7 +906,7 @@ void _registerLookupHiringManager(ToolRegistry registry) {
         summary: 'Careers inbox for $company',
         data: {
           'name': null,
-          'email': 'careers@${_domainGuess(company)}',
+          'email': resolveRecipient(company),
           'confidence': 0.2,
           'note': 'Generic careers address — no named-contact lookup wired.',
         },
