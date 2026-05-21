@@ -3,15 +3,18 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../data/firestore/firestore_paths.dart';
 import '../models/agent_block.dart';
 import '../models/chat_message.dart';
+import '../models/conversation_summary.dart';
 
-/// Persists a *text-only* snapshot of the chat transcript so it survives app
-/// restarts. The full reasoning timeline (thinking, tool calls, action
-/// proposals) is deliberately *not* round-tripped — it's transient by design
-/// and reconstructing the exact UI state from JSON is more failure surface
-/// than this demo needs.
+/// Persists *text-only* snapshots of chat transcripts — one Firestore document
+/// per conversation — so the history drawer can list and reopen past chats.
 ///
-/// Schema: `users/{uid}/conversations/active` — single doc with:
-///   - `updatedAt`: server timestamp
+/// The full reasoning timeline (thinking, tool calls, action proposals) is
+/// deliberately *not* round-tripped — it's transient by design and rebuilding
+/// the exact UI state from JSON is more failure surface than this demo needs.
+///
+/// Schema: `users/{uid}/conversations/{conversationId}` — each doc holds:
+///   - `title`: short label derived from the first user message
+///   - `updatedAt`: server timestamp (also the history sort key)
 ///   - `items`: [{ kind: 'user'|'agent', id, text, attachments? }]
 class ChatHistoryRepository {
   ChatHistoryRepository({FirebaseFirestore? db})
@@ -19,16 +22,86 @@ class ChatHistoryRepository {
 
   final FirestorePaths _paths;
 
-  static const _docId = 'active';
+  DocumentReference<Map<String, dynamic>> _doc(String uid, String id) =>
+      _paths.conversations(uid).doc(id);
 
-  DocumentReference<Map<String, dynamic>> _doc(String uid) =>
-      _paths.conversations(uid).doc(_docId);
+  /// Live-updating list of conversation headers, most recently updated first.
+  /// Powers the history drawer.
+  Stream<List<ConversationSummary>> watchConversations(String uid) {
+    return _paths
+        .conversations(uid)
+        .orderBy('updatedAt', descending: true)
+        .snapshots()
+        .map((snap) =>
+            snap.docs.map(_summaryOf).whereType<ConversationSummary>().toList());
+  }
 
-  Future<List<ChatItem>> load(String uid) async {
-    final snap = await _doc(uid).get();
+  /// One-shot read of the conversation headers — used to resume the most
+  /// recent chat on a cold start without leaving a listener open.
+  Future<List<ConversationSummary>> listConversations(String uid) async {
+    final snap = await _paths
+        .conversations(uid)
+        .orderBy('updatedAt', descending: true)
+        .get();
+    return snap.docs.map(_summaryOf).whereType<ConversationSummary>().toList();
+  }
+
+  static ConversationSummary? _summaryOf(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data();
+    final rawItems = (data['items'] as List?) ?? const [];
+    // Skip empty shells so the drawer never renders a blank row.
+    if (rawItems.isEmpty) return null;
+    final title = (data['title'] as String?)?.trim();
+    final ts = data['updatedAt'];
+    return ConversationSummary(
+      id: doc.id,
+      title: (title != null && title.isNotEmpty)
+          ? title
+          : _deriveTitleFromRaw(rawItems),
+      updatedAt: ts is Timestamp ? ts.toDate() : DateTime.now(),
+    );
+  }
+
+  /// Fallback title for legacy docs written before `title` was stored.
+  static String _deriveTitleFromRaw(List<dynamic> rawItems) {
+    for (final entry in rawItems) {
+      if (entry is Map && entry['kind'] == 'user') {
+        final text = (entry['text'] as String?)?.trim() ?? '';
+        if (text.isNotEmpty) return text;
+      }
+    }
+    return 'New chat';
+  }
+
+  Future<List<ChatItem>> load(String uid, String conversationId) async {
+    final snap = await _doc(uid, conversationId).get();
     final data = snap.data();
     if (data == null) return const [];
-    final raw = (data['items'] as List?) ?? const [];
+    return _decode((data['items'] as List?) ?? const []);
+  }
+
+  Future<void> save(
+    String uid,
+    String conversationId, {
+    required List<ChatItem> items,
+    required String title,
+  }) async {
+    final payload = _encode(items);
+    if (payload.isEmpty) return;
+    await _doc(uid, conversationId).set({
+      'items': payload,
+      'title': title,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> delete(String uid, String conversationId) async {
+    await _doc(uid, conversationId).delete();
+  }
+
+  static List<ChatItem> _decode(List<dynamic> raw) {
     final items = <ChatItem>[];
     for (final entry in raw) {
       if (entry is! Map) continue;
@@ -39,23 +112,16 @@ class ChatHistoryRepository {
       if (id == null || text.isEmpty) continue;
       switch (kind) {
         case 'user':
-          final attachmentList =
-              (map['attachments'] as List?) ?? const [];
+          final attachmentList = (map['attachments'] as List?) ?? const [];
           final attachments = <ChatAttachment>[
             for (final a in attachmentList)
-              if (a is Map &&
-                  a['id'] is String &&
-                  a['name'] is String)
+              if (a is Map && a['id'] is String && a['name'] is String)
                 ChatAttachment(
                   id: a['id'] as String,
                   name: a['name'] as String,
                 ),
           ];
-          items.add(UserMessage(
-            id: id,
-            text: text,
-            attachments: attachments,
-          ));
+          items.add(UserMessage(id: id, text: text, attachments: attachments));
         case 'agent':
           items.add(AgentTurn(
             id: id,
@@ -67,7 +133,7 @@ class ChatHistoryRepository {
     return items;
   }
 
-  Future<void> save(String uid, List<ChatItem> items) async {
+  static List<Map<String, dynamic>> _encode(List<ChatItem> items) {
     final payload = <Map<String, dynamic>>[];
     for (final item in items) {
       switch (item) {
@@ -98,20 +164,9 @@ class ChatHistoryRepository {
           }
           final text = buf.toString();
           if (text.isEmpty) continue;
-          payload.add({
-            'kind': 'agent',
-            'id': item.id,
-            'text': text,
-          });
+          payload.add({'kind': 'agent', 'id': item.id, 'text': text});
       }
     }
-    await _doc(uid).set({
-      'items': payload,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-  }
-
-  Future<void> clear(String uid) async {
-    await _doc(uid).delete();
+    return payload;
   }
 }

@@ -18,7 +18,12 @@ class _SendIntent extends Intent {
 }
 
 class ChatInputBar extends ConsumerStatefulWidget {
-  const ChatInputBar({super.key});
+  const ChatInputBar({super.key, this.autofocus = false});
+
+  /// When true, the composer grabs focus on first build — used when the user
+  /// arrives from the dashboard's "Ask Syncra" bar intending to type straight
+  /// away.
+  final bool autofocus;
 
   @override
   ConsumerState<ChatInputBar> createState() => _ChatInputBarState();
@@ -50,6 +55,11 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
         if (_focusNode.hasFocus) _bounce(from: 0.96);
       }
     });
+    if (widget.autofocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _focusNode.requestFocus();
+      });
+    }
   }
 
   @override
