@@ -39,7 +39,9 @@ class _MorningBriefPageState extends ConsumerState<MorningBriefPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final state = ref.read(passiveAgentProvider);
-      if (!state.hasPipeline && !state.isRunning) {
+      if (!state.hasPipeline &&
+          !state.isRunning &&
+          state.status != AgentBriefStatus.done) {
         ref.read(passiveAgentProvider.notifier).runBrief();
       }
     });
@@ -118,7 +120,10 @@ class _MorningBriefPageState extends ConsumerState<MorningBriefPage> {
               const Spacer(),
               _BriefStatusLine(agent: agent),
               const SizedBox(height: 16),
-              _ContinueButton(onTap: _continue, ready: agent.hasPipeline)
+              _ContinueButton(
+                  onTap: _continue,
+                  ready: agent.hasPipeline || agent.status == AgentBriefStatus.done,
+                )
                   .animate(delay: 400.ms)
                   .fadeIn(duration: 360.ms)
                   .moveY(begin: 10, end: 0, curve: Curves.easeOutCubic),
@@ -140,14 +145,21 @@ class _BriefBody extends StatelessWidget {
     if (agent.status == AgentBriefStatus.error) {
       return _ErrorBody(message: agent.lastError ?? 'Brief failed.');
     }
-    if (agent.isRunning || !agent.hasPipeline) {
+
+    if (agent.isRunning) {
       return _RunningBody(agent: agent);
     }
+
     final job = agent.topMatch;
-    if (job == null) {
-      return _RunningBody(agent: agent);
+    if (job != null) {
+      return _MatchBody(job: job);
     }
-    return _MatchBody(job: job);
+
+    if (agent.status == AgentBriefStatus.done) {
+      return const _EmptyBriefBody();
+    }
+
+    return _RunningBody(agent: agent);
   }
 }
 
@@ -193,6 +205,38 @@ class _RunningBody extends StatelessWidget {
               fontSize: 14.5,
               fontWeight: FontWeight.w500,
               height: 1.5,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _EmptyBriefBody extends StatelessWidget {
+  const _EmptyBriefBody();
+
+  @override
+  Widget build(BuildContext context) {
+    const brand = BrandTheme.dark;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          Icons.info_outline_rounded,
+          color: brand.accent,
+          size: 18,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            'Brief complete. I did not find any saved matches yet — check notifications or run a broader search from the dashboard.',
+            style: TextStyle(
+              color: _softInk.withValues(alpha: 0.72),
+              fontSize: 14.5,
+              height: 1.5,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ),

@@ -232,7 +232,11 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
       final hadHardFailure =
           turnFailure != null || (failedCount > 0 && savedCount == 0);
 
+      final refreshedPipeline =
+          hadHardFailure ? state.pipeline : await _fetchPendingPipelineJobs();
+
       state = state.copyWith(
+        pipeline: refreshedPipeline,
         status: hadHardFailure ? AgentBriefStatus.error : AgentBriefStatus.done,
         lastBriefAt: hadHardFailure ? state.lastBriefAt : now,
         lastError: hadHardFailure
@@ -272,6 +276,24 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
       );
     }
   }
+
+  Future<List<Job>> _fetchPendingPipelineJobs() async {
+  final user = ref.read(authProvider).appUser;
+  final uid = user?.uid;
+  final isGuest = user?.isGuest ?? true;
+
+  if (uid == null || isGuest) {
+    return const [];
+  }
+
+  try {
+    final cards = await _pipelineRepository.fetchPending(uid);
+    return cards.map((card) => card.job).toList(growable: false);
+  } catch (e) {
+    debugPrint('pending pipeline refresh failed: $e');
+    return const [];
+  }
+}
 
   void _handleBriefBlock(AgentBlock block) {
   if (block is ToolCallBlock) {

@@ -24,11 +24,20 @@ class _SeededChatNotifier extends AgentChatNotifier {
   final ProposedEditsBlock seed;
 
   @override
-  AgentChatState build() => AgentChatState(
-        items: [
-          AgentTurn(id: 'turn-1', blocks: [seed], isStreaming: false),
-        ],
-      );
+  AgentChatState build() {
+    const conversationId = 'test-conversation';
+
+    return AgentChatState(
+      conversationId: conversationId,
+      items: [
+        AgentTurn(
+          id: 'turn-1',
+          blocks: [seed],
+          isStreaming: false,
+        ),
+      ],
+    );
+  }
 }
 
 ProposedEditsBlock _currentBlock(ProviderContainer c) => c

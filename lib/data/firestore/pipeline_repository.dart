@@ -34,6 +34,22 @@ class PipelineRepository {
         .map((snap) => snap.docs.map(_fromDoc).toList());
   }
 
+  Future<List<PipelineCard>> fetchPending(
+  String uid, {
+  int limit = 40,
+}) async {
+  final snap = await _paths
+      .pipeline(uid)
+      .orderBy('created_at', descending: true)
+      .limit(limit)
+      .get();
+
+  return snap.docs
+      .map(_fromDoc)
+      .where((card) => card.status == PipelineCardStatus.pending)
+      .toList(growable: false);
+}
+
   Future<void> dismiss(String uid, String cardId) {
     return _paths.pipeline(uid).doc(cardId).update({'status': 'dismissed'});
   }
