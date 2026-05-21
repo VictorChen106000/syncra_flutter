@@ -43,11 +43,19 @@ class GmailService {
 
   final http.Client _client;
 
-  /// The only Gmail scope this app uses.
+  /// Scope for sending mail outright (`messages.send`).
   static const String sendScope = 'https://www.googleapis.com/auth/gmail.send';
+
+  /// Scope for creating drafts (`drafts.create`). `gmail.send` alone is not
+  /// enough to write a draft, so the draft path requests this instead.
+  static const String composeScope =
+      'https://www.googleapis.com/auth/gmail.compose';
 
   static const String _sendEndpoint =
       'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
+
+  static const String _draftEndpoint =
+      'https://gmail.googleapis.com/gmail/v1/users/me/drafts';
 
   static const Duration _httpTimeout = Duration(seconds: 30);
 
@@ -66,7 +74,7 @@ class GmailService {
       throw GmailException('No recipient address.');
     }
 
-    final token = await _accessToken();
+    final token = await _accessToken(sendScope);
     final raw = _buildMimeMessage(
       to: recipient,
       subject: subject,
@@ -74,16 +82,77 @@ class GmailService {
       attachments: attachments,
     );
 
+    final decoded = await _post(
+      endpoint: _sendEndpoint,
+      token: token,
+      payload: {'raw': raw},
+    );
+    final id = (decoded['id'] as String?)?.trim();
+    if (id == null || id.isEmpty) {
+      throw GmailException('Gmail accepted the send but returned no id.');
+    }
+    return id;
+  }
+
+  /// Creates a draft in the signed-in user's Gmail and returns the draft id.
+  ///
+  /// Nothing is sent — the draft lands in the user's Drafts folder for them to
+  /// review and send from Gmail themselves. Uses [composeScope]; the user is
+  /// prompted to grant it the first time.
+  ///
+  /// Throws [GmailException] when the user is not signed in, declines the
+  /// permission, or the Gmail API rejects the request.
+  Future<String> createDraft({
+    required String to,
+    required String subject,
+    required String body,
+    List<EmailAttachment> attachments = const [],
+  }) async {
+    final recipient = to.trim();
+    if (recipient.isEmpty) {
+      throw GmailException('No recipient address.');
+    }
+
+    final token = await _accessToken(composeScope);
+    final raw = _buildMimeMessage(
+      to: recipient,
+      subject: subject,
+      body: body,
+      attachments: attachments,
+    );
+
+    // drafts.create wraps the raw message in a `message` object, unlike send.
+    final decoded = await _post(
+      endpoint: _draftEndpoint,
+      token: token,
+      payload: {
+        'message': {'raw': raw},
+      },
+    );
+    final id = (decoded['id'] as String?)?.trim();
+    if (id == null || id.isEmpty) {
+      throw GmailException('Gmail accepted the draft but returned no id.');
+    }
+    return id;
+  }
+
+  /// POSTs [payload] as JSON to a Gmail endpoint and returns the decoded body,
+  /// translating transport and API errors into [GmailException].
+  Future<Map<String, dynamic>> _post({
+    required String endpoint,
+    required String token,
+    required Map<String, dynamic> payload,
+  }) async {
     final http.Response response;
     try {
       response = await _client
           .post(
-            Uri.parse(_sendEndpoint),
+            Uri.parse(endpoint),
             headers: {
               'Authorization': 'Bearer $token',
               'Content-Type': 'application/json',
             },
-            body: jsonEncode({'raw': raw}),
+            body: jsonEncode(payload),
           )
           .timeout(_httpTimeout);
     } catch (e) {
@@ -97,23 +166,17 @@ class GmailService {
       );
     }
 
-    final Map<String, dynamic> decoded;
     try {
-      decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (_) {
       throw GmailException('Could not parse the Gmail response.');
     }
-    final id = (decoded['id'] as String?)?.trim();
-    if (id == null || id.isEmpty) {
-      throw GmailException('Gmail accepted the send but returned no id.');
-    }
-    return id;
   }
 
-  /// Obtains an OAuth access token carrying [sendScope], prompting the user
-  /// to grant it the first time. The grant triggers Google's unverified-app
+  /// Obtains an OAuth access token carrying [scope], prompting the user to
+  /// grant it the first time. The grant triggers Google's unverified-app
   /// warning — expected for the class demo (api-contract §5.3).
-  Future<String> _accessToken() async {
+  Future<String> _accessToken(String scope) async {
     if (kIsWeb) {
       // Web sign-in goes through Firebase's popup, not `google_sign_in`, so
       // the `authorizationClient` path below isn't wired there. Sending from
@@ -137,11 +200,10 @@ class GmailService {
 
     // Reuse an existing grant if the user already approved the scope;
     // otherwise prompt for it.
-    var authorization =
-        await auth.authorizationForScopes(const [sendScope]);
+    var authorization = await auth.authorizationForScopes([scope]);
     if (authorization == null) {
       try {
-        authorization = await auth.authorizeScopes(const [sendScope]);
+        authorization = await auth.authorizeScopes([scope]);
       } on GoogleSignInException catch (e) {
         throw GmailException('Gmail permission was not granted (${e.code.name}).');
       }

@@ -5,16 +5,34 @@ import '../../../core/theme/brand_theme.dart';
 import '../services/email_send_service.dart';
 import '../services/gmail_service.dart';
 
+/// Whether the review sheet sends the email outright or saves it as a Gmail
+/// draft the user finishes from Gmail.
+enum EmailReviewMode {
+  /// Send immediately via `messages.send` (behind the confirmation token).
+  send,
+
+  /// Create a draft via `drafts.create`; nothing is delivered.
+  draft,
+}
+
 /// What [EmailReviewPage.show] resolves to.
 ///
-/// `null` from `show()` means the user dismissed the sheet without sending.
-/// A non-null result means a send was attempted: [sent] tells you whether it
-/// succeeded.
+/// `null` from `show()` means the user dismissed the sheet without acting.
+/// A non-null result means an action completed: [sent] is true when an email
+/// was sent, [draftCreated] is true when a draft was saved.
 class EmailReviewResult {
-  const EmailReviewResult({required this.sent, this.messageId, this.error});
+  const EmailReviewResult({
+    this.sent = false,
+    this.draftCreated = false,
+    this.messageId,
+    this.draftId,
+    this.error,
+  });
 
   final bool sent;
+  final bool draftCreated;
   final String? messageId;
+  final String? draftId;
   final String? error;
 }
 
@@ -31,16 +49,23 @@ class EmailReviewResult {
 /// the chat-block owner.
 class EmailReviewPage extends StatefulWidget {
   const EmailReviewPage._({
-    required this.recipient,
+    required this.initialRecipient,
     required this.initialSubject,
     required this.initialBody,
+    required this.mode,
     this.applicationId,
     this.attachments = const [],
   });
 
-  final String recipient;
+  /// Pre-filled "To" address. Editable — the company address is only ever a
+  /// best-effort guess (see `recipient_resolver.dart`), so the user confirms
+  /// or corrects it here before anything happens.
+  final String initialRecipient;
   final String initialSubject;
   final String initialBody;
+
+  /// Send the email outright, or save it as a Gmail draft.
+  final EmailReviewMode mode;
 
   /// Tracker application to stamp `sent_at` / `sent_email_id` on success.
   final String? applicationId;
@@ -49,12 +74,14 @@ class EmailReviewPage extends StatefulWidget {
   final List<EmailAttachment> attachments;
 
   /// Opens the review sheet. Resolves to the [EmailReviewResult], or `null`
-  /// if the user dismissed it without sending.
+  /// if the user dismissed it without acting. Defaults to draft mode — the
+  /// safe path that never delivers without a second tap inside Gmail.
   static Future<EmailReviewResult?> show(
     BuildContext context, {
     required String recipient,
     required String subject,
     required String body,
+    EmailReviewMode mode = EmailReviewMode.draft,
     String? applicationId,
     List<EmailAttachment> attachments = const [],
   }) {
@@ -63,9 +90,10 @@ class EmailReviewPage extends StatefulWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => EmailReviewPage._(
-        recipient: recipient,
+        initialRecipient: recipient,
         initialSubject: subject,
         initialBody: body,
+        mode: mode,
         applicationId: applicationId,
         attachments: attachments,
       ),
@@ -77,61 +105,106 @@ class EmailReviewPage extends StatefulWidget {
 }
 
 class _EmailReviewPageState extends State<EmailReviewPage> {
+  late final TextEditingController _recipientCtrl =
+      TextEditingController(text: widget.initialRecipient);
   late final TextEditingController _subjectCtrl =
       TextEditingController(text: widget.initialSubject);
   late final TextEditingController _bodyCtrl =
       TextEditingController(text: widget.initialBody);
 
-  bool _sending = false;
+  bool _busy = false;
   String? _error;
+
+  /// Set once a draft has been created so the button can't be tapped twice
+  /// into a second duplicate draft.
+  String? _draftId;
+
+  bool get _isDraftMode => widget.mode == EmailReviewMode.draft;
 
   @override
   void dispose() {
+    _recipientCtrl.dispose();
     _subjectCtrl.dispose();
     _bodyCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _send() async {
+  Future<void> _submit() async {
+    final recipient = _recipientCtrl.text.trim();
     final subject = _subjectCtrl.text.trim();
     final body = _bodyCtrl.text.trim();
+    if (recipient.isEmpty) {
+      setState(() => _error = 'Add a recipient address.');
+      return;
+    }
     if (subject.isEmpty || body.isEmpty) {
       setState(() => _error = 'Subject and message cannot be empty.');
       return;
     }
 
     setState(() {
-      _sending = true;
+      _busy = true;
       _error = null;
     });
     FocusScope.of(context).unfocus();
 
+    try {
+      if (_isDraftMode) {
+        await _createDraft(recipient: recipient, subject: subject, body: body);
+      } else {
+        await _sendEmail(recipient: recipient, subject: subject, body: body);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = _friendlyError(e);
+      });
+    }
+  }
+
+  Future<void> _createDraft({
+    required String recipient,
+    required String subject,
+    required String body,
+  }) async {
+    final draftId = await EmailSendService.instance.createDraft(
+      to: recipient,
+      subject: subject,
+      body: body,
+      attachments: widget.attachments,
+    );
+    if (!mounted) return;
+    // Show a settled "Draft created" state rather than popping instantly, so
+    // the user gets confirmation and can't re-tap into a duplicate draft.
+    setState(() {
+      _busy = false;
+      _draftId = draftId;
+    });
+  }
+
+  Future<void> _sendEmail({
+    required String recipient,
+    required String subject,
+    required String body,
+  }) async {
     final service = EmailSendService.instance;
     // Minting the token here is what makes this the *only* legitimate send
     // path — the agent has no way to produce one.
     final token = service.mintConfirmationToken();
-
-    try {
-      final result = await service.sendConfirmed(
-        confirmationToken: token,
-        to: widget.recipient,
-        subject: subject,
-        body: body,
-        uid: FirebaseAuth.instance.currentUser?.uid,
-        applicationId: widget.applicationId,
-        attachments: widget.attachments,
-      );
-      if (!mounted) return;
-      Navigator.of(context).pop(
-        EmailReviewResult(sent: true, messageId: result.messageId),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _sending = false;
-        _error = _friendlyError(e);
-      });
-    }
+    final result = await service.sendConfirmed(
+      confirmationToken: token,
+      to: recipient,
+      subject: subject,
+      body: body,
+      uid: FirebaseAuth.instance.currentUser?.uid,
+      applicationId: widget.applicationId,
+      attachments: widget.attachments,
+    );
+    if (!mounted) return;
+    Navigator.of(context).pop(
+      EmailReviewResult(sent: true, messageId: result.messageId),
+    );
   }
 
   /// Turns a raw exception into one line a user can act on.
@@ -178,7 +251,9 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
               ),
               const SizedBox(height: 16),
               Text(
-                'Review email',
+                _draftId != null
+                    ? 'Draft saved'
+                    : (_isDraftMode ? 'Review draft' : 'Review email'),
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
@@ -188,8 +263,14 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
               ),
               const SizedBox(height: 4),
               Text(
-                'Nothing is sent until you tap Send — the agent never sends '
-                'on its own.',
+                _draftId != null
+                    ? 'Saved to your Gmail Drafts. Open Gmail to review and '
+                        'send it yourself — nothing was delivered.'
+                    : (_isDraftMode
+                        ? 'This saves a draft to your Gmail. Nothing is sent — '
+                            'you finish and send it from Gmail.'
+                        : 'Nothing is sent until you tap Send — the agent '
+                            'never sends on its own.'),
                 style: TextStyle(
                   fontSize: 12.5,
                   color: brand.textMuted,
@@ -198,14 +279,21 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
                 ),
               ),
               const SizedBox(height: 18),
-              _RecipientRow(recipient: widget.recipient),
+              const _FieldLabel('TO'),
+              const SizedBox(height: 8),
+              _EditableField(
+                controller: _recipientCtrl,
+                hint: 'recipient@company.com',
+                enabled: !_busy && _draftId == null,
+                keyboardType: TextInputType.emailAddress,
+              ),
               const SizedBox(height: 14),
               const _FieldLabel('SUBJECT'),
               const SizedBox(height: 8),
               _EditableField(
                 controller: _subjectCtrl,
                 hint: 'Subject line',
-                enabled: !_sending,
+                enabled: !_busy && _draftId == null,
               ),
               const SizedBox(height: 14),
               const _FieldLabel('MESSAGE'),
@@ -213,7 +301,7 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
               _EditableField(
                 controller: _bodyCtrl,
                 hint: 'Email body',
-                enabled: !_sending,
+                enabled: !_busy && _draftId == null,
                 minLines: 6,
                 maxLines: 12,
               ),
@@ -235,74 +323,44 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
                 _ErrorBanner(message: _error!),
               ],
               const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: _CancelButton(
-                      onTap: _sending
-                          ? null
-                          : () => Navigator.of(context).pop(),
-                    ),
+              if (_draftId != null)
+                _PrimaryButton(
+                  label: 'Done',
+                  icon: Icons.check_rounded,
+                  busy: false,
+                  onTap: () => Navigator.of(context).pop(
+                    EmailReviewResult(draftCreated: true, draftId: _draftId),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: _SendButton(
-                      sending: _sending,
-                      onTap: _sending ? null : _send,
+                )
+              else
+                Row(
+                  children: [
+                    Expanded(
+                      child: _CancelButton(
+                        onTap: _busy
+                            ? null
+                            : () => Navigator.of(context).pop(),
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: _PrimaryButton(
+                        label: _isDraftMode
+                            ? 'Save to Gmail drafts'
+                            : 'Send email',
+                        icon: _isDraftMode
+                            ? Icons.drafts_rounded
+                            : Icons.send_rounded,
+                        busy: _busy,
+                        onTap: _busy ? null : _submit,
+                      ),
+                    ),
+                  ],
+                ),
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _RecipientRow extends StatelessWidget {
-  const _RecipientRow({required this.recipient});
-
-  final String recipient;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: brand.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: brand.border),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.person_outline_rounded, size: 18, color: brand.textMuted),
-          const SizedBox(width: 10),
-          Text(
-            'To',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: brand.textMuted,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              recipient.isEmpty ? 'No recipient' : recipient,
-              textAlign: TextAlign.right,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w700,
-                color: brand.ink,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -335,6 +393,7 @@ class _EditableField extends StatelessWidget {
     required this.enabled,
     this.minLines = 1,
     this.maxLines = 1,
+    this.keyboardType,
   });
 
   final TextEditingController controller;
@@ -342,6 +401,7 @@ class _EditableField extends StatelessWidget {
   final bool enabled;
   final int minLines;
   final int maxLines;
+  final TextInputType? keyboardType;
 
   @override
   Widget build(BuildContext context) {
@@ -358,8 +418,8 @@ class _EditableField extends StatelessWidget {
         enabled: enabled,
         minLines: minLines,
         maxLines: maxLines,
-        keyboardType:
-            maxLines > 1 ? TextInputType.multiline : TextInputType.text,
+        keyboardType: keyboardType ??
+            (maxLines > 1 ? TextInputType.multiline : TextInputType.text),
         style: TextStyle(
           fontSize: 13.5,
           color: brand.ink,
@@ -502,10 +562,17 @@ class _CancelButton extends StatelessWidget {
   }
 }
 
-class _SendButton extends StatelessWidget {
-  const _SendButton({required this.sending, required this.onTap});
+class _PrimaryButton extends StatelessWidget {
+  const _PrimaryButton({
+    required this.label,
+    required this.icon,
+    required this.busy,
+    required this.onTap,
+  });
 
-  final bool sending;
+  final String label;
+  final IconData icon;
+  final bool busy;
   final VoidCallback? onTap;
 
   @override
@@ -520,7 +587,7 @@ class _SendButton extends StatelessWidget {
         child: Container(
           height: 48,
           alignment: Alignment.center,
-          child: sending
+          child: busy
               ? SizedBox(
                   width: 18,
                   height: 18,
@@ -533,11 +600,10 @@ class _SendButton extends StatelessWidget {
               : Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.send_rounded,
-                        size: 16, color: brand.inkInverse),
+                    Icon(icon, size: 16, color: brand.inkInverse),
                     const SizedBox(width: 8),
                     Text(
-                      'Send email',
+                      label,
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
