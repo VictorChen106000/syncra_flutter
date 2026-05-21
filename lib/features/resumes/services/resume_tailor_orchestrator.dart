@@ -5,10 +5,12 @@ import '../../../data/firestore/firestore_paths.dart';
 import '../../../data/firestore/jobs_repository.dart';
 import '../../../data/firestore/resumes_repository.dart';
 import '../../../data/models/job.dart';
+import '../models/proposed_edit.dart';
 import '../models/resume_file.dart';
 import '../models/resume_json.dart';
 import 'pdf_template.dart';
 import 'pdf_text_extractor.dart';
+import 'resume_diff_service.dart';
 import 'resume_parser_service.dart';
 import 'resume_tailor_service.dart';
 
@@ -25,6 +27,7 @@ class ResumeTailorOrchestrator {
     required ResumeTailorService tailor,
     ResumePdfTextExtractor? extractor,
     ResumePdfTemplate? template,
+    ResumeDiffService? diff,
     FirebaseFirestore? db,
   })  : _resumes = resumesRepository,
         _jobs = jobsRepository,
@@ -32,6 +35,7 @@ class ResumeTailorOrchestrator {
         _tailor = tailor,
         _extractor = extractor ?? const ResumePdfTextExtractor(),
         _template = template ?? const ResumePdfTemplate(),
+        _diff = diff ?? const ResumeDiffService(),
         _paths = FirestorePaths(db ?? FirebaseFirestore.instance);
 
   final ResumesRepository _resumes;
@@ -40,6 +44,7 @@ class ResumeTailorOrchestrator {
   final ResumeTailorService _tailor;
   final ResumePdfTextExtractor _extractor;
   final ResumePdfTemplate _template;
+  final ResumeDiffService _diff;
   final FirestorePaths _paths;
 
   /// Reads a resume from Firestore, parses lazily if needed, returns the
@@ -129,14 +134,84 @@ class ResumeTailorOrchestrator {
     return saved;
   }
 
-  String _fileNameFor({required Job job}) {
-    final safeCompany = job.company
+  /// Apply half of the tailor flow. Takes the user-accepted [acceptedEdits]
+  /// (from the diff viewer), rebuilds the resume via [ResumeDiffService],
+  /// renders the fixed PDF template, and saves a new `source: tailored`
+  /// resume doc. Pure-compute apply is in [ResumeDiffService]; this method
+  /// owns the I/O. Returns the saved file plus how many edits actually
+  /// landed (stale-path / verbatim-mismatch edits are dropped, not guessed).
+  Future<ApplyEditsResult> applyEdits({
+    required String uid,
+    required String resumeId,
+    required List<ProposedEdit> acceptedEdits,
+    String? jobId,
+  }) async {
+    if (acceptedEdits.isEmpty) {
+      throw const TailorOrchestratorException(
+        'No accepted edits to apply.',
+      );
+    }
+
+    final original = await readResumeJson(uid: uid, resumeId: resumeId);
+    final diff = _diff.apply(original, acceptedEdits);
+
+    if (diff.applied.isEmpty) {
+      throw const TailorOrchestratorException(
+        'None of the accepted edits matched the resume — nothing to apply.',
+      );
+    }
+
+    Job? job;
+    if (jobId != null && jobId.isNotEmpty) {
+      job = await _jobs.fetchById(jobId);
+    }
+
+    final bytes = await _template.render(diff.resume);
+    final saved = await _resumes.saveGeneratedResume(
+      uid: uid,
+      name: _fileNameFor(job: job),
+      bytes: bytes,
+      parentResumeId: resumeId,
+      tailoredForJobId: jobId,
+    );
+
+    try {
+      await _paths
+          .resumes(uid)
+          .doc(saved.id)
+          .update({'resume_json': diff.resume.toJson()});
+    } catch (e) {
+      debugPrint('caching tailored resume_json failed: $e');
+    }
+
+    return ApplyEditsResult(
+      file: saved,
+      appliedCount: diff.applied.length,
+      skippedCount: diff.skipped.length,
+    );
+  }
+
+  String _fileNameFor({Job? job}) {
+    final safeCompany = (job?.company ?? '')
         .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '_')
         .replaceAll(RegExp(r'^_+|_+$'), '');
     final stamp = DateTime.now().millisecondsSinceEpoch.toRadixString(36);
     final base = safeCompany.isEmpty ? 'Tailored' : safeCompany;
     return '${base}_Resume_$stamp.pdf';
   }
+}
+
+/// Result of [ResumeTailorOrchestrator.applyEdits].
+class ApplyEditsResult {
+  const ApplyEditsResult({
+    required this.file,
+    required this.appliedCount,
+    required this.skippedCount,
+  });
+
+  final ResumeFile file;
+  final int appliedCount;
+  final int skippedCount;
 }
 
 class TailorOrchestratorException implements Exception {

@@ -45,7 +45,7 @@ There is **one** agent. "Passive" vs "active" is just two triggers for the same
 (off by default) gates both the dashboard CTA and whether the brief greets the
 user after sign-in — when off, sign-in lands straight on the dashboard.
 
-```
+```ff
 trigger: user prompt  OR  canned brief prompt
    → AnthropicChatService.runAgent(messages, tools[])
    → Claude responds with:
