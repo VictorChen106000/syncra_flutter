@@ -389,6 +389,56 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     return null;
   }
 
+  ProposedEditsBlock? _findProposedEdits(String blockId) {
+    for (final item in state.items) {
+      if (item is! AgentTurn) continue;
+      for (final block in item.blocks) {
+        if (block is ProposedEditsBlock && block.id == blockId) return block;
+      }
+    }
+    return null;
+  }
+
+  /// Records the user's Accept/Reject choice for a single edit inside a
+  /// [ProposedEditsBlock]. UI-only — nothing is applied to the resume until
+  /// [applyProposedEdits] runs. No-ops once the card has settled.
+  void setEditDecision(String blockId, int editIndex, EditDecision decision) {
+    final block = _findProposedEdits(blockId);
+    if (block == null) return;
+    if (block.state != ProposedEditsState.reviewing) return;
+    if (editIndex < 0 || editIndex >= block.decisions.length) return;
+    if (block.decisions[editIndex] == decision) return;
+    block.decisions[editIndex] = decision;
+    state = state.copyWith(items: [...state.items]);
+  }
+
+  /// Applies the accepted edits in a [ProposedEditsBlock] and settles the card.
+  ///
+  /// This is the handoff point to the resume-apply logic: the accepted edits
+  /// (with the block's [ProposedEditsBlock.resumeId] / [ProposedEditsBlock.jobId])
+  /// are everything that layer needs to mutate the resume and re-render it.
+  /// Wiring that call is task #2's sibling; for now we settle the UI so the
+  /// diff viewer can be built and demoed against it.
+  void applyProposedEdits(String blockId) {
+    final block = _findProposedEdits(blockId);
+    if (block == null) return;
+    if (block.state != ProposedEditsState.reviewing) return;
+    if (block.acceptedCount == 0) return;
+    // ignore: unused_local_variable
+    final accepted = block.acceptedEdits; // TODO: hand off to resume-apply logic.
+    block.state = ProposedEditsState.applied;
+    state = state.copyWith(items: [...state.items]);
+  }
+
+  /// Dismisses a [ProposedEditsBlock] without applying anything.
+  void dismissProposedEdits(String blockId) {
+    final block = _findProposedEdits(blockId);
+    if (block == null) return;
+    if (block.state != ProposedEditsState.reviewing) return;
+    block.state = ProposedEditsState.dismissed;
+    state = state.copyWith(items: [...state.items]);
+  }
+
   InputRequestBlock? _findInputRequest(String blockId) {
     for (final item in state.items) {
       if (item is! AgentTurn) continue;

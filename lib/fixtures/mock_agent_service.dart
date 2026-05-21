@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../features/agent_chat/models/agent_block.dart';
 import '../features/agent_chat/models/chat_message.dart';
 import '../features/agent_chat/services/agent_service.dart';
+import '../features/resumes/models/proposed_edit.dart';
 
 /// Scripted [AgentService] for the demo flow.
 ///
@@ -257,6 +258,41 @@ class MockAgentService implements AgentService {
             "from the Stripe project.",
         delay: const Duration(milliseconds: 600),
       ),
+      _addProposedEdits(
+        id: 'tailor-edits',
+        jobId: 'linear-ux',
+        resumeId: 'daryn-base',
+        delay: const Duration(milliseconds: 400),
+        edits: const [
+          ProposedEdit(
+            targetPath: 'Projects › Stripe Checkout',
+            originalText:
+                'Built a student app project using React and Figma.',
+            proposedText:
+                'Designed and shipped a Stripe Checkout redesign, building a '
+                'reusable design system and motion specs adopted across 4 teams.',
+            reason:
+                'Leads with Design Systems + motion — the JD\'s top two '
+                'must-haves — and quantifies reach.',
+          ),
+          ProposedEdit(
+            targetPath: 'Experience › Summary',
+            originalText: 'UX designer interested in product work.',
+            proposedText:
+                'UX designer specializing in design systems and A/B-tested '
+                'flows that lifted activation 18%.',
+            reason: 'Injects the missing A/B testing keyword with a concrete '
+                'outcome.',
+          ),
+          ProposedEdit(
+            targetPath: 'Skills',
+            originalText: 'Figma, prototyping',
+            proposedText: 'Figma, prototyping, design systems, motion design, '
+                'A/B testing',
+            reason: 'Closes the keyword gaps surfaced by the JD scan.',
+          ),
+        ],
+      ),
       _addProposal(
         id: 'tailor-action',
         icon: Icons.save_alt_rounded,
@@ -436,6 +472,23 @@ class MockAgentService implements AgentService {
           icon: icon,
           title: title,
           description: description,
+        ),
+      );
+
+  _Step _addProposedEdits({
+    required String id,
+    required List<ProposedEdit> edits,
+    required Duration delay,
+    String? jobId,
+    String? resumeId,
+  }) =>
+      _AddBlock(
+        delay: delay,
+        block: ProposedEditsBlock(
+          id: id,
+          edits: edits,
+          jobId: jobId,
+          resumeId: resumeId,
         ),
       );
 }
