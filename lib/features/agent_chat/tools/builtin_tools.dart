@@ -879,7 +879,9 @@ String _domainGuess(String company) {
 }
 
 // ---------------------------------------------------------------------------
-// lookup_hiring_manager — STUB (Track C will wire Hunter.io)
+// lookup_hiring_manager — returns the company's generic careers address.
+// There is no named-contact data source wired, so this is a deterministic
+// domain guess. Gives Claude an explicit recipient instead of inventing one.
 // ---------------------------------------------------------------------------
 
 void _registerLookupHiringManager(ToolRegistry registry) {
@@ -887,9 +889,9 @@ void _registerLookupHiringManager(ToolRegistry registry) {
     tool: const Tool(
       name: 'lookup_hiring_manager',
       description:
-          'Find a likely hiring manager + email at a target company. '
-          'Returns best-effort {name, email, confidence}. May fail if '
-          'no match found.',
+          'Find a contact email for outreach at a target company. Returns '
+          '{name, email, confidence}. There is no named-contact lookup — '
+          "this returns the company's generic careers address.",
       inputSchema: {
         'type': 'object',
         'properties': {
@@ -898,19 +900,21 @@ void _registerLookupHiringManager(ToolRegistry registry) {
         },
         'required': ['company'],
       },
-      uiLabel: 'Looking up hiring manager…',
+      uiLabel: 'Finding a contact…',
       uiIcon: Icons.person_search_rounded,
     ),
     handler: (args) async {
-      final company = args['company'] as String? ?? '';
+      final company = (args['company'] as String? ?? '').trim();
+      if (company.isEmpty) {
+        return ToolResult.error('company is required.');
+      }
       return ToolResult(
-        summary: 'Stub — fallback careers email',
+        summary: 'Careers inbox for $company',
         data: {
           'name': null,
           'email': 'careers@${_domainGuess(company)}',
           'confidence': 0.2,
-          'note':
-              'Stub. Hunter.io integration ships with Track C.',
+          'note': 'Generic careers address — no named-contact lookup wired.',
         },
       );
     },

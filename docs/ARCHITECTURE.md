@@ -17,7 +17,7 @@ this file, fix the code (or change this file by PR). Product context is in
 | LLM | Anthropic Claude (Haiku 4.5), called directly from Flutter |
 | Job source | JSearch via RapidAPI, direct from Flutter |
 | Email | Gmail API — user's own account, `gmail.send` scope only |
-| Hiring-manager lookup | Hunter.io — optional stretch |
+| Hiring-manager lookup | None — outreach uses the company's generic `careers@` address |
 | Secrets | `--dart-define=KEY=...` at build time; rotate after demo |
 | Agent paradigm | Tool use — Claude picks tools, client executes, loop continues |
 | Human-in-the-loop | Agent never sends external traffic without an explicit user tap |
@@ -107,7 +107,7 @@ Each tool is declared in `tool_registry.dart` (`name`, `description`,
 | `tailor_resume` | **Propose** 3–8 targeted edits for a job. No PDF, no write. | auto, then pause |
 | `apply_resume_edits` | Apply the accepted edit subset → render PDF → new resume doc | **user-gated** — fired by the diff viewer, never by Claude |
 | `draft_email` | Draft a cold-outreach email for a job, using a tailored resume | auto; user reviews before send |
-| `lookup_hiring_manager` | Best-effort hiring-manager name + email (Hunter.io) | auto (stretch) |
+| `lookup_hiring_manager` | The company's generic `careers@` address (no named-contact lookup) | auto |
 | `remember_fact` | Persist a reusable fact about the user → `learned_facts` | auto |
 | `save_to_pipeline` | Write a scored match as a pipeline approval card | auto |
 | `save_to_tracker` | Persist an application record to the Applications page | depends on `autonomy_level` |
@@ -220,21 +220,17 @@ Key: `ANTHROPIC_API_KEY`.
 Free tier 200 req/month — cache results in `jobs/`.
 
 **Gmail** — the existing Google Sign-In credential plus scope
-`https://www.googleapis.com/auth/gmail.send`. Packages: `googleapis` +
-`googleapis_auth`. Send via `users.messages.send` with a base64-encoded MIME
-message; attach the PDF resume as an `application/pdf` part.
-
-**Hunter.io (stretch)** — `GET https://api.hunter.io/v2/domain-search`. Key:
-`HUNTER_API_KEY`. Free tier 25/month. If skipped, `draft_email` falls back to a
-`careers@{company}.com` guess.
+`https://www.googleapis.com/auth/gmail.send`, requested on demand through
+`google_sign_in` v7's `authorizationClient`. Sends a raw POST to
+`users.messages.send` with a base64url-encoded MIME message (no `googleapis`
+package needed); the PDF resume rides as an `application/pdf` part.
 
 Run locally:
 
 ```bash
 flutter run \
   --dart-define=ANTHROPIC_API_KEY=sk-ant-... \
-  --dart-define=RAPIDAPI_KEY=...   \
-  --dart-define=HUNTER_API_KEY=...   # optional, stretch
+  --dart-define=RAPIDAPI_KEY=...
 ```
 
 ## 7. PDF template
@@ -252,7 +248,6 @@ text, never touches layout. Don't change the template without a team vote.
 | `search_jobs` (JSearch) | cache `jobs/` for 1h — stay under 200/month |
 | `match_jobs` | ≤25 jobs per call |
 | `tailor_resume` | one in-flight per session |
-| `lookup_hiring_manager` | cache by company for 24h |
 | `send_email` | hard-blocked without a user tap |
 | Anthropic | $5/month spend cap in the console |
 
