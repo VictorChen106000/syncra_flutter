@@ -99,13 +99,23 @@ class MockAgentService implements AgentService {
           detail: detail,
         ),
       TextBlock(:final text) => TextBlock(id: id, text: text),
-      ProposedEditsBlock(:final edits, :final jobId, :final resumeId) =>
       ProposedEditsBlock(
-        id: id,
-        edits: edits,
-        jobId: jobId,
-        resumeId: resumeId,
-      ),
+        :final edits,
+        :final jobId,
+        :final resumeId,
+        :final decisions,
+        :final state,
+      ) =>
+        ProposedEditsBlock(
+          id: id,
+          edits: edits,
+          jobId: jobId,
+          resumeId: resumeId,
+          // Preserve the card's settled state so a rebranded copy doesn't
+          // silently drop back to the interactive "reviewing" default.
+          decisions: List<EditDecision>.of(decisions),
+          state: state,
+        ),
       ActionProposalBlock(
         :final icon,
         :final title,
@@ -484,7 +494,9 @@ class MockAgentService implements AgentService {
   }) =>
       _AddBlock(
         delay: delay,
-        block: ProposedEditsBlock(
+        // Tailoring auto-applies its edits — the card is a read-only diff of
+        // what changed, not an accept/reject prompt.
+        block: ProposedEditsBlock.applied(
           id: id,
           edits: edits,
           jobId: jobId,

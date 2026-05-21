@@ -52,6 +52,11 @@ class _ProposedEditsBlockView extends StatelessWidget {
     final count = block.edits.length;
     final plural = count == 1 ? 'edit' : 'edits';
     final reviewing = block.state == ProposedEditsState.reviewing;
+    final headline = switch (block.state) {
+      ProposedEditsState.applied => '$count resume $plural applied',
+      ProposedEditsState.dismissed => '$count resume $plural dismissed',
+      ProposedEditsState.reviewing => '$count proposed resume $plural',
+    };
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -89,7 +94,7 @@ class _ProposedEditsBlockView extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  '$count proposed resume $plural',
+                  headline,
                   style: TextStyle(
                     color: brand.ink,
                     fontSize: 14.5,

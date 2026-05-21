@@ -7,13 +7,16 @@ import '../../core/router/route_names.dart';
 import '../../core/theme/brand_theme.dart';
 import '../state/running_task_notifier.dart';
 
-/// A slim, global status pill that floats at the very top of the app while a
-/// background task (an agent prompt, a resume tailor, …) is in flight.
+/// A global status card that floats at the top of the app while a background
+/// task (an agent prompt, a resume tailor, …) is in flight.
 ///
 /// Mounted once in `SyncraApp`'s `MaterialApp.router` builder so it overlays
-/// *every* route — the task keeps running and the pill stays visible no
+/// *every* route — the task keeps running and the card stays visible no
 /// matter where the user navigates. Reads [runningTaskProvider]; renders
 /// nothing when idle. Tapping it jumps to the agent chat.
+///
+/// Sized to match the actionable [AgentActivityBanner] card so the two top
+/// banners feel like one consistent surface.
 class RunningTaskBanner extends ConsumerWidget {
   const RunningTaskBanner({super.key});
 
@@ -33,8 +36,8 @@ class RunningTaskBanner extends ConsumerWidget {
         ),
       ),
       child: task.isActive
-          ? _TaskPill(
-              // Key on the status so the pill animates on running → completed,
+          ? _TaskCard(
+              // Key on the status so the card animates on running → completed,
               // but updates in place for label-only changes.
               key: ValueKey(task.status),
               task: task,
@@ -47,8 +50,8 @@ class RunningTaskBanner extends ConsumerWidget {
   }
 }
 
-class _TaskPill extends StatelessWidget {
-  const _TaskPill({
+class _TaskCard extends StatelessWidget {
+  const _TaskCard({
     super.key,
     required this.task,
     required this.onTap,
@@ -62,83 +65,114 @@ class _TaskPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
+    final isDark = brand.isDark;
     final accent = switch (task.status) {
       RunningTaskStatus.completed => brand.success,
       RunningTaskStatus.failed => brand.danger,
       _ => brand.accent,
     };
+    final eyebrow = switch (task.status) {
+      RunningTaskStatus.completed => 'DONE',
+      RunningTaskStatus.failed => 'FAILED',
+      _ => 'RUNNING',
+    };
+    final body = (task.detail != null && task.detail!.isNotEmpty)
+        ? task.detail!
+        : switch (task.status) {
+            RunningTaskStatus.completed => 'Tap to view the result.',
+            RunningTaskStatus.failed =>
+              'Something went wrong — tap to open and retry.',
+            _ => 'Running in the background — tap to open the chat.',
+          };
 
     return SafeArea(
       bottom: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: onTap,
-                borderRadius: BorderRadius.circular(99),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: brand.isDark
-                        ? brand.surface.withValues(alpha: 0.97)
-                        : brand.surface,
-                    borderRadius: BorderRadius.circular(99),
-                    border: Border.all(color: brand.border),
-                    boxShadow: [
-                      BoxShadow(
-                        color: brand.shadow,
-                        blurRadius: 22,
-                        offset: const Offset(0, 9),
-                      ),
-                    ],
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              decoration: BoxDecoration(
+                color: isDark
+                    ? brand.surface.withValues(alpha: 0.96)
+                    : brand.surface,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: brand.border),
+                boxShadow: [
+                  BoxShadow(
+                    color: brand.shadow,
+                    blurRadius: 24,
+                    offset: const Offset(0, 10),
                   ),
-                  padding: const EdgeInsets.fromLTRB(14, 9, 8, 9),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _StatusIcon(status: task.status, color: accent),
-                      const SizedBox(width: 10),
-                      Flexible(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                ],
+              ),
+              padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _StatusBadge(status: task.status, accent: accent),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           children: [
                             Text(
-                              task.label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                              'AGENT',
                               style: TextStyle(
-                                color: brand.ink,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.1,
+                                color: brand.accent,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1.4,
                               ),
                             ),
-                            if (task.detail != null &&
-                                task.detail!.isNotEmpty) ...[
-                              const SizedBox(height: 2),
-                              Text(
-                                task.detail!,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: brand.textMuted,
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w500,
-                                ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '· $eyebrow',
+                              style: TextStyle(
+                                color: brand.textMuted,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 1.0,
                               ),
-                            ],
+                            ),
                           ],
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      _DismissButton(onTap: onDismiss),
-                    ],
+                        const SizedBox(height: 4),
+                        Text(
+                          task.label,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: brand.ink,
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.2,
+                            height: 1.25,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          body,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: brand.textMuted,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
+                            height: 1.45,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 6),
+                  _DismissButton(onTap: onDismiss),
+                ],
               ),
             ),
           ),
@@ -147,30 +181,43 @@ class _TaskPill extends StatelessWidget {
     )
         .animate()
         .fadeIn(duration: 220.ms)
-        .moveY(begin: -12, end: 0, curve: Curves.easeOutCubic);
+        .moveY(begin: -14, end: 0, curve: Curves.easeOutCubic);
   }
 }
 
-/// Status glyph: a spinning ring while running, a settled icon once terminal.
-class _StatusIcon extends StatelessWidget {
-  const _StatusIcon({required this.status, required this.color});
+/// The leading glyph: a rounded badge with a spinning ring while running, or
+/// a settled status icon once the task is done or failed.
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({required this.status, required this.accent});
 
   final RunningTaskStatus status;
-  final Color color;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
+    Widget icon;
     if (status == RunningTaskStatus.running) {
-      return Icon(Icons.autorenew_rounded, size: 18, color: color)
+      icon = Icon(Icons.autorenew_rounded, size: 20, color: accent)
           .animate(onPlay: (c) => c.repeat())
           .rotate(duration: 900.ms, curve: Curves.linear);
+    } else {
+      icon = Icon(
+        status == RunningTaskStatus.completed
+            ? Icons.check_circle_rounded
+            : Icons.error_rounded,
+        size: 20,
+        color: accent,
+      );
     }
-    return Icon(
-      status == RunningTaskStatus.completed
-          ? Icons.check_circle_rounded
-          : Icons.error_rounded,
-      size: 18,
-      color: color,
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      alignment: Alignment.center,
+      child: icon,
     );
   }
 }
