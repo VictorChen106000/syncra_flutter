@@ -134,17 +134,15 @@ class ResumeTailorOrchestrator {
     return saved;
   }
 
-  /// Apply half of the tailor flow. Takes the user-accepted [acceptedEdits]
-  /// (from the diff viewer), rebuilds the resume via [ResumeDiffService],
-  /// renders the fixed PDF template, and saves a new `source: tailored`
-  /// resume doc. Pure-compute apply is in [ResumeDiffService]; this method
-  /// owns the I/O. Returns the saved file plus how many edits actually
-  /// landed (stale-path / verbatim-mismatch edits are dropped, not guessed).
-  Future<ApplyEditsResult> applyEdits({
+  /// Renders the tailored PDF for a user-accepted edit subset **without
+  /// saving anything**. Reads the source resume, applies [acceptedEdits] via
+  /// [ResumeDiffService], and renders the fixed template. Returns the PDF
+  /// bytes + the resulting [ResumeJson] so a caller can preview first and
+  /// persist later via [saveRenderedResume]. Throws if no edit matched.
+  Future<RenderEditsResult> renderEdits({
     required String uid,
     required String resumeId,
     required List<ProposedEdit> acceptedEdits,
-    String? jobId,
   }) async {
     if (acceptedEdits.isEmpty) {
       throw const TailorOrchestratorException(
@@ -161,17 +159,35 @@ class ResumeTailorOrchestrator {
       );
     }
 
+    final bytes = await _template.render(diff.resume);
+    return RenderEditsResult(
+      bytes: bytes,
+      resume: diff.resume,
+      appliedCount: diff.applied.length,
+      skippedCount: diff.skipped.length,
+    );
+  }
+
+  /// Persists an already-rendered tailored resume as a new `source: tailored`
+  /// doc (the second half of the apply flow, gated behind a preview). Saves
+  /// the [bytes] to Storage and caches [resume] as the doc's `resume_json`.
+  Future<ResumeFile> saveRenderedResume({
+    required String uid,
+    required Uint8List bytes,
+    required ResumeJson resume,
+    String? parentResumeId,
+    String? jobId,
+  }) async {
     Job? job;
     if (jobId != null && jobId.isNotEmpty) {
       job = await _jobs.fetchById(jobId);
     }
 
-    final bytes = await _template.render(diff.resume);
     final saved = await _resumes.saveGeneratedResume(
       uid: uid,
       name: _fileNameFor(job: job),
       bytes: bytes,
-      parentResumeId: resumeId,
+      parentResumeId: parentResumeId,
       tailoredForJobId: jobId,
     );
 
@@ -179,16 +195,55 @@ class ResumeTailorOrchestrator {
       await _paths
           .resumes(uid)
           .doc(saved.id)
-          .update({'resume_json': diff.resume.toJson()});
+          .update({'resume_json': resume.toJson()});
     } catch (e) {
       debugPrint('caching tailored resume_json failed: $e');
     }
 
+    return saved;
+  }
+
+  /// One-shot apply (render + save) for the agent's `apply_resume_edits` tool.
+  /// The diff-viewer UI uses [renderEdits] / [saveRenderedResume] instead so
+  /// it can preview before persisting.
+  Future<ApplyEditsResult> applyEdits({
+    required String uid,
+    required String resumeId,
+    required List<ProposedEdit> acceptedEdits,
+    String? jobId,
+  }) async {
+    final rendered = await renderEdits(
+      uid: uid,
+      resumeId: resumeId,
+      acceptedEdits: acceptedEdits,
+    );
+    final saved = await saveRenderedResume(
+      uid: uid,
+      bytes: rendered.bytes,
+      resume: rendered.resume,
+      parentResumeId: resumeId,
+      jobId: jobId,
+    );
     return ApplyEditsResult(
       file: saved,
-      appliedCount: diff.applied.length,
-      skippedCount: diff.skipped.length,
+      appliedCount: rendered.appliedCount,
+      skippedCount: rendered.skippedCount,
     );
+  }
+
+  /// The user's most recent `source: manual` resume id, or null if they
+  /// haven't uploaded one. Used to resolve a source resume when a proposed-
+  /// edits card didn't carry an explicit id.
+  Future<String?> latestManualResumeId(String uid) async {
+    final snap = await _paths
+        .resumes(uid)
+        .orderBy('uploaded_at', descending: true)
+        .limit(10)
+        .get();
+    for (final doc in snap.docs) {
+      if (doc.data()['source'] == 'manual') return doc.id;
+    }
+    return null;
   }
 
   String _fileNameFor({Job? job}) {
@@ -199,6 +254,22 @@ class ResumeTailorOrchestrator {
     final base = safeCompany.isEmpty ? 'Tailored' : safeCompany;
     return '${base}_Resume_$stamp.pdf';
   }
+}
+
+/// Result of [ResumeTailorOrchestrator.renderEdits] — a rendered-but-unsaved
+/// tailored resume, ready to preview before [ResumeTailorOrchestrator.saveRenderedResume].
+class RenderEditsResult {
+  const RenderEditsResult({
+    required this.bytes,
+    required this.resume,
+    required this.appliedCount,
+    required this.skippedCount,
+  });
+
+  final Uint8List bytes;
+  final ResumeJson resume;
+  final int appliedCount;
+  final int skippedCount;
 }
 
 /// Result of [ResumeTailorOrchestrator.applyEdits].

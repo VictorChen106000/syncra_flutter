@@ -1,5 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import '../../resumes/models/proposed_edit.dart';
+import '../../resumes/models/resume_json.dart';
 
 /// One unit of agent output inside an [AgentTurn].
 ///
@@ -59,9 +62,10 @@ class TextBlock extends AgentBlock {
 enum EditDecision { pending, accepted, rejected }
 
 /// Lifecycle of the whole proposed-edits card. While [reviewing] the user can
-/// toggle individual edits; once they apply the accepted edits (or dismiss the
-/// card) it settles and the controls lock.
-enum ProposedEditsState { reviewing, applied, dismissed }
+/// toggle individual edits; tapping Apply flips to [applying] while the
+/// tailored PDF renders, then [applied] (preview ready, not yet saved). The
+/// card settles to [dismissed] if the user dismisses it instead.
+enum ProposedEditsState { reviewing, applying, applied, dismissed }
 
 /// PR-style resume edits proposed by `tailor_resume`.
 ///
@@ -90,6 +94,33 @@ class ProposedEditsBlock extends AgentBlock {
 
   /// Whole-card lifecycle. Mutable for the same reason as [decisions].
   ProposedEditsState state;
+
+  /// The rendered-but-unsaved tailored PDF, set once [state] reaches
+  /// [ProposedEditsState.applied]. The preview screen reads this; it's only
+  /// persisted to the resume library when the user taps Save (see
+  /// [savedResumeId]). Mutable so the notifier can fill it in after rendering.
+  Uint8List? previewBytes;
+
+  /// The [ResumeJson] behind [previewBytes] — handed to the orchestrator's
+  /// save step so the new resume doc caches its parsed structure.
+  ResumeJson? previewResume;
+
+  /// The source resume id actually used to render (resolved from [resumeId],
+  /// or the latest manual resume when the card carried none).
+  String? resolvedResumeId;
+
+  /// Set once the previewed PDF has been saved to the resume library. While
+  /// null, the preview exists only in memory.
+  String? savedResumeId;
+
+  /// How many accepted edits actually landed / were skipped during render.
+  int appliedCount = 0;
+  int skippedCount = 0;
+
+  /// Last apply/save error, surfaced in the card so the user can retry.
+  String? applyError;
+
+  bool get isSaved => savedResumeId != null;
 
   int get acceptedCount =>
       decisions.where((d) => d == EditDecision.accepted).length;

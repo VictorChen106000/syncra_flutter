@@ -11,6 +11,7 @@ import '../../../../core/utils/motion.dart';
 import '../../models/agent_block.dart';
 import '../../state/agent_chat_notifier.dart';
 import '../../../resumes/models/proposed_edit.dart';
+import '../../../resumes/presentation/tailored_preview_page.dart';
 
 class AgentBlockView extends StatelessWidget {
   const AgentBlockView({
@@ -140,61 +141,208 @@ class _EditsFooter extends ConsumerWidget {
 
   final ProposedEditsBlock block;
 
+  void _openPreview(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => TailoredPreviewPage(blockId: block.id),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final brand = context.brand;
+    final notifier = ref.read(agentChatProvider.notifier);
 
-    if (block.state != ProposedEditsState.reviewing) {
-      final applied = block.state == ProposedEditsState.applied;
-      return Row(
-        children: [
-          Icon(
-            applied ? Icons.check_circle_rounded : Icons.history_rounded,
-            size: 15,
-            color: applied ? brand.success : brand.textMuted,
-          ),
-          const SizedBox(width: 7),
-          Expanded(
-            child: Text(
-              applied
-                  ? 'Applied ${block.acceptedCount} '
-                      '${block.acceptedCount == 1 ? 'edit' : 'edits'} to your resume'
-                  : 'Dismissed — no changes were made',
+    switch (block.state) {
+      case ProposedEditsState.dismissed:
+        return _SettledLine(
+          icon: Icons.history_rounded,
+          color: brand.textMuted,
+          text: 'Dismissed — no changes were made',
+        );
+
+      case ProposedEditsState.applying:
+        return Row(
+          children: [
+            const SizedBox(
+              width: 15,
+              height: 15,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 9),
+            Text(
+              'Rendering your tailored resume…',
               style: TextStyle(
-                color: applied ? brand.ink : brand.textMuted,
+                color: brand.textMuted,
                 fontSize: 12.5,
                 fontWeight: FontWeight.w700,
                 letterSpacing: -0.1,
               ),
             ),
-          ),
-        ],
-      );
+          ],
+        );
+
+      case ProposedEditsState.applied:
+        // Preview is ready (and maybe saved). The magnifying glass opens the
+        // full-screen preview where the user saves or keeps editing.
+        final saved = block.isSaved;
+        final skipped = block.skippedCount > 0
+            ? ' · ${block.skippedCount} skipped'
+            : '';
+        return Row(
+          children: [
+            Icon(
+              saved ? Icons.check_circle_rounded : Icons.auto_awesome_rounded,
+              size: 15,
+              color: saved ? brand.success : brand.ink,
+            ),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Text(
+                saved
+                    ? 'Saved to your resumes'
+                    : 'Preview ready — tap to review$skipped',
+                style: TextStyle(
+                  color: brand.ink,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.1,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _PreviewIconButton(onTap: () => _openPreview(context)),
+          ],
+        );
+
+      case ProposedEditsState.reviewing:
+        final count = block.acceptedCount;
+        final canApply = count > 0;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (block.applyError != null) ...[
+              _ErrorLine(message: block.applyError!),
+              const SizedBox(height: 10),
+            ],
+            Row(
+              children: [
+                _FooterButton(
+                  label: 'Dismiss all',
+                  filled: false,
+                  enabled: true,
+                  onTap: () => notifier.dismissProposedEdits(block.id),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _FooterButton(
+                    label: canApply
+                        ? 'Apply $count ${count == 1 ? 'edit' : 'edits'}'
+                        : 'Apply edits',
+                    filled: true,
+                    enabled: canApply,
+                    onTap: () => notifier.applyProposedEdits(block.id),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
     }
+  }
+}
 
-    final count = block.acceptedCount;
-    final canApply = count > 0;
-    final notifier = ref.read(agentChatProvider.notifier);
+/// One-line settled footer (dismissed state).
+class _SettledLine extends StatelessWidget {
+  const _SettledLine({
+    required this.icon,
+    required this.color,
+    required this.text,
+  });
 
+  final IconData icon;
+  final Color color;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
     return Row(
       children: [
-        _FooterButton(
-          label: 'Dismiss all',
-          filled: false,
-          enabled: true,
-          onTap: () => notifier.dismissProposedEdits(block.id),
-        ),
-        const SizedBox(width: 8),
+        Icon(icon, size: 15, color: color),
+        const SizedBox(width: 7),
         Expanded(
-          child: _FooterButton(
-            label: canApply ? 'Apply $count ${count == 1 ? 'edit' : 'edits'}'
-                : 'Apply edits',
-            filled: true,
-            enabled: canApply,
-            onTap: () => notifier.applyProposedEdits(block.id),
+          child: Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.1,
+            ),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ErrorLine extends StatelessWidget {
+  const _ErrorLine({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.error_outline_rounded, size: 15, color: brand.danger),
+        const SizedBox(width: 7),
+        Expanded(
+          child: Text(
+            message,
+            style: TextStyle(
+              color: brand.danger,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              height: 1.4,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The magnifying-glass affordance that opens the tailored-PDF preview.
+class _PreviewIconButton extends StatelessWidget {
+  const _PreviewIconButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Material(
+      color: brand.ink,
+      borderRadius: BorderRadius.circular(11),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(11),
+        child: Container(
+          width: 36,
+          height: 36,
+          alignment: Alignment.center,
+          child: Icon(
+            Icons.zoom_in_rounded,
+            size: 19,
+            color: brand.accent,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -260,10 +408,13 @@ class _StatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final brand = context.brand;
     final (label, fg, bg) = switch (block.state) {
-      ProposedEditsState.applied => (
-          'Applied',
-          brand.onAccent,
-          brand.accent,
+      ProposedEditsState.applied => block.isSaved
+          ? ('Saved', brand.onAccent, brand.accent)
+          : ('Preview ready', brand.onAccent, brand.accent),
+      ProposedEditsState.applying => (
+          'Rendering…',
+          brand.textMuted,
+          brand.surfaceMuted,
         ),
       ProposedEditsState.dismissed => (
           'Dismissed',
