@@ -507,7 +507,7 @@ class _ProposedEditPreviewCard extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'EDIT $index · ${edit.targetPath}',
+              '${edit.isAdd ? 'ADD' : 'EDIT'} $index · ${edit.targetPath}',
               style: TextStyle(
                 color: brand.textMuted,
                 fontSize: 10.5,
@@ -516,11 +516,14 @@ class _ProposedEditPreviewCard extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 10),
-            _DiffTextRow(
-              text: edit.originalText,
-              isRemoval: true,
-            ),
-            const SizedBox(height: 6),
+            // An `add` has nothing to remove — show only the inserted line.
+            if (!edit.isAdd) ...[
+              _DiffTextRow(
+                text: edit.originalText,
+                isRemoval: true,
+              ),
+              const SizedBox(height: 6),
+            ],
             _DiffTextRow(
               text: edit.proposedText,
               isRemoval: false,

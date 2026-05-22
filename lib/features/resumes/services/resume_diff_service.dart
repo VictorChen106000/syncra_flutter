@@ -11,8 +11,10 @@ import '../models/resume_json.dart';
 ///
 /// An edit is applied only when both hold:
 ///   1. its `target_path` resolves to a String leaf in the resume, and
-///   2. the leaf's current value matches `original_text` verbatim
-///      (whitespace-trimmed).
+///   2. the leaf's current value matches `original_text` after canonicalizing
+///      cosmetic differences (smart quotes/dashes, collapsed whitespace — see
+///      [_canonical]), so an LLM-copied string isn't rejected over a curly
+///      apostrophe while genuinely different text still is.
 /// Edits that fail either check are skipped — never guessed at — so a
 /// stale or hallucinated path can never corrupt the resume.
 ///
@@ -60,7 +62,11 @@ class ResumeDiffService {
 
   /// Walks [root] to the leaf named by [edit.targetPath], verifies the
   /// verbatim match, and swaps in `proposed_text`. Returns whether it landed.
+  /// `add` edits route to [_applyAdd] instead — they grow a list rather than
+  /// replace a leaf.
   bool _applyOne(Map<String, dynamic> root, ProposedEdit edit) {
+    if (edit.isAdd) return _applyAdd(root, edit);
+
     final accessors = _parsePath(_normalize(edit.targetPath));
     if (accessors.isEmpty) return false;
 
@@ -74,7 +80,7 @@ class ResumeDiffService {
     final last = accessors.last;
     final current = _descend(parent, last);
     if (current is! String) return false;
-    if (current.trim() != edit.originalText.trim()) return false;
+    if (_canonical(current) != _canonical(edit.originalText)) return false;
 
     if (last is int && parent is List) {
       if (last < 0 || last >= parent.length) return false;
@@ -84,6 +90,58 @@ class ResumeDiffService {
     if (last is String && parent is Map) {
       parent[last] = edit.proposedText;
       return true;
+    }
+    return false;
+  }
+
+  /// Lands an `add` edit. Two shapes, depending on what [edit.targetPath]
+  /// resolves to — skips (never throws) if it resolves to neither:
+  ///
+  ///   * **List target** (`skills`, `experience[0].bullets`): appends
+  ///     [edit.proposedText], unless an equal item (trimmed, case-insensitive)
+  ///     is already present.
+  ///   * **Empty/absent scalar target** (`summary`, `header.email`): sets the
+  ///     field. This is how a resume gains a section it never had — e.g. the
+  ///     tailor proposing a summary for a resume with none. A scalar that
+  ///     already holds non-empty text is left untouched (an `add` must never
+  ///     clobber existing content — that's what a `replace` edit is for).
+  bool _applyAdd(Map<String, dynamic> root, ProposedEdit edit) {
+    final value = edit.proposedText.trim();
+    if (value.isEmpty) return false;
+
+    final accessors = _parsePath(_normalize(edit.targetPath));
+    if (accessors.isEmpty) return false;
+
+    // Descend to the parent container of the final accessor.
+    dynamic parent = root;
+    for (var i = 0; i < accessors.length - 1; i++) {
+      parent = _descend(parent, accessors[i]);
+      if (parent == null) return false;
+    }
+    final last = accessors.last;
+    final current = _descend(parent, last);
+
+    // List target → append, de-duped. Only string lists (skills, bullets)
+    // accept an add; appending to an object list (experience, projects,
+    // education) would be dropped by ResumeJson.fromJson on rebuild, so reject
+    // it here rather than report a phantom success.
+    if (current is List) {
+      if (current.any((item) => item is! String)) return false;
+      final alreadyPresent = current
+          .whereType<String>()
+          .any((item) => item.trim().toLowerCase() == value.toLowerCase());
+      if (alreadyPresent) return false;
+      current.add(edit.proposedText);
+      return true;
+    }
+
+    // Empty/absent scalar map field → set it (the path may be missing entirely
+    // since toJson drops null scalars). Non-empty scalars are never clobbered.
+    if (last is String && parent is Map) {
+      if (current == null || (current is String && current.trim().isEmpty)) {
+        parent[last] = edit.proposedText;
+        return true;
+      }
     }
     return false;
   }
@@ -131,6 +189,20 @@ class ResumeDiffService {
         ? trimmed.substring(profilePrefix.length)
         : trimmed;
   }
+
+  /// Canonical form used **only** to compare `original_text` against the
+  /// resume leaf — never stored. Folds the cosmetic differences that make an
+  /// LLM-copied string fail an exact match even though it's the same content:
+  /// smart quotes/apostrophes, en/em-dashes, the ellipsis glyph, and
+  /// non-breaking or repeated whitespace. Genuinely different text still
+  /// won't match, so the verbatim guard against stale/hallucinated edits holds.
+  String _canonical(String s) => s
+      .replaceAll(RegExp(r'[‘’‛′]'), "'")
+      .replaceAll(RegExp(r'[“”″]'), '"')
+      .replaceAll(RegExp(r'[–—]'), '-')
+      .replaceAll('…', '...')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
 
   Map<String, dynamic> _deepCopy(Map<String, dynamic> map) =>
       (jsonDecode(jsonEncode(map)) as Map).cast<String, dynamic>();

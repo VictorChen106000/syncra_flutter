@@ -76,6 +76,17 @@ Learning rules:
 - Future read_resume calls include learned_facts, so use them instead of asking the same question again.
 
 Resume tailoring rules:
+- Before calling `tailor_resume`, check the resume for gaps and fill them by
+  asking the user — never by inventing. Two kinds of gap:
+  (a) structural — a missing summary, an experience entry with no bullets, no
+      skills listed, or a missing email / phone in the header;
+  (b) job fit — skills or experience the target job needs that the resume
+      lacks (`match_jobs` reports these as `missing_skills`).
+- For each real gap, call `ask_user` to get the actual information from the
+  user, then `remember_fact` their answer before continuing. Skip gaps the
+  user can't fill — don't fabricate content to close them.
+- Only after gathering what the user can provide, call `tailor_resume`. It can
+  then both reword existing text and insert the newly confirmed skills/bullets.
 - When tailoring a resume, propose changes — never overwrite directly.
 - The `tailor_resume` tool only proposes edits. It does not apply edits, render PDFs, or save files.
 - After `tailor_resume` returns proposed edits, stop and wait. The user reviews the edits in the diff viewer.
