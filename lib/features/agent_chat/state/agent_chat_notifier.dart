@@ -310,6 +310,24 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     );
     // Make sure subsequent IDs don't collide with loaded ones.
     _seq = saved.length + 1;
+    // Continue the chat with the resume it was already using — sync the
+    // attachment selection to that conversation's latest user message so
+    // the "RESUME IN USE" card (and the next send) stay consistent.
+    ref
+        .read(resumeProvider.notifier)
+        .setSelectedResumes(_resumeIdsFromHistory(saved));
+  }
+
+  /// Resume ids attached to the most recent [UserMessage] in a loaded
+  /// transcript — empty if that conversation used no resume.
+  Set<String> _resumeIdsFromHistory(List<ChatItem> items) {
+    for (var i = items.length - 1; i >= 0; i--) {
+      final item = items[i];
+      if (item is UserMessage) {
+        return item.attachments.map((a) => a.id).toSet();
+      }
+    }
+    return const {};
   }
 
   /// Permanently deletes a saved conversation. If it's the one on screen,

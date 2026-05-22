@@ -96,11 +96,17 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final resumeState = ref.watch(resumeProvider);
-    final resumeNotifier = ref.read(resumeProvider.notifier);
     final chatState = ref.watch(agentChatProvider);
     final streaming = chatState.isStreaming;
     final hasText = _textController.text.trim().isNotEmpty;
+    // Before the first message is sent, an attached resume is "pending" —
+    // we preview it inside the composer. Once the chat is underway it's
+    // promoted to the persistent context card up top, so drop it here.
+    final hasSentMessage = chatState.items.any((i) => i is UserMessage);
+    final resumeState = ref.watch(resumeProvider);
+    final resumeNotifier = ref.read(resumeProvider.notifier);
+    final showComposerResumes =
+        !hasSentMessage && resumeState.selectedResumes.isNotEmpty;
     return Padding(
       padding: EdgeInsets.fromLTRB(
         16,
@@ -141,7 +147,7 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (resumeState.selectedResumes.isNotEmpty) ...[
+              if (showComposerResumes) ...[
                 ResumeAttachmentChips(
                   resumes: resumeState.selectedResumes,
                   onRemove: resumeNotifier.removeSelectedResume,

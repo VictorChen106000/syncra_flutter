@@ -223,6 +223,23 @@ class ResumeNotifier extends Notifier<ResumeState> {
     state = state.copyWith(selectedResumeIds: next);
   }
 
+  /// Detach every selected resume at once — backs the "clear" action on the
+  /// chat's resume-context card.
+  void clearSelectedResumes() {
+    if (state.selectedResumeIds.isEmpty) return;
+    state = state.copyWith(selectedResumeIds: const {});
+  }
+
+  /// Replaces the whole selection — used when continuing a saved chat so the
+  /// attached resume matches what that conversation was already using.
+  void setSelectedResumes(Set<String> ids) {
+    final next = ids.length > AppConstants.maxResumeAttachments
+        ? ids.take(AppConstants.maxResumeAttachments).toSet()
+        : ids;
+    if (setEquals(next, state.selectedResumeIds)) return;
+    state = state.copyWith(selectedResumeIds: {...next});
+  }
+
   Future<void> deleteResume(String resumeId) async {
     final user = ref.read(authProvider).appUser;
     final uid = user?.uid;

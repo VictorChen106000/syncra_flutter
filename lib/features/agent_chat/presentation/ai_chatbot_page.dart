@@ -7,8 +7,12 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
+import '../../../core/utils/file_formatter.dart';
 import '../../../data/models/job.dart';
 import '../../../shared/widgets/gooey_orb.dart';
+import '../../resumes/models/resume_file.dart';
+import '../../resumes/presentation/widgets/select_resumes_bottom_sheet.dart';
+import '../../resumes/state/resume_notifier.dart';
 import '../agent_prompt_suggestions.dart';
 import '../models/agent_block.dart';
 import '../models/chat_message.dart';
@@ -92,6 +96,9 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
 
     final state = ref.watch(agentChatProvider);
     final notifier = ref.read(agentChatProvider.notifier);
+    final hasAttachedResume = ref.watch(
+      resumeProvider.select((s) => s.selectedResumes.isNotEmpty),
+    );
 
     final onlyInitial =
         state.items.length == 1 && state.items.first is AgentTurn;
@@ -112,6 +119,9 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
     // "chat seen through the controls" effect.
     double topInset = topSafe + 56;
     if (state.threadJob != null) topInset += 58;
+    // The resume card only surfaces once the chat is underway — until then
+    // the attached resume previews inside the composer instead.
+    if (hasAttachedResume && stickyPrompt != null) topInset += 58;
     if (stickyPrompt != null) topInset += 80;
     double bottomInset = media.padding.bottom + 152;
     // A docked panel sits above the composer — give the transcript extra
@@ -434,6 +444,108 @@ class _ThreadContextChip extends StatelessWidget {
   }
 }
 
+/// Pinned chip below the header announcing which resume(s) Syncra has in
+/// context for the chat — the user's signal that the agent is working from
+/// their actual resume. Tap the body to swap resumes; tap the X to detach.
+class _ResumeContextChip extends ConsumerWidget {
+  const _ResumeContextChip({required this.resumes});
+
+  final List<ResumeFile> resumes;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
+    final isSingle = resumes.length == 1;
+    final title = isSingle
+        ? FileFormatter.cleanName(resumes.first.name)
+        : '${resumes.length} resumes attached';
+    return _FrostedCard(
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(_FrostedCard.radius),
+        child: InkWell(
+          onTap: () => SelectResumesBottomSheet.show(context),
+          borderRadius: BorderRadius.circular(_FrostedCard.radius),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+            child: Row(
+              children: [
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: brand.ink,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.description_rounded,
+                    size: 15,
+                    color: brand.accent,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'RESUME IN USE',
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.4,
+                          color: brand.textMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: brand.ink,
+                          letterSpacing: -0.1,
+                          height: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Semantics(
+                  label: 'Detach resume',
+                  button: true,
+                  child: InkResponse(
+                    onTap: () => ref
+                        .read(resumeProvider.notifier)
+                        .clearSelectedResumes(),
+                    radius: 24,
+                    excludeFromSemantics: true,
+                    child: SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: Center(
+                        child: Icon(
+                          Icons.close_rounded,
+                          size: 18,
+                          color: brand.textMuted,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Floating top chrome over the full-bleed transcript: a back button and a
 /// new-chat button (frosted circles), plus the optional thread chip and
 /// sticky prompt as frosted cards. No solid bar — the chat scrolls behind it.
@@ -457,6 +569,7 @@ class _FloatingTop extends ConsumerWidget {
         (s) => s.items.length > 1 || s.threadJob != null,
       ),
     );
+    final attachedResumes = ref.watch(resumeProvider).selectedResumes;
     return SafeArea(
       bottom: false,
       child: Column(
@@ -495,6 +608,11 @@ class _FloatingTop extends ConsumerWidget {
                 job: threadJob!,
                 onClear: onClearThread,
               ),
+            ),
+          if (attachedResumes.isNotEmpty && stickyPrompt != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: _ResumeContextChip(resumes: attachedResumes),
             ),
           if (stickyPrompt != null)
             Padding(
