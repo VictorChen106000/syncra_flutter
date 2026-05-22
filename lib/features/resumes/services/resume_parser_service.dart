@@ -69,15 +69,34 @@ Rules:
       );
     }
 
+    final text = await _callClaude(rawText, strict: false);
+    try {
+      return _parseJsonResponse(text);
+    } on ResumeParseException {
+      // The model returned malformed JSON — retry once with a stricter
+      // instruction before surfacing the failure.
+      debugPrint('resume parse JSON malformed — retrying once (strict)');
+      final retry = await _callClaude(rawText, strict: true);
+      return _parseJsonResponse(retry);
+    }
+  }
+
+  /// Single Anthropic call returning the concatenated text content. When
+  /// [strict] is set, prepends an instruction emphasizing raw-JSON-only
+  /// output — used for the one retry after a malformed-JSON response.
+  Future<String> _callClaude(String rawText, {required bool strict}) async {
+    final userText = strict
+        ? 'Your previous response was not valid JSON. Return ONLY the raw '
+            'JSON object — no markdown fences, no commentary, no text before '
+            'or after it.\n\nParse this resume text:\n\n$rawText'
+        : 'Parse this resume text:\n\n$rawText';
+
     final payload = {
       'model': model,
       'max_tokens': 2048,
       'system': _system,
       'messages': [
-        {
-          'role': 'user',
-          'content': 'Parse this resume text:\n\n$rawText',
-        }
+        {'role': 'user', 'content': userText},
       ],
     };
 
@@ -110,8 +129,7 @@ Rules:
     if (text.isEmpty) {
       throw const ResumeParseException('Anthropic returned no content.');
     }
-
-    return _parseJsonResponse(text);
+    return text;
   }
 
   ResumeJson _parseJsonResponse(String raw) {

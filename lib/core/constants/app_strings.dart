@@ -99,16 +99,6 @@ class AppStrings {
   static const String profileTitle = 'Settings';
   static const String careerPipeline = 'Career Pipeline';
   static const String agentPermissions = 'Agent Permissions & Tools';
-  static const String agentAutonomy = 'Agent Autonomy';
-  static const String autonomySuggest = 'Suggest';
-  static const String autonomyAskFirst = 'Ask First';
-  static const String autonomyAutoApply = 'Auto-Apply';
-  static const String autonomySuggestBody =
-      'Agent finds matches and prepares drafts. You decide everything.';
-  static const String autonomyAskFirstBody =
-      'Agent prepares applications, asks for approval before sending.';
-  static const String autonomyAutoApplyBody =
-      'Agent applies on your behalf for 90%+ matches. You can intercept anytime.';
   static const String preferences = 'Preferences';
   static const String signOut = 'Sign Out';
 }

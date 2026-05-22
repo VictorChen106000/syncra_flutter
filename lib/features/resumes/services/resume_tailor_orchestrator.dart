@@ -80,6 +80,14 @@ class ResumeTailorOrchestrator {
     }
 
     final rawText = _extractor.extractFromBytes(bytes);
+    if (rawText.trim().isEmpty) {
+      // No embedded text — almost always a scanned-image PDF. Surface an
+      // actionable error instead of guessing or substituting a sample.
+      throw const TailorOrchestratorException(
+        'This PDF has no readable text — it looks like a scanned image. '
+        'Upload a text-based PDF resume so the agent can read it.',
+      );
+    }
     final parsed = await _parser.parse(rawText);
     if (parsed == null) {
       throw const TailorOrchestratorException(

@@ -84,6 +84,37 @@ Future<AppUser?> signInWithGoogle() async {
   }
 }
 
+  /// Signs in an existing account with email + password.
+  /// Throws [FirebaseAuthException] on bad credentials — caller maps the code.
+  Future<AppUser?> signInWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    final credential = await _firebaseAuth.signInWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+    return userToAppUser(credential.user);
+  }
+
+  /// Creates a new email/password account and seeds the display name from
+  /// the local-part of the address. Throws [FirebaseAuthException].
+  Future<AppUser?> signUpWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    final credential = await _firebaseAuth.createUserWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+    final namePart = email.trim().split('@').first;
+    if (namePart.isNotEmpty) {
+      await credential.user?.updateDisplayName(namePart);
+      await credential.user?.reload();
+    }
+    return userToAppUser(_firebaseAuth.currentUser ?? credential.user);
+  }
+
   /// Signs out of both Google and Firebase.
   Future<void> signOut() async {
     if (!kIsWeb) {

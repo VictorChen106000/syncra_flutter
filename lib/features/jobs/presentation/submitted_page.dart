@@ -6,7 +6,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
-import '../../../fixtures/mock_jobs.dart';
+import 'widgets/job_unavailable_view.dart';
 import '../../../data/models/job.dart';
 import '../../../shared/widgets/app_buttons.dart';
 
@@ -18,7 +18,8 @@ class SubmittedPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final j = job ?? MockJobs.all.first;
+    if (job == null) return const JobUnavailableView();
+    final j = job!;
 
     return Scaffold(
       backgroundColor: brand.bg,

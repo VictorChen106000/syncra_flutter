@@ -11,7 +11,6 @@ import '../../../data/models/job.dart';
 import '../../../data/services/jsearch_service.dart';
 import '../../email/services/email_send_service.dart';
 import '../../email/services/recipient_resolver.dart';
-import '../../agent/data/fake_resume.dart';
 import '../../agent/services/anthropic_service.dart';
 import '../../resumes/models/proposed_edit.dart';
 import '../../resumes/services/resume_parser_service.dart';
@@ -157,8 +156,8 @@ ToolResult _searchJobsResult(List<Job> jobs) {
 }
 
 // ---------------------------------------------------------------------------
-// read_resume — uses the user's most recent manual resume's parsed JSON if
-// present, else falls back to kFakeResumeJson so the demo still works.
+// read_resume — uses the user's most recent manual resume's parsed JSON.
+// Errors (with an actionable message) when there is no readable resume.
 // ---------------------------------------------------------------------------
 
 void _registerReadResume(
@@ -188,10 +187,7 @@ void _registerReadResume(
     handler: (args) async {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null) {
-        return ToolResult(
-          summary: 'Using sample resume (not signed in)',
-          data: kFakeResumeJson,
-        );
+        return ToolResult.error('Sign in to load your resume.');
       }
 
       final paths = FirestorePaths(FirebaseFirestore.instance);
@@ -215,11 +211,9 @@ void _registerReadResume(
         }
 
         if (manualDoc == null) {
-          return ToolResult(
-            summary: learnedFacts.isEmpty
-                ? 'No resume uploaded yet — using sample'
-                : 'No resume uploaded yet — using sample · ${learnedFacts.length} learned facts',
-            data: _resumeWithLearnedFacts(kFakeResumeJson, learnedFacts),
+          return ToolResult.error(
+            'No resume uploaded yet. Upload a resume so the agent can '
+            'read it.',
           );
         }
 
@@ -239,14 +233,8 @@ void _registerReadResume(
         );
       } catch (e) {
           debugPrint('read_resume parse failed for resumeId=$resumeId: $e');
-
-          final reason = _shortToolError(e);
-
-          return ToolResult(
-            summary: learnedFacts.isEmpty
-                ? 'Parse failed: $reason — using sample resume'
-                : 'Parse failed: $reason — using sample resume · ${learnedFacts.length} learned facts',
-            data: _resumeWithLearnedFacts(kFakeResumeJson, learnedFacts),
+          return ToolResult.error(
+            'Could not read your resume: ${_shortToolError(e)}',
           );
         }
     },
@@ -382,32 +370,27 @@ void _registerMatchJobs(
       }
 
       if (!anthropic.hasApiKey) {
-        return ToolResult(
-          summary: '${jobs.length} scored (no API key — placeholder)',
-          data: {
-            'results': jobs
-                .map((j) => {
-                      'job_id': j.id,
-                      'category': 'ready',
-                      'match_score': 75,
-                      'justification': 'Placeholder — set ANTHROPIC_API_KEY.',
-                      'missing_skills': <String>[],
-                    })
-                .toList(),
-          },
+        return ToolResult.error(
+          'Job scoring needs an Anthropic API key (ANTHROPIC_API_KEY).',
         );
       }
 
       final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) {
+        return ToolResult.error('Sign in to score job matches.');
+      }
       final resumeId = (args['resume_id'] as String?)?.trim();
 
-      final resumeJson = uid == null
-          ? kFakeResumeJson
-          : await _loadResumeContextForAgent(
-              uid: uid,
-              orchestrator: orchestrator,
-              resumeId: resumeId,
-            );
+      final Map<String, dynamic> resumeJson;
+      try {
+        resumeJson = await _loadResumeContextForAgent(
+          uid: uid,
+          orchestrator: orchestrator,
+          resumeId: resumeId,
+        );
+      } catch (e) {
+        return ToolResult.error(_shortToolError(e));
+      }
 
       final results = await anthropic.scoreJobs(
         resume: resumeJson,
@@ -602,28 +585,27 @@ void _registerTailorResume(
       final job = await jobsRepo.fetchById(jobId);
       if (job == null) return ToolResult.error('Job not found.');
 
+      if (!paraphrase.hasApiKey) {
+        return ToolResult.error(
+          'Resume tailoring needs an Anthropic API key (ANTHROPIC_API_KEY).',
+        );
+      }
+
       final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) {
+        return ToolResult.error('Sign in to tailor your resume.');
+      }
       final resumeId = (args['resume_id'] as String?)?.trim();
 
-      final resumeJson = uid == null
-          ? kFakeResumeJson
-          : await _loadResumeContextForAgent(
-              uid: uid,
-              orchestrator: orchestrator,
-              resumeId: resumeId,
-            );
-
-      if (!paraphrase.hasApiKey) {
-        return ToolResult(
-          summary: 'No API key — proposed edits unavailable',
-          data: {
-            'proposed_edits': <Map<String, dynamic>>[],
-            'job_id': jobId,
-            if (resumeId != null && resumeId.isNotEmpty) 'resume_id': resumeId,
-            'note':
-                'Set ANTHROPIC_API_KEY to generate proposed resume edits.',
-          },
+      final Map<String, dynamic> resumeJson;
+      try {
+        resumeJson = await _loadResumeContextForAgent(
+          uid: uid,
+          orchestrator: orchestrator,
+          resumeId: resumeId,
         );
+      } catch (e) {
+        return ToolResult.error(_shortToolError(e));
       }
 
       try {
@@ -803,27 +785,27 @@ void _registerDraftEmail(
           (args['recipient_email'] as String?) ?? resolveRecipient(job.company);
       final tone = (args['tone'] as String?) ?? 'warm';
 
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      final resumeId = (args['resume_id'] as String?)?.trim();
-      final resumeJson = uid == null
-          ? kFakeResumeJson
-          : await _loadResumeContextForAgent(
-              uid: uid,
-              orchestrator: orchestrator,
-              resumeId: resumeId,
-            );
-
       if (!paraphrase.hasApiKey) {
-        return ToolResult(
-          summary: 'Draft ready (placeholder — no API key)',
-          data: {
-            'subject': 'Application for ${job.title}',
-            'body':
-                'Hi,\n\nI\'m excited about the ${job.title} role at ${job.company}. '
-                "I've attached my tailored resume.\n\nThanks,\n${_resumeName(resumeJson)}",
-            'recipient': recipient,
-          },
+        return ToolResult.error(
+          'Email drafting needs an Anthropic API key (ANTHROPIC_API_KEY).',
         );
+      }
+
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) {
+        return ToolResult.error('Sign in to draft an email.');
+      }
+      final resumeId = (args['resume_id'] as String?)?.trim();
+
+      final Map<String, dynamic> resumeJson;
+      try {
+        resumeJson = await _loadResumeContextForAgent(
+          uid: uid,
+          orchestrator: orchestrator,
+          resumeId: resumeId,
+        );
+      } catch (e) {
+        return ToolResult.error(_shortToolError(e));
       }
 
       try {
@@ -860,17 +842,6 @@ JobCategory _jobCategoryFromWire(
     _ => fallback,
   };
 }
-
-/// Pulls the candidate's name out of a resume map, tolerating both the
-/// canonical ResumeJSON shape (`header.name`) and the sample's (`profile.name`).
-String _resumeName(Map<String, dynamic> resumeJson) {
-  final fromHeader = (resumeJson['header'] as Map?)?['name'] as String?;
-  if (fromHeader != null && fromHeader.trim().isNotEmpty) return fromHeader;
-  final fromProfile = (resumeJson['profile'] as Map?)?['name'] as String?;
-  if (fromProfile != null && fromProfile.trim().isNotEmpty) return fromProfile;
-  return 'the candidate';
-}
-
 
 // ---------------------------------------------------------------------------
 // lookup_hiring_manager — returns the company's generic careers address.
@@ -1152,19 +1123,19 @@ Future<Map<String, dynamic>> _loadResumeContextForAgent({
           : resumeId.trim();
 
   if (resolvedResumeId == null || resolvedResumeId.isEmpty) {
-    return kFakeResumeJson;
+    throw Exception(
+      'No resume uploaded yet. Upload a resume so the agent can use it.',
+    );
   }
 
-  try {
-    final parsed = await orchestrator.readResumeJson(
-      uid: uid,
-      resumeId: resolvedResumeId,
-    );
-    return parsed.toJson();
-  } catch (e) {
-    debugPrint('load real resume failed, using sample resume: $e');
-    return kFakeResumeJson;
-  }
+  // Let readResumeJson's exceptions propagate — they already carry
+  // actionable messages (scanned PDF, parse failure, missing file). The
+  // caller maps them to a ToolResult.error.
+  final parsed = await orchestrator.readResumeJson(
+    uid: uid,
+    resumeId: resolvedResumeId,
+  );
+  return parsed.toJson();
 }
 
 String _shortToolError(Object e) {

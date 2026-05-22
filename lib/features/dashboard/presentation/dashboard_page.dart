@@ -13,7 +13,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/motion.dart';
 import '../../../data/models/tracked_application.dart';
-import '../../../fixtures/mock_agent_service.dart';
+import '../../agent_chat/agent_prompt_suggestions.dart';
 import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
@@ -817,22 +817,22 @@ class _PromptSuggestions extends StatelessWidget {
     _PromptSuggestionData(
       icon: Icons.travel_explore_rounded,
       kicker: 'DISCOVER',
-      prompt: MockAgentService.discoverPrompt,
+      prompt: AgentPromptSuggestions.discover,
     ),
     _PromptSuggestionData(
       icon: Icons.auto_awesome_rounded,
       kicker: 'TAILOR',
-      prompt: MockAgentService.tailorPrompt,
+      prompt: AgentPromptSuggestions.tailor,
     ),
     _PromptSuggestionData(
       icon: Icons.mail_outline_rounded,
       kicker: 'OUTREACH',
-      prompt: MockAgentService.outreachPrompt,
+      prompt: AgentPromptSuggestions.outreach,
     ),
     _PromptSuggestionData(
       icon: Icons.insights_rounded,
       kicker: 'STRATEGY',
-      prompt: MockAgentService.strategyPrompt,
+      prompt: AgentPromptSuggestions.strategy,
     ),
   ];
 

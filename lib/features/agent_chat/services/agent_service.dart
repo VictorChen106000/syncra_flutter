@@ -47,8 +47,8 @@ class TurnFailed extends AgentEvent {
   final String message;
 }
 
-/// Boundary the chat controller talks to. Swap [MockAgentService] for a
-/// real backend-backed impl without touching the controller or UI.
+/// Boundary the chat controller talks to. Implemented by `AnthropicChatService`;
+/// any alternate impl can be swapped in without touching the controller or UI.
 abstract class AgentService {
   Stream<AgentEvent> runPrompt({
     required String prompt,

@@ -66,12 +66,34 @@ ${const JsonEncoder.withIndent('  ').convert(resume.toJson())}
 
 Return the tailored resume JSON now.''';
 
+    final text = await _callClaude(userPrompt, strict: false);
+    try {
+      return _parseJsonResponse(text);
+    } on ResumeTailorException {
+      // The model returned malformed JSON — retry once with a stricter
+      // instruction before surfacing the failure.
+      debugPrint('resume tailor JSON malformed — retrying once (strict)');
+      final retry = await _callClaude(userPrompt, strict: true);
+      return _parseJsonResponse(retry);
+    }
+  }
+
+  /// Single Anthropic call returning the concatenated text content. When
+  /// [strict] is set, prepends an instruction emphasizing raw-JSON-only
+  /// output — used for the one retry after a malformed-JSON response.
+  Future<String> _callClaude(String userPrompt, {required bool strict}) async {
+    final content = strict
+        ? 'Your previous response was not valid JSON. Return ONLY the raw '
+            'tailored JSON object — no markdown fences, no commentary.\n\n'
+            '$userPrompt'
+        : userPrompt;
+
     final payload = {
       'model': model,
       'max_tokens': 2048,
       'system': _system,
       'messages': [
-        {'role': 'user', 'content': userPrompt}
+        {'role': 'user', 'content': content},
       ],
     };
 
@@ -95,8 +117,8 @@ Return the tailored resume JSON now.''';
     }
 
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-    final content = decoded['content'] as List? ?? const [];
-    final text = content
+    final blocks = decoded['content'] as List? ?? const [];
+    final text = blocks
         .whereType<Map<String, dynamic>>()
         .where((b) => b['type'] == 'text')
         .map((b) => (b['text'] as String?) ?? '')
@@ -106,8 +128,7 @@ Return the tailored resume JSON now.''';
     if (text.isEmpty) {
       throw const ResumeTailorException('Anthropic returned no content.');
     }
-
-    return _parseJsonResponse(text);
+    return text;
   }
 
   ResumeJson _parseJsonResponse(String raw) {

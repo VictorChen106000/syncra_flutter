@@ -17,7 +17,6 @@ import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/section_title.dart';
 import '../../agent/state/passive_agent_notifier.dart';
-import '../../auth/models/user_profile.dart';
 import '../../auth/state/auth_notifier.dart';
 import '../../auth/state/user_profile_notifier.dart';
 import '../../resumes/state/resume_notifier.dart';
@@ -72,8 +71,8 @@ class ProfilePage extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Preferences — a single grouped card with three compact tiles:
-// Dark mode · Today's brief · Agent autonomy.
+// Preferences — a single grouped card with two compact tiles:
+// Dark mode · Today's brief.
 // ---------------------------------------------------------------------------
 
 class _PreferencesSection extends StatelessWidget {
@@ -86,8 +85,6 @@ class _PreferencesSection extends StatelessWidget {
         _ThemeModeTile(),
         _GroupedDivider(),
         _MorningBriefTile(),
-        _GroupedDivider(),
-        _AutonomyTile(),
       ],
     );
   }
@@ -442,36 +439,6 @@ class _MorningBriefTile extends ConsumerWidget {
             : (v) => ref
                 .read(userProfileProvider.notifier)
                 .setMorningBriefEnabled(v),
-      ),
-    );
-  }
-}
-
-class _AutonomyTile extends ConsumerWidget {
-  const _AutonomyTile();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final profile = ref.watch(userProfileProvider);
-    final selected = profile?.autonomyLevel ?? AutonomyLevel.askFirst;
-    final subtitle = switch (selected) {
-      AutonomyLevel.suggest => 'Only suggest',
-      AutonomyLevel.askFirst => 'Ask before acting',
-      AutonomyLevel.autoApply => 'Auto-apply',
-    };
-    return _PreferenceRow(
-      icon: Icons.bolt_rounded,
-      title: 'Agent autonomy',
-      subtitle: subtitle,
-      trailing: _MiniSegmented<AutonomyLevel>(
-        selected: selected,
-        onChanged: (l) =>
-            ref.read(userProfileProvider.notifier).setAutonomyLevel(l),
-        options: const [
-          (AutonomyLevel.suggest, Icons.lightbulb_outline_rounded),
-          (AutonomyLevel.askFirst, Icons.front_hand_outlined),
-          (AutonomyLevel.autoApply, Icons.bolt_rounded),
-        ],
       ),
     );
   }

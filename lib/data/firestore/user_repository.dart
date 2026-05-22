@@ -22,7 +22,6 @@ class UserRepository {
       'avatar_url': firebaseUser.photoURL,
       'role': null,
       'is_agent_active': true,
-      'autonomy_level': 'ask_first',
       'morning_brief_enabled': false,
       'gmail_connected': false,
       'created_at': FieldValue.serverTimestamp(),
@@ -46,14 +45,12 @@ class UserRepository {
     String uid, {
     String? role,
     bool? isAgentActive,
-    AutonomyLevel? autonomyLevel,
     bool? morningBriefEnabled,
     bool? gmailConnected,
   }) async {
     final patch = <String, dynamic>{};
     if (role != null) patch['role'] = role;
     if (isAgentActive != null) patch['is_agent_active'] = isAgentActive;
-    if (autonomyLevel != null) patch['autonomy_level'] = autonomyLevel.wire;
     if (morningBriefEnabled != null) {
       patch['morning_brief_enabled'] = morningBriefEnabled;
     }

@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/firestore/applications_repository.dart';
 import '../../../data/firestore/pipeline_repository.dart';
 import '../../../data/models/job.dart';
-import '../../../fixtures/mock_jobs.dart';
 import '../../auth/state/auth_notifier.dart';
 
 @immutable
@@ -75,26 +74,10 @@ class JobsNotifier extends Notifier<JobsState> {
       _subscription = null;
     });
 
-    // Seed with mock pipeline cards when there's no real subscription —
-    // guest mode, signed-out, or before the Firestore stream emits its
-    // first snapshot. Real data will override via the listener below.
-    final hasLiveSubscription = uid != null && !isGuest;
-    return JobsState(
-      cards: hasLiveSubscription ? const [] : _mockCards(),
-    );
-  }
-
-  static List<PipelineCard> _mockCards() {
-    final now = DateTime.now();
-    return [
-      for (var i = 0; i < MockJobs.all.length; i++)
-        PipelineCard(
-          id: 'mock_${MockJobs.all[i].id}',
-          job: MockJobs.all[i],
-          status: PipelineCardStatus.pending,
-          createdAt: now.subtract(Duration(minutes: i * 7)),
-        ),
-    ];
+    // Empty until the Firestore pipeline stream emits its first snapshot.
+    // Guests and signed-out users have no pipeline; for signed-in users
+    // the agent's brief populates it.
+    return const JobsState();
   }
 
   void _bindTo(String? uid, bool isGuest) {

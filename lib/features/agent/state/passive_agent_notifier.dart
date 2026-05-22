@@ -1,15 +1,14 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../data/firestore/firestore_paths.dart';
 import '../../../data/firestore/jobs_repository.dart';
 import '../../../data/firestore/pipeline_repository.dart';
-import '../../../fixtures/mock_agent_steps.dart';
-import '../../../fixtures/mock_jobs.dart';
 import '../../../data/models/job.dart';
 import '../../auth/state/auth_notifier.dart';
-import '../data/fake_resume.dart';
 import '../services/anthropic_service.dart';
 import '../../agent_chat/models/agent_block.dart';
 import '../../agent_chat/services/agent_service.dart';
@@ -144,7 +143,6 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
       _service.dispose();
     });
     return PassiveAgentState(
-      activity: _seedActivity(),
       isLiveModeEnabled: _service.hasApiKey,
     );
   }
@@ -370,7 +368,21 @@ String _briefToolLabel(String toolName) {
       debugPrint('jobs fetch failed: $e');
     }
     if (candidates.isEmpty) {
-      candidates = List.of(MockJobs.all);
+      _markFirstActivityDone();
+      state = state.copyWith(
+        status: AgentBriefStatus.done,
+        lastBriefAt: DateTime.now(),
+        lastMessage: 'Brief complete · no new roles found',
+      );
+      _pushActivity(
+        AgentActivityStep(
+          tool: 'BriefPipeline',
+          detail: 'No candidate roles available right now.',
+          status: 'done',
+          createdAt: DateTime.now(),
+        ),
+      );
+      return;
     }
 
     _pushActivity(
@@ -387,20 +399,27 @@ String _briefToolLabel(String toolName) {
     state = state.copyWith(status: AgentBriefStatus.matching);
     _pushActivity(
       AgentActivityStep(
-        tool: _service.hasApiKey ? 'Claude Haiku' : 'MatchAnalyzer (mock)',
+        tool: _service.hasApiKey ? 'Claude Haiku' : 'BriefPipeline',
         detail: _service.hasApiKey
             ? 'Asking Claude Haiku to score each role against your resume…'
-            : 'Scoring matches using local rubric (no API key set)…',
+            : 'Listing candidate roles (set ANTHROPIC_API_KEY to score them)…',
         status: 'active',
         createdAt: DateTime.now(),
       ),
     );
 
+    final user = ref.read(authProvider).appUser;
+    final uid = user?.uid;
+    final isGuest = user?.isGuest ?? true;
+
     try {
       List<Job> nextPipeline;
-      if (_service.hasApiKey) {
+      final resumeJson = (uid != null && !isGuest && _service.hasApiKey)
+          ? await _loadResumeJsonForBrief(uid)
+          : null;
+      if (_service.hasApiKey && resumeJson != null) {
         final results = await _service.scoreJobs(
-          resume: kFakeResumeJson,
+          resume: resumeJson,
           jobs: candidates,
         );
         nextPipeline = results != null
@@ -411,9 +430,6 @@ String _briefToolLabel(String toolName) {
         nextPipeline = List.of(candidates);
       }
 
-      final user = ref.read(authProvider).appUser;
-      final uid = user?.uid;
-      final isGuest = user?.isGuest ?? true;
       if (uid != null && !isGuest && nextPipeline.isNotEmpty) {
         for (final j in nextPipeline) {
           try {
@@ -538,18 +554,26 @@ String _briefToolLabel(String toolName) {
     state = state.copyWith(activity: next);
   }
 
-  List<AgentActivityStep> _seedActivity() {
-    final now = DateTime.now();
-    return [
-      for (final step in MockAgentSteps.activityFeed)
-        AgentActivityStep(
-          tool: step['tool'] ?? '',
-          detail: step['detail'] ?? '',
-          status: step['status'] ?? 'done',
-          createdAt: now,
-          undoable: step['undoable'] == 'true',
-        ),
-    ];
+  /// Reads the latest manual resume's cached structured JSON for brief
+  /// scoring. Returns `null` when the user has no parsed resume yet — the
+  /// brief then lists candidates unscored rather than inventing a resume.
+  Future<Map<String, dynamic>?> _loadResumeJsonForBrief(String uid) async {
+    try {
+      final snap = await FirestorePaths(FirebaseFirestore.instance)
+          .resumes(uid)
+          .orderBy('uploaded_at', descending: true)
+          .limit(10)
+          .get();
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        if (data['source'] == 'manual' && data['resume_json'] is Map) {
+          return (data['resume_json'] as Map).cast<String, dynamic>();
+        }
+      }
+    } catch (e) {
+      debugPrint('brief resume load failed: $e');
+    }
+    return null;
   }
 }
 

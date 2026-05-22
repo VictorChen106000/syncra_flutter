@@ -58,17 +58,6 @@ class UserProfileNotifier extends Notifier<UserProfile?> {
     );
   }
 
-  Future<void> setAutonomyLevel(AutonomyLevel level) async {
-    final uid = _boundUid;
-    if (uid == null) return;
-    state = state?.copyWith(autonomyLevel: level);
-    try {
-      await _repository.update(uid, autonomyLevel: level);
-    } catch (e) {
-      debugPrint('setAutonomyLevel failed: $e');
-    }
-  }
-
   Future<void> setMorningBriefEnabled(bool enabled) async {
     final uid = _boundUid;
     if (uid == null) return;

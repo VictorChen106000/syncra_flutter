@@ -125,6 +125,7 @@ class ResumesRepository {
       uploadedAt: uploadedAt,
       source: ResumeSource.tailored,
       storagePath: storagePath,
+      parentResumeId: parentResumeId,
     );
   }
 
@@ -190,6 +191,7 @@ ResumeFile _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
         ? ResumeSource.tailored
         : ResumeSource.manual,
     storagePath: data['storage_path'] as String?,
+    parentResumeId: data['parent_resume_id'] as String?,
   );
 }
 

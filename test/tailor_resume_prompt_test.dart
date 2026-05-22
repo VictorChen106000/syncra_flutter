@@ -1,0 +1,88 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:syncra/features/agent_chat/tools/anthropic_tool_calls.dart';
+import 'package:syncra/features/resumes/models/proposed_edit.dart';
+import 'package:syncra/features/resumes/models/resume_json.dart';
+import 'package:syncra/features/resumes/services/resume_diff_service.dart';
+
+/// Regression guard for the `tailor_resume` contract: the prompt must keep
+/// instructing Claude to (a) propose targeted edits rather than full-section
+/// rewrites, (b) copy `original_text` verbatim, and (c) never invent
+/// experience. If someone loosens the prompt, these break loudly.
+void main() {
+  group('tailor_resume system prompt', () {
+    final prompt = AnthropicParaphraseService.tailorSystemPrompt.toLowerCase();
+
+    test('forbids whole-resume / full-section rewrites', () {
+      expect(prompt, contains('not to rewrite the whole resume'));
+      expect(
+        prompt,
+        contains('prefer individual bullet rewrites over full-section'),
+      );
+    });
+
+    test('requires original_text copied verbatim', () {
+      expect(prompt, contains('verbatim'));
+      expect(prompt, contains('`original_text`'));
+    });
+
+    test('forbids inventing experience', () {
+      expect(prompt, contains('never invent'));
+      expect(prompt, contains('must not invent experience'));
+    });
+
+    test('caps the edit count so it stays a small PR-style diff', () {
+      expect(prompt, contains('3 to 8 edits'));
+    });
+  });
+
+  // The prompt asks for verbatim original_text; the diff engine is the
+  // backstop that enforces it. A full-section rewrite whose original_text
+  // does not match a real leaf must never land.
+  group('tailor_resume diff backstop', () {
+    const service = ResumeDiffService();
+    const resume = ResumeJson(
+      header: ResumeHeader(name: 'Grace Hopper'),
+      summary: 'Built compilers.',
+      experience: [
+        ResumeExperience(
+          company: 'Navy',
+          role: 'Engineer',
+          start: '1944',
+          bullets: ['Wrote the first compiler.', 'Coined "debugging".'],
+        ),
+      ],
+      skills: ['COBOL'],
+    );
+
+    test('rejects a full-section rewrite passed as one non-verbatim edit', () {
+      // Claude tries to swap an entire bullet list as a single blob — the
+      // original_text matches no individual leaf, so nothing is applied.
+      final outcome = service.apply(resume, [
+        const ProposedEdit(
+          targetPath: 'experience[0].bullets[0]',
+          originalText: 'Wrote the first compiler. Coined "debugging".',
+          proposedText: 'Rewrote the entire career history.',
+          reason: 'full-section rewrite attempt',
+        ),
+      ]);
+      expect(outcome.applied, isEmpty);
+      expect(outcome.skipped, hasLength(1));
+      expect(outcome.resume.experience[0].bullets[0],
+          'Wrote the first compiler.');
+    });
+
+    test('accepts a single verbatim-anchored bullet edit', () {
+      final outcome = service.apply(resume, [
+        const ProposedEdit(
+          targetPath: 'experience[0].bullets[0]',
+          originalText: 'Wrote the first compiler.',
+          proposedText: 'Designed and built the first compiler (A-0).',
+          reason: 'targeted bullet rewrite',
+        ),
+      ]);
+      expect(outcome.applied, hasLength(1));
+      expect(outcome.resume.experience[0].bullets[0],
+          'Designed and built the first compiler (A-0).');
+    });
+  });
+}

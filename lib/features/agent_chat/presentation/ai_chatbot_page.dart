@@ -8,8 +8,8 @@ import 'package:go_router/go_router.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../data/models/job.dart';
-import '../../../fixtures/mock_agent_service.dart';
 import '../../../shared/widgets/gooey_orb.dart';
+import '../agent_prompt_suggestions.dart';
 import '../models/agent_block.dart';
 import '../models/chat_message.dart';
 import '../state/agent_chat_notifier.dart';
@@ -797,7 +797,7 @@ class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    const prompts = MockAgentService.dashboardPrompts;
+    const prompts = AgentPromptSuggestions.all;
 
     return ListView(
       padding: EdgeInsets.fromLTRB(24, topInset + 12, 24, bottomInset + 12),

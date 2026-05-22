@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -100,16 +101,24 @@ class AuthNotifier extends Notifier<AuthState> {
     state = state.copyWith(appUser: AppUser.guest(), clearError: true);
   }
 
-  /// Email/password sign-in.
-  ///
-  /// Backend wiring (Firebase Auth `signInWithEmailAndPassword`) lives in
-  /// the auth service. For now this stub validates inputs and falls through
-  /// to a guest session keyed by the email so the demo flow continues —
-  /// swap the body for `_authService.signInWithEmail(...)` once the
-  /// service method is implemented.
+  /// Signs in an existing account with Firebase email/password auth.
   Future<void> signInWithEmail({
     required String email,
     required String password,
+  }) =>
+      _emailAuth(email: email, password: password, isCreate: false);
+
+  /// Creates a new Firebase email/password account, then signs in.
+  Future<void> signUpWithEmail({
+    required String email,
+    required String password,
+  }) =>
+      _emailAuth(email: email, password: password, isCreate: true);
+
+  Future<void> _emailAuth({
+    required String email,
+    required String password,
+    required bool isCreate,
   }) async {
     if (state.isLoading) return;
     final trimmedEmail = email.trim();
@@ -120,24 +129,46 @@ class AuthNotifier extends Notifier<AuthState> {
 
     state = state.copyWith(isLoading: true, clearError: true);
     try {
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-      final namePart = trimmedEmail.split('@').first;
-      final displayName = namePart.isEmpty ? 'You' : namePart;
-      state = state.copyWith(
-        appUser: AppUser(
-          uid: 'email-${trimmedEmail.hashCode.abs()}',
-          displayName: displayName,
-          email: trimmedEmail,
-          isGuest: true,
-        ),
-        isLoading: false,
-      );
+      final user = isCreate
+          ? await _authService.signUpWithEmail(
+              email: trimmedEmail, password: password)
+          : await _authService.signInWithEmail(
+              email: trimmedEmail, password: password);
+      // The authStateChanges listener also publishes the user and runs
+      // ensureUserDoc; set it here too for immediate UI feedback.
+      state = state.copyWith(appUser: user, isLoading: false);
+    } on FirebaseAuthException catch (e) {
+      debugPrint('Email auth error: ${e.code}');
+      state = state.copyWith(isLoading: false, error: _emailAuthError(e));
     } catch (e) {
-      debugPrint('Email Sign-In Error: $e');
+      debugPrint('Email auth error: $e');
       state = state.copyWith(
         isLoading: false,
-        error: 'Sign-in failed. Check your details.',
+        error: 'Sign-in failed. Please try again.',
       );
+    }
+  }
+
+  String _emailAuthError(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'invalid-email':
+        return 'That email address looks invalid.';
+      case 'user-disabled':
+        return 'This account has been disabled.';
+      case 'user-not-found':
+      case 'wrong-password':
+      case 'invalid-credential':
+        return 'Incorrect email or password.';
+      case 'email-already-in-use':
+        return 'An account already exists for that email.';
+      case 'weak-password':
+        return 'Password must be at least 6 characters.';
+      case 'network-request-failed':
+        return 'Network error. Check your connection.';
+      case 'too-many-requests':
+        return 'Too many attempts. Try again later.';
+      default:
+        return 'Sign-in failed. Please try again.';
     }
   }
 

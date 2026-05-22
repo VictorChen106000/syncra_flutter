@@ -12,6 +12,7 @@ class ResumeFile {
     required this.uploadedAt,
     required this.source,
     this.storagePath,
+    this.parentResumeId,
   });
 
   final String id;
@@ -25,6 +26,11 @@ class ResumeFile {
   /// (e.g. `users/{uid}/resumes/{resumeId}.pdf`). `null` only for legacy
   /// docs created before the Storage migration.
   final String? storagePath;
+
+  /// For [ResumeSource.tailored] resumes, the id of the manual resume this
+  /// was derived from. `null` for manual resumes. Drives cascade-delete:
+  /// deleting the parent removes its tailored children.
+  final String? parentResumeId;
 
   bool get isPdf =>
       type == 'application/pdf' || name.toLowerCase().endsWith('.pdf');

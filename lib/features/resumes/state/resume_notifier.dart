@@ -227,30 +227,55 @@ class ResumeNotifier extends Notifier<ResumeState> {
     final user = ref.read(authProvider).appUser;
     final uid = user?.uid;
     if (uid == null || user!.isGuest) return;
-    final target = state.allResumes.firstWhere(
-      (r) => r.id == resumeId,
-      orElse: () => state.allResumes.isEmpty
-          ? throw StateError('No resume $resumeId')
-          : state.allResumes.first,
-    );
 
-    final nextSelected = {...state.selectedResumeIds}..remove(resumeId);
+    ResumeFile? target;
+    for (final r in state.allResumes) {
+      if (r.id == resumeId) {
+        target = r;
+        break;
+      }
+    }
+    if (target == null) return;
+
+    // Deleting a manual resume cascades to every tailored resume derived
+    // from it — an orphaned tailored PDF would otherwise point at a parent
+    // that no longer exists.
+    final children = target.source == ResumeSource.manual
+        ? state.allResumes
+            .where((r) =>
+                r.source == ResumeSource.tailored &&
+                r.parentResumeId == resumeId)
+            .toList(growable: false)
+        : const <ResumeFile>[];
+
+    final removedIds = {resumeId, for (final c in children) c.id};
+    final nextSelected = {...state.selectedResumeIds}
+      ..removeWhere(removedIds.contains);
+    final childNote = children.isEmpty
+        ? ''
+        : ' · ${children.length} tailored '
+            '${children.length == 1 ? 'copy' : 'copies'} removed';
     state = state.copyWith(
       selectedResumeIds: nextSelected,
-      lastAction: ResumeActionResult(message: '${target.name} deleted'),
+      lastAction:
+          ResumeActionResult(message: '${target.name} deleted$childNote'),
     );
 
-    _bytesCache.remove(resumeId);
-    _inflight.remove(resumeId);
+    for (final id in removedIds) {
+      _bytesCache.remove(id);
+      _inflight.remove(id);
+    }
 
-    try {
-      await _repository.deleteResume(
-        uid: uid,
-        resumeId: resumeId,
-        storagePath: target.storagePath,
-      );
-    } catch (e) {
-      debugPrint('delete resume failed: $e');
+    for (final resume in [target, ...children]) {
+      try {
+        await _repository.deleteResume(
+          uid: uid,
+          resumeId: resume.id,
+          storagePath: resume.storagePath,
+        );
+      } catch (e) {
+        debugPrint('delete resume ${resume.id} failed: $e');
+      }
     }
   }
 

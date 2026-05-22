@@ -281,10 +281,17 @@ class _EmailSignInSheetState extends ConsumerState<_EmailSignInSheet> {
 
   Future<void> _submit() async {
     final notifier = ref.read(authProvider.notifier);
-    await notifier.signInWithEmail(
-      email: _email.text,
-      password: _password.text,
-    );
+    if (_isCreate) {
+      await notifier.signUpWithEmail(
+        email: _email.text,
+        password: _password.text,
+      );
+    } else {
+      await notifier.signInWithEmail(
+        email: _email.text,
+        password: _password.text,
+      );
+    }
     final auth = ref.read(authProvider);
     if (!mounted) return;
     if (auth.appUser != null && auth.error == null) {

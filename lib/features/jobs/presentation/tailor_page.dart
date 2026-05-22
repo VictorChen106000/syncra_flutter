@@ -5,7 +5,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
-import '../../../fixtures/mock_jobs.dart';
+import 'widgets/job_unavailable_view.dart';
 import '../../../data/models/job.dart';
 import '../../../shared/widgets/app_buttons.dart';
 import '../../../shared/widgets/app_card.dart';
@@ -58,7 +58,8 @@ class _TailorPageState extends State<TailorPage> {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final j = widget.job ?? MockJobs.all.first;
+    if (widget.job == null) return const JobUnavailableView();
+    final j = widget.job!;
 
     return Scaffold(
       backgroundColor: brand.bg,

@@ -45,9 +45,7 @@ class AnthropicParaphraseService {
     required Map<String, dynamic> resumeJson,
     required Job job,
   }) async {
-    final response = await _call(
-      system: _tailorSystem,
-      user: '''
+    final userPrompt = '''
   Resume (JSON):
   ${const JsonEncoder.withIndent('  ').convert(resumeJson)}
 
@@ -68,27 +66,45 @@ class AnthropicParaphraseService {
       }
     ]
   }
-  ''',
+  ''';
+
+    final response = await _call(
+      system: tailorSystemPrompt,
+      user: userPrompt,
       maxTokens: 1200,
     );
 
-    final cleaned = _stripFences(response);
-
     try {
-      final decoded = jsonDecode(cleaned) as Map<String, dynamic>;
-      final rawEdits = decoded['proposed_edits'];
-
-      if (rawEdits is! List) {
-        throw const FormatException('Missing proposed_edits array.');
-      }
-
-      return {
-        'proposed_edits': rawEdits,
-      };
+      return _parseProposedEdits(response);
     } catch (e) {
-      debugPrint('tailorResume proposed_edits parse failed: $e\nRaw: $response');
-      throw Exception('Could not parse proposed resume edits JSON.');
+      // The model returned malformed JSON — retry once with a stricter
+      // instruction before surfacing the failure.
+      debugPrint('tailorResume edits malformed — retrying once (strict)');
+      final retry = await _call(
+        system: tailorSystemPrompt,
+        user: 'Your previous response was not valid JSON. Return ONLY the '
+            'raw JSON object — no markdown fences, no commentary.\n\n'
+            '$userPrompt',
+        maxTokens: 1200,
+      );
+      try {
+        return _parseProposedEdits(retry);
+      } catch (e) {
+        debugPrint('tailorResume retry still malformed: $e\nRaw: $retry');
+        throw Exception('Could not parse proposed resume edits JSON.');
+      }
     }
+  }
+
+  /// Strips fences, decodes, and validates the `proposed_edits` array shape.
+  /// Throws on malformed JSON or a missing array so the caller can retry.
+  Map<String, dynamic> _parseProposedEdits(String response) {
+    final decoded = jsonDecode(_stripFences(response)) as Map<String, dynamic>;
+    final rawEdits = decoded['proposed_edits'];
+    if (rawEdits is! List) {
+      throw const FormatException('Missing proposed_edits array.');
+    }
+    return {'proposed_edits': rawEdits};
   }
 
   /// Returns `{ subject, body }`.
@@ -186,7 +202,9 @@ Return ONLY a JSON object: {"subject": "...", "body": "..."}.''',
     }
   }
 
-static const _tailorSystem = '''
+/// System prompt for `tailor_resume`. Public so prompt-contract regression
+/// tests can assert the verbatim / no-full-rewrite guardrails stay in place.
+  static const tailorSystemPrompt = '''
 You are Syncra's resume tailoring assistant.
 
 Your job is NOT to rewrite the whole resume.

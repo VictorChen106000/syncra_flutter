@@ -7,7 +7,6 @@ import '../../../core/constants/app_strings.dart';
 import '../../../data/firestore/jobs_repository.dart';
 import '../../../data/firestore/resumes_repository.dart';
 import '../../../data/models/job.dart';
-import '../../../fixtures/mock_agent_service.dart';
 import '../../auth/state/auth_notifier.dart';
 import '../../notifications/state/notifications_notifier.dart';
 import '../../resumes/services/resume_parser_service.dart';
@@ -23,13 +22,13 @@ import '../services/chat_history_repository.dart';
 import '../tools/builtin_tools.dart';
 import '../tools/tool_registry.dart';
 
-/// The active [AgentService] for the app. Backed by Claude when an
-/// `ANTHROPIC_API_KEY` is configured, otherwise a deterministic mock.
+/// The active [AgentService] for the app — Claude via the tool-use loop.
+/// Requires an `ANTHROPIC_API_KEY`; without one the agent surfaces an error
+/// at call time rather than falling back to scripted responses.
 final agentServiceProvider = Provider<AgentService>((ref) {
   final registry = ToolRegistry();
   registerBuiltinTools(registry);
-  final anthropic = AnthropicChatService(registry: registry);
-  return anthropic.hasApiKey ? anthropic : MockAgentService();
+  return AnthropicChatService(registry: registry);
 });
 
 /// Persists the text-only transcript so chats survive app restarts. Scoped
