@@ -116,17 +116,46 @@ void _registerSearchJobs(
         }
       }
 
-      final all = await repo.fetchAll(limit: 40);
-      final q = query.toLowerCase();
+      final all = await repo.fetchAll(limit: 80);
+      final tokens = _searchTokens(query);
       final loc = (location ?? '').toLowerCase();
-      final filtered = all.where((j) {
-        final hay = '${j.title} ${j.company} ${j.why}'.toLowerCase();
-        if (q.isNotEmpty && !hay.contains(q)) return false;
-        if (loc.isNotEmpty && !j.location.toLowerCase().contains(loc)) {
-          return false;
+
+      List<Job> filterCatalogue({required bool includeLocation}) {
+        final scored = <({Job job, int score})>[];
+
+        for (final job in all) {
+          final hay = '${job.title} ${job.company} ${job.why}'.toLowerCase();
+
+          if (includeLocation &&
+              loc.isNotEmpty &&
+              !job.location.toLowerCase().contains(loc)) {
+            continue;
+          }
+
+          final score = tokens.isEmpty
+              ? 1
+              : tokens.where((token) => hay.contains(token)).length;
+
+          if (score > 0) {
+            scored.add((job: job, score: score));
+          }
         }
-        return true;
-      }).take(limit).toList();
+
+        scored.sort((a, b) => b.score.compareTo(a.score));
+        return scored.map((item) => item.job).take(limit).toList(growable: false);
+      }
+
+      var filtered = filterCatalogue(includeLocation: true);
+
+      // If location was too strict, retry without it.
+      if (filtered.isEmpty && loc.isNotEmpty) {
+        filtered = filterCatalogue(includeLocation: false);
+      }
+
+      // Final demo-safe fallback: return broad catalogue jobs instead of 0.
+      if (filtered.isEmpty) {
+        filtered = all.take(limit).toList(growable: false);
+      }
 
       return _searchJobsResult(filtered);
     },
@@ -154,6 +183,39 @@ ToolResult _searchJobsResult(List<Job> jobs) {
           .toList(),
     },
   );
+}
+
+List<String> _searchTokens(String query) {
+  const stopWords = {
+    'a',
+    'an',
+    'and',
+    'are',
+    'at',
+    'for',
+    'in',
+    'jobs',
+    'job',
+    'me',
+    'of',
+    'on',
+    'or',
+    'remote',
+    'role',
+    'roles',
+    'the',
+    'to',
+    'with',
+  };
+
+  return query
+      .toLowerCase()
+      .split(RegExp(r'[^a-z0-9+#]+'))
+      .map((token) => token.trim())
+      .where((token) => token.length >= 2)
+      .where((token) => !stopWords.contains(token))
+      .toSet()
+      .toList(growable: false);
 }
 
 // ---------------------------------------------------------------------------
