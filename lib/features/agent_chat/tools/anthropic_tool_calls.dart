@@ -278,6 +278,29 @@ Rules:
 - Never invent employers, titles, dates, metrics, tools, certifications, degrees, or achievements.
 - If the resume does not support a stronger claim, keep the proposed text close to the original.
 - `reason` must be one sentence explaining why the edit helps for this specific job.
+
+Writing quality (apply to every `proposed_text`):
+- Start each experience/project bullet with a strong past-tense action verb
+  (e.g. Built, Led, Designed, Optimized, Shipped, Automated) — never with "Responsible for",
+  "Worked on", "Helped with", or a noun/pronoun.
+- Do not repeat the same opening verb across bullets in the same entry.
+- Fix grammar, spelling, capitalization, and punctuation; remove first-person
+  pronouns ("I", "my") and filler words.
+- Keep each bullet a single concise line; do not add metrics that are not in the original.
+
+Adding new content (op: "add"):
+- Each edit defaults to replacing existing text. To INSERT a new skill or
+  bullet, set `"op":"add"` on that edit instead.
+- Only add information the user has explicitly confirmed: a `learned_facts`
+  entry on the resume, or something they stated earlier in the conversation.
+  If it is not confirmed, do not add it — never invent experience.
+- For an `add` edit: omit `original_text` (there is nothing to replace) and put
+  the new text in `proposed_text`. `target_path` is either:
+  - a list, to append an item: `skills` or `experience[0].bullets`; or
+  - an empty/missing scalar field, to fill it: `summary`, `header.email`,
+    `header.phone`. Use the field's real path (contact fields live under
+    `header`, e.g. `header.email` — not `profile.email`). An `add` never
+    overwrites a field that already has text; use a `replace` for that.
 - Do not output markdown fences.
 - Do not output prose outside the JSON object.
 ''';

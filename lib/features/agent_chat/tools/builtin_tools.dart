@@ -1135,7 +1135,13 @@ Future<Map<String, dynamic>> _loadResumeContextForAgent({
     uid: uid,
     resumeId: resolvedResumeId,
   );
-  return parsed.toJson();
+
+  // Fold in learned facts so tailor_resume / draft_email see what the user
+  // disclosed via ask_user — read_resume already does this, but these tools
+  // load their own context and would otherwise miss it.
+  final paths = FirestorePaths(FirebaseFirestore.instance);
+  final learnedFacts = await _readLearnedFacts(paths, uid);
+  return _resumeWithLearnedFacts(parsed.toJson(), learnedFacts);
 }
 
 String _shortToolError(Object e) {
