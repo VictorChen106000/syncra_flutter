@@ -130,7 +130,19 @@ class SelectResumesBottomSheet extends ConsumerWidget {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: InkWell(
-                        onTap: () => notifier.toggleSelectedResume(resume.id),
+                        onTap: () async {
+                          notifier.toggleSelectedResume(resume.id);
+                          // Picking a resume dismisses the sheet — no
+                          // separate "done" tap. A short beat lets the
+                          // selection check register before it slides away.
+                          // Un-picking (tapping a selected one) keeps the
+                          // sheet open so the user can choose again.
+                          if (selected) return;
+                          await Future<void>.delayed(
+                            const Duration(milliseconds: 180),
+                          );
+                          if (context.mounted) Navigator.of(context).pop();
+                        },
                         borderRadius: BorderRadius.circular(20),
                         child: Container(
                           padding: const EdgeInsets.all(14),
