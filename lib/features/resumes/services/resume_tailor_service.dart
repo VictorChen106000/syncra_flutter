@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -18,6 +19,11 @@ class ResumeTailorService {
 
   static const _endpoint = 'https://api.anthropic.com/v1/messages';
   static const _version = '2023-06-01';
+
+  /// Per-request retry budget for transient API failures (429 / 5xx / 529).
+  /// Four attempts → three backoff retries (~1s/2s/4s) before failing, so an
+  /// "Overloaded" blip doesn't surface as a failed resume tailor.
+  static const _maxApiAttempts = 4;
 
   static const _system = '''
 You are Syncra's resume tailor. You receive a candidate's structured resume
@@ -88,33 +94,16 @@ Return the tailored resume JSON now.''';
             '$userPrompt'
         : userPrompt;
 
-    final payload = {
+    final body = jsonEncode({
       'model': model,
       'max_tokens': 2048,
       'system': _system,
       'messages': [
         {'role': 'user', 'content': content},
       ],
-    };
+    });
 
-    final response = await _client
-        .post(
-          Uri.parse(_endpoint),
-          headers: {
-            'content-type': 'application/json',
-            'x-api-key': _apiKey,
-            'anthropic-version': _version,
-            'anthropic-dangerous-direct-browser-access': 'true',
-          },
-          body: jsonEncode(payload),
-        )
-        .timeout(const Duration(seconds: 45));
-
-    if (response.statusCode != 200) {
-      throw ResumeTailorException(
-        _extractError(response.body, response.statusCode),
-      );
-    }
+    final response = await _postWithRetry(body);
 
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
     final blocks = decoded['content'] as List? ?? const [];
@@ -129,6 +118,68 @@ Return the tailored resume JSON now.''';
       throw const ResumeTailorException('Anthropic returned no content.');
     }
     return text;
+  }
+
+  /// POSTs [body] to Anthropic, retrying transient failures (429 / 5xx /
+  /// 529 "Overloaded" / timeouts) up to [_maxApiAttempts] times with ~1s/2s/4s
+  /// backoff. A 200 returns immediately; permanent errors (auth, bad request)
+  /// fail without retrying.
+  Future<http.Response> _postWithRetry(String body) async {
+    Object lastError =
+        const ResumeTailorException('Anthropic request failed.');
+    for (var attempt = 1; attempt <= _maxApiAttempts; attempt++) {
+      try {
+        final response = await _client
+            .post(
+              Uri.parse(_endpoint),
+              headers: {
+                'content-type': 'application/json',
+                'x-api-key': _apiKey,
+                'anthropic-version': _version,
+                'anthropic-dangerous-direct-browser-access': 'true',
+              },
+              body: body,
+            )
+            .timeout(const Duration(seconds: 45));
+
+        if (response.statusCode == 200) return response;
+
+        final error = ResumeTailorException(
+          _extractError(response.body, response.statusCode),
+        );
+        if (!_isRetryableStatus(response.statusCode) ||
+            attempt == _maxApiAttempts) {
+          throw error;
+        }
+        lastError = error;
+        await Future<void>.delayed(
+          _backoffDelay(attempt, response.headers['retry-after']),
+        );
+      } on TimeoutException {
+        if (attempt == _maxApiAttempts) {
+          throw const ResumeTailorException(
+            'Anthropic request timed out. Please try again.',
+          );
+        }
+        await Future<void>.delayed(_backoffDelay(attempt, null));
+      }
+    }
+    throw lastError;
+  }
+
+  /// Transient HTTP statuses worth retrying: 429 rate-limit and any 5xx
+  /// server error (529 "Overloaded" included).
+  static bool _isRetryableStatus(int code) =>
+      code == 429 || (code >= 500 && code < 600);
+
+  /// Exponential backoff — ~1s, 2s, 4s between attempts. Honors a server
+  /// `Retry-After` header (in seconds) when present.
+  Duration _backoffDelay(int attempt, String? retryAfterHeader) {
+    final retryAfter = int.tryParse(retryAfterHeader ?? '');
+    if (retryAfter != null && retryAfter > 0) {
+      return Duration(seconds: retryAfter.clamp(1, 30));
+    }
+    return Duration(milliseconds: 500 * (1 << attempt));
   }
 
   ResumeJson _parseJsonResponse(String raw) {

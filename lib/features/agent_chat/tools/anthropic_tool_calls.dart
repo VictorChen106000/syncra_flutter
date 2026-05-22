@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -21,6 +22,11 @@ class AnthropicParaphraseService {
 
   static const _endpoint = 'https://api.anthropic.com/v1/messages';
   static const _version = '2023-06-01';
+
+  /// Per-request retry budget for transient API failures (429 / 5xx / 529).
+  /// Four attempts → three backoff retries (~1s/2s/4s) before failing, so an
+  /// "Overloaded" blip doesn't surface as a failed tool call.
+  static const _maxApiAttempts = 4;
 
   final String _apiKey;
   final http.Client _client;
@@ -145,29 +151,17 @@ Return ONLY a JSON object: {"subject": "...", "body": "..."}.''',
     required String user,
     required int maxTokens,
   }) async {
-    final response = await _client
-        .post(
-          Uri.parse(_endpoint),
-          headers: {
-            'content-type': 'application/json',
-            'x-api-key': _apiKey,
-            'anthropic-version': _version,
-            'anthropic-dangerous-direct-browser-access': 'true',
-          },
-          body: jsonEncode({
-            'model': model,
-            'max_tokens': maxTokens,
-            'system': system,
-            'messages': [
-              {'role': 'user', 'content': user},
-            ],
-          }),
-        )
-        .timeout(const Duration(seconds: 45));
+    final body = jsonEncode({
+      'model': model,
+      'max_tokens': maxTokens,
+      'system': system,
+      'messages': [
+        {'role': 'user', 'content': user},
+      ],
+    });
 
-    if (response.statusCode != 200) {
-      throw Exception(_extractError(response.body, response.statusCode));
-    }
+    final response = await _postWithRetry(body);
+
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
     final content = (decoded['content'] as List? ?? const [])
         .whereType<Map<String, dynamic>>()
@@ -179,6 +173,64 @@ Return ONLY a JSON object: {"subject": "...", "body": "..."}.''',
       throw Exception('Anthropic returned no text.');
     }
     return content;
+  }
+
+  /// POSTs [body] to Anthropic, retrying transient failures (429 / 5xx /
+  /// 529 "Overloaded" / timeouts) up to [_maxApiAttempts] times with ~1s/2s/4s
+  /// backoff. A 200 returns immediately; permanent errors (auth, bad request)
+  /// fail without retrying.
+  Future<http.Response> _postWithRetry(String body) async {
+    Object lastError = Exception('Anthropic request failed.');
+    for (var attempt = 1; attempt <= _maxApiAttempts; attempt++) {
+      try {
+        final response = await _client
+            .post(
+              Uri.parse(_endpoint),
+              headers: {
+                'content-type': 'application/json',
+                'x-api-key': _apiKey,
+                'anthropic-version': _version,
+                'anthropic-dangerous-direct-browser-access': 'true',
+              },
+              body: body,
+            )
+            .timeout(const Duration(seconds: 45));
+
+        if (response.statusCode == 200) return response;
+
+        final error =
+            Exception(_extractError(response.body, response.statusCode));
+        if (!_isRetryableStatus(response.statusCode) ||
+            attempt == _maxApiAttempts) {
+          throw error;
+        }
+        lastError = error;
+        await Future<void>.delayed(
+          _backoffDelay(attempt, response.headers['retry-after']),
+        );
+      } on TimeoutException {
+        if (attempt == _maxApiAttempts) {
+          throw Exception('Anthropic request timed out. Please try again.');
+        }
+        await Future<void>.delayed(_backoffDelay(attempt, null));
+      }
+    }
+    throw lastError;
+  }
+
+  /// Transient HTTP statuses worth retrying: 429 rate-limit and any 5xx
+  /// server error (529 "Overloaded" included).
+  static bool _isRetryableStatus(int code) =>
+      code == 429 || (code >= 500 && code < 600);
+
+  /// Exponential backoff — ~1s, 2s, 4s between attempts. Honors a server
+  /// `Retry-After` header (in seconds) when present.
+  Duration _backoffDelay(int attempt, String? retryAfterHeader) {
+    final retryAfter = int.tryParse(retryAfterHeader ?? '');
+    if (retryAfter != null && retryAfter > 0) {
+      return Duration(seconds: retryAfter.clamp(1, 30));
+    }
+    return Duration(milliseconds: 500 * (1 << attempt));
   }
 
   String _stripFences(String text) {
