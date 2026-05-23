@@ -9,6 +9,7 @@ import '../../../data/firestore/jobs_repository.dart';
 import '../../../data/firestore/pipeline_repository.dart';
 import '../../../data/models/job.dart';
 import '../../auth/state/auth_notifier.dart';
+import '../../jobs/state/jobs_notifier.dart';
 import '../services/anthropic_service.dart';
 import '../../agent_chat/models/agent_block.dart';
 import '../../agent_chat/services/agent_service.dart';
@@ -142,8 +143,19 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
     ref.onDispose(() {
       _service.dispose();
     });
+    // Mirror the combined pipeline that jobsProvider already streams from
+    // Firestore — one listener, one source of truth. It reflects everything
+    // saved by BOTH the passive brief and the chatbot's `save_to_pipeline`
+    // tool (same collection), survives app restarts, and re-binds on auth
+    // change. `ref.listen` (not `watch`) keeps pipeline updates from wiping
+    // the brief's in-progress activity log via a rebuild.
+    ref.listen(
+      jobsProvider.select((s) => s.pendingJobs),
+      (_, jobs) => state = state.copyWith(pipeline: jobs),
+    );
     return PassiveAgentState(
       isLiveModeEnabled: _service.hasApiKey,
+      pipeline: ref.read(jobsProvider).pendingJobs,
     );
   }
 

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -423,8 +424,25 @@ clear next step or question.''';
         'type': 'enabled',
         'budget_tokens': _thinkingBudget,
       },
-      'system': _system,
+      // Prompt caching. Request render order is tools → system → messages,
+      // so a cache_control breakpoint on the system block caches the whole
+      // static prefix — tool schemas AND system prompt — in one entry.
+      // That prefix is byte-identical on every loop iteration and every
+      // threaded turn; the first request writes it (~1.25x input cost),
+      // every request inside the 5-minute TTL reads it (~0.1x).
+      'system': [
+        {
+          'type': 'text',
+          'text': _system,
+          'cache_control': {'type': 'ephemeral'},
+        },
+      ],
       'tools': tools,
+      // Second breakpoint: the top-level cache_control auto-places on the
+      // last message block, so the growing conversation tail is cached too
+      // — each loop iteration re-reads the prior turns instead of re-paying
+      // for them. Two breakpoints total, well under the 4-per-request cap.
+      'cache_control': {'type': 'ephemeral'},
       'messages': messages,
     };
     final body = jsonEncode(payload);
@@ -449,7 +467,9 @@ clear next step or question.''';
             .timeout(const Duration(seconds: 45));
 
         if (response.statusCode == 200) {
-          return jsonDecode(response.body) as Map<String, dynamic>;
+          final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+          _logCacheUsage(decoded['usage']);
+          return decoded;
         }
 
         final error = Exception(
@@ -568,6 +588,19 @@ clear next step or question.''';
     if (data == null) return 'null';
     if (data is String) return data;
     return jsonEncode(data);
+  }
+
+  /// Logs prompt-cache effectiveness in debug builds. After the first
+  /// request in a 5-minute window the bulk of the prefix should land in
+  /// `cache_read_input_tokens`; if `read` stays 0 across a loop, a silent
+  /// invalidator has crept into tools/system/model (see prompt-caching docs).
+  void _logCacheUsage(Object? usage) {
+    if (!kDebugMode || usage is! Map) return;
+    debugPrint(
+      'anthropic cache — write: ${usage['cache_creation_input_tokens'] ?? 0}, '
+      'read: ${usage['cache_read_input_tokens'] ?? 0}, '
+      'uncached: ${usage['input_tokens'] ?? 0}',
+    );
   }
 
   String _extractError(String body, int status) {

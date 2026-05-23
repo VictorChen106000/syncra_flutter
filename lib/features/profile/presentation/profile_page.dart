@@ -60,6 +60,8 @@ class ProfilePage extends StatelessWidget {
                 const SizedBox(height: 24),
                 const _SignOutButton(),
                 const SizedBox(height: 12),
+                const _ResetAccountButton(),
+                const SizedBox(height: 12),
                 const _DeleteAccountButton(),
               ],
             ),
@@ -689,6 +691,96 @@ class _Integration {
         subtitle: subtitle,
         active: active ?? this.active,
       );
+}
+
+class _ResetAccountButton extends ConsumerWidget {
+  const _ResetAccountButton();
+
+  Future<void> _confirmAndReset(BuildContext context, WidgetRef ref) async {
+    final brand = context.brand;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reset account?'),
+        content: const Text(
+          'This clears every resume, application, pipeline card, saved chat, '
+          'and learned fact tied to your account. Your sign-in stays intact. '
+          'This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: brand.warning),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    await ref.read(authProvider.notifier).resetAccountData();
+
+    // Drop in-memory state that mirrors the now-empty Firestore data so the
+    // UI snaps to a clean slate without waiting for streams to settle.
+    ref.read(resumeProvider.notifier).clearSelectedResumes();
+
+    if (!context.mounted) return;
+    final error = ref.read(authProvider).error;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(error ?? 'Account data reset.'),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
+    final loading = ref.watch(authProvider).isLoading;
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
+      child: InkWell(
+        onTap: loading ? null : () => _confirmAndReset(context, ref),
+        borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
+            border: Border.all(
+              color: brand.warning.withValues(alpha: 0.32),
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.refresh_rounded,
+                size: 14,
+                color: brand.warning,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Reset account',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: brand.warning,
+                  letterSpacing: 0.1,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _DeleteAccountButton extends ConsumerWidget {

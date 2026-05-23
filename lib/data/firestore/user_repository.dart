@@ -1,14 +1,17 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 import '../../features/auth/models/user_profile.dart';
 import 'firestore_paths.dart';
 
 class UserRepository {
-  UserRepository({FirebaseFirestore? db})
-      : _paths = FirestorePaths(db ?? FirebaseFirestore.instance);
+  UserRepository({FirebaseFirestore? db, FirebaseStorage? storage})
+      : _paths = FirestorePaths(db ?? FirebaseFirestore.instance),
+        _storage = storage ?? FirebaseStorage.instance;
 
   final FirestorePaths _paths;
+  final FirebaseStorage _storage;
 
   Future<void> ensureUserDoc(User firebaseUser) async {
     final ref = _paths.user(firebaseUser.uid);
@@ -64,5 +67,40 @@ class UserRepository {
   /// and will be orphaned until manually cleaned; that's acceptable for v1.
   Future<void> deleteUserDoc(String uid) async {
     await _paths.user(uid).delete();
+  }
+
+  /// Wipes every user-owned subcollection (applications, resumes, pipeline,
+  /// briefs, conversations, learned_facts) and any associated Storage blobs.
+  /// The auth account and the `users/{uid}` profile doc are left intact so
+  /// the user remains signed in on a clean slate.
+  Future<void> resetUserData(String uid) async {
+    final resumesSnap = await _paths.resumes(uid).get();
+    for (final doc in resumesSnap.docs) {
+      final path = doc.data()['storage_path'] as String?;
+      if (path == null || path.isEmpty) continue;
+      try {
+        await _storage.ref(path).delete();
+      } catch (_) {
+        // Best-effort. A leaked blob is harmless; the Firestore doc is gone.
+      }
+    }
+
+    await Future.wait([
+      _deleteCollection(_paths.resumes(uid)),
+      _deleteCollection(_paths.applications(uid)),
+      _deleteCollection(_paths.pipeline(uid)),
+      _deleteCollection(_paths.briefs(uid)),
+      _deleteCollection(_paths.conversations(uid)),
+      _deleteCollection(_paths.learnedFacts(uid)),
+    ]);
+  }
+
+  Future<void> _deleteCollection(
+    CollectionReference<Map<String, dynamic>> col,
+  ) async {
+    final snap = await col.get();
+    for (final doc in snap.docs) {
+      await doc.reference.delete();
+    }
   }
 }
