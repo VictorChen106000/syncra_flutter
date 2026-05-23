@@ -62,7 +62,8 @@ class PassiveAgentState {
 
   bool get hasPipeline => pipeline.isNotEmpty;
   bool get isRunning =>
-      status == AgentBriefStatus.scanning || status == AgentBriefStatus.matching;
+      status == AgentBriefStatus.scanning ||
+      status == AgentBriefStatus.matching;
 
   int get readyCount =>
       pipeline.where((j) => j.category == JobCategory.ready).length;
@@ -130,9 +131,9 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
     AnthropicService? service,
     JobsRepository? jobsRepository,
     PipelineRepository? pipelineRepository,
-  })  : _service = service ?? AnthropicService(),
-        _jobsRepository = jobsRepository ?? JobsRepository(),
-        _pipelineRepository = pipelineRepository ?? PipelineRepository();
+  }) : _service = service ?? AnthropicService(),
+       _jobsRepository = jobsRepository ?? JobsRepository(),
+       _pipelineRepository = pipelineRepository ?? PipelineRepository();
 
   final AnthropicService _service;
   final JobsRepository _jobsRepository;
@@ -208,8 +209,10 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
     try {
       // The brief is a self-contained one-shot — run it non-threaded so it
       // neither inherits nor pollutes the chat's running conversation.
-      await for (final event
-          in service.runPrompt(prompt: _briefPrompt, threaded: false)) {
+      await for (final event in service.runPrompt(
+        prompt: _briefPrompt,
+        threaded: false,
+      )) {
         ref.read(notificationsProvider.notifier).onAgentEvent(event);
 
         switch (event) {
@@ -242,8 +245,9 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
       final hadHardFailure =
           turnFailure != null || (failedCount > 0 && savedCount == 0);
 
-      final refreshedPipeline =
-          hadHardFailure ? state.pipeline : await _fetchPendingPipelineJobs();
+      final refreshedPipeline = hadHardFailure
+          ? state.pipeline
+          : await _fetchPendingPipelineJobs();
 
       state = state.copyWith(
         pipeline: refreshedPipeline,
@@ -251,7 +255,7 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
         lastBriefAt: hadHardFailure ? state.lastBriefAt : now,
         lastError: hadHardFailure
             ? (turnFailure ??
-                'The agent brief hit tool failures before saving jobs.')
+                  'The agent brief hit tool failures before saving jobs.')
             : null,
         clearError: !hadHardFailure,
         lastMessage: savedCount > 0
@@ -288,84 +292,85 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
   }
 
   Future<List<Job>> _fetchPendingPipelineJobs() async {
-  final user = ref.read(authProvider).appUser;
-  final uid = user?.uid;
-  final isGuest = user?.isGuest ?? true;
+    final user = ref.read(authProvider).appUser;
+    final uid = user?.uid;
+    final isGuest = user?.isGuest ?? true;
 
-  if (uid == null || isGuest) {
-    return const [];
-  }
-
-  try {
-    final cards = await _pipelineRepository.fetchPending(uid);
-    return cards.map((card) => card.job).toList(growable: false);
-  } catch (e) {
-    debugPrint('pending pipeline refresh failed: $e');
-    return const [];
-  }
-}
-
-  void _handleBriefBlock(AgentBlock block) {
-  if (block is ToolCallBlock) {
-    final nextStatus = switch (block.name) {
-      'match_jobs' || 'save_to_pipeline' => AgentBriefStatus.matching,
-      _ => AgentBriefStatus.scanning,
-    };
-
-    if (state.status != nextStatus) {
-      state = state.copyWith(status: nextStatus);
+    if (uid == null || isGuest) {
+      return const [];
     }
 
-    _pushActivity(
-      AgentActivityStep(
-        tool: _briefToolLabel(block.name),
-        detail: block.label,
-        status: 'active',
-        createdAt: DateTime.now(),
-      ),
-    );
-    return;
+    try {
+      final cards = await _pipelineRepository.fetchPending(uid);
+      return cards.map((card) => card.job).toList(growable: false);
+    } catch (e) {
+      debugPrint('pending pipeline refresh failed: $e');
+      return const [];
+    }
   }
 
-  if (block is TextBlock) {
-    final text = block.text.trim();
-    if (text.isEmpty) return;
+  void _handleBriefBlock(AgentBlock block) {
+    if (block is ToolCallBlock) {
+      final nextStatus = switch (block.name) {
+        'match_jobs' || 'save_to_pipeline' => AgentBriefStatus.matching,
+        _ => AgentBriefStatus.scanning,
+      };
 
-    _pushActivity(
-      AgentActivityStep(
-        tool: 'Syncra',
-        detail: text.length > 120 ? '${text.substring(0, 120)}…' : text,
-        status: 'done',
-        createdAt: DateTime.now(),
-      ),
-    );
-    return;
+      if (state.status != nextStatus) {
+        state = state.copyWith(status: nextStatus);
+      }
+
+      _pushActivity(
+        AgentActivityStep(
+          tool: _briefToolLabel(block.name),
+          detail: block.label,
+          status: 'active',
+          createdAt: DateTime.now(),
+        ),
+      );
+      return;
+    }
+
+    if (block is TextBlock) {
+      final text = block.text.trim();
+      if (text.isEmpty) return;
+
+      _pushActivity(
+        AgentActivityStep(
+          tool: 'Syncra',
+          detail: text.length > 120 ? '${text.substring(0, 120)}…' : text,
+          status: 'done',
+          createdAt: DateTime.now(),
+        ),
+      );
+      return;
+    }
+
+    if (block is InputRequestBlock) {
+      _pushActivity(
+        AgentActivityStep(
+          tool: 'Input needed',
+          detail: block.question,
+          status: 'waiting',
+          createdAt: DateTime.now(),
+        ),
+      );
+    }
   }
 
-  if (block is InputRequestBlock) {
-    _pushActivity(
-      AgentActivityStep(
-        tool: 'Input needed',
-        detail: block.question,
-        status: 'waiting',
-        createdAt: DateTime.now(),
-      ),
-    );
+  String _briefToolLabel(String toolName) {
+    return switch (toolName) {
+      'search_jobs' => 'Job Search',
+      'read_resume' => 'Resume Context',
+      'match_jobs' => 'Match Scoring',
+      'save_to_pipeline' => 'Pipeline Save',
+      _ => toolName,
+    };
   }
-}
-
-String _briefToolLabel(String toolName) {
-  return switch (toolName) {
-    'search_jobs' => 'Job Search',
-    'read_resume' => 'Resume Context',
-    'match_jobs' => 'Match Scoring',
-    'save_to_pipeline' => 'Pipeline Save',
-    _ => toolName,
-  };
-}
 
   /// Kicks off a fresh agent brief.
-  Future<void> _runLegacyMockBrief() async {    if (state.isRunning) return;
+  Future<void> _runLegacyMockBrief() async {
+    if (state.isRunning) return;
 
     state = state.copyWith(
       briefId: 'brief_${DateTime.now().millisecondsSinceEpoch}',
@@ -461,8 +466,9 @@ String _briefToolLabel(String toolName) {
         }
       }
 
-      final readyCount =
-          nextPipeline.where((j) => j.category == JobCategory.ready).length;
+      final readyCount = nextPipeline
+          .where((j) => j.category == JobCategory.ready)
+          .length;
       final inputCount = nextPipeline
           .where((j) => j.category == JobCategory.inputNeeded)
           .length;
@@ -538,10 +544,13 @@ String _briefToolLabel(String toolName) {
         category: r.category,
         matchScore: r.matchScore,
         agentAction: action,
-        agentJustification:
-            r.justification.isEmpty ? job.agentJustification : r.justification,
+        agentJustification: r.justification.isEmpty
+            ? job.agentJustification
+            : r.justification,
         skills: job.skills,
-        missingSkills: r.missingSkills.isEmpty ? job.missingSkills : r.missingSkills,
+        missingSkills: r.missingSkills.isEmpty
+            ? job.missingSkills
+            : r.missingSkills,
         why: job.why,
       );
     }).toList();
@@ -571,11 +580,9 @@ String _briefToolLabel(String toolName) {
   /// brief then lists candidates unscored rather than inventing a resume.
   Future<Map<String, dynamic>?> _loadResumeJsonForBrief(String uid) async {
     try {
-      final snap = await FirestorePaths(FirebaseFirestore.instance)
-          .resumes(uid)
-          .orderBy('uploaded_at', descending: true)
-          .limit(10)
-          .get();
+      final snap = await FirestorePaths(
+        FirebaseFirestore.instance,
+      ).resumes(uid).orderBy('uploaded_at', descending: true).limit(10).get();
       for (final doc in snap.docs) {
         final data = doc.data();
         if (data['source'] == 'manual' && data['resume_json'] is Map) {
@@ -590,4 +597,6 @@ String _briefToolLabel(String toolName) {
 }
 
 final passiveAgentProvider =
-    NotifierProvider<PassiveAgentNotifier, PassiveAgentState>(PassiveAgentNotifier.new);
+    NotifierProvider<PassiveAgentNotifier, PassiveAgentState>(
+      PassiveAgentNotifier.new,
+    );

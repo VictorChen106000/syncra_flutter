@@ -21,7 +21,7 @@ class PipelineCard {
 
 class PipelineRepository {
   PipelineRepository({FirebaseFirestore? db})
-      : _paths = FirestorePaths(db ?? FirebaseFirestore.instance);
+    : _paths = FirestorePaths(db ?? FirebaseFirestore.instance);
 
   final FirestorePaths _paths;
 
@@ -34,21 +34,18 @@ class PipelineRepository {
         .map((snap) => snap.docs.map(_fromDoc).toList());
   }
 
-  Future<List<PipelineCard>> fetchPending(
-  String uid, {
-  int limit = 40,
-}) async {
-  final snap = await _paths
-      .pipeline(uid)
-      .orderBy('created_at', descending: true)
-      .limit(limit)
-      .get();
+  Future<List<PipelineCard>> fetchPending(String uid, {int limit = 40}) async {
+    final snap = await _paths
+        .pipeline(uid)
+        .orderBy('created_at', descending: true)
+        .limit(limit)
+        .get();
 
-  return snap.docs
-      .map(_fromDoc)
-      .where((card) => card.status == PipelineCardStatus.pending)
-      .toList(growable: false);
-}
+    return snap.docs
+        .map(_fromDoc)
+        .where((card) => card.status == PipelineCardStatus.pending)
+        .toList(growable: false);
+  }
 
   Future<void> dismiss(String uid, String cardId) {
     return _paths.pipeline(uid).doc(cardId).update({'status': 'dismissed'});
@@ -90,10 +87,10 @@ class PipelineRepository {
 }
 
 String _categoryToName(JobCategory c) => switch (c) {
-      JobCategory.ready => 'ready',
-      JobCategory.inputNeeded => 'input_needed',
-      JobCategory.exploration => 'exploration',
-    };
+  JobCategory.ready => 'ready',
+  JobCategory.inputNeeded => 'input_needed',
+  JobCategory.exploration => 'exploration',
+};
 
 PipelineCard _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
   final data = doc.data();
@@ -111,8 +108,9 @@ PipelineCard _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
       agentAction: (data['agent_action'] as String?) ?? '',
       agentJustification: (data['agent_justification'] as String?) ?? '',
       skills: List<String>.from((data['matched_skills'] as List?) ?? const []),
-      missingSkills:
-          List<String>.from((data['missing_skills'] as List?) ?? const []),
+      missingSkills: List<String>.from(
+        (data['missing_skills'] as List?) ?? const [],
+      ),
       why: (data['why'] as String?) ?? '',
     ),
     status: _statusFromName(data['status'] as String?),
@@ -121,16 +119,16 @@ PipelineCard _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
 }
 
 PipelineCardStatus _statusFromName(String? name) => switch (name) {
-      'approved' => PipelineCardStatus.approved,
-      'dismissed' => PipelineCardStatus.dismissed,
-      _ => PipelineCardStatus.pending,
-    };
+  'approved' => PipelineCardStatus.approved,
+  'dismissed' => PipelineCardStatus.dismissed,
+  _ => PipelineCardStatus.pending,
+};
 
 JobCategory _categoryFromName(String? name) => switch (name) {
-      'input_needed' => JobCategory.inputNeeded,
-      'exploration' => JobCategory.exploration,
-      _ => JobCategory.ready,
-    };
+  'input_needed' => JobCategory.inputNeeded,
+  'exploration' => JobCategory.exploration,
+  _ => JobCategory.ready,
+};
 
 DateTime? _toDate(Object? value) {
   if (value is Timestamp) return value.toDate();
