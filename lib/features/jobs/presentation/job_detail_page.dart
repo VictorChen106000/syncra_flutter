@@ -30,7 +30,7 @@ class JobDetailPage extends StatelessWidget {
             AppHeader.page(
               kicker: j.company,
               title: j.title,
-              onBack: () => context.go(RouteNames.jobs),
+              onBack: () => context.go(RouteNames.agentChat),
             ),
             Expanded(
               child: ListView(

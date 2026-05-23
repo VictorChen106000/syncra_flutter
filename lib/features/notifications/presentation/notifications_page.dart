@@ -18,11 +18,11 @@ class NotificationsPage extends ConsumerWidget {
   void _handleTap(BuildContext context, WidgetRef ref, AppNotification n) {
     ref.read(notificationsProvider.notifier).markRead(n.id);
     final route = switch (n.kind) {
-      NotificationKind.intercept => RouteNames.jobs,
+      NotificationKind.intercept => RouteNames.agentChat,
       NotificationKind.reply => RouteNames.agentChat,
-      NotificationKind.drafted => RouteNames.jobs,
-      NotificationKind.undo => RouteNames.jobs,
-      NotificationKind.match => RouteNames.jobs,
+      NotificationKind.drafted => RouteNames.agentChat,
+      NotificationKind.undo => RouteNames.agentChat,
+      NotificationKind.match => RouteNames.agentChat,
     };
     context.go(route);
   }
@@ -53,7 +53,7 @@ class NotificationsPage extends ConsumerWidget {
           children: [
             AppHeader.page(
               title: AppStrings.notificationsTitle,
-              onBack: () => context.go(RouteNames.dashboard),
+              onBack: () => context.go(RouteNames.agentChat),
               trailing: hasUnread
                   ? _ReadAllChip(onTap: notifier.markAllRead)
                   : null,

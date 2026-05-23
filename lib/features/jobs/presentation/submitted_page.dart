@@ -116,11 +116,11 @@ class SubmittedPage extends StatelessWidget {
                     const SizedBox(height: 10),
                     AppSecondaryButton(
                       label: AppStrings.backToHome,
-                      onPressed: () => context.go(RouteNames.dashboard),
+                      onPressed: () => context.go(RouteNames.agentChat),
                     ),
                     const SizedBox(height: 6),
                     TextButton.icon(
-                      onPressed: () => context.go(RouteNames.dashboard),
+                      onPressed: () => context.go(RouteNames.agentChat),
                       icon: Icon(
                         Icons.undo_rounded,
                         size: 16,

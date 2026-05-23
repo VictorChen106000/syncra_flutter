@@ -111,7 +111,7 @@ class PassiveAgentCard extends ConsumerWidget {
                 ),
               ),
               TextButton(
-                onPressed: () => context.go(RouteNames.jobs),
+                onPressed: () => context.go(RouteNames.agentChat),
                 style: TextButton.styleFrom(
                   foregroundColor: brand.ink,
                   padding: const EdgeInsets.symmetric(

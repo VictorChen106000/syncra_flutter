@@ -25,8 +25,8 @@ class JobUnavailableView extends StatelessWidget {
               title: 'Job unavailable',
               body: 'This role is no longer available. Head back to your '
                   'jobs to pick another.',
-              actionLabel: 'Back to jobs',
-              onAction: () => context.go(RouteNames.jobs),
+              actionLabel: 'Back to chat',
+              onAction: () => context.go(RouteNames.agentChat),
             ),
           ),
         ),

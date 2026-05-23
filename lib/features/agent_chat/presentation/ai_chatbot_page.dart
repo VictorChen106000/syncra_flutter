@@ -3,13 +3,14 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/file_formatter.dart';
 import '../../../data/models/job.dart';
 import '../../../shared/widgets/gooey_orb.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../data/firestore/pipeline_repository.dart';
+import '../../jobs/state/jobs_notifier.dart';
 import '../../resumes/models/resume_file.dart';
 import '../../resumes/presentation/widgets/select_resumes_bottom_sheet.dart';
 import '../../resumes/state/resume_notifier.dart';
@@ -579,25 +580,19 @@ class _FloatingTop extends ConsumerWidget {
             child: Row(
               children: [
                 _IconBtn(
-                  icon: Icons.arrow_back_ios_new_rounded,
-                  tooltip: 'Back',
-                  onTap: () => context.go(RouteNames.dashboard),
-                ),
-                const SizedBox(width: 8),
-                _IconBtn(
-                  icon: Icons.history_rounded,
-                  tooltip: 'Chat history',
+                  icon: Icons.menu_rounded,
+                  tooltip: 'Menu',
                   onTap: () => Scaffold.of(context).openDrawer(),
                 ),
                 const Spacer(),
-                _IconBtn(
-                  icon: Icons.edit_square,
-                  tooltip: 'New chat',
-                  onTap: hasHistory && !isStreaming
-                      ? () =>
-                          ref.read(agentChatProvider.notifier).newConversation()
-                      : null,
-                ),
+                if (hasHistory && !isStreaming)
+                  _IconBtn(
+                    icon: Icons.edit_square,
+                    tooltip: 'New chat',
+                    onTap: () => ref
+                        .read(agentChatProvider.notifier)
+                        .newConversation(),
+                  ),
               ],
             ),
           ),
@@ -901,8 +896,430 @@ class _JumpToLatestButton extends StatelessWidget {
   }
 }
 
-class _EmptyState extends StatelessWidget {
+/// Chat empty state — when the agent has surfaced any pipeline items we
+/// show them as an inbox (Needs you · Sent today) so the user lands on the
+/// agent's work. With nothing pending we fall back to the gooey-orb prompt
+/// suggestions so the agent still feels approachable for fresh queries.
+class _EmptyState extends ConsumerWidget {
   const _EmptyState({
+    required this.onPromptTap,
+    required this.topInset,
+    required this.bottomInset,
+  });
+
+  final void Function(String prompt) onPromptTap;
+  final double topInset;
+  final double bottomInset;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final jobs = ref.watch(jobsProvider);
+    final visible = jobs.pendingCards
+        .where((c) => !jobs.isDismissed(c.job.id))
+        .toList();
+
+    if (visible.isEmpty) {
+      return _OrbEmptyState(
+        topInset: topInset,
+        bottomInset: bottomInset,
+        onPromptTap: onPromptTap,
+      );
+    }
+
+    return _InboxEmptyState(
+      cards: visible,
+      topInset: topInset,
+      bottomInset: bottomInset,
+    );
+  }
+}
+
+/// Inbox of the agent's pending pipeline work. Tap a row → opens that job
+/// as a thread in the chat itself — no separate page.
+class _InboxEmptyState extends ConsumerWidget {
+  const _InboxEmptyState({
+    required this.cards,
+    required this.topInset,
+    required this.bottomInset,
+  });
+
+  final List<PipelineCard> cards;
+  final double topInset;
+  final double bottomInset;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
+    final needs = cards
+        .where((c) =>
+            c.job.category == JobCategory.inputNeeded ||
+            c.job.category == JobCategory.exploration)
+        .toList();
+    final sent = cards
+        .where((c) => c.job.category == JobCategory.ready)
+        .toList();
+
+    void open(Job job) {
+      ref.read(agentChatProvider.notifier).openJobThread(job);
+    }
+
+    return ListView(
+      padding: EdgeInsets.fromLTRB(20, topInset + 12, 20, bottomInset + 12),
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 14),
+          child: Text(
+            sent.isEmpty && needs.isEmpty
+                ? 'Quiet for now'
+                : [
+                    if (sent.isNotEmpty) '${sent.length} sent today',
+                    if (needs.isNotEmpty) '${needs.length} need you',
+                  ].join(' · '),
+            style: TextStyle(
+              color: brand.textMuted,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.4,
+            ),
+          ),
+        ),
+        if (needs.isNotEmpty) ...[
+          _InboxSectionHeader(
+            label: 'Needs you',
+            count: needs.length,
+            accent: AppColors.categoryInputDeep,
+          ),
+          const SizedBox(height: 10),
+          for (var i = 0; i < needs.length; i++)
+            _InboxNeedsRow(
+              card: needs[i],
+              onTap: () => open(needs[i].job),
+            )
+                .animate(delay: (i * 50).ms)
+                .fadeIn(duration: 280.ms)
+                .moveY(begin: 8, end: 0, curve: Curves.easeOutCubic),
+          const SizedBox(height: 18),
+        ],
+        if (sent.isNotEmpty) ...[
+          _InboxSectionHeader(
+            label: 'Sent today',
+            count: sent.length,
+            accent: brand.accent,
+          ),
+          const SizedBox(height: 10),
+          Container(
+            decoration: BoxDecoration(
+              color: brand.surface,
+              borderRadius: BorderRadius.circular(18),
+              border:
+                  Border.all(color: brand.border.withValues(alpha: 0.60)),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                for (var i = 0; i < sent.length; i++) ...[
+                  _InboxSentRow(
+                    card: sent[i],
+                    onTap: () => open(sent[i].job),
+                  ),
+                  if (i < sent.length - 1)
+                    Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: brand.border.withValues(alpha: 0.55),
+                    ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _InboxSectionHeader extends StatelessWidget {
+  const _InboxSectionHeader({
+    required this.label,
+    required this.count,
+    required this.accent,
+  });
+
+  final String label;
+  final int count;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Row(
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.4,
+              color: brand.textMuted,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: brand.surfaceMuted,
+              borderRadius: BorderRadius.circular(99),
+            ),
+            child: Text(
+              '$count',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+                color: brand.ink,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InboxNeedsRow extends StatelessWidget {
+  const _InboxNeedsRow({required this.card, required this.onTap});
+
+  final PipelineCard card;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final job = card.job;
+    final accent = job.category == JobCategory.exploration
+        ? AppColors.categoryExploreDeep
+        : AppColors.categoryInputDeep;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: brand.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: brand.border.withValues(alpha: 0.60)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Stack(
+            children: [
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: 4,
+                child: Container(color: accent),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: brand.ink,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        job.company.isNotEmpty ? job.company[0] : '?',
+                        style: TextStyle(
+                          color: brand.accent,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            job.agentAction.toUpperCase(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.3,
+                              color: accent,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            job.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w800,
+                              color: brand.ink,
+                              letterSpacing: -0.15,
+                              height: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            job.company,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: brand.textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(
+                      Icons.chat_bubble_outline_rounded,
+                      size: 16,
+                      color: brand.textMuted,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InboxSentRow extends StatelessWidget {
+  const _InboxSentRow({required this.card, required this.onTap});
+
+  final PipelineCard card;
+  final VoidCallback onTap;
+
+  String _timeLabel() {
+    final now = DateTime.now();
+    final delta = now.difference(card.createdAt);
+    if (delta.inMinutes < 1) return 'just now';
+    if (delta.inMinutes < 60) return '${delta.inMinutes}m ago';
+    if (delta.inHours < 24) return '${delta.inHours}h ago';
+    final hh = card.createdAt.hour.toString().padLeft(2, '0');
+    final mm = card.createdAt.minute.toString().padLeft(2, '0');
+    return '$hh:$mm';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final job = card.job;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: brand.ink,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  job.company.isNotEmpty ? job.company[0] : '?',
+                  style: TextStyle(
+                    color: brand.accent,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.check_circle_rounded,
+                          size: 13,
+                          color: brand.accentBright,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          'SENT · ${_timeLabel()}',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.1,
+                            color: brand.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      job.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: brand.ink,
+                        letterSpacing: -0.1,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      job.company,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: brand.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The original gooey-orb + prompt-cards empty state. Now reserved for the
+/// truly-empty case (no pipeline yet) so the agent still feels alive when
+/// there's nothing in the inbox.
+class _OrbEmptyState extends StatelessWidget {
+  const _OrbEmptyState({
     required this.onPromptTap,
     required this.topInset,
     required this.bottomInset,

@@ -25,7 +25,6 @@ import '../../features/resumes/models/resume_file.dart';
 import '../../features/resumes/presentation/resume_lists_page.dart';
 import '../../features/resumes/presentation/resume_preview_page.dart';
 import '../../features/applications/presentation/applications_page.dart';
-import '../../shared/widgets/app_shell_scaffold.dart';
 import 'route_names.dart';
 
 /// A [ChangeNotifier] that fires whenever auth or user-profile state
@@ -94,19 +93,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (!needsOnboarding &&
           !dev.showOnboarding &&
           loc == RouteNames.onboarding) {
-        return RouteNames.dashboard;
+        return RouteNames.agentChat;
       }
 
-      // After sign-in, only greet the user with the morning brief when they
-      // have opted in (Profile → "Today's brief"). Off by default — most
-      // sign-ins, and every sign-in during development, land straight on the
-      // dashboard. `morningBriefShown` keeps it to once per app session.
+      // After sign-in the chat is the home. Morning brief still shows first
+      // when the user has opted in (Profile → "Today's brief").
       if (loc == RouteNames.login || loc == RouteNames.signup) {
         final wantsMorningBrief = profile?.morningBriefEnabled ?? false;
         if (wantsMorningBrief && !passive.morningBriefShown) {
           return RouteNames.morningBrief;
         }
-        return RouteNames.dashboard;
+        return RouteNames.agentChat;
       }
 
       return null;
@@ -161,38 +158,21 @@ List<RouteBase> _routes(Page<void> Function(GoRouterState, Widget) fadePage) =>
           ),
         ),
       ),
-      StatefulShellRoute.indexedStack(
-        builder: (context, state, navigationShell) =>
-            AppShellScaffold(navigationShell: navigationShell),
-        branches: [
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: RouteNames.dashboard,
-                pageBuilder: (context, state) =>
-                    fadePage(state, const DashboardPage()),
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: RouteNames.jobs,
-                pageBuilder: (context, state) =>
-                    fadePage(state, const JobsPage()),
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: RouteNames.profile,
-                pageBuilder: (context, state) =>
-                    fadePage(state, const ProfilePage()),
-              ),
-            ],
-          ),
-        ],
+      // Chat is the app's home. Dashboard, jobs, and profile remain as
+      // deep-linkable plain routes (reachable from the chat's avatar drawer
+      // or in-chat actions), but no longer live inside a bottom-nav shell.
+      GoRoute(
+        path: RouteNames.dashboard,
+        pageBuilder: (context, state) =>
+            fadePage(state, const DashboardPage()),
+      ),
+      GoRoute(
+        path: RouteNames.jobs,
+        pageBuilder: (context, state) => fadePage(state, const JobsPage()),
+      ),
+      GoRoute(
+        path: RouteNames.profile,
+        pageBuilder: (context, state) => fadePage(state, const ProfilePage()),
       ),
       GoRoute(
         path: RouteNames.applications,

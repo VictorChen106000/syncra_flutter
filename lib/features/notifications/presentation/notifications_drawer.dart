@@ -25,11 +25,11 @@ class NotificationsDrawer extends ConsumerWidget {
     ref.read(notificationsProvider.notifier).markRead(n.id);
     Navigator.of(context).maybePop();
     final route = switch (n.kind) {
-      NotificationKind.intercept => RouteNames.jobs,
+      NotificationKind.intercept => RouteNames.agentChat,
       NotificationKind.reply => RouteNames.agentChat,
-      NotificationKind.drafted => RouteNames.jobs,
-      NotificationKind.undo => RouteNames.jobs,
-      NotificationKind.match => RouteNames.jobs,
+      NotificationKind.drafted => RouteNames.agentChat,
+      NotificationKind.undo => RouteNames.agentChat,
+      NotificationKind.match => RouteNames.agentChat,
     };
     context.go(route);
   }
