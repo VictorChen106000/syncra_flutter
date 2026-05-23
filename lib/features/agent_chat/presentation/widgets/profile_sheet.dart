@@ -3,74 +3,230 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/constants/app_assets.dart';
-import '../../../core/constants/app_constants.dart';
-import '../../../core/constants/app_strings.dart';
-import '../../../core/dev/dev_flags_notifier.dart';
-import '../../../core/theme/brand_theme.dart';
-import '../../../core/theme/theme_mode_notifier.dart';
-import '../../../core/utils/motion.dart';
-import '../../../shared/widgets/app_bottom_nav.dart';
-import '../../../shared/widgets/app_header.dart';
-import '../../../shared/widgets/app_screen.dart';
-import '../../../shared/widgets/section_title.dart';
-import '../../agent/state/passive_agent_notifier.dart';
-import '../../auth/state/auth_notifier.dart';
-import '../../auth/state/user_profile_notifier.dart';
-import '../../resumes/state/resume_notifier.dart';
+import '../../../../core/constants/app_assets.dart';
+import '../../../../core/constants/app_strings.dart';
+import '../../../../core/dev/dev_flags_notifier.dart';
+import '../../../../core/theme/brand_theme.dart';
+import '../../../../core/theme/theme_mode_notifier.dart';
+import '../../../../core/utils/motion.dart';
+import '../../../agent/state/passive_agent_notifier.dart';
+import '../../../auth/state/auth_notifier.dart';
+import '../../../auth/state/user_profile_notifier.dart';
+import '../../../resumes/state/resume_notifier.dart';
 
-class ProfilePage extends StatelessWidget {
-  const ProfilePage({super.key});
+/// Full-height bottom sheet that holds the entire Settings UI — opened from
+/// the drawer's avatar. Replaces the legacy /profile route so there's no
+/// secondary page to land on: the sheet *is* the settings surface.
+class ProfileSheet {
+  const ProfileSheet._();
+
+  static Future<void> show(BuildContext context) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      builder: (ctx) => const _ProfileSheetBody(),
+    );
+  }
+}
+
+class _ProfileSheetBody extends StatelessWidget {
+  const _ProfileSheetBody();
 
   @override
   Widget build(BuildContext context) {
-    return AppScreen(
-      showBottomNav: false,
-      activeTab: BottomNavTab.profile,
-      extendBehindBottomNav: true,
-      child: Column(
-        children: [
-          AppHeader.tab(title: AppStrings.profileTitle),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(
-                AppConstants.screenHorizontalPadding,
-                16,
-                AppConstants.screenHorizontalPadding,
-                140,
-              ),
-              children: [
-                const _ProfileHeaderCard(),
-                const SizedBox(height: 24),
-                const SectionTitle(title: 'Connections'),
-                const _IntegrationSection(),
-                const SizedBox(height: 24),
-                const SectionTitle(title: 'Agent behavior'),
-                const _AgentBehaviorSection(),
-                const SizedBox(height: 24),
-                const SectionTitle(title: 'Appearance'),
-                const _AppearanceSection(),
-                const SizedBox(height: 24),
-                const SectionTitle(title: 'Account'),
-                const _AccountSection(),
-                if (kDebugMode) ...const [
-                  SizedBox(height: 24),
-                  SectionTitle(title: 'Developer'),
-                  _DevFlagsSection(),
-                ],
-              ],
+    return DraggableScrollableSheet(
+      initialChildSize: 0.92,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (context, scrollController) {
+        final brand = context.brand;
+        return Container(
+          decoration: BoxDecoration(
+            color: brand.bg,
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(28),
             ),
           ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              _SheetHeader(
+                onClose: () => Navigator.of(context).maybePop(),
+              ),
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                  children: const [
+                    _EmailCard(),
+                    SizedBox(height: 18),
+                    _ProfileHeaderCard(),
+                    SizedBox(height: 18),
+                    _SectionLabel('Connections'),
+                    SizedBox(height: 8),
+                    _IntegrationSection(),
+                    SizedBox(height: 18),
+                    _SectionLabel('Agent behavior'),
+                    SizedBox(height: 8),
+                    _GroupedCard(children: [_MorningBriefTile()]),
+                    SizedBox(height: 18),
+                    _SectionLabel('Appearance'),
+                    SizedBox(height: 8),
+                    _GroupedCard(children: [_ThemeModeTile()]),
+                    SizedBox(height: 18),
+                    _SectionLabel('Account'),
+                    SizedBox(height: 8),
+                    _AccountSection(),
+                    if (kDebugMode) ...[
+                      SizedBox(height: 18),
+                      _SectionLabel('Developer'),
+                      SizedBox(height: 8),
+                      _DevFlagsSection(),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sheet chrome
+// ---------------------------------------------------------------------------
+
+class _SheetHeader extends StatelessWidget {
+  const _SheetHeader({required this.onClose});
+
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      child: Row(
+        children: [
+          _CircleBtn(
+            icon: Icons.close_rounded,
+            tooltip: 'Close',
+            onTap: onClose,
+          ),
+          const Spacer(),
+          Text(
+            AppStrings.profileTitle,
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+              color: brand.ink,
+              letterSpacing: -0.2,
+            ),
+          ),
+          const Spacer(),
+          // Symmetry placeholder so the title stays optically centered.
+          const SizedBox(width: 42, height: 42),
         ],
       ),
     );
   }
 }
 
+class _CircleBtn extends StatelessWidget {
+  const _CircleBtn({
+    required this.icon,
+    required this.onTap,
+    this.tooltip,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final button = Material(
+      color: brand.surface,
+      shape: CircleBorder(
+        side: BorderSide(color: brand.border, width: 0.8),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: SizedBox(
+          width: 42,
+          height: 42,
+          child: Icon(icon, size: 18, color: brand.ink),
+        ),
+      ),
+    );
+    if (tooltip == null) return button;
+    return Tooltip(message: tooltip!, child: button);
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Padding(
+      padding: const EdgeInsets.only(left: 6),
+      child: Text(
+        label.toUpperCase(),
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 1.4,
+          color: brand.textMuted,
+        ),
+      ),
+    );
+  }
+}
+
+class _EmailCard extends ConsumerWidget {
+  const _EmailCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
+    final email = (ref.watch(authProvider).appUser?.email ?? '').trim();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      decoration: BoxDecoration(
+        color: brand.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: brand.border),
+      ),
+      child: Text(
+        email.isEmpty ? 'Signed in' : email,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w800,
+          color: brand.ink,
+          letterSpacing: -0.2,
+        ),
+      ),
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
-// Shared row layout: icon · title (+ subtitle) · trailing.
-// Tappable when `onTap` is provided; title / icon color overridable so the
-// Account section can tint destructive rows without a separate widget.
+// Shared row layout (mirrored from profile_page._PreferenceRow so the sheet
+// can stand alone once the legacy /profile page is deleted).
 // ---------------------------------------------------------------------------
 
 class _PreferenceRow extends StatelessWidget {
@@ -152,8 +308,6 @@ class _PreferenceRow extends StatelessWidget {
   }
 }
 
-/// Tiny icon-only segmented selector — three choices in a single pill.
-/// Active option flips to ink background with accent-colored icon.
 class _MiniSegmented<T> extends StatelessWidget {
   const _MiniSegmented({
     required this.options,
@@ -205,6 +359,43 @@ class _MiniSegmented<T> extends StatelessWidget {
   }
 }
 
+class _GroupedCard extends StatelessWidget {
+  const _GroupedCard({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Container(
+      decoration: BoxDecoration(
+        color: brand.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: brand.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(children: children),
+    );
+  }
+}
+
+class _GroupedDivider extends StatelessWidget {
+  const _GroupedDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Padding(
+      padding: const EdgeInsets.only(left: 64),
+      child: Divider(height: 1, color: brand.bg),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Profile header — avatar, name, agent-active dot, search criteria
+// ---------------------------------------------------------------------------
+
 class _ProfileHeaderCard extends ConsumerWidget {
   const _ProfileHeaderCard();
 
@@ -214,22 +405,14 @@ class _ProfileHeaderCard extends ConsumerWidget {
     final user = ref.watch(authProvider).appUser;
     final displayName = user?.displayName ?? 'there';
     final initial = user?.initial ?? 'D';
-    final email = user?.email ?? '';
     final photoUrl = user?.photoUrl;
 
     return Container(
-      padding: const EdgeInsets.all(AppConstants.cardPadding),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: brand.surface,
-        borderRadius: BorderRadius.circular(AppConstants.cardRadius),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: brand.border),
-        boxShadow: [
-          BoxShadow(
-            color: brand.shadow,
-            blurRadius: 20,
-            offset: const Offset(0, 6),
-          ),
-        ],
       ),
       child: Column(
         children: [
@@ -253,19 +436,6 @@ class _ProfileHeaderCard extends ConsumerWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    if (email.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        email,
-                        style: TextStyle(
-                          color: brand.textMuted,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
                     const SizedBox(height: 8),
                     Row(
                       children: [
@@ -287,7 +457,7 @@ class _ProfileHeaderCard extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           Divider(height: 1, color: brand.bg),
           const SizedBox(height: 4),
           const _SearchCriteriaRow(label: 'Target roles', value: 'Not set'),
@@ -300,8 +470,6 @@ class _ProfileHeaderCard extends ConsumerWidget {
   }
 }
 
-/// Plain text row for the agent's search criteria, embedded inside the
-/// profile header card. No leading icon — the section frames itself.
 class _SearchCriteriaRow extends StatelessWidget {
   const _SearchCriteriaRow({required this.label, required this.value});
 
@@ -439,8 +607,7 @@ class _PulsingActiveDot extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Connections — third-party integrations. Gmail is UI-only for now; the
-// toggle keeps local state until the OAuth flow is wired up.
+// Connections
 // ---------------------------------------------------------------------------
 
 class _IntegrationSection extends StatefulWidget {
@@ -602,21 +769,8 @@ class _Integration {
 }
 
 // ---------------------------------------------------------------------------
-// Agent behavior — how the agent acts on your behalf.
+// Agent behavior / Appearance
 // ---------------------------------------------------------------------------
-
-class _AgentBehaviorSection extends StatelessWidget {
-  const _AgentBehaviorSection();
-
-  @override
-  Widget build(BuildContext context) {
-    return const _GroupedCard(
-      children: [
-        _MorningBriefTile(),
-      ],
-    );
-  }
-}
 
 class _MorningBriefTile extends ConsumerWidget {
   const _MorningBriefTile();
@@ -638,32 +792,12 @@ class _MorningBriefTile extends ConsumerWidget {
       trailing: Switch.adaptive(
         value: enabled,
         activeThumbColor: brand.ink,
-        // Flipping the toggle only stores the preference — it never fires the
-        // brief itself (no surprise token spend). The brief runs when the
-        // user taps "Run today's brief" or sees it after sign-in.
         onChanged: profile == null
             ? null
             : (v) => ref
                 .read(userProfileProvider.notifier)
                 .setMorningBriefEnabled(v),
       ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Appearance — visual prefs only.
-// ---------------------------------------------------------------------------
-
-class _AppearanceSection extends StatelessWidget {
-  const _AppearanceSection();
-
-  @override
-  Widget build(BuildContext context) {
-    return const _GroupedCard(
-      children: [
-        _ThemeModeTile(),
-      ],
     );
   }
 }
@@ -698,8 +832,7 @@ class _ThemeModeTile extends ConsumerWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Account — reset (warning) and sign out (danger) grouped in one card so the
-// destructive actions live together instead of stacked full-width buttons.
+// Account
 // ---------------------------------------------------------------------------
 
 class _AccountSection extends ConsumerWidget {
@@ -732,9 +865,6 @@ class _AccountSection extends ConsumerWidget {
     if (ok != true) return;
 
     await ref.read(authProvider.notifier).resetAccountData();
-
-    // Drop in-memory state that mirrors the now-empty Firestore data so the
-    // UI snaps to a clean slate without waiting for streams to settle.
     ref.read(resumeProvider.notifier).clearSelectedResumes();
 
     if (!context.mounted) return;
@@ -785,9 +915,7 @@ class _AccountSection extends ConsumerWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Developer toggles — only rendered when `kDebugMode == true`, so they're
-// stripped from release builds. Used to skip onboarding / morning brief and
-// to force the notification bell's unread dot while iterating on UI.
+// Developer (kDebugMode only)
 // ---------------------------------------------------------------------------
 
 class _DevFlagsSection extends ConsumerWidget {
@@ -833,46 +961,6 @@ class _DevFlagsSection extends ConsumerWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _GroupedCard extends StatelessWidget {
-  const _GroupedCard({required this.children});
-
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Container(
-      decoration: BoxDecoration(
-        color: brand.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: brand.border),
-        boxShadow: [
-          BoxShadow(
-            color: brand.shadow,
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(children: children),
-    );
-  }
-}
-
-class _GroupedDivider extends StatelessWidget {
-  const _GroupedDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Padding(
-      padding: const EdgeInsets.only(left: 64),
-      child: Divider(height: 1, color: brand.bg),
     );
   }
 }

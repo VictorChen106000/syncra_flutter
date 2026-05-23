@@ -17,32 +17,22 @@ class ResumePreviewPage extends ConsumerWidget {
   final ResumeFile? resume;
 
   void _confirmDelete(BuildContext context, WidgetRef ref, ResumeFile r) {
-    final brand = context.brand;
-    showDialog<void>(
+    showModalBottomSheet<void>(
       context: context,
-      builder: (dialogCtx) => AlertDialog(
-        title: const Text('Delete resume?'),
-        content: Text('${r.name} will be removed from your uploads.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogCtx).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: brand.danger),
-            onPressed: () {
-              Navigator.of(dialogCtx).pop();
-              ref.read(resumeProvider.notifier).deleteResume(r.id);
-              ScaffoldMessenger.of(context)
-                ..clearSnackBars()
-                ..showSnackBar(
-                  SnackBar(content: Text('${r.name} deleted')),
-                );
-              context.go(RouteNames.resumes);
-            },
-            child: const Text('Delete'),
-          ),
-        ],
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetCtx) => _DeleteConfirmSheet(
+        resumeName: r.name,
+        onConfirm: () {
+          Navigator.of(sheetCtx).pop();
+          ref.read(resumeProvider.notifier).deleteResume(r.id);
+          ScaffoldMessenger.of(context)
+            ..clearSnackBars()
+            ..showSnackBar(
+              SnackBar(content: Text('${r.name} deleted')),
+            );
+          context.go(RouteNames.resumes);
+        },
       ),
     );
   }
@@ -138,7 +128,7 @@ class ResumePreviewPage extends ConsumerWidget {
                       children: [
                         Icon(
                           Icons.description_rounded,
-                          color: brand.accent,
+                          color: brand.inkInverse,
                           size: 14,
                         ),
                         const SizedBox(width: 6),
@@ -179,11 +169,11 @@ class _ResumePreviewBody extends ConsumerWidget {
 
     final bytesFuture = ref.read(resumeProvider.notifier).bytesFor(resume);
     return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
               color: brand.shadow,
@@ -236,7 +226,7 @@ class _MetadataPaperPreview extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: brand.surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
             color: brand.shadow,
@@ -254,7 +244,7 @@ class _MetadataPaperPreview extends StatelessWidget {
               resume.name.replaceAll(RegExp(r'\.(pdf|docx?)$'), ''),
               style: TextStyle(
                 fontSize: 22,
-                fontWeight: FontWeight.w900,
+                fontWeight: FontWeight.w800,
                 color: brand.ink,
                 letterSpacing: -0.5,
               ),
@@ -302,8 +292,8 @@ class _PreviewSection extends StatelessWidget {
           Text(
             title,
             style: TextStyle(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w900,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
               letterSpacing: 1.6,
               color: brand.ink.withValues(alpha: 0.70),
             ),
@@ -324,6 +314,144 @@ class _PreviewSection extends StatelessWidget {
   }
 }
 
+class _DeleteConfirmSheet extends StatelessWidget {
+  const _DeleteConfirmSheet({
+    required this.resumeName,
+    required this.onConfirm,
+  });
+
+  final String resumeName;
+  final VoidCallback onConfirm;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final viewport = MediaQuery.of(context);
+    return Padding(
+      padding: EdgeInsets.only(bottom: viewport.viewInsets.bottom),
+      child: Container(
+        decoration: BoxDecoration(
+          color: brand.bg,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: EdgeInsets.fromLTRB(
+          24,
+          12,
+          24,
+          24 + viewport.padding.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: brand.border,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Delete resume?',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: brand.ink,
+                letterSpacing: -0.3,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '$resumeName will be removed from your uploads.',
+              style: TextStyle(
+                fontSize: 13,
+                color: brand.textMuted,
+                fontWeight: FontWeight.w500,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: _SheetButton(
+                    label: 'Cancel',
+                    filled: false,
+                    onTap: () => Navigator.of(context).pop(),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: _SheetButton(
+                    label: 'Delete',
+                    filled: true,
+                    destructive: true,
+                    onTap: onConfirm,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SheetButton extends StatelessWidget {
+  const _SheetButton({
+    required this.label,
+    required this.filled,
+    required this.onTap,
+    this.destructive = false,
+  });
+
+  final String label;
+  final bool filled;
+  final bool destructive;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final bg = filled
+        ? (destructive ? brand.danger : brand.ink)
+        : brand.surface;
+    final fg = filled ? brand.inkInverse : brand.ink;
+    return Material(
+      color: bg,
+      borderRadius: BorderRadius.circular(99),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(99),
+        child: Container(
+          height: 48,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(99),
+            border: Border.all(
+              color: filled ? Colors.transparent : brand.border,
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: fg,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _EmptyPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -333,7 +461,7 @@ class _EmptyPreview extends StatelessWidget {
         padding: const EdgeInsets.all(28),
         decoration: BoxDecoration(
           color: brand.surface,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: brand.border),
         ),
         child: Column(
@@ -344,7 +472,7 @@ class _EmptyPreview extends StatelessWidget {
               height: 56,
               decoration: BoxDecoration(
                 color: brand.ink,
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(16),
               ),
               alignment: Alignment.center,
               child: Icon(
@@ -357,7 +485,7 @@ class _EmptyPreview extends StatelessWidget {
             Text(
               'No resume selected',
               style: TextStyle(
-                fontWeight: FontWeight.w900,
+                fontWeight: FontWeight.w800,
                 fontSize: 16,
                 color: brand.ink,
               ),

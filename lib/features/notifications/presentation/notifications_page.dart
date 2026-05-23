@@ -18,11 +18,11 @@ class NotificationsPage extends ConsumerWidget {
   void _handleTap(BuildContext context, WidgetRef ref, AppNotification n) {
     ref.read(notificationsProvider.notifier).markRead(n.id);
     final route = switch (n.kind) {
-      NotificationKind.intercept => RouteNames.jobs,
+      NotificationKind.intercept => RouteNames.agentChat,
       NotificationKind.reply => RouteNames.agentChat,
-      NotificationKind.drafted => RouteNames.jobs,
-      NotificationKind.undo => RouteNames.jobs,
-      NotificationKind.match => RouteNames.jobs,
+      NotificationKind.drafted => RouteNames.agentChat,
+      NotificationKind.undo => RouteNames.agentChat,
+      NotificationKind.match => RouteNames.agentChat,
     };
     context.go(route);
   }
@@ -53,7 +53,7 @@ class NotificationsPage extends ConsumerWidget {
           children: [
             AppHeader.page(
               title: AppStrings.notificationsTitle,
-              onBack: () => context.go(RouteNames.dashboard),
+              onBack: () => context.go(RouteNames.agentChat),
               trailing: hasUnread
                   ? _ReadAllChip(onTap: notifier.markAllRead)
                   : null,
@@ -82,7 +82,7 @@ class NotificationsPage extends ConsumerWidget {
                         40,
                       ),
                       itemCount: items.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 10),
+                      separatorBuilder: (_, _) => const SizedBox(height: 12),
                       itemBuilder: (context, i) {
                         final n = items[i];
                         return _NotificationCard(
@@ -197,7 +197,7 @@ class _EmptyState extends StatelessWidget {
           padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(
             color: brand.surface,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(color: brand.border),
           ),
           child: Column(
@@ -210,7 +210,7 @@ class _EmptyState extends StatelessWidget {
                 title,
                 style: TextStyle(
                   fontSize: 14,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w800,
                   color: brand.ink,
                 ),
               ),
@@ -315,26 +315,19 @@ class _NotificationCard extends StatelessWidget {
     final (icon, bg, fg) = _icon(brand);
     return Material(
       color: brand.surface,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: notification.unread
                   ? brand.ink.withValues(alpha: 0.15)
-                  : brand.border.withValues(alpha: 0.60),
+                  : brand.border,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: brand.shadow,
-                blurRadius: 16,
-                offset: const Offset(0, 4),
-              ),
-            ],
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -361,7 +354,7 @@ class _NotificationCard extends StatelessWidget {
                             notification.title,
                             style: TextStyle(
                               fontSize: 14,
-                              fontWeight: FontWeight.w900,
+                              fontWeight: FontWeight.w800,
                               color: brand.ink,
                             ),
                           ),
@@ -374,7 +367,7 @@ class _NotificationCard extends StatelessWidget {
                               width: 10,
                               height: 10,
                               decoration: BoxDecoration(
-                                color: brand.danger,
+                                color: brand.accent,
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -450,7 +443,7 @@ class _InlineAction extends StatelessWidget {
                 label,
                 style: TextStyle(
                   fontSize: 11,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w800,
                   color: brand.inkInverse,
                 ),
               ),
