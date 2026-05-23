@@ -3,6 +3,7 @@ import 'package:syncra/features/agent_chat/tools/anthropic_tool_calls.dart';
 import 'package:syncra/features/resumes/models/proposed_edit.dart';
 import 'package:syncra/features/resumes/models/resume_json.dart';
 import 'package:syncra/features/resumes/services/resume_diff_service.dart';
+import 'package:syncra/features/agent_chat/services/anthropic_chat_service.dart';
 
 /// Regression guard for the `tailor_resume` contract: the prompt must keep
 /// instructing Claude to (a) propose targeted edits rather than full-section
@@ -34,6 +35,37 @@ void main() {
       expect(prompt, contains('3 to 8 edits'));
     });
   });
+
+  group('main agent system prompt', () {
+  final prompt = AnthropicChatService.systemPrompt.toLowerCase();
+
+  test('treats user messages as workflow goals', () {
+    expect(prompt, contains('goal'));
+    expect(
+      prompt,
+      contains('do not ask the user to manually prompt every next step'),
+    );
+    expect(prompt, contains('continue the workflow'));
+  });
+
+  test('pauses only for required user gates', () {
+    expect(prompt, contains('pause only'));
+    expect(prompt, contains('required user gate'));
+    expect(prompt, contains('ask_user'));
+  });
+
+  test('continues after saved tailored resume approval', () {
+    expect(prompt, contains('approved and saved a tailored resume'));
+    expect(prompt, contains('continue the original workflow'));
+    expect(prompt, contains('without asking the user to repeat the task'));
+  });
+
+  test('keeps send_email behind explicit approval', () {
+    expect(prompt, contains('never call `send_email`'));
+    expect(prompt, contains('explicit user-confirmation token'));
+    expect(prompt, contains('user tapped send'));
+  });
+});
 
   // The prompt asks for verbatim original_text; the diff engine is the
   // backstop that enforces it. A full-section rewrite whose original_text
