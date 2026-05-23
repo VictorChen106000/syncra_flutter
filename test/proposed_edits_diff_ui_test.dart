@@ -210,9 +210,9 @@ void main() {
       await tester.tap(find.widgetWithText(InkWell, 'Apply 1 edit'));
       await tester.pumpAndSettle();
 
-      // Settled: footer collapses to the outcome line, controls gone.
-      expect(find.text('Applied'), findsOneWidget); // status pill
-      expect(find.text('Applied 1 edit to your resume'), findsOneWidget);
+      // Settled: footer moves to preview-ready state, controls gone.
+      expect(find.text('Preview ready'), findsOneWidget); // status pill
+      expect(find.text('Preview ready — tap to review'), findsOneWidget);
       expect(find.widgetWithText(InkWell, 'Accept'), findsNothing);
     });
 
