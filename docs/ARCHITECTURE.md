@@ -55,6 +55,13 @@ trigger: user prompt  OR  canned brief prompt
    → events route to: chat UI (if open) + notifications inbox (always)
 ```
 
+Approval continuation works the same way as `ask_user`, but the user action comes
+from an approval UI instead of a typed answer:
+
+- `ProposedEditsBlock` — PR-style resume edits from `tailor_resume`; supports per-edit Accept/Reject decisions, Apply N edits, preview rendering, save-to-library, and saved-resume continuation.
+- `ActionProposalBlock` — approval card for concrete next actions; may include a hidden `continuationPrompt` that resumes the threaded agent loop after user approval.
+- `send_email` remains gated. The agent may draft outreach, but sending requires the email review UI and an explicit user-confirmation token.
+
 **Extended thinking is enabled** (`budget_tokens: 2048`, `max_tokens: 4096`).
 Thinking blocks render as a collapsed "Thought for a moment" step and must be
 returned verbatim in the next assistant message — the loop records assistant
