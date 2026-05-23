@@ -1,14 +1,12 @@
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/dev/dev_flags_notifier.dart';
-import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../core/theme/theme_mode_notifier.dart';
 import '../../../core/utils/motion.dart';
@@ -44,25 +42,22 @@ class ProfilePage extends StatelessWidget {
               children: [
                 const _ProfileHeaderCard(),
                 const SizedBox(height: 24),
-                const SectionTitle(title: AppStrings.careerPipeline),
-                const _CareerPipelineSection(),
-                const SizedBox(height: 24),
                 const SectionTitle(title: 'Connections'),
                 const _IntegrationSection(),
                 const SizedBox(height: 24),
-                const SectionTitle(title: 'Preferences'),
-                const _PreferencesSection(),
+                const SectionTitle(title: 'Agent behavior'),
+                const _AgentBehaviorSection(),
+                const SizedBox(height: 24),
+                const SectionTitle(title: 'Appearance'),
+                const _AppearanceSection(),
+                const SizedBox(height: 24),
+                const SectionTitle(title: 'Account'),
+                const _AccountSection(),
                 if (kDebugMode) ...const [
                   SizedBox(height: 24),
                   SectionTitle(title: 'Developer'),
                   _DevFlagsSection(),
                 ],
-                const SizedBox(height: 24),
-                const _SignOutButton(),
-                const SizedBox(height: 12),
-                const _ResetAccountButton(),
-                const SizedBox(height: 12),
-                const _DeleteAccountButton(),
               ],
             ),
           ),
@@ -73,44 +68,34 @@ class ProfilePage extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Preferences — a single grouped card with two compact tiles:
-// Dark mode · Today's brief.
+// Shared row layout: icon · title (+ subtitle) · trailing.
+// Tappable when `onTap` is provided; title / icon color overridable so the
+// Account section can tint destructive rows without a separate widget.
 // ---------------------------------------------------------------------------
 
-class _PreferencesSection extends StatelessWidget {
-  const _PreferencesSection();
-
-  @override
-  Widget build(BuildContext context) {
-    return const _GroupedCard(
-      children: [
-        _ThemeModeTile(),
-        _GroupedDivider(),
-        _MorningBriefTile(),
-      ],
-    );
-  }
-}
-
-/// Standard row layout used by every preference tile.
-/// Icon · title (+ optional subtitle) · trailing control.
 class _PreferenceRow extends StatelessWidget {
   const _PreferenceRow({
     required this.icon,
     required this.title,
     required this.subtitle,
-    required this.trailing,
+    this.trailing,
+    this.onTap,
+    this.titleColor,
+    this.iconColor,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
-  final Widget trailing;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+  final Color? titleColor;
+  final Color? iconColor;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    return Padding(
+    final body = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
         children: [
@@ -122,7 +107,7 @@ class _PreferenceRow extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
             ),
             alignment: Alignment.center,
-            child: Icon(icon, size: 18, color: brand.ink),
+            child: Icon(icon, size: 18, color: iconColor ?? brand.ink),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -134,7 +119,7 @@ class _PreferenceRow extends StatelessWidget {
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 14,
-                    color: brand.ink,
+                    color: titleColor ?? brand.ink,
                     letterSpacing: -0.1,
                   ),
                 ),
@@ -152,10 +137,17 @@ class _PreferenceRow extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 12),
-          trailing,
+          if (trailing != null) ...[
+            const SizedBox(width: 12),
+            trailing!,
+          ],
         ],
       ),
+    );
+    if (onTap == null) return body;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(onTap: onTap, child: body),
     );
   }
 }
@@ -239,59 +231,121 @@ class _ProfileHeaderCard extends ConsumerWidget {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
         children: [
-          _ProfileAvatar(photoUrl: photoUrl, initial: initial),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  displayName,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.2,
-                    height: 1.2,
-                    color: brand.ink,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (email.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    email,
-                    style: TextStyle(
-                      color: brand.textMuted,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-                const SizedBox(height: 8),
-                Row(
+          Row(
+            children: [
+              _ProfileAvatar(photoUrl: photoUrl, initial: initial),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const _PulsingActiveDot(),
-                    const SizedBox(width: 8),
                     Text(
-                      'Agent Active',
+                      displayName,
                       style: TextStyle(
-                        color: brand.textMuted,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.1,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.2,
+                        height: 1.2,
+                        color: brand.ink,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (email.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        email,
+                        style: TextStyle(
+                          color: brand.textMuted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const _PulsingActiveDot(),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Agent Active',
+                          style: TextStyle(
+                            color: brand.textMuted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.1,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
+          const SizedBox(height: 16),
+          Divider(height: 1, color: brand.bg),
+          const SizedBox(height: 4),
+          const _SearchCriteriaRow(label: 'Target roles', value: 'Not set'),
+          const _SearchCriteriaRow(label: 'Location', value: 'Not set'),
+          const _SearchCriteriaRow(label: 'Comp floor', value: 'Not set'),
+          const _SearchCriteriaRow(label: 'Seniority', value: 'Not set'),
         ],
+      ),
+    );
+  }
+}
+
+/// Plain text row for the agent's search criteria, embedded inside the
+/// profile header card. No leading icon — the section frames itself.
+class _SearchCriteriaRow extends StatelessWidget {
+  const _SearchCriteriaRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return InkWell(
+      onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Coming soon')),
+      ),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: brand.textMuted,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.1,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              value,
+              style: TextStyle(
+                color: brand.ink,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: brand.border,
+              size: 18,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -384,156 +438,10 @@ class _PulsingActiveDot extends StatelessWidget {
   }
 }
 
-class _ThemeModeTile extends ConsumerWidget {
-  const _ThemeModeTile();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final selected = ref.watch(themeModeProvider);
-    final subtitle = switch (selected) {
-      ThemeMode.light => 'Always light',
-      ThemeMode.dark => 'Always dark',
-      ThemeMode.system => 'Match device',
-    };
-    return _PreferenceRow(
-      icon: Icons.contrast_rounded,
-      title: 'Appearance',
-      subtitle: subtitle,
-      trailing: _MiniSegmented<ThemeMode>(
-        selected: selected,
-        onChanged: (m) =>
-            ref.read(themeModeProvider.notifier).setMode(m),
-        options: const [
-          (ThemeMode.light, Icons.wb_sunny_outlined),
-          (ThemeMode.dark, Icons.dark_mode_outlined),
-          (ThemeMode.system, Icons.brightness_auto_outlined),
-        ],
-      ),
-    );
-  }
-}
-
-class _MorningBriefTile extends ConsumerWidget {
-  const _MorningBriefTile();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final brand = context.brand;
-    final profile = ref.watch(userProfileProvider);
-    final enabled = profile?.morningBriefEnabled ?? false;
-    final running = ref.watch(
-      passiveAgentProvider.select((s) => s.isRunning),
-    );
-    return _PreferenceRow(
-      icon: Icons.wb_sunny_outlined,
-      title: "Today's brief",
-      subtitle: enabled
-          ? (running ? 'Running now…' : 'On — greets you after sign-in')
-          : 'Off',
-      trailing: Switch.adaptive(
-        value: enabled,
-        activeThumbColor: brand.ink,
-        // Flipping the toggle only stores the preference — it never fires the
-        // brief itself (no surprise token spend). The brief runs when the
-        // user taps "Run today's brief" or sees it after sign-in.
-        onChanged: profile == null
-            ? null
-            : (v) => ref
-                .read(userProfileProvider.notifier)
-                .setMorningBriefEnabled(v),
-      ),
-    );
-  }
-}
-
 // ---------------------------------------------------------------------------
-// Developer toggles — only rendered when `kDebugMode == true`, so they're
-// stripped from release builds. Used to skip onboarding / morning brief and
-// to force the notification bell's unread dot while iterating on UI.
+// Connections — third-party integrations. Gmail is UI-only for now; the
+// toggle keeps local state until the OAuth flow is wired up.
 // ---------------------------------------------------------------------------
-
-class _DevFlagsSection extends ConsumerWidget {
-  const _DevFlagsSection();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final flags = ref.watch(devFlagsProvider);
-    final notifier = ref.read(devFlagsProvider.notifier);
-    final brand = context.brand;
-    return _GroupedCard(
-      children: [
-        _PreferenceRow(
-          icon: Icons.flag_outlined,
-          title: 'Show onboarding',
-          subtitle: 'Open the onboarding page (auto-clears on submit)',
-          trailing: Switch.adaptive(
-            value: flags.showOnboarding,
-            activeThumbColor: brand.ink,
-            onChanged: notifier.setShowOnboarding,
-          ),
-        ),
-        const _GroupedDivider(),
-        _PreferenceRow(
-          icon: Icons.wb_twilight_outlined,
-          title: 'Show morning brief',
-          subtitle: 'Open the morning brief (auto-clears on continue)',
-          trailing: Switch.adaptive(
-            value: flags.showMorningBrief,
-            activeThumbColor: brand.ink,
-            onChanged: notifier.setShowMorningBrief,
-          ),
-        ),
-        const _GroupedDivider(),
-        _PreferenceRow(
-          icon: Icons.notifications_active_outlined,
-          title: 'Show mock notifications',
-          subtitle: 'Seed the inbox with sample agent activity',
-          trailing: Switch.adaptive(
-            value: flags.showMockNotifications,
-            activeThumbColor: brand.ink,
-            onChanged: notifier.setShowMockNotifications,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _CareerPipelineSection extends ConsumerWidget {
-  const _CareerPipelineSection();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(resumeProvider);
-    return _GroupedCard(
-      children: [
-        _SettingsTile(
-          icon: Icons.description_rounded,
-          iconActive: true,
-          title: 'Resumes',
-          count: state.resumes.length + state.tailoredResumes.length,
-          onTap: () => context.go(RouteNames.resumes),
-        ),
-        const _GroupedDivider(),
-        _SettingsTile(
-          icon: Icons.timeline_rounded,
-          iconActive: true,
-          title: 'Application Tracker',
-          count: 5,
-          onTap: () => context.go(RouteNames.applications),
-        ),
-        const _GroupedDivider(),
-        _SettingsTile(
-          icon: Icons.search_rounded,
-          iconActive: true,
-          title: 'Discovered Roles',
-          count: 4,
-          onTap: () => context.go(RouteNames.jobs),
-        ),
-      ],
-    );
-  }
-}
 
 class _IntegrationSection extends StatefulWidget {
   const _IntegrationSection();
@@ -693,8 +601,109 @@ class _Integration {
       );
 }
 
-class _ResetAccountButton extends ConsumerWidget {
-  const _ResetAccountButton();
+// ---------------------------------------------------------------------------
+// Agent behavior — how the agent acts on your behalf.
+// ---------------------------------------------------------------------------
+
+class _AgentBehaviorSection extends StatelessWidget {
+  const _AgentBehaviorSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _GroupedCard(
+      children: [
+        _MorningBriefTile(),
+      ],
+    );
+  }
+}
+
+class _MorningBriefTile extends ConsumerWidget {
+  const _MorningBriefTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
+    final profile = ref.watch(userProfileProvider);
+    final enabled = profile?.morningBriefEnabled ?? false;
+    final running = ref.watch(
+      passiveAgentProvider.select((s) => s.isRunning),
+    );
+    return _PreferenceRow(
+      icon: Icons.wb_sunny_outlined,
+      title: "Today's brief",
+      subtitle: enabled
+          ? (running ? 'Running now…' : 'On — greets you after sign-in')
+          : 'Off',
+      trailing: Switch.adaptive(
+        value: enabled,
+        activeThumbColor: brand.ink,
+        // Flipping the toggle only stores the preference — it never fires the
+        // brief itself (no surprise token spend). The brief runs when the
+        // user taps "Run today's brief" or sees it after sign-in.
+        onChanged: profile == null
+            ? null
+            : (v) => ref
+                .read(userProfileProvider.notifier)
+                .setMorningBriefEnabled(v),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Appearance — visual prefs only.
+// ---------------------------------------------------------------------------
+
+class _AppearanceSection extends StatelessWidget {
+  const _AppearanceSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _GroupedCard(
+      children: [
+        _ThemeModeTile(),
+      ],
+    );
+  }
+}
+
+class _ThemeModeTile extends ConsumerWidget {
+  const _ThemeModeTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selected = ref.watch(themeModeProvider);
+    final subtitle = switch (selected) {
+      ThemeMode.light => 'Always light',
+      ThemeMode.dark => 'Always dark',
+      ThemeMode.system => 'Match device',
+    };
+    return _PreferenceRow(
+      icon: Icons.contrast_rounded,
+      title: 'Appearance',
+      subtitle: subtitle,
+      trailing: _MiniSegmented<ThemeMode>(
+        selected: selected,
+        onChanged: (m) =>
+            ref.read(themeModeProvider.notifier).setMode(m),
+        options: const [
+          (ThemeMode.light, Icons.wb_sunny_outlined),
+          (ThemeMode.dark, Icons.dark_mode_outlined),
+          (ThemeMode.system, Icons.brightness_auto_outlined),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Account — reset (warning) and sign out (danger) grouped in one card so the
+// destructive actions live together instead of stacked full-width buttons.
+// ---------------------------------------------------------------------------
+
+class _AccountSection extends ConsumerWidget {
+  const _AccountSection();
 
   Future<void> _confirmAndReset(BuildContext context, WidgetRef ref) async {
     final brand = context.brand;
@@ -731,9 +740,7 @@ class _ResetAccountButton extends ConsumerWidget {
     if (!context.mounted) return;
     final error = ref.read(authProvider).error;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(error ?? 'Account data reset.'),
-      ),
+      SnackBar(content: Text(error ?? 'Account data reset.')),
     );
   }
 
@@ -741,193 +748,91 @@ class _ResetAccountButton extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final brand = context.brand;
     final loading = ref.watch(authProvider).isLoading;
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
-      child: InkWell(
-        onTap: loading ? null : () => _confirmAndReset(context, ref),
-        borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: BoxDecoration(
-            color: Colors.transparent,
-            borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
-            border: Border.all(
-              color: brand.warning.withValues(alpha: 0.32),
-            ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.refresh_rounded,
-                size: 14,
-                color: brand.warning,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Reset account',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  color: brand.warning,
-                  letterSpacing: 0.1,
-                ),
-              ),
-            ],
-          ),
+    return _GroupedCard(
+      children: [
+        _PreferenceRow(
+          icon: Icons.refresh_rounded,
+          title: 'Reset account',
+          subtitle: 'Clear all data — keep sign-in',
+          iconColor: brand.warning,
+          titleColor: brand.warning,
+          onTap: loading ? null : () => _confirmAndReset(context, ref),
         ),
-      ),
+        const _GroupedDivider(),
+        _PreferenceRow(
+          icon: Icons.logout_rounded,
+          title: loading ? 'Signing out…' : AppStrings.signOut,
+          subtitle: 'End your session on this device',
+          iconColor: brand.danger,
+          titleColor: brand.danger,
+          trailing: loading
+              ? SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation(brand.danger),
+                  ),
+                )
+              : null,
+          onTap: loading
+              ? null
+              : () => ref.read(authProvider.notifier).signOut(),
+        ),
+      ],
     );
   }
 }
 
-class _DeleteAccountButton extends ConsumerWidget {
-  const _DeleteAccountButton();
+// ---------------------------------------------------------------------------
+// Developer toggles — only rendered when `kDebugMode == true`, so they're
+// stripped from release builds. Used to skip onboarding / morning brief and
+// to force the notification bell's unread dot while iterating on UI.
+// ---------------------------------------------------------------------------
 
-  Future<void> _confirmAndDelete(BuildContext context, WidgetRef ref) async {
-    final brand = context.brand;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete account?'),
-        content: const Text(
-          'This permanently deletes your Syncra profile and signs you out. '
-          'Resumes saved on this device will remain until you uninstall the app.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: brand.danger),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    await ref.read(authProvider.notifier).deleteAccount();
-  }
+class _DevFlagsSection extends ConsumerWidget {
+  const _DevFlagsSection();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final flags = ref.watch(devFlagsProvider);
+    final notifier = ref.read(devFlagsProvider.notifier);
     final brand = context.brand;
-    final loading = ref.watch(authProvider).isLoading;
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
-      child: InkWell(
-        onTap: loading ? null : () => _confirmAndDelete(context, ref),
-        borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: BoxDecoration(
-            color: Colors.transparent,
-            borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
-            border: Border.all(
-              color: brand.danger.withValues(alpha: 0.30),
-            ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.delete_outline_rounded, size: 14, color: brand.danger),
-              const SizedBox(width: 8),
-              Text(
-                'Delete account',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  color: brand.danger,
-                  letterSpacing: 0.1,
-                ),
-              ),
-            ],
+    return _GroupedCard(
+      children: [
+        _PreferenceRow(
+          icon: Icons.flag_outlined,
+          title: 'Show onboarding',
+          subtitle: 'Open the onboarding page (auto-clears on submit)',
+          trailing: Switch.adaptive(
+            value: flags.showOnboarding,
+            activeThumbColor: brand.ink,
+            onChanged: notifier.setShowOnboarding,
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _SettingsTile extends StatelessWidget {
-  const _SettingsTile({
-    required this.icon,
-    required this.title,
-    this.iconActive = false,
-    this.count,
-    this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final bool iconActive;
-  final int? count;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final isTappable = onTap != null;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: iconActive ? brand.ink : brand.surfaceMuted,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  icon,
-                  color: iconActive ? brand.inkInverse : brand.ink,
-                  size: 18,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    color: brand.ink,
-                  ),
-                ),
-              ),
-              if (count != null) ...[
-                Text(
-                  '$count',
-                  style: TextStyle(
-                    color: brand.textMuted,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(width: 6),
-              ],
-              if (isTappable)
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: brand.border,
-                  size: 20,
-                ),
-            ],
+        const _GroupedDivider(),
+        _PreferenceRow(
+          icon: Icons.wb_twilight_outlined,
+          title: 'Show morning brief',
+          subtitle: 'Open the morning brief (auto-clears on continue)',
+          trailing: Switch.adaptive(
+            value: flags.showMorningBrief,
+            activeThumbColor: brand.ink,
+            onChanged: notifier.setShowMorningBrief,
           ),
         ),
-      ),
+        const _GroupedDivider(),
+        _PreferenceRow(
+          icon: Icons.notifications_active_outlined,
+          title: 'Show mock notifications',
+          subtitle: 'Seed the inbox with sample agent activity',
+          trailing: Switch.adaptive(
+            value: flags.showMockNotifications,
+            activeThumbColor: brand.ink,
+            onChanged: notifier.setShowMockNotifications,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -968,63 +873,6 @@ class _GroupedDivider extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(left: 64),
       child: Divider(height: 1, color: brand.bg),
-    );
-  }
-}
-
-class _SignOutButton extends ConsumerWidget {
-  const _SignOutButton();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final brand = context.brand;
-    final loading = ref.watch(authProvider).isLoading;
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
-      child: InkWell(
-        onTap: loading
-            ? null
-            : () => ref.read(authProvider.notifier).signOut(),
-        borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            color: brand.danger.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
-            border: Border.all(
-              color: brand.danger.withValues(alpha: 0.22),
-            ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (loading)
-                SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation(brand.danger),
-                  ),
-                )
-              else
-                Icon(Icons.logout_rounded, size: 16, color: brand.danger),
-              const SizedBox(width: 10),
-              Text(
-                loading ? 'Signing out…' : AppStrings.signOut,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                  color: brand.danger,
-                  letterSpacing: 0.1,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
