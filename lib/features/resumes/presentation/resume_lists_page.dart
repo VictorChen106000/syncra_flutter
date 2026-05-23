@@ -53,7 +53,7 @@ class ResumeListsPage extends ConsumerWidget {
           children: [
             AppHeader.page(
               title: AppStrings.resumeListsTitle,
-              onBack: () => context.go(RouteNames.agentChat),
+              onBack: () => context.go(RouteNames.profile),
             ),
             Expanded(
               child: ListView(
@@ -143,14 +143,14 @@ class _UploadDropZone extends StatelessWidget {
     final brand = context.brand;
     return Material(
       color: brand.surface,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         child: Container(
-          height: 132,
+          height: 130,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: brand.ink.withValues(alpha: 0.30),
               width: 1.5,
@@ -165,7 +165,7 @@ class _UploadDropZone extends StatelessWidget {
               Text(
                 AppStrings.uploadResume,
                 style: TextStyle(
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w900,
                   fontSize: 14,
                   color: brand.ink,
                 ),

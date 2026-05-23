@@ -88,32 +88,31 @@ class BrandTheme extends ThemeExtension<BrandTheme> {
     glassBorder: Color(0x66FFFFFF),
   );
 
-  // Dark palette — lifted off pure #000 so surfaces have room to read.
-  // bg is a deep charcoal rather than true black; surface and surfaceMuted
-  // step up from there. With lime in the user CTAs and chat bubbles the
-  // accent already pops without needing the contrast of #000.
+  // Dark palette — modeled on a true-black "AI assistant" aesthetic:
+  // pure black backdrop, near-black surface chip, pure-white type,
+  // and a single lime accent that's meant to glow against the void.
   static const dark = BrandTheme(
     brightness: Brightness.dark,
-    bg: Color(0xFF0E0F11),
-    surface: Color(0xFF1B1C1F),
-    surfaceMuted: Color(0xFF26282C),
-    surfaceSubtle: Color(0xFF131418),
-    border: Color(0xFF2A2C30),
-    outline: Color(0xFF3C3E42),
-    ink: Color(0xFFF1F1F3),
-    inkInverse: Color(0xFF0E0F11),
-    textMuted: Color(0xFF9A9B9F),
-    textSoft: Color(0xFF67686C),
+    bg: Color(0xFF000000),
+    surface: Color(0xFF1A1A1C),
+    surfaceMuted: Color(0xFF2C2C2E),
+    surfaceSubtle: Color(0xFF0F0F11),
+    border: Color(0xFF28292C),
+    outline: Color(0xFF3A3B3E),
+    ink: Color(0xFFFFFFFF),
+    inkInverse: Color(0xFF000000),
+    textMuted: Color(0xFF8A8A8E),
+    textSoft: Color(0xFF5C5D60),
     accent: Color(0xFFA0FE08),
     accentBright: Color(0xFFB7FF3A),
     accentMuted: Color(0x33A0FE08),
-    onAccent: Color(0xFF0E0F11),
+    onAccent: Color(0xFF000000),
     danger: Color(0xFFFF6B62),
     warning: Color(0xFFFFC857),
     success: Color(0xFF4ADE80),
     shadow: Color(0x99000000),
-    glassFill: Color(0xCC1B1C1F),
-    glassBorder: Color(0x332A2C30),
+    glassFill: Color(0xCC1A1A1C),
+    glassBorder: Color(0x3328292C),
   );
 
   @override

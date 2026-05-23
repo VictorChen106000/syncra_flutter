@@ -8,15 +8,22 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
-import '../../../shared/widgets/app_header.dart';
 import '../models/app_notification.dart';
 import '../state/notifications_notifier.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
-class NotificationsPage extends ConsumerWidget {
-  const NotificationsPage({super.key});
+/// `true` while the dashboard's left drawer is on screen. The shell
+/// scaffold reads this to slide its floating bottom nav out of the way.
+final notificationsDrawerOpenProvider = StateProvider<bool>((ref) => false);
+
+/// Slide-in left drawer that replaces the legacy notification bell route.
+/// Opened by tapping the dashboard avatar or by swiping from the left edge.
+class NotificationsDrawer extends ConsumerWidget {
+  const NotificationsDrawer({super.key});
 
   void _handleTap(BuildContext context, WidgetRef ref, AppNotification n) {
     ref.read(notificationsProvider.notifier).markRead(n.id);
+    Navigator.of(context).maybePop();
     final route = switch (n.kind) {
       NotificationKind.intercept => RouteNames.jobs,
       NotificationKind.reply => RouteNames.agentChat,
@@ -30,38 +37,34 @@ class NotificationsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final brand = context.brand;
-    ref.listen<NotificationsState>(notificationsProvider, (prev, next) {
-      if (next.lastMessage == null || next.lastMessage == prev?.lastMessage) {
-        return;
-      }
-      ref.read(notificationsProvider.notifier).consumeMessage();
-      ScaffoldMessenger.of(context)
-        ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text(next.lastMessage!)));
-    });
-
     final state = ref.watch(notificationsProvider);
     final notifier = ref.read(notificationsProvider.notifier);
-    final hasUnread = state.unreadCount > 0;
     final items = state.filtered;
+    final hasUnread = state.unreadCount > 0;
+    final width = MediaQuery.sizeOf(context).width;
 
-    return Scaffold(
+    return Drawer(
       backgroundColor: brand.bg,
-      body: SafeArea(
+      width: width * 0.88,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.only(
+          topRight: Radius.circular(28),
+          bottomRight: Radius.circular(28),
+        ),
+      ),
+      child: SafeArea(
         bottom: false,
         child: Column(
           children: [
-            AppHeader.page(
-              title: AppStrings.notificationsTitle,
-              onBack: () => context.go(RouteNames.dashboard),
-              trailing: hasUnread
-                  ? _ReadAllChip(onTap: notifier.markAllRead)
-                  : null,
+            _DrawerHeader(
+              unreadCount: state.unreadCount,
+              onMarkAllRead: hasUnread ? notifier.markAllRead : null,
+              onClose: () => Navigator.of(context).maybePop(),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(
                 AppConstants.screenHorizontalPadding,
-                8,
+                4,
                 AppConstants.screenHorizontalPadding,
                 8,
               ),
@@ -88,16 +91,143 @@ class NotificationsPage extends ConsumerWidget {
                         return _NotificationCard(
                           notification: n,
                           onTap: () => _handleTap(context, ref, n),
-                          onAction: () => _handleTap(context, ref, n),
                           onMarkRead: () => notifier.markRead(n.id),
                         )
-                            .animate(delay: (i * 50).ms)
-                            .fadeIn()
-                            .moveY(begin: 8, end: 0);
+                            .animate(delay: (i * 40).ms)
+                            .fadeIn(duration: 240.ms)
+                            .moveX(begin: -10, end: 0);
                       },
                     ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DrawerHeader extends StatelessWidget {
+  const _DrawerHeader({
+    required this.unreadCount,
+    required this.onMarkAllRead,
+    required this.onClose,
+  });
+
+  final int unreadCount;
+  final VoidCallback? onMarkAllRead;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppConstants.screenHorizontalPadding,
+        16,
+        AppConstants.screenHorizontalPadding,
+        14,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      AppStrings.notificationsTitle,
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w900,
+                        color: brand.ink,
+                        letterSpacing: -0.6,
+                        height: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      unreadCount > 0
+                          ? '$unreadCount unread'
+                          : 'All caught up',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: brand.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (onMarkAllRead != null) ...[
+                _ReadAllChip(onTap: onMarkAllRead!),
+                const SizedBox(width: 8),
+              ],
+              _CloseButton(onTap: onClose),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CloseButton extends StatelessWidget {
+  const _CloseButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Material(
+      color: brand.surface,
+      shape: const CircleBorder(),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        splashColor: Colors.transparent,
+        highlightColor: Colors.transparent,
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: Icon(Icons.close_rounded, size: 18, color: brand.ink),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReadAllChip extends StatelessWidget {
+  const _ReadAllChip({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(99),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(99),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: brand.surface,
+            borderRadius: BorderRadius.circular(99),
+            border: Border.all(color: brand.border),
+          ),
+          child: Text(
+            AppStrings.markAllRead,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+              color: brand.ink,
+            ),
+          ),
         ),
       ),
     );
@@ -203,8 +333,11 @@ class _EmptyState extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.notifications_none_rounded,
-                  size: 28, color: brand.textMuted),
+              Icon(
+                Icons.notifications_none_rounded,
+                size: 28,
+                color: brand.textMuted,
+              ),
               const SizedBox(height: 10),
               Text(
                 title,
@@ -232,56 +365,18 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-class _ReadAllChip extends StatelessWidget {
-  const _ReadAllChip({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(99),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(99),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: brand.surface,
-            borderRadius: BorderRadius.circular(99),
-            border: Border.all(color: brand.border),
-          ),
-          child: Text(
-            AppStrings.markAllRead,
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w800,
-              color: brand.ink,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _NotificationCard extends StatelessWidget {
   const _NotificationCard({
     required this.notification,
     required this.onTap,
-    required this.onAction,
     required this.onMarkRead,
   });
 
   final AppNotification notification;
   final VoidCallback onTap;
-  final VoidCallback onAction;
   final VoidCallback onMarkRead;
 
-  (IconData, Color, Color) _icon(BrandTheme brand) =>
-      switch (notification.kind) {
+  (IconData, Color, Color) _icon(BrandTheme brand) => switch (notification.kind) {
         NotificationKind.intercept => (
             Icons.front_hand_outlined,
             brand.warning.withValues(alpha: 0.20),
@@ -331,7 +426,7 @@ class _NotificationCard extends StatelessWidget {
             boxShadow: [
               BoxShadow(
                 color: brand.shadow,
-                blurRadius: 16,
+                blurRadius: 14,
                 offset: const Offset(0, 4),
               ),
             ],
@@ -392,73 +487,16 @@ class _NotificationCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Text(
-                          notification.timestamp,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                            color: brand.textSoft,
-                          ),
-                        ),
-                        if (notification.actionLabel != null) ...[
-                          const SizedBox(width: 12),
-                          _InlineAction(
-                            label: notification.actionLabel!,
-                            onTap: onAction,
-                          ),
-                        ],
-                      ],
+                    Text(
+                      notification.timestamp,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: brand.textSoft,
+                      ),
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _InlineAction extends StatelessWidget {
-  const _InlineAction({required this.label, required this.onTap});
-
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(99),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(99),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: brand.ink,
-            borderRadius: BorderRadius.circular(99),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                  color: brand.inkInverse,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Icon(
-                Icons.arrow_forward_rounded,
-                size: 12,
-                color: brand.accent,
               ),
             ],
           ),

@@ -46,7 +46,7 @@ class LoginPage extends ConsumerWidget {
                       // theme's interTextTheme sometimes falls back to a
                       // lighter weight for very large display type.
                       final headline = GoogleFonts.inter(
-                        color: brand.ink,
+                        color: Colors.white,
                         fontSize: 48 * scale,
                         height: 1.02,
                         fontWeight: FontWeight.w900,
@@ -70,8 +70,8 @@ class LoginPage extends ConsumerWidget {
                   const SizedBox(height: 40),
                   _LoginButton(
                     label: AppStrings.continueWithGoogle,
-                    backgroundColor: brand.ink,
-                    foregroundColor: brand.inkInverse,
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color(0xFF0A0B0A),
                     leading: SvgPicture.asset(
                       AppAssets.googleGSvg,
                       width: 20,
@@ -83,14 +83,14 @@ class LoginPage extends ConsumerWidget {
                   const SizedBox(height: 12),
                   _LoginButton(
                     label: 'Continue with Email',
-                    backgroundColor: brand.ink.withValues(alpha: 0.16),
-                    foregroundColor: brand.ink,
-                    leading: Icon(
+                    backgroundColor: Colors.white.withValues(alpha: 0.16),
+                    foregroundColor: Colors.white,
+                    leading: const Icon(
                       Icons.mail_outline_rounded,
-                      color: brand.ink,
+                      color: Colors.white,
                       size: 22,
                     ),
-                    borderColor: brand.ink.withValues(alpha: 0.32),
+                    borderColor: Colors.white.withValues(alpha: 0.32),
                     loading: false,
                     onTap: disabled ? null : () => _showEmailSheet(context),
                   ),
@@ -110,7 +110,7 @@ class LoginPage extends ConsumerWidget {
                       child: Text(
                         AppStrings.continueAsGuest,
                         style: TextStyle(
-                          color: brand.ink.withValues(alpha: 0.75),
+                          color: Colors.white.withValues(alpha: 0.75),
                           fontWeight: FontWeight.w900,
                           fontSize: 14,
                           letterSpacing: -0.1,
@@ -123,7 +123,7 @@ class LoginPage extends ConsumerWidget {
                     AppStrings.loginTerms,
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: brand.ink.withValues(alpha: 0.55),
+                      color: Colors.white.withValues(alpha: 0.45),
                       fontSize: 11,
                       height: 1.5,
                       fontWeight: FontWeight.w600,
@@ -337,8 +337,8 @@ class _EmailSignInSheetState extends ConsumerState<_EmailSignInSheet> {
             const SizedBox(height: 18),
             Text(
               _isCreate ? 'Create account' : 'Continue with email',
-              style: TextStyle(
-                color: brand.ink,
+              style: const TextStyle(
+                color: Colors.white,
                 fontSize: 22,
                 fontWeight: FontWeight.w900,
                 letterSpacing: -0.4,
@@ -350,7 +350,7 @@ class _EmailSignInSheetState extends ConsumerState<_EmailSignInSheet> {
                   ? "We'll set you up so the agent can start working."
                   : "Sign in and the agent picks up where it left off.",
               style: TextStyle(
-                color: brand.textMuted,
+                color: Colors.white.withValues(alpha: 0.60),
                 fontSize: 13,
                 height: 1.4,
                 fontWeight: FontWeight.w500,
@@ -378,14 +378,13 @@ class _EmailSignInSheetState extends ConsumerState<_EmailSignInSheet> {
               icon: Icons.lock_outline_rounded,
               onSubmitted: (_) => _submit(),
               trailing: IconButton(
-                tooltip: _obscure ? 'Show password' : 'Hide password',
                 onPressed: () => setState(() => _obscure = !_obscure),
                 icon: Icon(
                   _obscure
                       ? Icons.visibility_outlined
                       : Icons.visibility_off_outlined,
                   size: 18,
-                  color: brand.textMuted,
+                  color: Colors.white.withValues(alpha: 0.55),
                 ),
               ),
             ),
@@ -409,7 +408,7 @@ class _EmailSignInSheetState extends ConsumerState<_EmailSignInSheet> {
                 child: RichText(
                   text: TextSpan(
                     style: TextStyle(
-                      color: brand.textMuted,
+                      color: Colors.white.withValues(alpha: 0.55),
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
@@ -517,7 +516,7 @@ class _SheetError extends StatelessWidget {
             child: Text(
               message,
               style: TextStyle(
-                color: brand.ink,
+                color: Colors.white.withValues(alpha: 0.92),
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
               ),
@@ -529,7 +528,7 @@ class _SheetError extends StatelessWidget {
   }
 }
 
-class _SheetField extends StatefulWidget {
+class _SheetField extends StatelessWidget {
   const _SheetField({
     required this.controller,
     required this.focusNode,
@@ -555,81 +554,50 @@ class _SheetField extends StatefulWidget {
   final Widget? trailing;
 
   @override
-  State<_SheetField> createState() => _SheetFieldState();
-}
-
-class _SheetFieldState extends State<_SheetField> {
-  @override
-  void initState() {
-    super.initState();
-    widget.focusNode.addListener(_onFocusChange);
-  }
-
-  @override
-  void dispose() {
-    widget.focusNode.removeListener(_onFocusChange);
-    super.dispose();
-  }
-
-  void _onFocusChange() {
-    if (mounted) setState(() {});
-  }
-
-  @override
   Widget build(BuildContext context) {
     const brand = BrandTheme.dark;
-    final focused = widget.focusNode.hasFocus;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          widget.label.toUpperCase(),
+          label.toUpperCase(),
           style: TextStyle(
-            color: brand.textMuted,
+            color: Colors.white.withValues(alpha: 0.55),
             fontSize: 10.5,
             fontWeight: FontWeight.w900,
             letterSpacing: 1.4,
           ),
         ),
         const SizedBox(height: 8),
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
+        Container(
           decoration: BoxDecoration(
             color: brand.surfaceMuted,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: focused ? brand.accent : brand.border,
-              width: focused ? 2 : 1,
-            ),
+            border: Border.all(color: brand.border),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 14),
           child: Row(
             children: [
-              Icon(
-                widget.icon,
-                size: 18,
-                color: focused ? brand.accent : brand.textMuted,
-              ),
+              Icon(icon, size: 18, color: Colors.white.withValues(alpha: 0.55)),
               const SizedBox(width: 10),
               Expanded(
                 child: TextField(
-                  controller: widget.controller,
-                  focusNode: widget.focusNode,
-                  obscureText: widget.obscureText,
-                  keyboardType: widget.keyboardType,
-                  textInputAction: widget.textInputAction,
-                  onSubmitted: widget.onSubmitted,
-                  style: TextStyle(
-                    color: brand.ink,
+                  controller: controller,
+                  focusNode: focusNode,
+                  obscureText: obscureText,
+                  keyboardType: keyboardType,
+                  textInputAction: textInputAction,
+                  onSubmitted: onSubmitted,
+                  style: const TextStyle(
+                    color: Colors.white,
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
                   ),
                   cursorColor: brand.accent,
                   decoration: InputDecoration(
-                    hintText: widget.hint,
+                    hintText: hint,
                     hintStyle: TextStyle(
-                      color: brand.textSoft,
+                      color: Colors.white.withValues(alpha: 0.30),
                       fontWeight: FontWeight.w500,
                       fontSize: 14,
                     ),
@@ -640,7 +608,7 @@ class _SheetFieldState extends State<_SheetField> {
                   ),
                 ),
               ),
-              ?widget.trailing,
+              ?trailing,
             ],
           ),
         ),
