@@ -1,13 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syncra/features/agent_chat/models/agent_block.dart';
 import 'package:syncra/features/resumes/models/proposed_edit.dart';
+import 'package:flutter/material.dart';
 
 ProposedEdit _edit(String id) => ProposedEdit(
-      targetPath: 'experience.$id',
-      originalText: 'old $id',
-      proposedText: 'new $id',
-      reason: 'because $id',
-    );
+  targetPath: 'experience.$id',
+  originalText: 'old $id',
+  proposedText: 'new $id',
+  reason: 'because $id',
+);
 
 void main() {
   group('ProposedEditsBlock decision state', () {
@@ -25,22 +26,27 @@ void main() {
       expect(block.acceptedEdits, isEmpty);
     });
 
-    test('acceptedCount and acceptedEdits track accepted decisions in order',
-        () {
-      final edits = [_edit('a'), _edit('b'), _edit('c')];
-      final block = ProposedEditsBlock(id: 'b2', edits: edits);
+    test(
+      'acceptedCount and acceptedEdits track accepted decisions in order',
+      () {
+        final edits = [_edit('a'), _edit('b'), _edit('c')];
+        final block = ProposedEditsBlock(id: 'b2', edits: edits);
 
-      block.decisions[0] = EditDecision.accepted;
-      block.decisions[1] = EditDecision.rejected;
-      block.decisions[2] = EditDecision.accepted;
+        block.decisions[0] = EditDecision.accepted;
+        block.decisions[1] = EditDecision.rejected;
+        block.decisions[2] = EditDecision.accepted;
 
-      expect(block.acceptedCount, 2);
-      // Index-aligned: accepted edits come back in their original order.
-      expect(block.acceptedEdits, [edits[0], edits[2]]);
-    });
+        expect(block.acceptedCount, 2);
+        // Index-aligned: accepted edits come back in their original order.
+        expect(block.acceptedEdits, [edits[0], edits[2]]);
+      },
+    );
 
     test('hasPending is false once every edit is decided', () {
-      final block = ProposedEditsBlock(id: 'b3', edits: [_edit('a'), _edit('b')]);
+      final block = ProposedEditsBlock(
+        id: 'b3',
+        edits: [_edit('a'), _edit('b')],
+      );
 
       block.decisions[0] = EditDecision.accepted;
       block.decisions[1] = EditDecision.rejected;
@@ -68,6 +74,19 @@ void main() {
       expect(block.acceptedCount, 0);
       expect(block.hasPending, isFalse);
       expect(block.acceptedEdits, isEmpty);
+    });
+
+    test('ActionProposalBlock can carry a hidden continuation prompt', () {
+      final block = ActionProposalBlock(
+        id: 'action-1',
+        icon: Icons.auto_awesome_rounded,
+        title: 'Draft a pitch',
+        description: 'Prepare outreach',
+        continuationPrompt: 'Continue by drafting outreach safely.',
+      );
+
+      expect(block.continuationPrompt, 'Continue by drafting outreach safely.');
+      expect(block.state, ActionState.pending);
     });
   });
 }

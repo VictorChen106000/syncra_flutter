@@ -81,8 +81,9 @@ class ProposedEditsBlock extends AgentBlock {
     this.resumeId,
     List<EditDecision>? decisions,
     this.state = ProposedEditsState.reviewing,
-  }) : decisions = decisions ??
-            List<EditDecision>.filled(edits.length, EditDecision.pending);
+  }) : decisions =
+           decisions ??
+           List<EditDecision>.filled(edits.length, EditDecision.pending);
 
   final List<ProposedEdit> edits;
   final String? jobId;
@@ -130,9 +131,9 @@ class ProposedEditsBlock extends AgentBlock {
   /// The edits the user accepted — the payload handed to the resume-apply
   /// logic when the card is applied.
   List<ProposedEdit> get acceptedEdits => [
-        for (var i = 0; i < edits.length; i++)
-          if (decisions[i] == EditDecision.accepted) edits[i],
-      ];
+    for (var i = 0; i < edits.length; i++)
+      if (decisions[i] == EditDecision.accepted) edits[i],
+  ];
 }
 
 enum InputRequestState { pending, answered }
@@ -168,6 +169,7 @@ class ActionProposalBlock extends AgentBlock {
     required this.description,
     this.acceptLabel = 'Accept',
     this.editLabel = 'Make changes',
+    this.continuationPrompt,
     this.state = ActionState.pending,
   });
 
@@ -176,5 +178,11 @@ class ActionProposalBlock extends AgentBlock {
   final String description;
   final String acceptLabel;
   final String editLabel;
+
+  /// Hidden instruction sent back into the threaded agent loop after the user
+  /// accepts this proposal. This is what makes approval cards continue the
+  /// workflow instead of behaving like dead-end UI state.
+  final String? continuationPrompt;
+
   ActionState state;
 }

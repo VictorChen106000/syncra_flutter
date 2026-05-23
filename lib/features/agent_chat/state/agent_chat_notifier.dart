@@ -39,13 +39,13 @@ final chatHistoryRepositoryProvider = Provider<ChatHistoryRepository>(
 /// — they have no Firestore subtree to read.
 final conversationListProvider =
     StreamProvider.autoDispose<List<ConversationSummary>>((ref) {
-  final repo = ref.watch(chatHistoryRepositoryProvider);
-  final user = ref.watch(authProvider).appUser;
-  if (user == null || user.isGuest) {
-    return Stream.value(const <ConversationSummary>[]);
-  }
-  return repo.watchConversations(user.uid);
-});
+      final repo = ref.watch(chatHistoryRepositoryProvider);
+      final user = ref.watch(authProvider).appUser;
+      if (user == null || user.isGuest) {
+        return Stream.value(const <ConversationSummary>[]);
+      }
+      return repo.watchConversations(user.uid);
+    });
 
 @immutable
 class AgentChatState {
@@ -96,9 +96,9 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
 
   @override
   AgentChatState build() {
-  _service = ref.watch(agentServiceProvider);
-  _serviceReady = true;
-  _history = ref.watch(chatHistoryRepositoryProvider);
+    _service = ref.watch(agentServiceProvider);
+    _serviceReady = true;
+    _history = ref.watch(chatHistoryRepositoryProvider);
     _orchestrator = ResumeTailorOrchestrator(
       resumesRepository: ResumesRepository(),
       jobsRepository: JobsRepository(),
@@ -141,7 +141,8 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
       // Only apply hydration if the user hasn't already typed or opened a
       // thread since build() — otherwise we'd clobber their in-progress work.
       final current = state;
-      final isUntouched = current.items.length == 1 &&
+      final isUntouched =
+          current.items.length == 1 &&
           current.items.first is AgentTurn &&
           current.threadJob == null;
       if (!isUntouched) return;
@@ -173,12 +174,14 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
         : const <ChatItem>[];
     if (items.isEmpty) return;
     // Fire-and-forget; UI doesn't wait on persistence.
-    unawaited(_history.save(
-      uid,
-      state.conversationId,
-      items: items,
-      title: _deriveTitle(items),
-    ));
+    unawaited(
+      _history.save(
+        uid,
+        state.conversationId,
+        items: items,
+        title: _deriveTitle(items),
+      ),
+    );
   }
 
   /// A short conversation label drawn from the first user message — what the
@@ -203,10 +206,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
       return AgentTurn(
         id: 'turn-opener',
         blocks: [
-          TextBlock(
-            id: 'opener-text',
-            text: AppStrings.chatInitialMessage,
-          ),
+          TextBlock(id: 'opener-text', text: AppStrings.chatInitialMessage),
         ],
         isStreaming: false,
       );
@@ -215,55 +215,100 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     final blocks = <AgentBlock>[];
     switch (job.category) {
       case JobCategory.ready:
-        blocks.add(TextBlock(
-          id: 'opener-text-${job.id}',
-          text: "I drafted your application for ${job.title} at "
-              "${job.company} — match score ${job.matchScore}%. "
-              "${job.agentJustification}\n\n"
-              "Ready to send it out?",
-        ));
-        blocks.add(ActionProposalBlock(
-          id: 'opener-action-${job.id}',
-          icon: Icons.send_rounded,
-          title: 'Send to ${job.company}',
-          description: 'Tailored resume + cover letter · sends via Gmail',
-          acceptLabel: 'Send now',
-          editLabel: 'Edit draft',
-        ));
+        blocks.add(
+          TextBlock(
+            id: 'opener-text-${job.id}',
+            text:
+                "I drafted your application for ${job.title} at "
+                "${job.company} — match score ${job.matchScore}%. "
+                "${job.agentJustification}\n\n"
+                "Ready to send it out?",
+          ),
+        );
+        blocks.add(
+          ActionProposalBlock(
+            id: 'opener-action-${job.id}',
+            icon: Icons.send_rounded,
+            title: 'Prepare application for ${job.company}',
+            description:
+                'Tailored resume + outreach draft · user reviews before send',
+            acceptLabel: 'Prepare draft',
+            editLabel: 'Make changes',
+            continuationPrompt:
+                '''
+      The user approved preparing an application for this matched job.
+
+      Job:
+      - job_id: ${job.id}
+      - title: ${job.title}
+      - company: ${job.company}
+      - location: ${job.location}
+
+      Continue the application workflow from here.
+      Use tools for safe next steps, such as reading the resume, tailoring if needed, or drafting outreach.
+      Do not call send_email. Sending still requires the email review UI and explicit confirmation token.
+      ''',
+          ),
+        );
         break;
       case JobCategory.inputNeeded:
-        blocks.add(TextBlock(
-          id: 'opener-text-${job.id}',
-          text: "Before I can draft this one — ${job.agentJustification}",
-        ));
-        blocks.add(InputRequestBlock(
-          id: 'opener-input-${job.id}',
-          question: job.missingSkills.isEmpty
-              ? 'Your answer'
-              : 'Do you have ${job.missingSkills.first} experience?',
-          suggestions: job.missingSkills.isEmpty
-              ? const ['Tell me more', "I'm interested", 'Skip this one']
-              : [
-                  'Yes, ${job.missingSkills.first} experience',
-                  "No, I haven't used ${job.missingSkills.first}",
-                  'Tell me more',
-                ],
-        ));
+        blocks.add(
+          TextBlock(
+            id: 'opener-text-${job.id}',
+            text: "Before I can draft this one — ${job.agentJustification}",
+          ),
+        );
+        blocks.add(
+          InputRequestBlock(
+            id: 'opener-input-${job.id}',
+            question: job.missingSkills.isEmpty
+                ? 'Your answer'
+                : 'Do you have ${job.missingSkills.first} experience?',
+            suggestions: job.missingSkills.isEmpty
+                ? const ['Tell me more', "I'm interested", 'Skip this one']
+                : [
+                    'Yes, ${job.missingSkills.first} experience',
+                    "No, I haven't used ${job.missingSkills.first}",
+                    'Tell me more',
+                  ],
+          ),
+        );
         break;
       case JobCategory.exploration:
-        blocks.add(TextBlock(
-          id: 'opener-text-${job.id}',
-          text: "Worth considering: ${job.title} at ${job.company}. "
-              "${job.agentJustification}",
-        ));
-        blocks.add(ActionProposalBlock(
-          id: 'opener-action-${job.id}',
-          icon: Icons.auto_awesome_rounded,
-          title: 'Draft a pitch for ${job.company}',
-          description: 'I\'ll tailor your resume + draft outreach',
-          acceptLabel: 'Draft it',
-          editLabel: 'Pass on this',
-        ));
+        blocks.add(
+          TextBlock(
+            id: 'opener-text-${job.id}',
+            text:
+                "Worth considering: ${job.title} at ${job.company}. "
+                "${job.agentJustification}",
+          ),
+        );
+        blocks.add(
+          ActionProposalBlock(
+            id: 'opener-action-${job.id}',
+            icon: Icons.auto_awesome_rounded,
+            title: 'Draft a pitch for ${job.company}',
+            description: 'I\'ll tailor your resume + draft outreach',
+            acceptLabel: 'Draft it',
+            editLabel: 'Pass on this',
+            continuationPrompt:
+                '''
+      The user approved exploring this job and drafting a pitch.
+
+      Job:
+      - job_id: ${job.id}
+      - title: ${job.title}
+      - company: ${job.company}
+      - location: ${job.location}
+
+      Continue the workflow from here.
+      First make sure the user's resume context is available.
+      If tailoring is useful, propose resume edits and stop for the diff viewer.
+      If outreach is the next safe step, draft the email.
+      Do not call send_email. Sending still requires explicit user approval.
+      ''',
+          ),
+        );
         break;
     }
 
@@ -356,59 +401,46 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
 
     final next = [
       ...state.items,
-      UserMessage(
-        id: _nextId('user'),
-        text: clean,
-        attachments: attachments,
-      ),
+      UserMessage(id: _nextId('user'), text: clean, attachments: attachments),
     ];
     final turn = AgentTurn(id: _nextId('turn'));
     _activeTurn = turn;
-    state = state.copyWith(
-      items: [...next, turn],
-      isStreaming: true,
-    );
+    state = state.copyWith(items: [...next, turn], isStreaming: true);
 
     _activeSub = _service
         .runPrompt(prompt: clean, attachments: attachments)
         .listen(
           _handleEvent,
           onDone: _finishTurn,
-          onError: (Object e) =>
-              _failActiveTurn('Something went wrong. $e'),
+          onError: (Object e) => _failActiveTurn('Something went wrong. $e'),
         );
   }
 
   void _startContinuationPrompt(String prompt) {
-  final clean = prompt.trim();
-  if (clean.isEmpty) return;
-  if (state.isStreaming) return;
-  if (!_serviceReady) return;
+    final clean = prompt.trim();
+    if (clean.isEmpty) return;
+    if (state.isStreaming) return;
+    if (!_serviceReady) return;
 
-  final turn = AgentTurn(id: _nextId('turn'));
-  _activeTurn = turn;
+    final turn = AgentTurn(id: _nextId('turn'));
+    _activeTurn = turn;
 
-  state = state.copyWith(
-    items: [...state.items, turn],
-    isStreaming: true,
-  );
+    state = state.copyWith(items: [...state.items, turn], isStreaming: true);
 
-  _activeSub = _service
-      .runPrompt(
-        prompt: clean,
-        threaded: true,
-      )
-      .listen(_handleEvent, onDone: _finishTurn);
-}
+    _activeSub = _service
+        .runPrompt(prompt: clean, threaded: true)
+        .listen(_handleEvent, onDone: _finishTurn);
+  }
 
-void _continueAfterSavedResume(ProposedEditsBlock block) {
-  final tailoredResumeId = block.savedResumeId;
-  if (tailoredResumeId == null || tailoredResumeId.isEmpty) return;
+  void _continueAfterSavedResume(ProposedEditsBlock block) {
+    final tailoredResumeId = block.savedResumeId;
+    if (tailoredResumeId == null || tailoredResumeId.isEmpty) return;
 
-  final sourceResumeId = block.resolvedResumeId ?? block.resumeId ?? 'unknown';
-  final jobId = block.jobId ?? 'unknown';
+    final sourceResumeId =
+        block.resolvedResumeId ?? block.resumeId ?? 'unknown';
+    final jobId = block.jobId ?? 'unknown';
 
-  _startContinuationPrompt('''
+    _startContinuationPrompt('''
 The user approved the proposed resume edits and saved the tailored resume.
 
 Approval result:
@@ -424,7 +456,7 @@ If the next safe step is outreach, call draft_email.
 If recipient information is missing, call lookup_hiring_manager or ask_user.
 Do not call send_email. Sending still requires explicit user approval.
 ''');
-}
+  }
 
   void _handleEvent(AgentEvent event) {
     final turn = _activeTurn;
@@ -433,11 +465,11 @@ Do not call send_email. Sending still requires explicit user approval.
       case BlockAdded(:final block):
         turn.blocks.add(block);
       case ToolCallCompleted(
-          :final blockId,
-          :final summary,
-          :final status,
-          :final detail,
-        ):
+        :final blockId,
+        :final summary,
+        :final status,
+        :final detail,
+      ):
         for (final b in turn.blocks) {
           if (b is ToolCallBlock && b.id == blockId) {
             b.status = status;
@@ -514,17 +546,41 @@ Do not call send_email. Sending still requires explicit user approval.
     if (priorUser is! UserMessage) return;
 
     state = state.copyWith(items: items.sublist(0, lastTurnIdx - 1));
-    sendPrompt(
-      prompt: priorUser.text,
-      attachments: priorUser.attachments,
-    );
+    sendPrompt(prompt: priorUser.text, attachments: priorUser.attachments);
   }
 
   void acceptProposal(String blockId) {
     final block = _findProposal(blockId);
     if (block == null) return;
+    if (block.state != ActionState.pending) return;
+
     block.state = ActionState.accepted;
     state = state.copyWith(items: [...state.items]);
+
+    _continueAfterAcceptedProposal(block);
+  }
+
+  void _continueAfterAcceptedProposal(ActionProposalBlock block) {
+    if (!_serviceReady) return;
+
+    final explicit = block.continuationPrompt?.trim();
+    final prompt = (explicit != null && explicit.isNotEmpty)
+        ? explicit
+        : '''
+The user accepted this proposed agent action.
+
+Accepted proposal:
+- title: ${block.title}
+- description: ${block.description}
+- accepted_label: ${block.acceptLabel}
+
+Continue the original workflow from here without asking the user to repeat the task.
+Use tools for safe next steps.
+Pause again if you need missing user information or if the next action requires approval.
+Do not call send_email unless the app provides an explicit user-confirmation token or says the user tapped Send in the email review UI.
+''';
+
+    _startContinuationPrompt(prompt);
   }
 
   void dismissProposal(String blockId) {
@@ -581,7 +637,7 @@ Do not call send_email. Sending still requires explicit user approval.
     if (block == null) return;
     if (block.state != ProposedEditsState.reviewing) return;
     if (block.acceptedCount == 0) return;
-    
+
     // Unit tests can override build() with a seeded transcript and skip the real
     // Firebase-backed service/orchestrator setup. In that case, preserve the old
     // state-only behavior so notifier/UI tests don't need Firebase initialization.
@@ -666,7 +722,9 @@ Do not call send_email. Sending still requires explicit user approval.
       block.savedResumeId = saved.id;
       block.applyError = null;
       // Seed the bytes cache so opening it from the resume list is instant.
-      ref.read(resumeProvider.notifier).primeBytes(saved.id, block.previewBytes!);
+      ref
+          .read(resumeProvider.notifier)
+          .primeBytes(saved.id, block.previewBytes!);
       state = state.copyWith(items: [...state.items]);
 
       _continueAfterSavedResume(block);
@@ -719,5 +777,6 @@ Do not call send_email. Sending still requires explicit user approval.
   }
 }
 
-final agentChatProvider =
-    NotifierProvider<AgentChatNotifier, AgentChatState>(AgentChatNotifier.new);
+final agentChatProvider = NotifierProvider<AgentChatNotifier, AgentChatState>(
+  AgentChatNotifier.new,
+);
