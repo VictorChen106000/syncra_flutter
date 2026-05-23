@@ -43,7 +43,7 @@ class ApplicationsPage extends ConsumerWidget {
           children: [
             AppHeader.page(
               title: AppStrings.applicationsTitle,
-              onBack: () => context.go(RouteNames.dashboard),
+              onBack: () => context.go(RouteNames.agentChat),
             ),
             Expanded(
               child: ListView(

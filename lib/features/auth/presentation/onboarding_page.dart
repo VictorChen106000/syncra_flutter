@@ -69,7 +69,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
       await ref.read(devFlagsProvider.notifier).setShowOnboarding(false);
     }
     if (!mounted) return;
-    context.go(RouteNames.dashboard);
+    context.go(RouteNames.agentChat);
   }
 
   @override

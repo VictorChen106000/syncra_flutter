@@ -53,7 +53,7 @@ class ResumeListsPage extends ConsumerWidget {
           children: [
             AppHeader.page(
               title: AppStrings.resumeListsTitle,
-              onBack: () => context.go(RouteNames.profile),
+              onBack: () => context.go(RouteNames.agentChat),
             ),
             Expanded(
               child: ListView(

@@ -55,7 +55,7 @@ class _MorningBriefPageState extends ConsumerState<MorningBriefPage> {
     if (dev.showMorningBrief) {
       ref.read(devFlagsProvider.notifier).setShowMorningBrief(false);
     }
-    context.go(RouteNames.dashboard);
+    context.go(RouteNames.agentChat);
   }
 
   String _firstName(String? raw, AppUser? user) {
