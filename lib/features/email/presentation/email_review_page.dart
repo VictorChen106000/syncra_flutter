@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/brand_theme.dart';
+import '../../../shared/widgets/ink_button.dart';
 import '../services/email_send_service.dart';
 import '../services/gmail_service.dart';
 
@@ -226,7 +227,7 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
       child: Container(
         decoration: BoxDecoration(
           color: brand.bg,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: EdgeInsets.only(
           left: 20,
@@ -324,10 +325,9 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
               ],
               const SizedBox(height: 20),
               if (_draftId != null)
-                _PrimaryButton(
+                InkButton(
                   label: 'Done',
                   icon: Icons.check_rounded,
-                  busy: false,
                   onTap: () => Navigator.of(context).pop(
                     EmailReviewResult(draftCreated: true, draftId: _draftId),
                   ),
@@ -336,7 +336,9 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
                 Row(
                   children: [
                     Expanded(
-                      child: _CancelButton(
+                      child: InkButton(
+                        label: 'Cancel',
+                        variant: InkButtonVariant.outlined,
                         onTap: _busy
                             ? null
                             : () => Navigator.of(context).pop(),
@@ -345,7 +347,7 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
                     const SizedBox(width: 12),
                     Expanded(
                       flex: 2,
-                      child: _PrimaryButton(
+                      child: InkButton(
                         label: _isDraftMode
                             ? 'Save to Gmail drafts'
                             : 'Send email',
@@ -410,7 +412,7 @@ class _EditableField extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
       decoration: BoxDecoration(
         color: brand.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: brand.border),
       ),
       child: TextField(
@@ -421,7 +423,7 @@ class _EditableField extends StatelessWidget {
         keyboardType: keyboardType ??
             (maxLines > 1 ? TextInputType.multiline : TextInputType.text),
         style: TextStyle(
-          fontSize: 13.5,
+          fontSize: 13,
           color: brand.ink,
           fontWeight: FontWeight.w500,
           height: 1.4,
@@ -527,93 +529,3 @@ class _ErrorBanner extends StatelessWidget {
   }
 }
 
-class _CancelButton extends StatelessWidget {
-  const _CancelButton({required this.onTap});
-
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Material(
-      color: brand.surface,
-      borderRadius: BorderRadius.circular(99),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(99),
-        child: Container(
-          height: 48,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(99),
-            border: Border.all(color: brand.border),
-          ),
-          child: Text(
-            'Cancel',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: brand.ink,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PrimaryButton extends StatelessWidget {
-  const _PrimaryButton({
-    required this.label,
-    required this.icon,
-    required this.busy,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool busy;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Material(
-      color: brand.ink,
-      borderRadius: BorderRadius.circular(99),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(99),
-        child: Container(
-          height: 48,
-          alignment: Alignment.center,
-          child: busy
-              ? SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(brand.inkInverse),
-                  ),
-                )
-              : Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(icon, size: 16, color: brand.inkInverse),
-                    const SizedBox(width: 8),
-                    Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: brand.inkInverse,
-                      ),
-                    ),
-                  ],
-                ),
-        ),
-      ),
-    );
-  }
-}

@@ -1,12 +1,12 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/file_formatter.dart';
 import '../../../data/models/job.dart';
+import '../../../shared/widgets/frosted_card.dart';
 import '../../../shared/widgets/gooey_orb.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../data/firestore/pipeline_repository.dart';
@@ -298,7 +298,7 @@ class _StickyUserPrompt extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    return _FrostedCard(
+    return FrostedCard(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 11, 14, 12),
         child: Row(
@@ -320,8 +320,8 @@ class _StickyUserPrompt extends StatelessWidget {
                   Text(
                     'YOU ASKED',
                     style: TextStyle(
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w900,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
                       letterSpacing: 1.4,
                       color: brand.textMuted,
                     ),
@@ -333,7 +333,7 @@ class _StickyUserPrompt extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: brand.ink,
-                      fontSize: 14.5,
+                      fontSize: 14,
                       fontWeight: FontWeight.w700,
                       height: 1.35,
                       letterSpacing: -0.15,
@@ -365,7 +365,7 @@ class _ThreadContextChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    return _FrostedCard(
+    return FrostedCard(
       child: Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
       child: Row(
@@ -381,8 +381,8 @@ class _ThreadContextChip extends StatelessWidget {
             child: Text(
               job.company.isNotEmpty ? job.company[0] : '?',
               style: TextStyle(
-                color: brand.accent,
-                fontWeight: FontWeight.w900,
+                color: brand.inkInverse,
+                fontWeight: FontWeight.w800,
                 fontSize: 13,
               ),
             ),
@@ -396,8 +396,8 @@ class _ThreadContextChip extends StatelessWidget {
                 Text(
                   'THREAD',
                   style: TextStyle(
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w900,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
                     letterSpacing: 1.4,
                     color: brand.textMuted,
                   ),
@@ -460,13 +460,13 @@ class _ResumeContextChip extends ConsumerWidget {
     final title = isSingle
         ? FileFormatter.cleanName(resumes.first.name)
         : '${resumes.length} resumes attached';
-    return _FrostedCard(
+    return FrostedCard(
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(_FrostedCard.radius),
+        borderRadius: BorderRadius.circular(16),
         child: InkWell(
           onTap: () => SelectResumesBottomSheet.show(context),
-          borderRadius: BorderRadius.circular(_FrostedCard.radius),
+          borderRadius: BorderRadius.circular(16),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
             child: Row(
@@ -482,7 +482,7 @@ class _ResumeContextChip extends ConsumerWidget {
                   child: Icon(
                     Icons.description_rounded,
                     size: 15,
-                    color: brand.accent,
+                    color: brand.inkInverse,
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -494,8 +494,8 @@ class _ResumeContextChip extends ConsumerWidget {
                       Text(
                         'RESUME IN USE',
                         style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w900,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
                           letterSpacing: 1.4,
                           color: brand.textMuted,
                         ),
@@ -579,14 +579,14 @@ class _FloatingTop extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
             child: Row(
               children: [
-                _IconBtn(
+                FrostedIconButton(
                   icon: Icons.menu_rounded,
                   tooltip: 'Menu',
                   onTap: () => Scaffold.of(context).openDrawer(),
                 ),
                 const Spacer(),
                 if (hasHistory && !isStreaming)
-                  _IconBtn(
+                  FrostedIconButton(
                     icon: Icons.edit_square,
                     tooltip: 'New chat',
                     onTap: () => ref
@@ -647,99 +647,6 @@ class _FadeScrim extends StatelessWidget {
   }
 }
 
-/// Frosted-glass container — translucent + blurred so the transcript stays
-/// faintly visible through the floating cards.
-class _FrostedCard extends StatelessWidget {
-  const _FrostedCard({required this.child});
-
-  final Widget child;
-
-  static const double radius = 16;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(radius),
-        boxShadow: [
-          BoxShadow(
-            color: brand.shadow.withValues(alpha: 0.12),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(radius),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: brand.surface.withValues(alpha: 0.82),
-              borderRadius: BorderRadius.circular(radius),
-              border: Border.all(color: brand.border, width: 0.8),
-            ),
-            child: child,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Frosted circular icon button used for the floating header controls.
-class _IconBtn extends StatelessWidget {
-  const _IconBtn({required this.icon, required this.onTap, this.tooltip});
-  final IconData icon;
-  final VoidCallback? onTap;
-  final String? tooltip;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final enabled = onTap != null;
-    final button = Container(
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: brand.shadow.withValues(alpha: 0.12),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ClipOval(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: Material(
-            color: brand.surface.withValues(alpha: 0.78),
-            shape: CircleBorder(
-              side: BorderSide(color: brand.border, width: 0.8),
-            ),
-            child: InkWell(
-              onTap: onTap,
-              customBorder: const CircleBorder(),
-              child: SizedBox(
-                width: 42,
-                height: 42,
-                child: Icon(
-                  icon,
-                  size: 18,
-                  color: enabled ? brand.ink : brand.textSoft,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    if (tooltip == null) return button;
-    return Tooltip(message: tooltip!, child: button);
-  }
-}
-
 /// Scene-setting card shown at the top of a brand-new threaded chat (a
 /// thread opened from a pipeline card with no user messages yet). Once the
 /// user replies, this disappears and the conversation flows as normal.
@@ -756,7 +663,7 @@ class _ThreadHero extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: brand.surfaceMuted,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: brand.border, width: 0.8),
       ),
       child: Column(
@@ -775,9 +682,9 @@ class _ThreadHero extends StatelessWidget {
                 child: Text(
                   job.company.isNotEmpty ? job.company[0] : '?',
                   style: TextStyle(
-                    color: brand.accent,
+                    color: brand.inkInverse,
                     fontSize: 18,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
@@ -966,30 +873,21 @@ class _InboxEmptyState extends ConsumerWidget {
     return ListView(
       padding: EdgeInsets.fromLTRB(20, topInset + 12, 20, bottomInset + 12),
       children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 14),
-          child: Text(
-            sent.isEmpty && needs.isEmpty
-                ? 'Quiet for now'
-                : [
-                    if (sent.isNotEmpty) '${sent.length} sent today',
-                    if (needs.isNotEmpty) '${needs.length} need you',
-                  ].join(' · '),
-            style: TextStyle(
-              color: brand.textMuted,
-              fontSize: 12.5,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.4,
-            ),
-          ),
-        ),
+        _InboxHeroSummary(
+          sentCount: sent.length,
+          needsCount: needs.length,
+        )
+            .animate()
+            .fadeIn(duration: 320.ms)
+            .moveY(begin: 8, end: 0, curve: Curves.easeOutCubic),
+        const SizedBox(height: 20),
         if (needs.isNotEmpty) ...[
           _InboxSectionHeader(
             label: 'Needs you',
             count: needs.length,
             accent: AppColors.categoryInputDeep,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           for (var i = 0; i < needs.length; i++)
             _InboxNeedsRow(
               card: needs[i],
@@ -998,7 +896,7 @@ class _InboxEmptyState extends ConsumerWidget {
                 .animate(delay: (i * 50).ms)
                 .fadeIn(duration: 280.ms)
                 .moveY(begin: 8, end: 0, curve: Curves.easeOutCubic),
-          const SizedBox(height: 18),
+          const SizedBox(height: 20),
         ],
         if (sent.isNotEmpty) ...[
           _InboxSectionHeader(
@@ -1006,11 +904,11 @@ class _InboxEmptyState extends ConsumerWidget {
             count: sent.length,
             accent: brand.accent,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           Container(
             decoration: BoxDecoration(
               color: brand.surface,
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(16),
               border:
                   Border.all(color: brand.border.withValues(alpha: 0.60)),
             ),
@@ -1034,6 +932,113 @@ class _InboxEmptyState extends ConsumerWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Quiet hero summary at the top of the inbox. The lime is contained to a
+/// single eyebrow chip — the count itself reads in ink on a muted surface,
+/// so the accent stays rare and the page still has somewhere to escalate.
+class _InboxHeroSummary extends StatelessWidget {
+  const _InboxHeroSummary({
+    required this.sentCount,
+    required this.needsCount,
+  });
+
+  final int sentCount;
+  final int needsCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final total = sentCount + needsCount;
+    final caption = total == 0
+        ? 'Quiet for now'
+        : sentCount > 0 && needsCount > 0
+            ? '$needsCount need you · $sentCount sent today'
+            : sentCount > 0
+                ? '$sentCount sent today'
+                : '$needsCount need you';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: brand.surfaceMuted,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: brand.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Eyebrow chip — the page's single lime moment.
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: brand.accent,
+              borderRadius: BorderRadius.circular(99),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.bolt_rounded,
+                  color: brand.onAccent,
+                  size: 12,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'AGENT INBOX',
+                  style: TextStyle(
+                    color: brand.onAccent,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '$total',
+                style: GoogleFonts.inter(
+                  color: brand.ink,
+                  fontSize: 64,
+                  fontWeight: FontWeight.w800,
+                  height: 0.95,
+                  letterSpacing: -2.0,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  total == 1 ? 'item' : 'items',
+                  style: TextStyle(
+                    color: brand.textMuted,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            caption,
+            style: TextStyle(
+              color: brand.textMuted,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.1,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1066,7 +1071,7 @@ class _InboxSectionHeader extends StatelessWidget {
             label.toUpperCase(),
             style: TextStyle(
               fontSize: 11,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w800,
               letterSpacing: 1.4,
               color: brand.textMuted,
             ),
@@ -1082,7 +1087,7 @@ class _InboxSectionHeader extends StatelessWidget {
               '$count',
               style: TextStyle(
                 fontSize: 11,
-                fontWeight: FontWeight.w900,
+                fontWeight: FontWeight.w800,
                 color: brand.ink,
               ),
             ),
@@ -1142,8 +1147,8 @@ class _InboxNeedsRow extends StatelessWidget {
                       child: Text(
                         job.company.isNotEmpty ? job.company[0] : '?',
                         style: TextStyle(
-                          color: brand.accent,
-                          fontWeight: FontWeight.w900,
+                          color: brand.inkInverse,
+                          fontWeight: FontWeight.w800,
                           fontSize: 15,
                         ),
                       ),
@@ -1159,19 +1164,19 @@ class _InboxNeedsRow extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w900,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
                               letterSpacing: 1.3,
                               color: accent,
                             ),
                           ),
-                          const SizedBox(height: 3),
+                          const SizedBox(height: 4),
                           Text(
                             job.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 14.5,
+                              fontSize: 14,
                               fontWeight: FontWeight.w800,
                               color: brand.ink,
                               letterSpacing: -0.15,
@@ -1249,8 +1254,8 @@ class _InboxSentRow extends StatelessWidget {
                 child: Text(
                   job.company.isNotEmpty ? job.company[0] : '?',
                   style: TextStyle(
-                    color: brand.accent,
-                    fontWeight: FontWeight.w900,
+                    color: brand.inkInverse,
+                    fontWeight: FontWeight.w800,
                     fontSize: 14,
                   ),
                 ),
@@ -1272,15 +1277,15 @@ class _InboxSentRow extends StatelessWidget {
                         Text(
                           'SENT · ${_timeLabel()}',
                           style: TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w900,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
                             letterSpacing: 1.1,
                             color: brand.textMuted,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 4),
                     Text(
                       job.title,
                       maxLines: 1,
@@ -1433,8 +1438,7 @@ class _PromptCard extends StatelessWidget {
                 height: 34,
                 decoration: BoxDecoration(
                   color: brand.surface,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: brand.border),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 alignment: Alignment.center,
                 child: Icon(icon, size: 16, color: brand.ink),
@@ -1456,7 +1460,7 @@ class _PromptCard extends StatelessWidget {
               Icon(
                 Icons.arrow_forward_rounded,
                 size: 16,
-                color: brand.textSoft,
+                color: brand.textMuted,
               ),
             ],
           ),

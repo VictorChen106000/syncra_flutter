@@ -54,8 +54,6 @@ class ApplicationsPage extends ConsumerWidget {
                   40,
                 ),
                 children: [
-                  _SummaryStrip(apps: allItems),
-                  const SizedBox(height: 20),
                   Text(
                     AppStrings.applicationsSubtitle,
                     style: TextStyle(
@@ -65,7 +63,9 @@ class ApplicationsPage extends ConsumerWidget {
                       height: 1.45,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
+                  _SummaryStrip(apps: allItems),
+                  const SizedBox(height: 24),
                   _FilterChipsRow(
                     active: state.filter,
                     onChanged: notifier.setFilter,
@@ -115,40 +115,19 @@ class _SummaryStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final brand = context.brand;
     int countOf(ApplicationPhase p) =>
         apps.where((a) => a.phase == p).length;
-    final cells = <(int, String, Color, Color)>[
-      (
-        countOf(ApplicationPhase.draft),
-        'Drafts',
-        brand.surfaceMuted,
-        brand.ink,
-      ),
-      (
-        countOf(ApplicationPhase.sent),
-        'Sent',
-        brand.ink,
-        brand.accent,
-      ),
-      (
-        countOf(ApplicationPhase.replied),
-        'Replied',
-        brand.accent,
-        brand.onAccent,
-      ),
+    final cells = <(int, String)>[
+      (countOf(ApplicationPhase.draft), 'Drafts'),
+      (countOf(ApplicationPhase.sent), 'Sent'),
+      (countOf(ApplicationPhase.replied), 'Replied'),
     ];
     return Row(
       children: [
         for (var i = 0; i < cells.length; i++) ...[
-          if (i > 0) const SizedBox(width: 10),
+          if (i > 0) const SizedBox(width: 12),
           Expanded(
-            child: _SummaryTile(
-              count: cells[i].$1,
-              label: cells[i].$2,
-              background: cells[i].$3,
-              foreground: cells[i].$4,
-            ),
+            child: _SummaryTile(count: cells[i].$1, label: cells[i].$2),
           ),
         ],
       ],
@@ -157,27 +136,20 @@ class _SummaryStrip extends StatelessWidget {
 }
 
 class _SummaryTile extends StatelessWidget {
-  const _SummaryTile({
-    required this.count,
-    required this.label,
-    required this.background,
-    required this.foreground,
-  });
+  const _SummaryTile({required this.count, required this.label});
 
   final int count;
   final String label;
-  final Color background;
-  final Color foreground;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: brand.border.withValues(alpha: 0.6)),
+        color: brand.surfaceMuted,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: brand.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -186,20 +158,20 @@ class _SummaryTile extends StatelessWidget {
             '$count',
             style: TextStyle(
               fontSize: 28,
-              fontWeight: FontWeight.w900,
-              color: foreground,
+              fontWeight: FontWeight.w800,
+              color: brand.ink,
               height: 1.0,
               letterSpacing: -1,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Text(
             label.toUpperCase(),
             style: TextStyle(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w800,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
               letterSpacing: 1.4,
-              color: foreground.withValues(alpha: 0.75),
+              color: brand.textMuted,
             ),
           ),
         ],
@@ -286,7 +258,7 @@ class _EmptyFiltered extends StatelessWidget {
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: brand.surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: brand.border),
       ),
       child: Column(
@@ -335,14 +307,14 @@ class _TrackerCard extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
         color: brand.surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(color: brand.border),
             ),
             child: Column(
@@ -439,7 +411,7 @@ class _PhaseBadge extends StatelessWidget {
     final brand = context.brand;
     final (bg, fg) = switch (phase) {
       ApplicationPhase.draft => (brand.surfaceMuted, brand.ink),
-      ApplicationPhase.sent => (brand.ink, brand.accent),
+      ApplicationPhase.sent => (brand.ink, brand.inkInverse),
       ApplicationPhase.replied => (brand.accent, brand.onAccent),
     };
     return Container(
@@ -456,8 +428,8 @@ class _PhaseBadge extends StatelessWidget {
       child: Text(
         phase.label.toUpperCase(),
         style: TextStyle(
-          fontSize: 10.5,
-          fontWeight: FontWeight.w900,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
           letterSpacing: 1.2,
           color: fg,
         ),

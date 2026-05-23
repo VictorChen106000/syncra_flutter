@@ -29,7 +29,7 @@ class UserMessageView extends StatelessWidget {
                   vertical: 12,
                 ),
                 decoration: BoxDecoration(
-                  color: brand.surfaceMuted,
+                  color: brand.accent,
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(20),
                     topRight: Radius.circular(20),
@@ -51,16 +51,17 @@ class UserMessageView extends StatelessWidget {
                               vertical: 6,
                             ),
                             decoration: BoxDecoration(
-                              color: brand.surface,
+                              // Ink chip on lime bubble — high contrast,
+                              // mirrors the eyebrow-pill pattern on lime heroes.
+                              color: brand.onAccent,
                               borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: brand.border),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
                                   Icons.description_rounded,
-                                  color: brand.ink,
+                                  color: brand.accent,
                                   size: 13,
                                 ),
                                 const SizedBox(width: 6),
@@ -70,7 +71,7 @@ class UserMessageView extends StatelessWidget {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                      color: brand.ink,
+                                      color: brand.accent,
                                       fontSize: 12,
                                       fontWeight: FontWeight.w700,
                                     ),
@@ -86,10 +87,10 @@ class UserMessageView extends StatelessWidget {
                     SelectableText(
                       message.text,
                       style: TextStyle(
-                        color: brand.ink,
+                        color: brand.onAccent,
                         fontSize: 15,
                         height: 1.5,
-                        fontWeight: FontWeight.w500,
+                        fontWeight: FontWeight.w600,
                         letterSpacing: -0.1,
                       ),
                     ),

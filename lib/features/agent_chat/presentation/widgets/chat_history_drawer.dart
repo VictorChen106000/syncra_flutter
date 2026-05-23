@@ -354,20 +354,14 @@ class _ConversationRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
+    // History rows render as plain text — no card surface. Active state shows
+    // through a lime title + ink-weighted text; inactive stays muted.
     return Material(
-      color: active ? brand.surface : Colors.transparent,
-      borderRadius: BorderRadius.circular(12),
+      color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
+        child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: active
-                ? Border.all(color: brand.border, width: 1)
-                : null,
-          ),
           child: Row(
             children: [
               Expanded(
@@ -381,8 +375,8 @@ class _ConversationRow extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: brand.ink,
+                        fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+                        color: active ? brand.accent : brand.ink,
                         letterSpacing: -0.15,
                       ),
                     ),
@@ -392,7 +386,7 @@ class _ConversationRow extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
-                        color: brand.textSoft,
+                        color: brand.textMuted,
                       ),
                     ),
                   ],
@@ -405,12 +399,12 @@ class _ConversationRow extends StatelessWidget {
                   onTap: onDelete,
                   radius: 22,
                   child: SizedBox(
-                    width: 40,
-                    height: 40,
+                    width: 44,
+                    height: 44,
                     child: Icon(
                       Icons.delete_outline_rounded,
                       size: 17,
-                      color: brand.textSoft,
+                      color: brand.textMuted,
                     ),
                   ),
                 ),

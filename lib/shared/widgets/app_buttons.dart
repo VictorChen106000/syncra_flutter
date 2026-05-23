@@ -66,8 +66,9 @@ class AppPrimaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final bg = backgroundColor ?? brand.ink;
-    final fg = foregroundColor ?? brand.inkInverse;
+    // Primary = lime. Per spec, the lime CTA is the user's main action color.
+    final bg = backgroundColor ?? brand.accent;
+    final fg = foregroundColor ?? brand.onAccent;
     return _PressEffects(
       enabled: onPressed != null,
       child: FilledButton(
@@ -80,13 +81,13 @@ class AppPrimaryButton extends StatelessWidget {
           disabledForegroundColor: brand.textSoft,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
-            side: BorderSide(color: brand.accent.withValues(alpha: 0.0)),
           ),
           textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
         ).copyWith(
           side: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.focused)) {
-              return BorderSide(color: brand.accent, width: 2);
+              // Ink ring on lime — accent-on-accent would be invisible.
+              return BorderSide(color: brand.ink, width: 2);
             }
             return BorderSide.none;
           }),
@@ -161,53 +162,3 @@ class AppSecondaryButton extends StatelessWidget {
   }
 }
 
-/// Lime accent CTA — used in onboarding confirmations and "Auto-Fix" modal.
-class AppAccentButton extends StatelessWidget {
-  const AppAccentButton({
-    super.key,
-    required this.label,
-    required this.onPressed,
-    this.icon,
-  });
-
-  final String label;
-  final VoidCallback? onPressed;
-  final Widget? icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return _PressEffects(
-      enabled: onPressed != null,
-      child: FilledButton(
-        onPressed: onPressed,
-        style: FilledButton.styleFrom(
-          minimumSize: const Size.fromHeight(56),
-          backgroundColor: brand.accent,
-          foregroundColor: brand.onAccent,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
-          ),
-          textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-        ).copyWith(
-          side: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.focused)) {
-              return BorderSide(color: brand.ink, width: 2);
-            }
-            return BorderSide.none;
-          }),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (icon != null) ...[
-              icon!,
-              const SizedBox(width: 8),
-            ],
-            Text(label),
-          ],
-        ),
-      ),
-    );
-  }
-}

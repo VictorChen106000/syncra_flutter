@@ -93,8 +93,8 @@ class _TailoredPreviewPageState extends ConsumerState<TailoredPreviewPage> {
                           'Tailored resume',
                           style: TextStyle(
                             color: brand.ink,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w900,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
                             letterSpacing: -0.3,
                           ),
                         ),
@@ -118,11 +118,11 @@ class _TailoredPreviewPageState extends ConsumerState<TailoredPreviewPage> {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(16),
                   child: Container(
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
                           color: brand.shadow,
@@ -241,15 +241,15 @@ class _BarButton extends StatelessWidget {
       opacity: onTap == null && !loading ? 0.5 : 1,
       child: Material(
         color: bg,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           child: Container(
-            height: 50,
-            padding: const EdgeInsets.symmetric(horizontal: 18),
+            height: 48,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(color: filled ? brand.ink : brand.border),
             ),
             alignment: Alignment.center,

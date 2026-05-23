@@ -256,63 +256,113 @@ class _MatchBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'TOP MATCH',
-          style: TextStyle(
-            color: _softInk.withValues(alpha: 0.48),
-            fontSize: 10.5,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1.6,
+        // Lime hero card — score reads as bold black-on-lime, the way the
+        // reference treats its hero metric.
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(24, 22, 24, 24),
+          decoration: BoxDecoration(
+            color: brand.accent,
+            borderRadius: BorderRadius.circular(28),
           ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              '${job.matchScore}',
-              style: GoogleFonts.inter(
-                color: brand.accent,
-                fontSize: 92,
-                fontWeight: FontWeight.w900,
-                height: 0.95,
-                letterSpacing: -3.2,
-              ),
-            )
-                .animate(delay: 200.ms)
-                .scale(
-                  begin: const Offset(0.92, 0.92),
-                  end: const Offset(1, 1),
-                  curve: Curves.easeOutCubic,
-                  duration: 600.ms,
-                )
-                .fadeIn(),
-            Padding(
-              padding: const EdgeInsets.only(left: 6, bottom: 16),
-              child: Text(
-                '%',
-                style: TextStyle(
-                  color: brand.accent.withValues(alpha: 0.70),
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.4,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // "TOP MATCH" pill — ink chip floating on lime.
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: brand.onAccent,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.auto_awesome_rounded,
+                      color: brand.accent,
+                      size: 12,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'TOP MATCH',
+                      style: TextStyle(
+                        color: brand.accent,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.4,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        Text(
-          '${job.title} · ${job.company}',
-          style: TextStyle(
-            color: _softInk,
-            fontSize: 17,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.3,
-            height: 1.35,
+              const SizedBox(height: 16),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '${job.matchScore}',
+                    style: GoogleFonts.inter(
+                      color: brand.onAccent,
+                      fontSize: 96,
+                      fontWeight: FontWeight.w900,
+                      height: 0.92,
+                      letterSpacing: -3.4,
+                    ),
+                  )
+                      .animate(delay: 200.ms)
+                      .scale(
+                        begin: const Offset(0.92, 0.92),
+                        end: const Offset(1, 1),
+                        curve: Curves.easeOutCubic,
+                        duration: 600.ms,
+                      )
+                      .fadeIn(),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8, bottom: 16),
+                    child: Text(
+                      '%',
+                      style: TextStyle(
+                        color: brand.onAccent.withValues(alpha: 0.62),
+                        fontSize: 32,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.4,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      'match',
+                      style: TextStyle(
+                        color: brand.onAccent.withValues(alpha: 0.62),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '${job.title} · ${job.company}',
+                style: TextStyle(
+                  color: brand.onAccent,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.3,
+                  height: 1.3,
+                ),
+              ).animate(delay: 320.ms).fadeIn().moveY(begin: 6, end: 0),
+            ],
           ),
-        ).animate(delay: 320.ms).fadeIn().moveY(begin: 6, end: 0),
-        const SizedBox(height: 10),
+        ).animate(delay: 100.ms).fadeIn(duration: 400.ms),
+        const SizedBox(height: 20),
         Text(
           job.agentJustification.isNotEmpty
               ? job.agentJustification
