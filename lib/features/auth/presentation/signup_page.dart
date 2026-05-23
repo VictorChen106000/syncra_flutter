@@ -155,7 +155,7 @@ class _SignUpPageState extends State<SignUpPage> {
   }
 }
 
-class _SoftInput extends StatefulWidget {
+class _SoftInput extends StatelessWidget {
   const _SoftInput({
     required this.icon,
     required this.hint,
@@ -171,66 +171,32 @@ class _SoftInput extends StatefulWidget {
   final TextInputType? keyboardType;
 
   @override
-  State<_SoftInput> createState() => _SoftInputState();
-}
-
-class _SoftInputState extends State<_SoftInput> {
-  late final FocusNode _focusNode;
-
-  @override
-  void initState() {
-    super.initState();
-    _focusNode = FocusNode();
-    _focusNode.addListener(_onFocusChange);
-  }
-
-  @override
-  void dispose() {
-    _focusNode.removeListener(_onFocusChange);
-    _focusNode.dispose();
-    super.dispose();
-  }
-
-  void _onFocusChange() {
-    if (mounted) setState(() {});
-  }
-
-  @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final focused = _focusNode.hasFocus;
-    // Hint contrast: textSoft on white is ~3.7:1 — borderline for 13px copy.
-    // textMuted is ~6:1, safer.
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOutCubic,
+    return Container(
       decoration: BoxDecoration(
         color: brand.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: focused ? brand.ink : brand.border,
-          width: focused ? 2 : 1,
-        ),
+        border: Border.all(color: brand.border),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          Icon(widget.icon, size: 20, color: brand.ink),
+          Icon(icon, size: 20, color: brand.ink),
           const SizedBox(width: 12),
           Expanded(
             child: TextField(
-              controller: widget.controller,
-              focusNode: _focusNode,
-              obscureText: widget.obscure,
-              keyboardType: widget.keyboardType,
+              controller: controller,
+              obscureText: obscure,
+              keyboardType: keyboardType,
               style: TextStyle(
                 color: brand.ink,
                 fontWeight: FontWeight.w500,
               ),
               decoration: InputDecoration(
-                hintText: widget.hint,
+                hintText: hint,
                 hintStyle: TextStyle(
-                  color: brand.textMuted,
+                  color: brand.textSoft,
                   fontWeight: FontWeight.w500,
                 ),
                 contentPadding: const EdgeInsets.symmetric(vertical: 16),

@@ -370,12 +370,20 @@ class _SendButton extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
-        width: 44,
-        height: 44,
+        width: 40,
+        height: 40,
         decoration: BoxDecoration(
-          // Send is the primary action in the chat → lime.
-          color: active ? brand.accent : brand.surfaceMuted,
+          color: active ? brand.ink : brand.surfaceMuted,
           shape: BoxShape.circle,
+          boxShadow: active
+              ? [
+                  BoxShadow(
+                    color: brand.ink.withValues(alpha: 0.22),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
         ),
         child: Material(
           color: Colors.transparent,
@@ -394,13 +402,13 @@ class _SendButton extends StatelessWidget {
                   ? Icon(
                       Icons.stop_rounded,
                       key: const ValueKey('stop'),
-                      color: brand.onAccent,
+                      color: brand.inkInverse,
                       size: 20,
                     )
                   : Icon(
                       Icons.arrow_upward_rounded,
                       key: const ValueKey('send'),
-                      color: active ? brand.onAccent : brand.textSoft,
+                      color: active ? brand.inkInverse : brand.textSoft,
                       size: 20,
                     ),
             ),

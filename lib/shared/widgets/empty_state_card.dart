@@ -70,8 +70,8 @@ class EmptyStateCard extends StatelessWidget {
             FilledButton(
               onPressed: onAction,
               style: FilledButton.styleFrom(
-                backgroundColor: brand.accent,
-                foregroundColor: brand.onAccent,
+                backgroundColor: brand.ink,
+                foregroundColor: brand.inkInverse,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 shape: RoundedRectangleBorder(
