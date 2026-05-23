@@ -25,13 +25,15 @@ class PipelineRepository {
 
   final FirestorePaths _paths;
 
-  Stream<List<PipelineCard>> watchPending(String uid) {
+ Stream<List<PipelineCard>> watchPending(String uid) {
     return _paths
         .pipeline(uid)
-        .where('status', isEqualTo: 'pending')
         .orderBy('created_at', descending: true)
         .snapshots()
-        .map((snap) => snap.docs.map(_fromDoc).toList());
+        .map((snap) => snap.docs
+            .map(_fromDoc)
+            .where((card) => card.status == PipelineCardStatus.pending)
+            .toList(growable: false));
   }
 
   Future<List<PipelineCard>> fetchPending(String uid, {int limit = 40}) async {

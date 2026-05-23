@@ -95,18 +95,21 @@ class NotificationsNotifier extends Notifier<NotificationsState> {
 
   @override
   NotificationsState build() {
-    // Re-seed / clear mocks whenever the dev toggle flips. Listening inside
-    // build is the standard Riverpod way to react to other providers without
-    // leaking subscriptions.
+    final dev = ref.watch(devFlagsProvider);
+
     ref.listen<DevFlags>(devFlagsProvider, (prev, next) {
       if (prev?.showMockNotifications == next.showMockNotifications) return;
+
       if (next.showMockNotifications) {
         _seedMocks();
       } else {
         _clearMocks();
       }
-    }, fireImmediately: true);
-    return const NotificationsState();
+    });
+
+    return NotificationsState(
+      items: dev.showMockNotifications ? _mockAgentActivity : const [],
+    );
   }
 
   void _seedMocks() {
