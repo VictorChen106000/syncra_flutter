@@ -2,11 +2,13 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/dev/dev_flags_notifier.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../core/theme/theme_mode_notifier.dart';
 import '../../../core/utils/motion.dart';
@@ -41,6 +43,9 @@ class ProfilePage extends StatelessWidget {
               ),
               children: [
                 const _ProfileHeaderCard(),
+                const SizedBox(height: 24),
+                const SectionTitle(title: 'Resumes'),
+                const _ResumesSection(),
                 const SizedBox(height: 24),
                 const SectionTitle(title: 'Connections'),
                 const _IntegrationSection(),
@@ -434,6 +439,72 @@ class _PulsingActiveDot extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Resumes — entry point into the resume library (base uploads + tailored
+// variants). Trailing chip shows the combined count.
+// ---------------------------------------------------------------------------
+
+class _ResumesSection extends ConsumerWidget {
+  const _ResumesSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(resumeProvider);
+    final count = state.resumes.length + state.tailoredResumes.length;
+    return _GroupedCard(
+      children: [
+        _PreferenceRow(
+          icon: Icons.description_outlined,
+          title: 'Resume library',
+          subtitle: count == 0
+              ? 'Upload a resume to get started'
+              : '$count saved — base and tailored',
+          trailing: _CountChip(count: count),
+          onTap: () => context.go(RouteNames.resumes),
+        ),
+      ],
+    );
+  }
+}
+
+class _CountChip extends StatelessWidget {
+  const _CountChip({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: brand.surfaceMuted,
+            borderRadius: BorderRadius.circular(99),
+          ),
+          child: Text(
+            '$count',
+            style: TextStyle(
+              color: brand.ink,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.1,
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Icon(
+          Icons.chevron_right_rounded,
+          color: brand.border,
+          size: 18,
+        ),
+      ],
     );
   }
 }
