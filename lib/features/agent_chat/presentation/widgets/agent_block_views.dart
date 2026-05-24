@@ -12,6 +12,9 @@ import '../../models/agent_block.dart';
 import '../../state/agent_chat_notifier.dart';
 import '../../../resumes/models/proposed_edit.dart';
 import '../../../resumes/presentation/tailored_preview_page.dart';
+import '../../../resumes/state/resume_notifier.dart';
+import '../../../email/presentation/email_review_page.dart';
+import '../../../email/services/gmail_service.dart';
 
 class AgentBlockView extends StatelessWidget {
   const AgentBlockView({
@@ -38,7 +41,239 @@ class AgentBlockView extends StatelessWidget {
         InputRequestView(block: block as InputRequestBlock),
       ActionProposalBlock() =>
         ActionProposalView(block: block as ActionProposalBlock),
+      EmailDraftBlock() =>
+        EmailDraftBlockView(block: block as EmailDraftBlock),
     };
+  }
+}
+
+/// Inline card for an [EmailDraftBlock]. Shows the drafted recipient/subject/
+/// body and a single action that opens the review sheet in **draft mode** —
+/// the user edits and saves it to their Gmail Drafts there. Nothing is ever
+/// sent from the chat; the user finishes the send from Gmail.
+class EmailDraftBlockView extends ConsumerWidget {
+  const EmailDraftBlockView({super.key, required this.block});
+
+  final EmailDraftBlock block;
+
+  Future<void> _review(BuildContext context, WidgetRef ref) async {
+    // Pull the tailored resume PDF down before opening the sheet so it rides
+    // along as a real attachment on the Gmail draft. A missing blob is not
+    // fatal — the draft still saves, just without the file.
+    final attachments = await _loadAttachments(ref);
+    if (!context.mounted) return;
+
+    final result = await EmailReviewPage.show(
+      context,
+      recipient: block.recipient,
+      subject: block.subject,
+      body: block.body,
+      mode: EmailReviewMode.draft,
+      attachments: attachments,
+    );
+    if (result?.draftCreated ?? false) {
+      ref
+          .read(agentChatProvider.notifier)
+          .markEmailDraftSaved(block.id, result!.draftId);
+    }
+  }
+
+  /// Resolves the attachment list for this draft. Returns the tailored resume
+  /// PDF bytes when [EmailDraftBlock.attachmentResumeId] is set and the blob
+  /// downloads; otherwise an empty list.
+  Future<List<EmailAttachment>> _loadAttachments(WidgetRef ref) async {
+    final resumeId = block.attachmentResumeId;
+    if (resumeId == null) return const [];
+
+    final notifier = ref.read(resumeProvider.notifier);
+
+    // Prefer freshly-primed bytes (the just-tailored PDF) so we don't depend on
+    // the resumes stream having delivered the new doc yet. Fall back to a
+    // download via the resume's storage path.
+    var bytes = notifier.cachedBytesFor(resumeId);
+    if (bytes == null) {
+      final resume = ref
+          .read(resumeProvider)
+          .allResumes
+          .where((r) => r.id == resumeId)
+          .firstOrNull;
+      if (resume == null) return const [];
+      bytes = await notifier.bytesFor(resume);
+    }
+    if (bytes == null) return const [];
+
+    return [
+      EmailAttachment(
+        filename: block.attachmentFilename ?? 'tailored_resume.pdf',
+        bytes: bytes,
+      ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
+    final saved = block.status == EmailDraftStatus.saved;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: brand.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: brand.border),
+        boxShadow: [
+          BoxShadow(
+            color: brand.shadow.withValues(alpha: 0.18),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: brand.ink,
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.drafts_rounded,
+                  color: brand.accent,
+                  size: 17,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Draft email',
+                  style: TextStyle(
+                    color: brand.ink,
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+              if (saved)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: brand.accent,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Text(
+                    'Saved',
+                    style: TextStyle(
+                      color: brand.onAccent,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _EmailMetaRow(label: 'TO', value: block.recipient),
+          const SizedBox(height: 8),
+          _EmailMetaRow(label: 'SUBJECT', value: block.subject),
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: brand.surfaceMuted,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              block.body,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: brand.textMuted,
+                fontSize: 12.5,
+                height: 1.45,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          if (saved)
+            Row(
+              children: [
+                Icon(Icons.check_circle_rounded,
+                    size: 15, color: brand.success),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    'Saved to your Gmail Drafts — open Gmail to send it.',
+                    style: TextStyle(
+                      color: brand.ink,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.1,
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else
+            _FooterButton(
+              label: 'Review & save draft',
+              filled: true,
+              enabled: true,
+              onTap: () => _review(context, ref),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One label/value line ("TO recipient@…") inside [EmailDraftBlockView].
+class _EmailMetaRow extends StatelessWidget {
+  const _EmailMetaRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 62,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: brand.textSoft,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.0,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              color: brand.ink,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              height: 1.35,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 

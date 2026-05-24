@@ -394,6 +394,12 @@ class ResumeNotifier extends Notifier<ResumeState> {
     _bytesCache[resumeId] = bytes;
   }
 
+  /// Returns already-cached bytes for [resumeId], or null if not cached.
+  /// Lets callers that primed the cache (e.g. a just-tailored resume) grab the
+  /// bytes by id without needing the [ResumeFile] or a Storage round-trip —
+  /// the resumes stream may not have delivered the new doc yet.
+  Uint8List? cachedBytesFor(String resumeId) => _bytesCache[resumeId];
+
   bool _isResumeFile(String name) {
     final lower = name.toLowerCase();
     return lower.endsWith('.pdf') ||

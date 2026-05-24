@@ -215,3 +215,52 @@ class ActionProposalBlock extends AgentBlock {
 
   ActionState state;
 }
+
+/// Lifecycle of an [EmailDraftBlock]. While [reviewing] the user can open the
+/// review sheet; once they save it to Gmail Drafts the card settles to
+/// [saved]. There is no "sent" state — the chat path only ever saves drafts;
+/// the user finishes and sends from Gmail themselves.
+enum EmailDraftStatus { reviewing, saved }
+
+/// An email the agent drafted — either a cold outreach via `draft_email`, or a
+/// self-delivery of a freshly tailored resume fired automatically after
+/// `apply_resume_edits`. Surfaced inline so the user can open the review sheet,
+/// edit the recipient/subject/body, and save it to their Gmail Drafts. Nothing
+/// is ever sent from here — the review sheet runs in draft mode (see
+/// `EmailReviewPage`/`EmailReviewMode.draft`).
+///
+/// Like [ProposedEditsBlock], the agent pauses after emitting this so it can't
+/// barrel on into `send_email`; the user gates the next step.
+class EmailDraftBlock extends AgentBlock {
+  EmailDraftBlock({
+    required super.id,
+    required this.recipient,
+    required this.subject,
+    required this.body,
+    this.status = EmailDraftStatus.reviewing,
+    this.savedDraftId,
+    this.attachmentResumeId,
+    this.attachmentFilename,
+  });
+
+  final String recipient;
+  final String subject;
+  final String body;
+
+  /// When set, the review sheet attaches this resume's PDF to the draft. Holds
+  /// the resume id (manual or tailored) — the view downloads the bytes lazily
+  /// via `bytesFor` when the user opens the sheet. Null for plain text drafts.
+  final String? attachmentResumeId;
+
+  /// Display filename for the attached resume PDF (e.g. `tailored_acme.pdf`).
+  /// Null when there is no attachment.
+  final String? attachmentFilename;
+
+  /// Whole-card lifecycle. Mutable so the notifier can flip it to [saved]
+  /// once the draft lands in Gmail and re-emit the chat state.
+  EmailDraftStatus status;
+
+  /// The Gmail draft id, set once the draft has been created. While null,
+  /// nothing has been saved yet.
+  String? savedDraftId;
+}
