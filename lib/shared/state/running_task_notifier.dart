@@ -13,6 +13,7 @@ class RunningTaskState {
     this.status = RunningTaskStatus.idle,
     this.label = '',
     this.detail,
+    this.originRoutes = const <String>{},
   });
 
   final RunningTaskStatus status;
@@ -22,6 +23,13 @@ class RunningTaskState {
 
   /// Optional secondary line — null when there's nothing extra to say.
   final String? detail;
+
+  /// Routes where this task originates. The RUNNING banner stays hidden while
+  /// the user is on any of these — they're already looking at the work, so a
+  /// floating "running" pill on top would be redundant. Terminal (completed /
+  /// failed) states ignore this and always show, so the user doesn't miss the
+  /// result after the page has moved on.
+  final Set<String> originRoutes;
 
   /// Whether the banner should be on screen at all.
   bool get isActive => status != RunningTaskStatus.idle;
@@ -50,12 +58,19 @@ class RunningTaskNotifier extends Notifier<RunningTaskState> {
   }
 
   /// Marks a new task as running, replacing whatever was showing before.
-  void start(String label, {String? detail}) {
+  /// [originRoutes] are routes where the running banner should stay hidden
+  /// (the caller's own page) — leave empty to show on every route.
+  void start(
+    String label, {
+    String? detail,
+    Set<String> originRoutes = const <String>{},
+  }) {
     _autoDismiss?.cancel();
     state = RunningTaskState(
       status: RunningTaskStatus.running,
       label: label,
       detail: detail,
+      originRoutes: originRoutes,
     );
   }
 
@@ -68,6 +83,7 @@ class RunningTaskNotifier extends Notifier<RunningTaskState> {
       status: RunningTaskStatus.running,
       label: label,
       detail: detail,
+      originRoutes: state.originRoutes,
     );
   }
 
@@ -76,7 +92,11 @@ class RunningTaskNotifier extends Notifier<RunningTaskState> {
   /// completion event (or one after a dismiss) is harmless.
   void complete({String label = 'Task completed'}) {
     if (state.status != RunningTaskStatus.running) return;
-    state = RunningTaskState(status: RunningTaskStatus.completed, label: label);
+    state = RunningTaskState(
+      status: RunningTaskStatus.completed,
+      label: label,
+      originRoutes: state.originRoutes,
+    );
     _scheduleAutoDismiss();
   }
 
@@ -87,6 +107,7 @@ class RunningTaskNotifier extends Notifier<RunningTaskState> {
       status: RunningTaskStatus.failed,
       label: label,
       detail: detail,
+      originRoutes: state.originRoutes,
     );
     _scheduleAutoDismiss();
   }

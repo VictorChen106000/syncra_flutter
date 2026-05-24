@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/router/app_router.dart';
 import '../../core/router/route_names.dart';
 import '../../core/theme/brand_theme.dart';
+import '../../features/notifications/models/app_notification.dart';
+import '../../features/notifications/state/notifications_notifier.dart';
 import '../state/running_task_notifier.dart';
 
 /// A global status card that floats at the top of the app while a background
@@ -23,29 +25,57 @@ class RunningTaskBanner extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final task = ref.watch(runningTaskProvider);
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 240),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: (child, animation) => FadeTransition(
-        opacity: animation,
-        child: SizeTransition(
-          sizeFactor: animation,
-          axisAlignment: -1,
-          child: child,
-        ),
-      ),
-      child: task.isActive
-          ? _TaskCard(
-              // Key on the status so the card animates on running → completed,
-              // but updates in place for label-only changes.
-              key: ValueKey(task.status),
-              task: task,
-              onTap: () => ref.read(routerProvider).go(RouteNames.agentChat),
-              onDismiss: () =>
-                  ref.read(runningTaskProvider.notifier).dismiss(),
-            )
-          : const SizedBox.shrink(key: ValueKey('idle')),
+    final router = ref.watch(routerProvider);
+    // Yield to a pending intercept/proposal so the user-facing "needs action"
+    // banner gets the top slot — the running pill is informational, those
+    // are blocking.
+    final hasActionable = ref.watch(notificationsProvider).items.any(
+          (n) =>
+              n.unread &&
+              (n.kind == NotificationKind.intercept ||
+                  n.kind == NotificationKind.proposal),
+        );
+    // Rebuild on every route change so the RUNNING card can hide itself on
+    // the page the task came from. Terminal (DONE/FAILED) states ignore the
+    // suppression so the result is never missed.
+    return ListenableBuilder(
+      listenable: router.routerDelegate,
+      builder: (context, _) {
+        final location =
+            router.routerDelegate.currentConfiguration.uri.path;
+        final isRunning = task.status == RunningTaskStatus.running;
+        final suppressForOrigin =
+            isRunning && task.originRoutes.contains(location);
+        final suppressForActionable = isRunning && hasActionable;
+        final visible = task.isActive &&
+            !suppressForOrigin &&
+            !suppressForActionable;
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 240),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) => FadeTransition(
+            opacity: animation,
+            child: SizeTransition(
+              sizeFactor: animation,
+              axisAlignment: -1,
+              child: child,
+            ),
+          ),
+          child: visible
+              ? _TaskCard(
+                  // Key on the status so the card animates on running →
+                  // completed, but updates in place for label-only changes.
+                  key: ValueKey(task.status),
+                  task: task,
+                  onTap: () =>
+                      ref.read(routerProvider).go(RouteNames.agentChat),
+                  onDismiss: () =>
+                      ref.read(runningTaskProvider.notifier).dismiss(),
+                )
+              : const SizedBox.shrink(key: ValueKey('idle')),
+        );
+      },
     );
   }
 }

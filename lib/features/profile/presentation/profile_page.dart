@@ -514,17 +514,6 @@ class _DevFlagsSection extends ConsumerWidget {
             onChanged: notifier.setShowMorningBrief,
           ),
         ),
-        const _GroupedDivider(),
-        _PreferenceRow(
-          icon: Icons.notifications_active_outlined,
-          title: 'Show mock notifications',
-          subtitle: 'Seed the inbox with sample agent activity',
-          trailing: Switch.adaptive(
-            value: flags.showMockNotifications,
-            activeThumbColor: brand.ink,
-            onChanged: notifier.setShowMockNotifications,
-          ),
-        ),
       ],
     );
   }

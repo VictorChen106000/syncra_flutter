@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_strings.dart';
+import '../../../core/router/route_names.dart';
 import '../../../data/models/job.dart';
 import '../../../fixtures/mock_agent_service.dart';
 import '../../../shared/state/running_task_notifier.dart';
 import '../../auth/state/auth_notifier.dart';
+import '../../notifications/models/app_notification.dart';
 import '../../notifications/state/notifications_notifier.dart';
 import '../models/agent_block.dart';
 import '../models/chat_message.dart';
@@ -343,7 +345,20 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
       items: [...next, turn],
       isStreaming: true,
     );
-    _runningTask.start('Prompt is running…');
+    _runningTask.start(
+      'Prompt is running…',
+      // Stay quiet on the agent chat and the resume-flow surfaces — the user
+      // can already see the work inline there. The pill reappears the moment
+      // they navigate to a different surface.
+      originRoutes: const {
+        RouteNames.agentChat,
+        RouteNames.tailor,
+        RouteNames.review,
+        RouteNames.submitted,
+        RouteNames.resumes,
+        RouteNames.resumePreview,
+      },
+    );
 
     _activeSub = _service
         .runPrompt(prompt: clean, attachments: attachments)
@@ -383,11 +398,81 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
         _failActiveTurn(message);
         return;
     }
-    // Mirror the event to the notifications inbox. NotificationsNotifier
-    // decides which events warrant an entry (ask_user, completed tools, …).
-    ref.read(notificationsProvider.notifier).onAgentEvent(event);
+    // Mirror the event to the notifications inbox with tool-aware copy and
+    // Accept/Make-changes affordances for proposals, so the user can settle
+    // a block from the banner without opening the chat.
+    _mirrorToInbox(event, turn);
     // Rebuild the outer items list so Riverpod sees a new reference.
     state = state.copyWith(items: [...state.items]);
+  }
+
+  /// Maps the latest agent event onto an inbox entry. Producers without
+  /// tool-level context (e.g. the passive morning-brief loop) fall back to
+  /// the notifier's generic [NotificationsNotifier.onAgentEvent]; the chat
+  /// owns its own mirror so it can emit proposals + per-tool labels.
+  void _mirrorToInbox(AgentEvent event, AgentTurn turn) {
+    final inbox = ref.read(notificationsProvider.notifier);
+    switch (event) {
+      case BlockAdded(:final block) when block is InputRequestBlock:
+        inbox.add(AppNotification(
+          id: 'n-input-${block.id}',
+          kind: NotificationKind.intercept,
+          title: 'Agent needs your input',
+          body: block.question,
+          timestamp: 'Just now',
+          actionLabel: 'Answer',
+          targetBlockId: block.id,
+        ));
+      case BlockAdded(:final block) when block is ActionProposalBlock:
+        inbox.add(AppNotification(
+          id: 'n-prop-${block.id}',
+          kind: NotificationKind.proposal,
+          title: block.title,
+          body: block.description,
+          timestamp: 'Just now',
+          actionLabel: block.acceptLabel,
+          secondaryActionLabel: block.editLabel,
+          targetBlockId: block.id,
+        ));
+      case ToolCallCompleted(:final blockId, :final summary, :final status)
+          when status == ToolCallStatus.done && summary.isNotEmpty:
+        final tool = _toolBlockInTurn(turn, blockId);
+        final (title, body) = _toolCompletionCopy(tool, summary);
+        inbox.add(AppNotification(
+          id: 'n-tool-$blockId',
+          kind: NotificationKind.drafted,
+          title: title,
+          body: body,
+          timestamp: 'Just now',
+          actionLabel: 'Open chat',
+        ));
+      case _:
+        break;
+    }
+  }
+
+  ToolCallBlock? _toolBlockInTurn(AgentTurn turn, String blockId) {
+    for (final b in turn.blocks) {
+      if (b is ToolCallBlock && b.id == blockId) return b;
+    }
+    return null;
+  }
+
+  /// Inbox copy for a completed tool call. Tailors the resume-tailor flow
+  /// explicitly per product ask; everything else uses the tool's own UI label
+  /// as the title so an entry like "Searching jobs" reads cleanly.
+  (String title, String body) _toolCompletionCopy(
+    ToolCallBlock? tool,
+    String summary,
+  ) {
+    if (tool == null) return ('Agent finished a task', summary);
+    return switch (tool.name) {
+      'tailor_resume' => ('Tailored resume ready', summary),
+      'apply_resume_edits' => ('Tailored resume saved', summary),
+      'draft_email' => ('Draft email ready', summary),
+      'send_email' => ('Email sent', summary),
+      _ => (tool.label.replaceAll('…', '').trim(), summary),
+    };
   }
 
   /// Mirrors the agent's progress onto the global running-task banner so it
@@ -469,6 +554,9 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     final block = _findProposal(blockId);
     if (block == null) return;
     block.state = ActionState.accepted;
+    ref
+        .read(notificationsProvider.notifier)
+        .markReadByTargetBlock(blockId);
     state = state.copyWith(items: [...state.items]);
   }
 
@@ -476,6 +564,9 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     final block = _findProposal(blockId);
     if (block == null) return;
     block.state = ActionState.dismissed;
+    ref
+        .read(notificationsProvider.notifier)
+        .markReadByTargetBlock(blockId);
     state = state.copyWith(items: [...state.items]);
   }
 
@@ -558,6 +649,9 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     if (trimmed.isEmpty) return;
     block.state = InputRequestState.answered;
     block.answer = trimmed;
+    ref
+        .read(notificationsProvider.notifier)
+        .markReadByTargetBlock(blockId);
     state = state.copyWith(items: [...state.items]);
     _service.provideUserAnswer(blockId, trimmed);
   }
