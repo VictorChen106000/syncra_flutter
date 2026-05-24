@@ -11,7 +11,6 @@ class DevFlags {
   const DevFlags({
     this.showOnboarding = false,
     this.showMorningBrief = false,
-    this.showMockNotifications = false,
   });
 
   /// When ON, the router force-routes the user to onboarding regardless of
@@ -24,21 +23,13 @@ class DevFlags {
   /// auto-clears this flag.
   final bool showMorningBrief;
 
-  /// When ON, the inbox is seeded with sample agent activity so the
-  /// notification bell, banner, and inbox UI can be previewed before the
-  /// real agent is wired up.
-  final bool showMockNotifications;
-
   DevFlags copyWith({
     bool? showOnboarding,
     bool? showMorningBrief,
-    bool? showMockNotifications,
   }) {
     return DevFlags(
       showOnboarding: showOnboarding ?? this.showOnboarding,
       showMorningBrief: showMorningBrief ?? this.showMorningBrief,
-      showMockNotifications:
-          showMockNotifications ?? this.showMockNotifications,
     );
   }
 
@@ -47,18 +38,15 @@ class DevFlags {
       identical(this, other) ||
       other is DevFlags &&
           other.showOnboarding == showOnboarding &&
-          other.showMorningBrief == showMorningBrief &&
-          other.showMockNotifications == showMockNotifications;
+          other.showMorningBrief == showMorningBrief;
 
   @override
-  int get hashCode =>
-      Object.hash(showOnboarding, showMorningBrief, showMockNotifications);
+  int get hashCode => Object.hash(showOnboarding, showMorningBrief);
 }
 
 class DevFlagsNotifier extends Notifier<DevFlags> {
   static const _kShowOnboarding = 'syncra.dev.showOnboarding';
   static const _kShowMorningBrief = 'syncra.dev.showMorningBrief';
-  static const _kShowMockNotifications = 'syncra.dev.showMockNotifications';
 
   @override
   DevFlags build() {
@@ -71,7 +59,6 @@ class DevFlagsNotifier extends Notifier<DevFlags> {
     final loaded = DevFlags(
       showOnboarding: prefs.getBool(_kShowOnboarding) ?? false,
       showMorningBrief: prefs.getBool(_kShowMorningBrief) ?? false,
-      showMockNotifications: prefs.getBool(_kShowMockNotifications) ?? false,
     );
     if (loaded != state) state = loaded;
   }
@@ -86,12 +73,6 @@ class DevFlagsNotifier extends Notifier<DevFlags> {
     state = state.copyWith(showMorningBrief: value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kShowMorningBrief, value);
-  }
-
-  Future<void> setShowMockNotifications(bool value) async {
-    state = state.copyWith(showMockNotifications: value);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kShowMockNotifications, value);
   }
 }
 

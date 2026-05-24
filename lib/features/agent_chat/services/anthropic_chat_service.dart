@@ -319,16 +319,16 @@ Progress and style:
           return;
         }
 
-        // `tailor_resume` is user-gated under the PR-style diff flow.
-        // Once proposed edits exist, stop here and let the diff viewer handle
-        // accept/reject/apply. Do not feed the result back to Claude yet, because
-        // that can make it immediately call draft_email or apply_resume_edits.
+        // After `tailor_resume`, the proposed edits are auto-applied and shown
+        // as a read-only diff. Stop the turn here so the user can see what
+        // changed; don't feed the result back to Claude, which would let it
+        // immediately chain into draft_email or apply_resume_edits.
         if (shouldPauseAfterTailorResume) {
           // Record the tool_results so the paused turn leaves a well-formed
           // conversation — every tool_use needs a matching tool_result before
           // the next threaded turn POSTs. We deliberately do not loop on them
-          // here: the agent must wait for the user's diff review before it can
-          // reach apply_resume_edits or draft_email.
+          // here: the turn ends so the user sees the applied edits before the
+          // agent moves on to apply_resume_edits or draft_email.
           messages.add({'role': 'user', 'content': toolResults});
           yield BlockAdded(TextBlock(
             id: nextBlockId('text'),
@@ -520,7 +520,9 @@ Progress and style:
 
     if (edits.isEmpty) return null;
 
-    return ProposedEditsBlock(
+    // Tailoring auto-applies its edits: the card renders as a settled,
+    // read-only diff of what changed rather than an accept/reject prompt.
+    return ProposedEditsBlock.applied(
       id: id,
       edits: edits,
       jobId: data['job_id']?.toString(),
@@ -541,12 +543,12 @@ Progress and style:
     }
 
     if (count <= 0) {
-      return 'I tried to prepare resume edits, but no proposed edits were returned. Review the result before I continue.';
+      return 'I tried to tailor your resume, but no edits were generated. Check the result before continuing.';
     }
 
     final plural = count == 1 ? 'edit' : 'edits';
-    final pronoun = count == 1 ? 'it' : 'them';
-    return 'I found $count proposed resume $plural. Review $pronoun before I continue.';
+    return "I tailored your resume — $count $plural applied. Here's a diff "
+        'of what changed.';
   }
 
   /// Formats a tool call's input args — and, once available, its output — for

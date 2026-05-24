@@ -18,7 +18,8 @@ class NotificationsPage extends ConsumerWidget {
   void _handleTap(BuildContext context, WidgetRef ref, AppNotification n) {
     ref.read(notificationsProvider.notifier).markRead(n.id);
     final route = switch (n.kind) {
-      NotificationKind.intercept => RouteNames.jobs,
+      NotificationKind.intercept => RouteNames.agentChat,
+      NotificationKind.proposal => RouteNames.agentChat,
       NotificationKind.reply => RouteNames.agentChat,
       NotificationKind.drafted => RouteNames.jobs,
       NotificationKind.undo => RouteNames.jobs,
@@ -286,6 +287,11 @@ class _NotificationCard extends StatelessWidget {
             Icons.front_hand_outlined,
             brand.warning.withValues(alpha: 0.20),
             AppColors.categoryInputDeep,
+          ),
+        NotificationKind.proposal => (
+            Icons.task_alt_rounded,
+            brand.accent.withValues(alpha: 0.20),
+            brand.ink,
           ),
         NotificationKind.reply => (
             Icons.mark_email_unread_outlined,

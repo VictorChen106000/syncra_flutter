@@ -85,6 +85,27 @@ class ProposedEditsBlock extends AgentBlock {
            decisions ??
            List<EditDecision>.filled(edits.length, EditDecision.pending);
 
+  /// Builds a card that is already settled as **applied**, every edit
+  /// auto-accepted. The tailor flow uses this: it applies the proposed edits
+  /// directly instead of asking the user to accept/reject each one, so the
+  /// card renders as a read-only record of what changed.
+  factory ProposedEditsBlock.applied({
+    required String id,
+    required List<ProposedEdit> edits,
+    String? jobId,
+    String? resumeId,
+  }) {
+    return ProposedEditsBlock(
+      id: id,
+      edits: edits,
+      jobId: jobId,
+      resumeId: resumeId,
+      decisions:
+          List<EditDecision>.filled(edits.length, EditDecision.accepted),
+      state: ProposedEditsState.applied,
+    );
+  }
+
   final List<ProposedEdit> edits;
   final String? jobId;
   final String? resumeId;
