@@ -37,21 +37,26 @@ Foundation, verified in code:
 ## 🔲 Remaining work
 
 ### Resume Engine
-The propose half works; the **apply** half does not exist.
+The propose path and accepted-edit preview/save path work. Remaining engine polish:
 
-- [ ] **`resume_diff_service.dart`** — pure `applyEdits(ResumeJSON original, List<ProposedEdit> accepted) → ResumeJSON`. Stateless, no I/O. Walks `target_path`, swaps text. Lock the path grammar with a unit test.
-- [ ] **`apply_resume_edits` tool** — register in `builtin_tools.dart`. Input `{ resume_id, accepted_edits }` → `applyEdits` → `pdf_template` render → upload to Storage → new Firestore resume doc → return `{ tailored_resume_id }`.
+- [x] **`resume_diff_service.dart`** — pure accepted-edit application with target-path / verbatim-original backstop.
+- [x] Accepted edits can render a tailored PDF preview and save it as a tailored resume.
 - [ ] Cascade-delete tailored children when a manual resume is deleted (`ResumeNotifier.deleteResume`).
 - [ ] Parser retry — one stricter-prompt retry on malformed JSON for `read_resume` / tailor edits.
 - [ ] Scanned-PDF: when text extraction returns empty, surface "upload a text PDF" instead of falling back to the sample resume.
 
 ### Resume Diff UI
-The diff block renders **read-only** today ("Accept / reject controls will be
-added by the diff viewer").
+The inline proposed-edits card is now interactive.
 
-- [ ] Make `ProposedEditsBlock` interactive — per-edit Accept/Reject, header counter, "Apply N edits" footer CTA.
-- [ ] Extend `ResumeState` with diff-session fields (`original`, `proposed`, `pendingEdits`, `acceptedPaths`) + `acceptEdit` / `rejectEdit` / `clearProposal`.
-- [ ] "Apply N edits" dispatches `apply_resume_edits`; the result block links to the tailored PDF in `resume_preview_page`.
+- [x] `ProposedEditsBlock` supports per-edit Accept/Reject decisions, accepted counter, Dismiss all, and Apply N edits.
+- [x] Applying accepted edits renders an in-memory tailored PDF preview.
+- [x] Saving the preview persists the tailored resume to Firebase Storage / Firestore and returns a saved resume id.
+- [x] After save, the agent loop resumes through the saved-resume continuation bridge.
+
+Remaining / delegated:
+
+- [ ] Polish final diff-session state ownership if the team still wants the decisions mirrored in `ResumeState`.
+- [ ] Confirm final preview / save UX with Resume Diff UI owner.
 
 ### Integrations
 Service layer complete — JSearch, Gmail, and the email review modal all ship.
@@ -66,10 +71,18 @@ One cross-workstream wire remains (see below).
 - [ ] **Wire the modal in** — `EmailReviewPage.show` has no caller. A `draft_email` chat result needs a "Review & send" button that opens it. This is a chat-block change (Agent Reasoning / Resume Diff UI), not a service — the modal's own header comment flags it as a deliberate handoff. Until it lands, the Gmail send path is built but unreachable.
 
 ### Agent Reasoning
-Loop, prompts, and tools are in place. Remaining:
+Loop, prompts, and tools are in place. Current status:
 
-- [ ] When the diff UI calls `apply_resume_edits`, feed `tailored_resume_id` back into the conversation so the loop resumes to `draft_email`.
-- [ ] Regression-test the `tailor_resume` prompt — no full-section rewrites; every `original_text` verbatim.
+- [x] `ask_user` pauses and resumes the same running tool loop.
+- [x] After a tailored resume is saved, `tailored_resume_id` is fed back into the threaded conversation so the agent can continue the workflow.
+- [x] `ActionProposalBlock` approvals now carry a hidden continuation prompt and resume the agent loop after the user taps Accept.
+- [x] Main agent prompt is regression-tested for goal-oriented workflow behavior, approval gates, saved-resume continuation, and `send_email` safety.
+- [x] `tailor_resume` prompt is regression-tested: no full-section rewrites, every `original_text` must be verbatim, and no invented experience.
+
+Remaining / delegated:
+
+- [ ] Email draft review handoff: wire `draft_email` results to a chat block/button that opens `EmailReviewPage.show`.
+- [ ] `draft_email` should use real selected/uploaded resume context instead of sample resume fallback.
 
 ### App Shell
 Effectively complete. Empty states (resume / pipeline / applications) already

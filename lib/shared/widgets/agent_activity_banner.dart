@@ -2,16 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/router/app_router.dart';
+import '../../core/router/route_names.dart';
 import '../../core/theme/brand_theme.dart';
+import '../../features/agent_chat/state/agent_chat_notifier.dart';
 import '../../features/notifications/models/app_notification.dart';
 import '../../features/notifications/state/notifications_notifier.dart';
 
 /// Top-of-screen banner that surfaces the most recent **actionable** agent
-/// notification (intercepts, drafts, undo). Slides in from the top and lets
-/// the user accept / answer / dismiss without leaving the current page.
+/// notification (intercepts, proposals, drafts, undo). Slides in from the
+/// top and lets the user accept / answer / dismiss without leaving the
+/// current page.
 ///
 /// Rendered globally by [AppShellScaffold] so it floats over whichever tab
 /// is active. When no agent activity needs attention, it renders nothing.
+/// Takes priority over the running-task pill — see [RunningTaskBanner], which
+/// yields its slot when an intercept/proposal is unread.
 class AgentActivityBanner extends ConsumerWidget {
   const AgentActivityBanner({super.key});
 
@@ -38,9 +44,8 @@ class AgentActivityBanner extends ConsumerWidget {
           : _BannerCard(
               key: ValueKey(active.id),
               notification: active,
-              onPrimary: () => ref
-                  .read(notificationsProvider.notifier)
-                  .markRead(active.id),
+              onPrimary: () => _onPrimary(ref, active),
+              onSecondary: () => _onSecondary(ref, active),
               onDismiss: () => ref
                   .read(notificationsProvider.notifier)
                   .markRead(active.id),
@@ -48,9 +53,41 @@ class AgentActivityBanner extends ConsumerWidget {
     );
   }
 
-  /// Pick the highest-priority unread entry to surface. Intercepts win over
-  /// drafts win over matches/replies — same order users would expect to act
-  /// on them in.
+  /// Primary action: for a proposal, accept the underlying chat block; for
+  /// every other kind, mark it read (and the banner card's surrounding tap
+  /// already routes to the chat where appropriate).
+  void _onPrimary(WidgetRef ref, AppNotification n) {
+    final blockId = n.targetBlockId;
+    if (n.kind == NotificationKind.proposal && blockId != null) {
+      ref.read(agentChatProvider.notifier).acceptProposal(blockId);
+      return;
+    }
+    if (n.kind == NotificationKind.intercept && blockId != null) {
+      // ask_user needs a typed answer — route to the chat where the docked
+      // input field lives. Mark read once we're heading there.
+      ref.read(notificationsProvider.notifier).markRead(n.id);
+      ref.read(routerProvider).go(RouteNames.agentChat);
+      return;
+    }
+    ref.read(notificationsProvider.notifier).markRead(n.id);
+  }
+
+  /// Secondary action: for a proposal, "Make changes" dismisses the proposal
+  /// the same way the docked card does; for every other kind, the secondary
+  /// is a plain "Later" dismiss.
+  void _onSecondary(WidgetRef ref, AppNotification n) {
+    final blockId = n.targetBlockId;
+    if (n.kind == NotificationKind.proposal && blockId != null) {
+      ref.read(agentChatProvider.notifier).dismissProposal(blockId);
+      return;
+    }
+    ref.read(notificationsProvider.notifier).markRead(n.id);
+  }
+
+  /// Pick the highest-priority unread entry to surface. Intercept and
+  /// proposal both block the agent on the user — surface those first so the
+  /// loop can resume without the user opening the chat. Drafts/matches sit
+  /// underneath as soft surfacing.
   static AppNotification? _pickActive(List<AppNotification> items) {
     AppNotification? bestFor(NotificationKind kind) {
       for (final n in items) {
@@ -60,6 +97,7 @@ class AgentActivityBanner extends ConsumerWidget {
     }
 
     return bestFor(NotificationKind.intercept) ??
+        bestFor(NotificationKind.proposal) ??
         bestFor(NotificationKind.undo) ??
         bestFor(NotificationKind.drafted);
   }
@@ -70,11 +108,17 @@ class _BannerCard extends StatelessWidget {
     super.key,
     required this.notification,
     required this.onPrimary,
+    required this.onSecondary,
     required this.onDismiss,
   });
 
   final AppNotification notification;
   final VoidCallback onPrimary;
+
+  /// Secondary action — used by [NotificationKind.proposal] to expose
+  /// "Make changes" inline. Falls back to a plain "Later" dismiss for kinds
+  /// that don't carry a secondary label.
+  final VoidCallback onSecondary;
   final VoidCallback onDismiss;
 
   @override
@@ -172,20 +216,11 @@ class _BannerCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _PrimaryAction(
-                        label: notification.actionLabel ?? 'Open',
-                        onTap: onPrimary,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    _SecondaryAction(
-                      label: 'Later',
-                      onTap: onDismiss,
-                    ),
-                  ],
+                _BannerActions(
+                  notification: notification,
+                  onPrimary: onPrimary,
+                  onSecondary: onSecondary,
+                  onDismiss: onDismiss,
                 ),
               ],
             ),
@@ -201,11 +236,70 @@ class _BannerCard extends StatelessWidget {
   static String _kindLabel(NotificationKind kind) {
     return switch (kind) {
       NotificationKind.intercept => '· NEEDS INPUT',
+      NotificationKind.proposal => '· NEEDS YOUR OK',
       NotificationKind.drafted => '· DRAFT READY',
       NotificationKind.undo => '· REVERSIBLE',
       NotificationKind.match => '· NEW MATCH',
       NotificationKind.reply => '· REPLY',
     };
+  }
+}
+
+/// Action row beneath the banner body. Proposals get two equal-weight pills
+/// (Accept + Make changes) so the user can settle the chat block from here.
+/// Everything else collapses back to a primary pill + a "Later" dismiss.
+class _BannerActions extends StatelessWidget {
+  const _BannerActions({
+    required this.notification,
+    required this.onPrimary,
+    required this.onSecondary,
+    required this.onDismiss,
+  });
+
+  final AppNotification notification;
+  final VoidCallback onPrimary;
+  final VoidCallback onSecondary;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final isProposal = notification.kind == NotificationKind.proposal;
+    final primaryLabel = notification.actionLabel ?? 'Open';
+    if (isProposal) {
+      final secondaryLabel = notification.secondaryActionLabel ?? 'Make changes';
+      return Row(
+        children: [
+          Expanded(
+            child: _SecondaryAction(
+              label: secondaryLabel,
+              onTap: onSecondary,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _PrimaryAction(
+              label: primaryLabel,
+              onTap: onPrimary,
+            ),
+          ),
+        ],
+      );
+    }
+    return Row(
+      children: [
+        Expanded(
+          child: _PrimaryAction(
+            label: primaryLabel,
+            onTap: onPrimary,
+          ),
+        ),
+        const SizedBox(width: 8),
+        _SecondaryAction(
+          label: 'Later',
+          onTap: onDismiss,
+        ),
+      ],
+    );
   }
 }
 

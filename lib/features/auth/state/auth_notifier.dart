@@ -190,6 +190,25 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
+  /// Wipes every user-owned subcollection but keeps the auth account and
+  /// `users/{uid}` profile doc, so the user stays signed in on a clean slate.
+  Future<void> resetAccountData() async {
+    final user = state.appUser;
+    if (user == null || user.isGuest) return;
+
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      await _userRepository.resetUserData(user.uid);
+      state = state.copyWith(isLoading: false);
+    } catch (e) {
+      debugPrint('Reset account error: $e');
+      state = state.copyWith(
+        isLoading: false,
+        error: 'Could not reset your account. Try again.',
+      );
+    }
+  }
+
   /// Deletes the user's Firestore profile doc and Firebase auth account.
   ///
   /// Sub-collections (resumes/applications/etc.) are not cascaded — owner-only
