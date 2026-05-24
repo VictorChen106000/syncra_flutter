@@ -147,12 +147,20 @@ class InputRequestBlock extends AgentBlock {
     required super.id,
     required this.question,
     this.suggestions = const [],
+    this.continuationPrompt,
     this.state = InputRequestState.pending,
     this.answer,
   });
 
   final String question;
   final List<String> suggestions;
+
+  /// Hidden instruction sent back into the threaded agent loop after the user
+  /// answers this input request. Real `ask_user` blocks do not need this
+  /// because `AnthropicChatService` already has a pending tool-use completer.
+  /// Locally-created opener questions use it to continue the workflow.
+  final String? continuationPrompt;
+
   InputRequestState state;
   String? answer;
 }

@@ -258,6 +258,10 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
             text: "Before I can draft this one — ${job.agentJustification}",
           ),
         );
+        final missingSkill = job.missingSkills.isEmpty
+            ? 'the missing context'
+            : job.missingSkills.first;
+
         blocks.add(
           InputRequestBlock(
             id: 'opener-input-${job.id}',
@@ -271,6 +275,24 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
                     "No, I haven't used ${job.missingSkills.first}",
                     'Tell me more',
                   ],
+            continuationPrompt:
+                '''
+        The user answered the missing-information question for this pipeline job.
+
+        Job:
+        - job_id: ${job.id}
+        - title: ${job.title}
+        - company: ${job.company}
+        - location: ${job.location}
+        - match_score: ${job.matchScore}
+        - missing_skill: $missingSkill
+        - agent_justification: ${job.agentJustification}
+
+        Use the user's answer to decide whether this job can move forward.
+        If the answer confirms relevant experience, continue the application workflow from here.
+        If the answer says they do not have the experience, explain the gap briefly and suggest a safer next step.
+        Do not call send_email. Sending still requires explicit user approval.
+        ''',
           ),
         );
         break;
@@ -567,20 +589,42 @@ Do not call send_email. Sending still requires explicit user approval.
     final prompt = (explicit != null && explicit.isNotEmpty)
         ? explicit
         : '''
-The user accepted this proposed agent action.
+  The user accepted this proposed agent action.
 
-Accepted proposal:
-- title: ${block.title}
-- description: ${block.description}
-- accepted_label: ${block.acceptLabel}
+  Accepted proposal:
+  - title: ${block.title}
+  - description: ${block.description}
+  - accepted_label: ${block.acceptLabel}
 
-Continue the original workflow from here without asking the user to repeat the task.
-Use tools for safe next steps.
-Pause again if you need missing user information or if the next action requires approval.
-Do not call send_email unless the app provides an explicit user-confirmation token or says the user tapped Send in the email review UI.
-''';
+  Continue the original workflow from here without asking the user to repeat the task.
+  Use tools for safe next steps.
+  Pause again if you need missing user information or if the next action requires approval.
+  Do not call send_email unless the app provides an explicit user-confirmation token or says the user tapped Send in the email review UI.
+  ''';
 
     _startContinuationPrompt(prompt);
+  }
+
+  void _continueAfterInputAnswer(InputRequestBlock block, String answer) {
+    if (!_serviceReady) return;
+
+    final continuation = block.continuationPrompt?.trim();
+    if (continuation == null || continuation.isEmpty) return;
+
+    _startContinuationPrompt('''
+  $continuation
+
+  User answered:
+  - question: ${block.question}
+  - answer: $answer
+
+  Continue the original workflow from here without asking the user to repeat the task.
+  Use the user's answer as context for the next decision.
+  Use tools for safe next steps.
+  If tailoring is useful, propose resume edits and stop for the diff viewer.
+  If outreach is the next safe step, draft the email only; do not send.
+  Never call send_email unless the app provides an explicit user-confirmation token or says the user tapped Send.
+  ''');
   }
 
   void dismissProposal(String blockId) {
@@ -768,11 +812,20 @@ Do not call send_email unless the app provides an explicit user-confirmation tok
     final block = _findInputRequest(blockId);
     if (block == null) return;
     if (block.state == InputRequestState.answered) return;
+
     final trimmed = answer.trim();
     if (trimmed.isEmpty) return;
+
     block.state = InputRequestState.answered;
     block.answer = trimmed;
     state = state.copyWith(items: [...state.items]);
+
+    final continuation = block.continuationPrompt?.trim();
+    if (continuation != null && continuation.isNotEmpty) {
+      _continueAfterInputAnswer(block, trimmed);
+      return;
+    }
+
     _service.provideUserAnswer(blockId, trimmed);
   }
 }

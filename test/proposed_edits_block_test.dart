@@ -88,5 +88,21 @@ void main() {
       expect(block.continuationPrompt, 'Continue by drafting outreach safely.');
       expect(block.state, ActionState.pending);
     });
+
+    test('InputRequestBlock can carry a hidden continuation prompt', () {
+      final block = InputRequestBlock(
+        id: 'input-1',
+        question: 'Do you have design systems experience?',
+        suggestions: const ['Yes', 'No'],
+        continuationPrompt: 'Continue after the user answers safely.',
+      );
+
+      expect(
+        block.continuationPrompt,
+        'Continue after the user answers safely.',
+      );
+      expect(block.state, InputRequestState.pending);
+      expect(block.answer, isNull);
+    });
   });
 }
