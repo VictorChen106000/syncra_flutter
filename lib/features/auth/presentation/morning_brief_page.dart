@@ -266,41 +266,24 @@ class _MatchBody extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              '${job.matchScore}',
-              style: GoogleFonts.inter(
-                color: brand.accent,
-                fontSize: 92,
-                fontWeight: FontWeight.w900,
-                height: 0.95,
-                letterSpacing: -3.2,
-              ),
+        Text(
+          job.matchLabel.toUpperCase(),
+          style: GoogleFonts.inter(
+            color: brand.accent,
+            fontSize: 44,
+            fontWeight: FontWeight.w900,
+            height: 1.0,
+            letterSpacing: -0.8,
+          ),
+        )
+            .animate(delay: 200.ms)
+            .scale(
+              begin: const Offset(0.92, 0.92),
+              end: const Offset(1, 1),
+              curve: Curves.easeOutCubic,
+              duration: 600.ms,
             )
-                .animate(delay: 200.ms)
-                .scale(
-                  begin: const Offset(0.92, 0.92),
-                  end: const Offset(1, 1),
-                  curve: Curves.easeOutCubic,
-                  duration: 600.ms,
-                )
-                .fadeIn(),
-            Padding(
-              padding: const EdgeInsets.only(left: 6, bottom: 16),
-              child: Text(
-                '%',
-                style: TextStyle(
-                  color: brand.accent.withValues(alpha: 0.70),
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.4,
-                ),
-              ),
-            ),
-          ],
-        ),
+            .fadeIn(),
         const SizedBox(height: 20),
         Text(
           '${job.title} · ${job.company}',

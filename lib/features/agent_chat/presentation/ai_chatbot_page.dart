@@ -827,7 +827,7 @@ class _ThreadHero extends StatelessWidget {
                   borderRadius: BorderRadius.circular(99),
                 ),
                 child: Text(
-                  '${job.matchScore}% match',
+                  job.matchLabel,
                   style: TextStyle(
                     color: brand.onAccent,
                     fontSize: 11.5,

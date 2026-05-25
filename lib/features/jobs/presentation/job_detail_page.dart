@@ -67,7 +67,7 @@ class JobDetailPage extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(99),
                               ),
                               child: Text(
-                                '${j.matchScore}%',
+                                j.matchLabel,
                                 style: TextStyle(
                                   color: brand.onAccent,
                                   fontWeight: FontWeight.w900,

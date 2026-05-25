@@ -228,7 +228,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
             id: 'opener-text-${job.id}',
             text:
                 "I drafted your application for ${job.title} at "
-                "${job.company} — match score ${job.matchScore}%. "
+                "${job.company} — ${job.matchLabel.toLowerCase()}. "
                 "${job.agentJustification}\n\n"
                 "Ready to send it out?",
           ),
@@ -538,10 +538,11 @@ Do not call send_email. Sending still requires explicit user approval.
     state = state.copyWith(items: [...state.items]);
   }
 
-  /// Maps the latest agent event onto an inbox entry. Producers without
-  /// tool-level context (e.g. the passive morning-brief loop) fall back to
-  /// the notifier's generic [NotificationsNotifier.onAgentEvent]; the chat
-  /// owns its own mirror so it can emit proposals + per-tool labels.
+  /// Mirrors *actionable* agent events onto the inbox. Only events that
+  /// genuinely need the user — `ask_user` (intercept) and Accept/Make-changes
+  /// proposals — produce a notification. Plain tool completions are visible
+  /// via the running pill's "Task completed" state; we deliberately don't
+  /// pile "Open chat" rows on top of that.
   void _mirrorToInbox(AgentEvent event, AgentTurn turn) {
     final inbox = ref.read(notificationsProvider.notifier);
     switch (event) {
@@ -566,45 +567,9 @@ Do not call send_email. Sending still requires explicit user approval.
           secondaryActionLabel: block.editLabel,
           targetBlockId: block.id,
         ));
-      case ToolCallCompleted(:final blockId, :final summary, :final status)
-          when status == ToolCallStatus.done && summary.isNotEmpty:
-        final tool = _toolBlockInTurn(turn, blockId);
-        final (title, body) = _toolCompletionCopy(tool, summary);
-        inbox.add(AppNotification(
-          id: 'n-tool-$blockId',
-          kind: NotificationKind.drafted,
-          title: title,
-          body: body,
-          timestamp: 'Just now',
-          actionLabel: 'Open chat',
-        ));
       case _:
         break;
     }
-  }
-
-  ToolCallBlock? _toolBlockInTurn(AgentTurn turn, String blockId) {
-    for (final b in turn.blocks) {
-      if (b is ToolCallBlock && b.id == blockId) return b;
-    }
-    return null;
-  }
-
-  /// Inbox copy for a completed tool call. Tailors the resume-tailor flow
-  /// explicitly per product ask; everything else uses the tool's own UI label
-  /// as the title so an entry like "Searching jobs" reads cleanly.
-  (String title, String body) _toolCompletionCopy(
-    ToolCallBlock? tool,
-    String summary,
-  ) {
-    if (tool == null) return ('Agent finished a task', summary);
-    return switch (tool.name) {
-      'tailor_resume' => ('Tailored resume ready', summary),
-      'apply_resume_edits' => ('Tailored resume saved', summary),
-      'draft_email' => ('Draft email ready', summary),
-      'send_email' => ('Email sent', summary),
-      _ => (tool.label.replaceAll('…', '').trim(), summary),
-    };
   }
 
   /// Mirrors the agent's progress onto the global running-task banner so it

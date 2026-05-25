@@ -67,36 +67,22 @@ class NotificationsNotifier extends Notifier<NotificationsState> {
   }
 
   /// Convenience entry point for producers that only have raw [AgentEvent]s —
-  /// most notably the passive morning-brief loop. Generates generic inbox
-  /// copy; the chat layer, which can see tool labels, builds richer entries
-  /// via [add] directly.
+  /// most notably the passive morning-brief loop. Only surfaces blocking
+  /// events (ask_user); tool completions are intentionally silent — the
+  /// running-task pill's "Task completed" state covers progress.
   void onAgentEvent(AgentEvent event) {
-    AppNotification? entry;
-    switch (event) {
-      case BlockAdded(:final block) when block is InputRequestBlock:
-        entry = AppNotification(
-          id: 'n${_seq++}',
-          kind: NotificationKind.intercept,
-          title: 'Agent needs your input',
-          body: block.question,
-          timestamp: 'Just now',
-          actionLabel: 'Answer',
-          targetBlockId: block.id,
-        );
-      case ToolCallCompleted(:final summary, :final status)
-          when status == ToolCallStatus.done && summary.isNotEmpty:
-        entry = AppNotification(
-          id: 'n${_seq++}',
-          kind: NotificationKind.drafted,
-          title: 'Agent finished a task',
-          body: summary,
-          timestamp: 'Just now',
-          actionLabel: 'Open chat',
-        );
-      case _:
-        return;
-    }
-    add(entry);
+    if (event is! BlockAdded) return;
+    final block = event.block;
+    if (block is! InputRequestBlock) return;
+    add(AppNotification(
+      id: 'n${_seq++}',
+      kind: NotificationKind.intercept,
+      title: 'Agent needs your input',
+      body: block.question,
+      timestamp: 'Just now',
+      actionLabel: 'Answer',
+      targetBlockId: block.id,
+    ));
   }
 
   String? consumeMessage() {
