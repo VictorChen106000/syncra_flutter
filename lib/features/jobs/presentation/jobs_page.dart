@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -474,97 +472,37 @@ class _SwipeDismissible extends StatelessWidget {
   }
 }
 
-/// Animated circular match-score ring. Uses [TweenAnimationBuilder] to
-/// sweep the arc from 0 to [score] and counts the number up in sync.
-class _MatchRing extends StatelessWidget {
-  const _MatchRing({required this.score, required this.color});
+/// Categorical match pill that replaced the old numeric ring. Reads its
+/// label off [Job.matchLabel] — "Strong match" / "Partial match" / "Stretch"
+/// — so the user never sees a percent.
+class _MatchPill extends StatelessWidget {
+  const _MatchPill({required this.label, required this.color});
 
-  final int score;
+  final String label;
   final Color color;
 
   @override
   Widget build(BuildContext context) {
-    final brand = context.brand;
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: score / 100),
-      duration: const Duration(milliseconds: 900),
-      curve: Curves.easeOutCubic,
-      builder: (context, t, _) {
-        return SizedBox(
-          width: 46,
-          height: 46,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              CustomPaint(
-                size: const Size(46, 46),
-                painter: _RingPainter(
-                  progress: t,
-                  trackColor: brand.border.withValues(alpha: 0.6),
-                  ringColor: color,
-                ),
-              ),
-              Text(
-                '${(t * 100).round()}',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w900,
-                  color: brand.ink,
-                  letterSpacing: -0.3,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: color.withValues(alpha: 0.45), width: 1),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: color,
+          fontSize: 11.5,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.1,
+        ),
+      ),
     );
   }
-}
-
-class _RingPainter extends CustomPainter {
-  _RingPainter({
-    required this.progress,
-    required this.trackColor,
-    required this.ringColor,
-  });
-
-  final double progress;
-  final Color trackColor;
-  final Color ringColor;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const stroke = 4.0;
-    final rect = Offset.zero & size;
-    final center = rect.center;
-    final radius = math.min(size.width, size.height) / 2 - stroke / 2;
-
-    final trackPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke
-      ..strokeCap = StrokeCap.round
-      ..color = trackColor;
-    canvas.drawCircle(center, radius, trackPaint);
-
-    final ringPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke
-      ..strokeCap = StrokeCap.round
-      ..color = ringColor;
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius),
-      -math.pi / 2,
-      2 * math.pi * progress.clamp(0.0, 1.0),
-      false,
-      ringPaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _RingPainter old) =>
-      old.progress != progress ||
-      old.ringColor != ringColor ||
-      old.trackColor != trackColor;
 }
 
 class _JobCard extends ConsumerStatefulWidget {
@@ -670,8 +608,8 @@ class _JobCardState extends ConsumerState<_JobCard> {
                                   child: _CategoryBadge(category: job.category),
                                 ),
                                 const Spacer(),
-                                _MatchRing(
-                                  score: job.matchScore,
+                                _MatchPill(
+                                  label: job.matchLabel,
                                   color: accentColor,
                                 ),
                               ],

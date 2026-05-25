@@ -434,14 +434,35 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
       final resumeJson = (uid != null && !isGuest && _service.hasApiKey)
           ? await _loadResumeJsonForBrief(uid)
           : null;
+      final userSkills = _resumeSkills(resumeJson);
       if (_service.hasApiKey && resumeJson != null) {
-        final results = await _service.scoreJobs(
-          resume: resumeJson,
-          jobs: candidates,
-        );
+        List<MatcherResult>? results;
+        try {
+          results = await _service.scoreJobs(
+            resume: resumeJson,
+            jobs: candidates,
+          );
+        } on AnthropicException catch (e) {
+          debugPrint('scoreJobs failed, using overlap fallback: $e');
+          results = null;
+          _pushActivity(
+            AgentActivityStep(
+              tool: 'BriefPipeline',
+              detail:
+                  "Claude couldn't score this brief — matching against your resume locally.",
+              status: 'active',
+              createdAt: DateTime.now(),
+            ),
+          );
+        }
         nextPipeline = results != null
-            ? _applyResults(candidates, results)
-            : List.of(candidates);
+            ? _applyResults(candidates, results, userSkills)
+            : _classifyByOverlap(candidates, userSkills);
+      } else if (userSkills.isNotEmpty) {
+        // No API key but we have skills to compare against — still ship a
+        // useful categorization rather than a flat unscored list.
+        await Future.delayed(const Duration(milliseconds: 300));
+        nextPipeline = _classifyByOverlap(candidates, userSkills);
       } else {
         await Future.delayed(const Duration(milliseconds: 900));
         nextPipeline = List.of(candidates);
@@ -492,22 +513,10 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
           createdAt: DateTime.now(),
         ),
       );
-    } on AnthropicException catch (e) {
-      _markFirstActivityDone();
-      state = state.copyWith(
-        status: AgentBriefStatus.error,
-        lastError: e.message,
-        lastMessage: 'Brief failed: ${e.message}',
-      );
-      _pushActivity(
-        AgentActivityStep(
-          tool: 'Claude Haiku',
-          detail: 'Brief failed: ${e.message}',
-          status: 'waiting',
-          createdAt: DateTime.now(),
-        ),
-      );
     } catch (e) {
+      // Anthropic failures are already converted to a fallback above, so a
+      // bare catch here only fires for pipeline-write or unexpected errors —
+      // surface them but keep whatever results we already accumulated.
       _markFirstActivityDone();
       state = state.copyWith(
         status: AgentBriefStatus.error,
@@ -525,35 +534,124 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
     }
   }
 
-  List<Job> _applyResults(List<Job> jobs, List<MatcherResult> results) {
+  List<Job> _applyResults(
+    List<Job> jobs,
+    List<MatcherResult> results,
+    List<String> userSkills,
+  ) {
     final byId = {for (final r in results) r.jobId: r};
     return jobs.map((job) {
       final r = byId[job.id];
-      if (r == null) return job;
-      final action = switch (r.category) {
-        JobCategory.ready => 'Ready to send',
-        JobCategory.inputNeeded => 'Missing requirement',
-        JobCategory.exploration => 'Strategic pivot',
-      };
-      return Job(
-        id: job.id,
-        title: job.title,
-        company: job.company,
-        location: job.location,
-        salary: job.salary,
+      // Claude didn't return a row for this job — fall back to local skill
+      // overlap so it still gets a useful category instead of dropping out
+      // of the brief silently.
+      if (r == null) return _overlapJob(job, userSkills);
+      return _withCategory(
+        job,
         category: r.category,
         matchScore: r.matchScore,
-        agentAction: action,
-        agentJustification: r.justification.isEmpty
-            ? job.agentJustification
-            : r.justification,
-        skills: job.skills,
-        missingSkills: r.missingSkills.isEmpty
-            ? job.missingSkills
-            : r.missingSkills,
-        why: job.why,
+        justification: r.justification,
+        missingSkills: r.missingSkills,
       );
     }).toList();
+  }
+
+  /// Deterministic fallback when Claude can't score the brief: classify each
+  /// job by how many of its required skills appear on the user's resume.
+  List<Job> _classifyByOverlap(List<Job> jobs, List<String> userSkills) {
+    return jobs.map((job) => _overlapJob(job, userSkills)).toList();
+  }
+
+  Job _overlapJob(Job job, List<String> userSkills) {
+    if (job.skills.isEmpty) {
+      return _withCategory(
+        job,
+        category: JobCategory.exploration,
+        matchScore: 30,
+        justification: job.agentJustification,
+        missingSkills: const [],
+      );
+    }
+    final userSet = userSkills.toSet();
+    final missing = <String>[];
+    var matched = 0;
+    for (final s in job.skills) {
+      final key = s.toLowerCase().trim();
+      if (key.isEmpty) continue;
+      if (userSet.contains(key)) {
+        matched += 1;
+      } else {
+        missing.add(s);
+      }
+    }
+    final ratio = matched / job.skills.length;
+    final JobCategory category;
+    if (ratio >= 0.7) {
+      category = JobCategory.ready;
+    } else if (ratio >= 0.3) {
+      category = JobCategory.inputNeeded;
+    } else {
+      category = JobCategory.exploration;
+    }
+    return _withCategory(
+      job,
+      category: category,
+      matchScore: (ratio * 100).round(),
+      justification: job.agentJustification,
+      missingSkills: missing,
+    );
+  }
+
+  Job _withCategory(
+    Job job, {
+    required JobCategory category,
+    required int matchScore,
+    required String justification,
+    required List<String> missingSkills,
+  }) {
+    final action = switch (category) {
+      JobCategory.ready => 'Ready to send',
+      JobCategory.inputNeeded => 'Missing requirement',
+      JobCategory.exploration => 'Strategic pivot',
+    };
+    return Job(
+      id: job.id,
+      title: job.title,
+      company: job.company,
+      location: job.location,
+      salary: job.salary,
+      category: category,
+      matchScore: matchScore,
+      agentAction: action,
+      agentJustification:
+          justification.isEmpty ? job.agentJustification : justification,
+      skills: job.skills,
+      missingSkills: missingSkills.isEmpty ? job.missingSkills : missingSkills,
+      why: job.why,
+    );
+  }
+
+  /// Pulls a flat lowercase skill list out of the resume JSON. Tolerates both
+  /// `skills: [...]` as a list of strings and as a list of `{name: ...}` maps,
+  /// which is what the parser sometimes produces.
+  List<String> _resumeSkills(Map<String, dynamic>? resume) {
+    if (resume == null) return const [];
+    final raw = resume['skills'];
+    if (raw is! List) return const [];
+    final out = <String>[];
+    for (final entry in raw) {
+      if (entry is String) {
+        final s = entry.toLowerCase().trim();
+        if (s.isNotEmpty) out.add(s);
+      } else if (entry is Map) {
+        final name = entry['name'] ?? entry['skill'];
+        if (name is String) {
+          final s = name.toLowerCase().trim();
+          if (s.isNotEmpty) out.add(s);
+        }
+      }
+    }
+    return out;
   }
 
   void _pushActivity(AgentActivityStep step) {

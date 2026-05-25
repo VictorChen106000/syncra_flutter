@@ -29,6 +29,15 @@ class Job {
   final List<String> missingSkills;
   final String why;
 
+  /// LinkedIn-style match label derived from [category]. Used everywhere the
+  /// UI used to show a numeric `${matchScore}%` — the raw score still drives
+  /// sort order behind the scenes, but the user only ever sees this label.
+  String get matchLabel => switch (category) {
+        JobCategory.ready => 'Strong match',
+        JobCategory.inputNeeded => 'Partial match',
+        JobCategory.exploration => 'Stretch',
+      };
+
   factory Job.fromJson(Map<String, dynamic> json) => Job(
         id: json['id'].toString(),
         title: json['title'] as String,

@@ -96,10 +96,12 @@ class AgentActivityBanner extends ConsumerWidget {
       return null;
     }
 
+    // The top banner is reserved for blocking events only: an `ask_user`
+    // (intercept) or an Accept/Make-changes proposal. Other kinds stay in
+    // the inbox drawer so the user isn't nagged with passive "draft ready"
+    // pills they have to dismiss.
     return bestFor(NotificationKind.intercept) ??
-        bestFor(NotificationKind.proposal) ??
-        bestFor(NotificationKind.undo) ??
-        bestFor(NotificationKind.drafted);
+        bestFor(NotificationKind.proposal);
   }
 }
 
