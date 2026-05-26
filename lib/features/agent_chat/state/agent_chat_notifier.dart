@@ -13,6 +13,7 @@ import '../../auth/state/auth_notifier.dart';
 import '../../auth/state/user_profile_notifier.dart';
 import '../../notifications/models/app_notification.dart';
 import '../../notifications/state/notifications_notifier.dart';
+import '../../resumes/models/resume_json.dart';
 import '../../resumes/services/resume_parser_service.dart';
 import '../../resumes/services/resume_tailor_orchestrator.dart';
 import '../../resumes/services/resume_tailor_service.dart';
@@ -27,6 +28,7 @@ import '../tools/builtin_tools.dart';
 import '../tools/onboarding_tools.dart';
 import '../tools/tool_registry.dart';
 import 'agent_chat_mode.dart';
+import 'onboarding_resume_context.dart';
 
 /// The active [AgentService] for the app — Claude via the tool-use loop.
 /// Requires an `ANTHROPIC_API_KEY`; without one the agent surfaces an error
@@ -44,9 +46,20 @@ final agentServiceProvider = Provider<AgentService>((ref) {
       return AnthropicChatService(registry: registry);
     case AgentChatMode.onboarding:
       registerOnboardingTools(registry);
+      // The onboarding system prompt is a function of the resume context —
+      // before the user uploads, the agent is told to wait for it; once the
+      // parsed JSON arrives, the prompt is rebuilt with the resume inlined
+      // and the agent is told to ground its next question in what it saw.
+      // Watching the context here means a new upload rebuilds the service
+      // (and the AgentChatNotifier underneath) so the opener and tools
+      // re-derive from the new prompt automatically.
+      final resumeContext = ref.watch(onboardingResumeContextProvider);
       return AnthropicChatService(
         registry: registry,
-        systemPromptOverride: onboardingSystemPrompt,
+        systemPromptOverride: buildOnboardingSystemPrompt(
+          resume: resumeContext.resume,
+          ingestionFailed: resumeContext.failed,
+        ),
       );
   }
 });
@@ -246,25 +259,77 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
   }
 
   /// First agent turn shown in onboarding mode — a personalised greeting
-  /// keyed to the signed-in user's first name. The agent's system prompt
-  /// tells it to follow up with an `ask_user` for the role; this opener just
-  /// sets the tone and avoids a blank screen while the first stream warms up.
+  /// keyed to the signed-in user's first name AND to whatever the resume
+  /// context provider currently holds. Branching the opener locally (rather
+  /// than streaming a fresh agent turn each time) keeps the moment cheap:
+  /// no Anthropic call needed to acknowledge the upload, and the user always
+  /// sees something the instant the page mounts.
   AgentTurn _buildOnboardingOpener() {
     final displayName = ref.read(authProvider).appUser?.displayName ?? '';
     final firstName = displayName.split(' ').first.trim();
     final greeting = firstName.isEmpty ? 'Hi!' : 'Hi $firstName!';
+
+    final context = ref.read(onboardingResumeContextProvider);
+    final text = _onboardingOpenerText(greeting, context);
+
     return AgentTurn(
       id: 'turn-onboarding-opener',
       blocks: [
-        TextBlock(
-          id: 'onboarding-opener-text',
-          text:
-              "$greeting I'm Syncra — I'll help you find, tailor, and apply to roles. "
-              "To get started, what role are you aiming for?",
-        ),
+        TextBlock(id: 'onboarding-opener-text', text: text),
       ],
       isStreaming: false,
     );
+  }
+
+  /// Picks the opener copy that matches the current resume-ingestion state.
+  /// Resume present → a one-line acknowledgement that tees the agent's
+  /// grounded `ask_user` follow-up. Loading → a short "reading…" beat so the
+  /// user knows something is happening. Failed → a fall-back back to the
+  /// role-capture flow. Absent → the resume-first nudge with an explicit
+  /// skip path.
+  String _onboardingOpenerText(
+    String greeting,
+    OnboardingResumeContext context,
+  ) {
+    if (context.isLoading) {
+      return "$greeting Reading your resume now — give me a sec…";
+    }
+    if (context.failed) {
+      final reason = context.failureMessage ?? "I couldn't read that file";
+      return "$greeting $reason. No worries — just tell me the role you're "
+          "aiming for and we'll start with that.";
+    }
+    final resume = context.resume;
+    if (resume != null) {
+      final headline = _resumeHeadline(resume);
+      if (headline.isNotEmpty) {
+        return "$greeting I read your resume — $headline. "
+            "One quick question and we're in.";
+      }
+      return "$greeting I read your resume. One quick question and we're in.";
+    }
+    return "$greeting I'm Syncra — I'll help you find, tailor, and apply to "
+        "roles. Drop your resume below (tap the + to upload) and I'll tailor "
+        "everything to you. No resume yet? Just say 'skip'.";
+  }
+
+  /// One-line "what I see" headline drawn from the parsed resume — fed into
+  /// the opener so the user instantly knows the agent actually read it. Falls
+  /// back gracefully if the resume is unusually sparse.
+  String _resumeHeadline(ResumeJson resume) {
+    if (resume.experience.isNotEmpty) {
+      final latest = resume.experience.first;
+      final role = latest.role.trim();
+      final company = latest.company.trim();
+      if (role.isNotEmpty && company.isNotEmpty) {
+        return "looks like you've been $role @ $company";
+      }
+      if (role.isNotEmpty) return "looks like you've been a $role";
+    }
+    if (resume.skills.isNotEmpty) {
+      return 'strong on ${resume.skills.take(3).join(", ")}';
+    }
+    return '';
   }
 
   /// Builds the first agent turn shown when the chat opens. Adapts to the
@@ -568,6 +633,16 @@ Do not call send_email. Sending still requires explicit user approval.
       case BlockAdded(:final block):
         turn.blocks.add(block);
         _reflectRunningTask(block);
+        // A FitChartBlock arriving during onboarding is the agent's read on
+        // the user's resume — persist it to `users/{uid}.resume_fit` so the
+        // dashboard's "Chart" view can re-render it on subsequent sessions
+        // without rerunning the agent. Fire-and-forget; if Firestore is
+        // down the in-chat card still renders fine.
+        if (block is FitChartBlock && _mode == AgentChatMode.onboarding) {
+          unawaited(
+            ref.read(userProfileProvider.notifier).setResumeFit(block.fit),
+          );
+        }
       case ToolCallCompleted(
         :final blockId,
         :final summary,
@@ -1017,12 +1092,13 @@ Do not call send_email. Sending still requires explicit user approval.
     block.state = OnboardingCompleteState.entered;
     state = state.copyWith(items: [...state.items]);
 
-    final profile = ref.read(userProfileProvider.notifier);
-    // Order matters: write the role *first* so the profile stream carries
-    // both fields together; flipping the gate flag is what trips the router
-    // redirect, so the dashboard sees a non-empty role on first paint.
-    await profile.setRole(block.role);
-    await profile.setHasCompletedOnboarding(true);
+    // Single batched repo update: role + hasCompletedOnboarding land in the
+    // same Firestore round-trip, so the profile stream emits exactly one new
+    // snapshot — the router can't briefly see a state where role is set but
+    // the gate flag is still false and bounce back here mid-transition.
+    await ref
+        .read(userProfileProvider.notifier)
+        .setRoleAndComplete(block.role);
     // Clear the dev "Show onboarding" toggle if it was the reason the user is
     // here — otherwise the router redirect would bounce them straight back to
     // /onboarding on the next refresh.

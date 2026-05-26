@@ -14,6 +14,7 @@ import '../../models/agent_block.dart';
 import '../../state/agent_chat_notifier.dart';
 import '../../../resumes/models/proposed_edit.dart';
 import '../../../resumes/presentation/tailored_preview_page.dart';
+import '../../../resumes/presentation/widgets/resume_fit_chart.dart';
 import '../../../resumes/state/resume_notifier.dart';
 import '../../../email/presentation/email_review_page.dart';
 import '../../../email/services/gmail_service.dart';
@@ -47,6 +48,7 @@ class AgentBlockView extends StatelessWidget {
         EmailDraftBlockView(block: block as EmailDraftBlock),
       OnboardingCompleteBlock() =>
         OnboardingCompleteBlockView(block: block as OnboardingCompleteBlock),
+      FitChartBlock() => FitChartBlockView(block: block as FitChartBlock),
     };
   }
 }
@@ -1867,3 +1869,22 @@ class _OnboardingCompleteBlockViewState
     );
   }
 }
+
+/// Thin wrapper around [ResumeFitChart] for chat-transcript rendering. The
+/// agent emits a `FitChartBlock` via `propose_fit_chart`; here we hand its
+/// payload straight to the shared chart widget. Same widget powers the
+/// dashboard's chart view so the two surfaces never visually drift.
+class FitChartBlockView extends StatelessWidget {
+  const FitChartBlockView({super.key, required this.block});
+
+  final FitChartBlock block;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: ResumeFitChart(fit: block.fit),
+    );
+  }
+}
+

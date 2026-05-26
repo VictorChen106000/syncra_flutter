@@ -15,6 +15,9 @@ import '../../agent_chat/presentation/widgets/chat_message_bubble.dart';
 import '../../agent_chat/presentation/widgets/docked_panels.dart';
 import '../../agent_chat/state/agent_chat_mode.dart';
 import '../../agent_chat/state/agent_chat_notifier.dart';
+import '../../agent_chat/state/onboarding_resume_context.dart';
+import '../../resumes/models/resume_file.dart';
+import '../../resumes/state/resume_notifier.dart';
 import '../state/auth_notifier.dart';
 import '../state/user_profile_notifier.dart';
 
@@ -41,12 +44,36 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   @override
   void initState() {
     super.initState();
-    // Flip the shared chat infrastructure into onboarding mode *synchronously*
-    // so the provider rebuilds before our first paint — otherwise the page
-    // would briefly render whatever jobs-mode chat state existed before.
-    // The provider rebuilds AnthropicChatService with the onboarding system
-    // prompt + a minimal tool registry, and seeds a personalised opener.
-    ref.read(agentChatModeProvider.notifier).set(AgentChatMode.onboarding);
+    // Defer provider mutation past the current build. Calling `set()` straight
+    // from initState can fire while ancestor consumers (router, theme) are
+    // still mid-build and throws a "modified a provider while the tree was
+    // building" assertion. One post-frame tick is enough — the page paints
+    // jobs-mode for a single frame, then the onboarding rebuild lands.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(agentChatModeProvider.notifier).set(AgentChatMode.onboarding);
+      _maybeIngestExistingResume();
+    });
+  }
+
+  /// On first entry, if the user already has at least one manual resume in
+  /// their library, ingest the most recent one automatically. The agent then
+  /// opens with "I read your resume" instead of "drop one below" — fewer
+  /// taps for the common returning-user / sign-in-after-skip case.
+  void _maybeIngestExistingResume() {
+    final uid = ref.read(authProvider).appUser?.uid;
+    if (uid == null) return;
+    final resumes = ref.read(resumeProvider).resumes;
+    if (resumes.isEmpty) return;
+    _ingest(uid, resumes.first);
+  }
+
+  /// Idempotent thin wrapper around the context notifier — keeps the
+  /// `ref.listen` callback below tidy.
+  void _ingest(String uid, ResumeFile resume) {
+    ref
+        .read(onboardingResumeContextProvider.notifier)
+        .ingest(uid: uid, resumeId: resume.id);
   }
 
   @override
@@ -63,6 +90,11 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
       // mid-build during a route transition.
       Future.microtask(() {
         ref.read(agentChatModeProvider.notifier).set(AgentChatMode.jobs);
+        // Drop the cached parsed resume so the next time this surface opens
+        // (a second onboarding for the same user, or a sign-in after Skip)
+        // starts from a clean slate instead of an opener grounded in a
+        // resume the user may have since deleted.
+        ref.read(onboardingResumeContextProvider.notifier).reset();
       });
     }
     super.dispose();
@@ -134,6 +166,26 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     ref.listen<AgentChatState>(
       agentChatProvider,
       (_, _) => _scheduleScrollToBottom(),
+    );
+    // Watch the user's resume library so a fresh upload during onboarding
+    // immediately becomes the context the agent is grounded in. Selecting on
+    // the most-recent resume id (rather than the whole list) means we only
+    // re-trigger when something genuinely new lands — toggling the resumes
+    // page elsewhere won't churn ingestion.
+    ref.listen<String?>(
+      resumeProvider.select(
+        (s) => s.resumes.isEmpty ? null : s.resumes.first.id,
+      ),
+      (prev, next) {
+        if (next == null || prev == next) return;
+        final uid = ref.read(authProvider).appUser?.uid;
+        if (uid == null) return;
+        final resume = ref
+            .read(resumeProvider)
+            .resumes
+            .firstWhere((r) => r.id == next);
+        _ingest(uid, resume);
+      },
     );
 
     final state = ref.watch(agentChatProvider);
