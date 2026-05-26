@@ -316,41 +316,31 @@ class _SearchCriteriaRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    return InkWell(
-      onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Coming soon')),
-      ),
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Row(
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                color: brand.textMuted,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.1,
-              ),
+    // Read-only summary of what the agent infers about the user's search.
+    // Editing happens via the agent thread, so these rows aren't tappable.
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: brand.textMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.1,
             ),
-            const Spacer(),
-            Text(
-              value,
-              style: TextStyle(
-                color: brand.ink,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
+          ),
+          const Spacer(),
+          Text(
+            value,
+            style: TextStyle(
+              color: brand.ink,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
             ),
-            const SizedBox(width: 4),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: brand.border,
-              size: 18,
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

@@ -14,6 +14,7 @@ import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/empty_state_card.dart';
+import '../../agent/state/passive_agent_notifier.dart';
 import '../../agent_chat/state/agent_chat_notifier.dart';
 import '../state/jobs_notifier.dart';
 import 'widgets/job_action_sheet.dart';
@@ -81,6 +82,8 @@ class _JobsPageState extends ConsumerState<JobsPage> {
     final visible = state.pendingCards
         .where((c) => !state.isDismissed(c.job.id))
         .toList();
+    final agentHasRun =
+        ref.watch(passiveAgentProvider.select((s) => s.lastBriefAt != null));
 
     return AppScreen(
       showBottomNav: false,
@@ -89,6 +92,7 @@ class _JobsPageState extends ConsumerState<JobsPage> {
       child: _AgentTimeline(
         cards: visible,
         hasAnyPipeline: state.pendingCards.isNotEmpty,
+        agentHasRun: agentHasRun,
         onDismiss: _dismiss,
         onUndoSend: _undoSend,
         onMore: (job) => JobActionSheet.show(context, job),
@@ -110,6 +114,7 @@ class _AgentTimeline extends StatelessWidget {
   const _AgentTimeline({
     required this.cards,
     required this.hasAnyPipeline,
+    required this.agentHasRun,
     required this.onDismiss,
     required this.onUndoSend,
     required this.onMore,
@@ -117,6 +122,7 @@ class _AgentTimeline extends StatelessWidget {
 
   final List<PipelineCard> cards;
   final bool hasAnyPipeline;
+  final bool agentHasRun;
   final ValueChanged<Job> onDismiss;
   final ValueChanged<Job> onUndoSend;
   final ValueChanged<Job> onMore;
@@ -148,16 +154,7 @@ class _AgentTimeline extends StatelessWidget {
               140,
             ),
             children: [
-              if (cards.isEmpty && !hasAnyPipeline)
-                EmptyStateCard(
-                  icon: Icons.bolt_rounded,
-                  title: 'Your agent is idle',
-                  body: 'Enable "Today\'s brief" in Settings, then tap '
-                      '"Run today\'s brief" on the dashboard. The agent will '
-                      'scan roles and drop them here.',
-                  actionLabel: 'Open dashboard',
-                  onAction: () => context.go(RouteNames.dashboard),
-                ),
+              if (cards.isEmpty) _buildEmptyState(context),
               if (needs.isNotEmpty) ...[
                 _SectionHeader(
                   label: 'Needs you',
@@ -220,6 +217,43 @@ class _AgentTimeline extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildEmptyState(BuildContext context) {
+    // Three flavors so the surface explains *why* it's empty:
+    //   1. Agent has never run → onboard the user to kick off the brief.
+    //   2. Agent ran, found nothing → reassure, suggest broadening criteria.
+    //   3. Agent ran, all surfaced cards dismissed → "inbox zero" praise.
+    if (!agentHasRun) {
+      return EmptyStateCard(
+        icon: Icons.bolt_rounded,
+        title: 'Your agent is idle',
+        body: 'Enable "Today\'s brief" in Settings, then tap '
+            '"Run today\'s brief" on the dashboard. The agent will '
+            'scan roles and drop them here.',
+        actionLabel: 'Open dashboard',
+        onAction: () => context.go(RouteNames.dashboard),
+      );
+    }
+    if (!hasAnyPipeline) {
+      return EmptyStateCard(
+        icon: Icons.search_rounded,
+        title: 'No new roles right now',
+        body: 'The agent scanned but didn\'t find any strong matches. '
+            'Try broadening your criteria in Settings, or ask the agent '
+            'to explore a different direction.',
+        actionLabel: 'Ask the agent',
+        onAction: () => context.go(RouteNames.agentChat),
+      );
+    }
+    return EmptyStateCard(
+      icon: Icons.check_circle_outline_rounded,
+      title: 'You\'re all caught up',
+      body: 'Every role the agent surfaced has been handled. '
+          'The next brief will refill this list.',
+      actionLabel: 'Back to dashboard',
+      onAction: () => context.go(RouteNames.dashboard),
     );
   }
 

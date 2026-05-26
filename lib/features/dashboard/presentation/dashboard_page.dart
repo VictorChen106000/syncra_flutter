@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_assets.dart';
+import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
@@ -370,6 +371,17 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
   static const double _fanRightMargin = 48;
   static const Duration _animDuration = Duration(milliseconds: 550);
 
+  // Slot-based palette: front slot is full brand lime, deeper slots step
+  // toward a saturated forest tone. Bound to the slot position, not the
+  // dataset, so reordering preserves the lime→deep gradient.
+  static const Color _deepGreen = Color(0xFF1E4D14);
+  static final List<Color> _slotBackgrounds = [
+    AppColors.accent,
+    Color.lerp(AppColors.accent, _deepGreen, 0.30)!,
+    Color.lerp(AppColors.accent, _deepGreen, 0.52)!,
+  ];
+  static const List<double> _slotMutedAlpha = [0.62, 0.70, 0.80];
+
   bool _expanded = false;
   bool _prevExpanded = false;
   bool _everInteracted = false;
@@ -419,18 +431,15 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
     final draftCount = appState.countOf(ApplicationPhase.draft);
     final sentCount = appState.countOf(ApplicationPhase.sent);
 
-    // Green-gradient fan: the front card is the full brand lime; each card
-    // behind it steps DOWN into deeper, still-saturated green (lerping toward
-    // a deep forest tone) rather than washing toward white — a white wash
-    // desaturates the neon lime into a sickly pastel. Backgrounds are a
-    // deliberate branded element (theme-independent); onAccent (near-black)
-    // stays readable on every step, with muted text darkened on the deeper
-    // cards so the small kicker label keeps a 4.5:1 contrast ratio.
-    const deepGreen = Color(0xFF1E4D14);
+    // Green-gradient fan: the front SLOT is always the full brand lime; each
+    // slot behind it steps DOWN into deeper, still-saturated green (lerping
+    // toward a deep forest tone) rather than washing toward white — a white
+    // wash desaturates the neon lime into a sickly pastel. Colors are bound
+    // to the slot, not the dataset, so the stack keeps its lime→deep gradient
+    // even when the user reorders cards. onAccent (near-black) stays readable
+    // on every step, with muted text darkened on the deeper slots so the
+    // small kicker label keeps a 4.5:1 contrast ratio.
     final cardFg = brand.onAccent;
-    final card1Bg = brand.accent;
-    final card2Bg = Color.lerp(brand.accent, deepGreen, 0.30)!;
-    final card3Bg = Color.lerp(brand.accent, deepGreen, 0.52)!;
 
     final cards = <_StackCardData>[
       // 1 — jobs the agent surfaced, awaiting the user's review.
@@ -440,9 +449,7 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
         subtitle:
             '${passive.readyCount} ready · ${passive.inputNeededCount} need input',
         count: passive.pipeline.length,
-        background: card1Bg,
         foreground: cardFg,
-        foregroundMuted: cardFg.withValues(alpha: 0.62),
         icon: Icons.work_outline_rounded,
         route: RouteNames.jobs,
       ),
@@ -452,9 +459,7 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
         kicker: 'Ready to Send',
         subtitle: '${resumeState.resumes.length} uploaded',
         count: resumeState.tailoredResumes.length,
-        background: card2Bg,
         foreground: cardFg,
-        foregroundMuted: cardFg.withValues(alpha: 0.70),
         icon: Icons.auto_awesome_rounded,
         route: RouteNames.resumes,
       ),
@@ -464,9 +469,7 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
         kicker: 'In Progress',
         subtitle: '$draftCount drafts · $sentCount sent',
         count: appState.items.length,
-        background: card3Bg,
         foreground: cardFg,
-        foregroundMuted: cardFg.withValues(alpha: 0.80),
         icon: Icons.send_rounded,
         route: RouteNames.applications,
       ),
@@ -550,8 +553,10 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
   double _lerp(double a, double b, double t) => a + (b - a) * t;
 
   Widget _buildCard(_StackCardData data, int cardIdx, double t, double cardWidth) {
-    final prevSlot = _prevOrder.indexOf(cardIdx).toDouble();
-    final newSlot = _order.indexOf(cardIdx).toDouble();
+    final prevSlotI = _prevOrder.indexOf(cardIdx);
+    final newSlotI = _order.indexOf(cardIdx);
+    final prevSlot = prevSlotI.toDouble();
+    final newSlot = newSlotI.toDouble();
     final slot = _lerp(prevSlot, newSlot, t);
 
     final prevExpand = _prevExpanded ? 1.0 : 0.0;
@@ -570,6 +575,17 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
     final tx = _lerp(collapsedX, expandedX, expand);
     final ty = _lerp(collapsedY, expandedY, expand);
 
+    // Slot-derived colors, tweened alongside position so the front slot is
+    // always lime, the back slot always deep, even mid-reorder.
+    final background = Color.lerp(
+      _slotBackgrounds[prevSlotI],
+      _slotBackgrounds[newSlotI],
+      t,
+    )!;
+    final mutedAlpha =
+        _lerp(_slotMutedAlpha[prevSlotI], _slotMutedAlpha[newSlotI], t);
+    final foregroundMuted = data.foreground.withValues(alpha: mutedAlpha);
+
     return Positioned(
       left: _cardLeftInset,
       top: 40,
@@ -584,6 +600,8 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
             onTap: () => _onCardTap(cardIdx),
             child: _StackCard(
               data: data,
+              background: background,
+              foregroundMuted: foregroundMuted,
               width: cardWidth,
               height: _cardHeight,
               showAction: _expanded,
@@ -601,9 +619,7 @@ class _StackCardData {
     required this.kicker,
     required this.subtitle,
     required this.count,
-    required this.background,
     required this.foreground,
-    required this.foregroundMuted,
     required this.icon,
     required this.route,
   });
@@ -612,9 +628,7 @@ class _StackCardData {
   final String kicker;
   final String subtitle;
   final int count;
-  final Color background;
   final Color foreground;
-  final Color foregroundMuted;
   final IconData icon;
   final String route;
 }
@@ -622,12 +636,16 @@ class _StackCardData {
 class _StackCard extends StatelessWidget {
   const _StackCard({
     required this.data,
+    required this.background,
+    required this.foregroundMuted,
     required this.width,
     required this.height,
     required this.showAction,
   });
 
   final _StackCardData data;
+  final Color background;
+  final Color foregroundMuted;
   final double width;
   final double height;
   final bool showAction;
@@ -641,7 +659,7 @@ class _StackCard extends StatelessWidget {
       height: height,
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
       decoration: BoxDecoration(
-        color: data.background,
+        color: background,
         borderRadius: BorderRadius.circular(AppConstants.largeCardRadius),
         border: Border.all(color: brand.shadow.withValues(alpha: 0.06)),
         boxShadow: [
@@ -680,7 +698,7 @@ class _StackCard extends StatelessWidget {
                         fontSize: 10,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 1.6,
-                        color: data.foregroundMuted,
+                        color: foregroundMuted,
                       ),
                     ),
                   ],
@@ -728,7 +746,7 @@ class _StackCard extends StatelessWidget {
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600,
                         letterSpacing: -0.1,
-                        color: data.foregroundMuted,
+                        color: foregroundMuted,
                       ),
                     ),
                   ],
