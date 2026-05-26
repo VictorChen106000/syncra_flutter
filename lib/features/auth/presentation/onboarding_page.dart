@@ -1,17 +1,33 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/constants/app_strings.dart';
 import '../../../core/dev/dev_flags_notifier.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
-import '../../../shared/widgets/app_back_button.dart';
-import '../../../shared/widgets/glass_pill.dart';
+import '../../agent_chat/models/agent_block.dart';
+import '../../agent_chat/models/chat_message.dart';
+import '../../agent_chat/presentation/widgets/agent_turn_view.dart';
+import '../../agent_chat/presentation/widgets/chat_input_bar.dart';
+import '../../agent_chat/presentation/widgets/chat_message_bubble.dart';
+import '../../agent_chat/presentation/widgets/docked_panels.dart';
+import '../../agent_chat/state/agent_chat_mode.dart';
+import '../../agent_chat/state/agent_chat_notifier.dart';
 import '../state/auth_notifier.dart';
 import '../state/user_profile_notifier.dart';
 
+/// First-run setup. Replaces the static scripted intro with a real
+/// agent-driven conversation: the Anthropic-backed chatbot (in
+/// [AgentChatMode.onboarding] mode) greets the user, calls `ask_user` to
+/// capture their target role, then calls `complete_onboarding` — which surfaces
+/// an "Enter Syncra" CTA card the user taps to land on the dashboard.
+///
+/// The visual scaffold is borrowed from [AiChatbotPage] (full-bleed
+/// transcript behind frosted top chrome, docked input request above the
+/// composer) so the onboarding moment is visually the same surface the user
+/// will live in afterwards.
 class OnboardingPage extends ConsumerStatefulWidget {
   const OnboardingPage({super.key});
 
@@ -20,50 +36,44 @@ class OnboardingPage extends ConsumerStatefulWidget {
 }
 
 class _OnboardingPageState extends ConsumerState<OnboardingPage> {
-  final TextEditingController _roleController = TextEditingController();
-  final FocusNode _roleFocus = FocusNode();
-  bool _submitted = false;
-  bool _saving = false;
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    final existing = ref.read(userProfileProvider)?.role;
-    if (existing != null && existing.isNotEmpty) {
-      _roleController.text = existing;
-      _submitted = true;
-    }
-    _roleController.addListener(() => setState(() {}));
+    // Flip the shared chat infrastructure into onboarding mode. The provider
+    // rebuilds the AnthropicChatService with the onboarding system prompt +
+    // a minimal tool registry, and the notifier seeds a personalised opener.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(agentChatModeProvider.notifier).set(AgentChatMode.onboarding);
+    });
   }
 
   @override
   void dispose() {
-    _roleController.dispose();
-    _roleFocus.dispose();
+    _scrollController.dispose();
+    // Return the chat to normal mode so that whichever surface opens the
+    // chatbot next (dashboard "Ask Syncra", a job thread, etc.) gets the
+    // full job arsenal — not the stripped-down onboarding sandbox.
+    // ref.read is safe in dispose for providers that don't depend on the
+    // disposed widget's state.
+    Future.microtask(() {
+      ref.read(agentChatModeProvider.notifier).set(AgentChatMode.jobs);
+    });
     super.dispose();
   }
 
-  bool get _hasValidRole => _roleController.text.trim().isNotEmpty;
-
-  Future<void> _saveAndContinue() async {
-    final role = _roleController.text.trim();
-    if (role.isEmpty || _saving) return;
-
-    setState(() => _saving = true);
-    _roleFocus.unfocus();
-
-    await ref.read(userProfileProvider.notifier).setRole(role);
-
-    if (!mounted) return;
-    setState(() {
-      _submitted = true;
-      _saving = false;
-    });
-
-    await Future.delayed(const Duration(milliseconds: 700));
-    if (!mounted) return;
-    // Auto-clear the dev "Show onboarding" toggle so the redirect doesn't
-    // bounce the user straight back here.
+  /// Bypasses the agent-driven role capture and routes straight to the
+  /// dashboard. Writes a neutral placeholder role so the router redirect
+  /// doesn't immediately bounce the user back to `/onboarding` (the redirect
+  /// fires whenever `role` is empty), and clears the dev "Show onboarding"
+  /// toggle if it was the reason the user landed here. The user can edit the
+  /// placeholder from Profile later.
+  Future<void> _skipToDashboard() async {
+    await ref
+        .read(userProfileProvider.notifier)
+        .setRole('Exploring opportunities');
     final dev = ref.read(devFlagsProvider);
     if (dev.showOnboarding) {
       await ref.read(devFlagsProvider.notifier).setShowOnboarding(false);
@@ -72,517 +82,318 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     context.go(RouteNames.dashboard);
   }
 
+  void _scheduleScrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final displayName = ref.watch(authProvider).appUser?.displayName;
-    final firstName = (displayName?.split(' ').first ?? '').isEmpty
-        ? null
-        : displayName!.split(' ').first;
+    ref.listen<AgentChatState>(
+      agentChatProvider,
+      (_, _) => _scheduleScrollToBottom(),
+    );
+
+    final state = ref.watch(agentChatProvider);
+    final pendingInput = _pendingInputRequest(state.items);
+
+    final media = MediaQuery.of(context);
+    final topSafe = media.padding.top;
+    final topInset = topSafe + 56;
+    double bottomInset = media.padding.bottom + 152;
+    if (pendingInput != null) bottomInset += 132;
 
     return Scaffold(
-      backgroundColor: brand.bg,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
-              decoration: BoxDecoration(
-                color: brand.bg,
-                border: Border(
-                  bottom: BorderSide(
-                    color: brand.border.withValues(alpha: 0.50),
-                  ),
-                ),
-              ),
-              child: Row(
-                children: [
-                  AppBackButton(
-                    onPressed: () =>
-                        ref.read(authProvider.notifier).signOut(),
-                  ),
-                  const Spacer(),
-                  GlassPill(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const _MiniStarChip(),
-                        const SizedBox(width: 8),
-                        Text(
-                          AppStrings.onboardingHeader,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
-                            color: brand.ink,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Spacer(),
-                  const SizedBox(width: 28),
-                ],
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
-                children: [
-                  _AiMessage(
-                    text:
-                        "Hi${firstName == null ? '' : ' $firstName'}! I'm Syncra AI. "
-                        "Let's set up your career profile. Could you upload your latest resume?",
-                  ).animate().fadeIn().moveY(begin: 8, end: 0),
-                  const SizedBox(height: 16),
-                  _UserMessage(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.description_rounded,
-                            color: brand.accent, size: 16),
-                        const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            'chris_anderson_resume.pdf',
-                            style: TextStyle(
-                              color: brand.inkInverse,
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ).animate(delay: 200.ms).fadeIn().moveY(begin: 8, end: 0),
-                  const SizedBox(height: 16),
-                  const _AgentTerminalBlock()
-                      .animate(delay: 400.ms)
-                      .fadeIn(duration: 500.ms),
-                  const SizedBox(height: 16),
-                  const _AiMessage(
-                    text:
-                        'I successfully extracted your skills! To calibrate my matching engine, what specific role are you aiming for?',
-                  ).animate(delay: 700.ms).fadeIn().moveY(begin: 8, end: 0),
-                  const SizedBox(height: 16),
-                  if (_submitted)
-                    _UserMessage(
-                      child: Text(
-                        _roleController.text.trim(),
-                        style: TextStyle(
-                          color: brand.inkInverse,
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ).animate().fadeIn().moveY(begin: 8, end: 0)
-                  else
-                    _RoleInput(
-                      controller: _roleController,
-                      focusNode: _roleFocus,
-                      onSubmitted: _saveAndContinue,
-                    ).animate(delay: 850.ms).fadeIn().moveY(begin: 8, end: 0),
-                  if (_submitted) ...[
-                    const SizedBox(height: 16),
-                    const _AiMessage(
-                      text:
-                          "Got it! Your AI profile is ready. I'll start finding matches in the background.",
-                    ).animate().fadeIn().moveY(begin: 8, end: 0),
-                  ],
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed:
-                      (_hasValidRole && !_saving) ? _saveAndContinue : null,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: brand.ink,
-                    foregroundColor: brand.inkInverse,
-                    disabledBackgroundColor: brand.border,
-                    disabledForegroundColor: brand.textMuted,
-                    minimumSize: const Size.fromHeight(56),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (_saving)
-                        SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: brand.inkInverse,
-                          ),
-                        )
-                      else
-                        Text(
-                          _submitted
-                              ? AppStrings.goToDashboard
-                              : 'Save & continue',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      if (!_saving) ...[
-                        const SizedBox(width: 8),
-                        const Icon(Icons.arrow_forward_rounded, size: 16),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _RoleInput extends StatelessWidget {
-  const _RoleInput({
-    required this.controller,
-    required this.focusNode,
-    required this.onSubmitted,
-  });
-
-  final TextEditingController controller;
-  final FocusNode focusNode;
-  final VoidCallback onSubmitted;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Flexible(
-          child: Container(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.sizeOf(context).width * 0.82,
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-            decoration: BoxDecoration(
-              color: brand.ink,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(22),
-                topRight: Radius.circular(22),
-                bottomLeft: Radius.circular(22),
-                bottomRight: Radius.circular(4),
-              ),
-              border: Border.all(
-                color: brand.inkInverse.withValues(alpha: 0.15),
-              ),
-            ),
-            child: TextField(
-              controller: controller,
-              focusNode: focusNode,
-              autofocus: true,
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => onSubmitted(),
-              style: TextStyle(
-                color: brand.inkInverse,
-                fontSize: 14.5,
-                fontWeight: FontWeight.w600,
-              ),
-              decoration: InputDecoration(
-                hintText: 'e.g. Senior UX Designer at AI startups',
-                hintStyle: TextStyle(
-                  color: brand.inkInverse.withValues(alpha: 0.54),
-                  fontWeight: FontWeight.w500,
-                ),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                isCollapsed: true,
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _MiniStarChip extends StatelessWidget {
-  const _MiniStarChip();
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Container(
-      width: 16,
-      height: 16,
-      decoration: BoxDecoration(
-        color: brand.ink,
-        shape: BoxShape.circle,
-      ),
-      alignment: Alignment.center,
-      child: Icon(Icons.star_rounded, color: brand.accent, size: 10),
-    );
-  }
-}
-
-class _AiMessage extends StatelessWidget {
-  const _AiMessage({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Container(
-          width: 28,
-          height: 28,
-          decoration: BoxDecoration(
-            color: brand.ink,
-            shape: BoxShape.circle,
-          ),
-          alignment: Alignment.center,
-          child: Icon(Icons.star_rounded, color: brand.accent, size: 14),
-        ),
-        const SizedBox(width: 10),
-        Flexible(
-          child: Container(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.sizeOf(context).width * 0.72,
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: brand.surface,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(22),
-                topRight: Radius.circular(22),
-                bottomLeft: Radius.circular(4),
-                bottomRight: Radius.circular(22),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: brand.shadow,
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
+      backgroundColor: brand.surface,
+      body: Stack(
+        children: [
+          // Full-bleed transcript — scrolls behind the floating chrome.
+          Positioned.fill(
+            child: ListView(
+              controller: _scrollController,
+              padding: EdgeInsets.fromLTRB(20, topInset, 20, bottomInset),
+              children: [
+                for (final item in state.items)
+                  switch (item) {
+                    UserMessage() => UserMessageView(message: item),
+                    AgentTurn() => AgentTurnView(turn: item),
+                  },
               ],
             ),
-            child: Text(
-              text,
-              style: TextStyle(
-                color: brand.ink,
-                fontSize: 14.5,
-                height: 1.55,
-                fontWeight: FontWeight.w500,
+          ),
+
+          // Top fade scrim — keeps the back/skip button legible over the chat.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: topSafe + 60,
+            child: IgnorePointer(child: _FadeScrim(brand: brand, top: true)),
+          ),
+
+          // Bottom fade scrim — softens the transcript into the composer.
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: bottomInset,
+            child: IgnorePointer(child: _FadeScrim(brand: brand, top: false)),
+          ),
+
+          // Floating top chrome: just a sign-out escape hatch and a "Setup"
+          // chip. No history drawer, no new-chat button, no thread context.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                child: Row(
+                  children: [
+                    _FrostedIconBtn(
+                      icon: Icons.arrow_back_ios_new_rounded,
+                      tooltip: 'Sign out',
+                      onTap: () =>
+                          ref.read(authProvider.notifier).signOut(),
+                    ),
+                    const Spacer(),
+                    const _SetupChip(),
+                    const Spacer(),
+                    _SkipButton(onTap: _skipToDashboard),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-      ],
+
+          // Floating bottom chrome: the docked input request (when the agent
+          // has paused for `ask_user`) plus the standard ChatInputBar. No
+          // resume attachment chrome is shown — onboarding has no resume yet.
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (pendingInput != null) DockedInputRequest(block: pendingInput),
+                const ChatInputBar(autofocus: false),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
+  }
+
+  /// Pending `ask_user` request hoisted from the latest agent turn into the
+  /// docked island. Only the most recent unanswered question surfaces.
+  static InputRequestBlock? _pendingInputRequest(List<ChatItem> items) {
+    for (var i = items.length - 1; i >= 0; i--) {
+      final item = items[i];
+      if (item is! AgentTurn) continue;
+      for (var j = item.blocks.length - 1; j >= 0; j--) {
+        final block = item.blocks[j];
+        if (block is InputRequestBlock &&
+            block.state == InputRequestState.pending) {
+          return block;
+        }
+      }
+    }
+    return null;
   }
 }
 
-class _UserMessage extends StatelessWidget {
-  const _UserMessage({required this.child});
-
-  final Widget child;
+/// Tiny pill that telegraphs the user is in first-run setup, not the regular
+/// chat. Visually echoes the chatbot's frosted top chrome but stays in the
+/// dead-centre so it reads as a status label, not a back action.
+class _SetupChip extends StatelessWidget {
+  const _SetupChip();
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Flexible(
-          child: Container(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.sizeOf(context).width * 0.72,
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: brand.ink,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(22),
-                topRight: Radius.circular(22),
-                bottomLeft: Radius.circular(22),
-                bottomRight: Radius.circular(4),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(99),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: brand.surface.withValues(alpha: 0.78),
+            borderRadius: BorderRadius.circular(99),
+            border: Border.all(color: brand.border, width: 0.8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 16,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: brand.ink,
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: Icon(Icons.star_rounded, color: brand.accent, size: 10),
               ),
-            ),
-            child: child,
+              const SizedBox(width: 8),
+              Text(
+                'Syncra AI Setup',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  color: brand.ink,
+                  letterSpacing: -0.1,
+                ),
+              ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 }
 
-class _AgentTerminalBlock extends StatelessWidget {
-  const _AgentTerminalBlock();
+/// Frosted circular icon button — mirrors the chatbot's floating header
+/// controls so the back-out / sign-out affordance feels native to the
+/// chat-surface aesthetic.
+class _FrostedIconBtn extends StatelessWidget {
+  const _FrostedIconBtn({
+    required this.icon,
+    required this.onTap,
+    this.tooltip,
+  });
+
+  final IconData icon;
+  final VoidCallback? onTap;
+  final String? tooltip;
 
   @override
   Widget build(BuildContext context) {
-    // Terminal block is intentionally dark in both themes (it's a "monitor"
-    // visual). Pin to BrandTheme.dark colors directly.
-    const brand = BrandTheme.dark;
-    return Container(
-      clipBehavior: Clip.antiAlias,
+    final brand = context.brand;
+    final button = Container(
       decoration: BoxDecoration(
-        color: brand.bg,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: brand.ink.withValues(alpha: 0.10)),
+        shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.20),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
+            color: brand.shadow.withValues(alpha: 0.12),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            height: 1,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Colors.transparent,
-                  brand.accent,
-                  Colors.transparent,
+      child: ClipOval(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+          child: Material(
+            color: brand.surface.withValues(alpha: 0.78),
+            shape: CircleBorder(
+              side: BorderSide(color: brand.border, width: 0.8),
+            ),
+            child: InkWell(
+              onTap: onTap,
+              customBorder: const CircleBorder(),
+              child: SizedBox(
+                width: 42,
+                height: 42,
+                child: Icon(icon, size: 18, color: brand.ink),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    if (tooltip == null) return button;
+    return Tooltip(message: tooltip!, child: button);
+  }
+}
+
+/// Quiet text pill in the top-right that bypasses the agent role-capture and
+/// drops the user on the dashboard with a placeholder role. Mostly a dev /
+/// "I'll fill this in later" escape hatch — visually subdued so it doesn't
+/// compete with the conversation.
+class _SkipButton extends StatelessWidget {
+  const _SkipButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(99),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: Material(
+          color: brand.surface.withValues(alpha: 0.78),
+          shape: StadiumBorder(
+            side: BorderSide(color: brand.border, width: 0.8),
+          ),
+          child: InkWell(
+            onTap: onTap,
+            customBorder: const StadiumBorder(),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Skip',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: brand.textMuted,
+                      letterSpacing: -0.1,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 16,
+                    color: brand.textMuted,
+                  ),
                 ],
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    _TerminalDot(color: brand.danger),
-                    const SizedBox(width: 6),
-                    _TerminalDot(color: brand.warning),
-                    const SizedBox(width: 6),
-                    _TerminalDot(color: brand.success),
-                    const SizedBox(width: 10),
-                    Text(
-                      'AGENT THOUGHT PROCESS',
-                      style: TextStyle(
-                        color: brand.ink.withValues(alpha: 0.50),
-                        fontSize: 9,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.4,
-                      ),
-                    ),
-                  ],
-                ),
-                const Divider(height: 22, color: Colors.white12),
-                _TerminalLine(
-                  prefix: '⚙',
-                  text: 'Tool Call: ParseDocument(file)',
-                  color: brand.ink.withValues(alpha: 0.80),
-                ),
-                const SizedBox(height: 4),
-                _TerminalLine(
-                  prefix: '↳',
-                  text: 'Extracted 420 words.',
-                  color: brand.accent,
-                  bold: true,
-                  indent: 14,
-                ),
-                const SizedBox(height: 12),
-                _TerminalLine(
-                  prefix: '⚙',
-                  text: 'Tool Call: ExtractSkills()',
-                  color: brand.ink.withValues(alpha: 0.80),
-                ),
-                const SizedBox(height: 4),
-                _TerminalLine(
-                  prefix: '↳',
-                  text: 'Found: React, JavaScript, Figma.',
-                  color: brand.accent,
-                  bold: true,
-                  indent: 14,
-                ),
-                const SizedBox(height: 12),
-                _TerminalLine(
-                  prefix: '🔍',
-                  text:
-                      'Agent Decision: Missing Target Role. Asking user for input.',
-                  color: brand.warning,
-                ),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 }
 
-class _TerminalDot extends StatelessWidget {
-  const _TerminalDot({required this.color});
+/// Soft gradient that fades the transcript into the background behind the
+/// floating chrome, copied from the chatbot scaffold so the visual treatment
+/// matches one-for-one.
+class _FadeScrim extends StatelessWidget {
+  const _FadeScrim({required this.brand, required this.top});
 
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 9,
-      height: 9,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-    );
-  }
-}
-
-class _TerminalLine extends StatelessWidget {
-  const _TerminalLine({
-    required this.prefix,
-    required this.text,
-    required this.color,
-    this.bold = false,
-    this.indent = 0,
-  });
-
-  final String prefix;
-  final String text;
-  final Color color;
-  final bool bold;
-  final double indent;
+  final BrandTheme brand;
+  final bool top;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(left: indent),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(prefix, style: TextStyle(color: color, fontSize: 11)),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(
-                color: color,
-                fontSize: 11,
-                height: 1.45,
-                fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
-                fontFamily: 'monospace',
-              ),
-            ),
-          ),
-        ],
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: top ? Alignment.topCenter : Alignment.bottomCenter,
+          end: top ? Alignment.bottomCenter : Alignment.topCenter,
+          colors: [
+            brand.surface,
+            brand.surface.withValues(alpha: 0.0),
+          ],
+          stops: const [0.55, 1.0],
+        ),
       ),
     );
   }

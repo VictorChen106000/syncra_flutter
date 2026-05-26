@@ -29,8 +29,15 @@ class AnthropicChatService implements AgentService {
     String? apiKey,
     http.Client? client,
     this.model = 'claude-haiku-4-5-20251001',
+    String? systemPromptOverride,
   })  : _apiKey = apiKey ?? const String.fromEnvironment('ANTHROPIC_API_KEY'),
-        _client = client ?? http.Client();
+        _client = client ?? http.Client(),
+        _systemPrompt = systemPromptOverride ?? systemPrompt;
+
+  /// The system prompt actually sent on every request. Defaults to the main
+  /// chatbot's [systemPrompt]; the onboarding flow overrides it with a
+  /// dedicated walkthrough script (see `agent_chat_mode.dart`).
+  final String _systemPrompt;
 
   static const _endpoint = 'https://api.anthropic.com/v1/messages';
   static const _version = '2023-06-01';
@@ -168,6 +175,8 @@ Progress and style:
         String? draftPauseMessage;
         bool shouldPauseAfterResumeEmail = false;
         String? resumeEmailPauseMessage;
+        bool shouldPauseAfterOnboardingComplete = false;
+        String? onboardingPauseMessage;
         for (final raw in content) {
           if (raw is! Map<String, dynamic>) continue;
           final type = raw['type'] as String?;
@@ -288,6 +297,25 @@ Progress and style:
                   }
                 }
 
+                // The onboarding-only `complete_onboarding` tool returns the
+                // captured role and a one-line summary; lift them into an
+                // [OnboardingCompleteBlock] so the user sees a celebratory
+                // CTA, and pause the loop — the user gates the dashboard
+                // handoff with a tap, not the agent.
+                if (!result.isError && name == 'complete_onboarding') {
+                  final completeBlock = _onboardingCompleteBlockFromInput(
+                    id: nextBlockId('done'),
+                    input: input,
+                    data: result.data,
+                  );
+                  if (completeBlock != null) {
+                    yield BlockAdded(completeBlock);
+                    shouldPauseAfterOnboardingComplete = true;
+                    onboardingPauseMessage =
+                        "You're all set. Tap Enter Syncra when you're ready.";
+                  }
+                }
+
                 // After the tailored PDF is rendered, automatically draft a
                 // self-delivery email with the resume attached so the user can
                 // save a copy to their own inbox in one tap.
@@ -386,6 +414,20 @@ Progress and style:
             id: nextBlockId('text'),
             text: draftPauseMessage ??
                 'I drafted an email. Review it before I continue.',
+          ));
+          yield const TurnCompleted();
+          return;
+        }
+
+        // Onboarding hands off via a user-tapped CTA. Stop the loop so the
+        // agent can't keep talking past the "Enter Syncra" card — the user
+        // owns the dashboard handoff, not the model.
+        if (shouldPauseAfterOnboardingComplete) {
+          messages.add({'role': 'user', 'content': toolResults});
+          yield BlockAdded(TextBlock(
+            id: nextBlockId('text'),
+            text: onboardingPauseMessage ??
+                "You're all set. Tap Enter Syncra when you're ready.",
           ));
           yield const TurnCompleted();
           return;
@@ -494,7 +536,7 @@ Progress and style:
       'system': [
         {
           'type': 'text',
-          'text': systemPrompt,
+          'text': _systemPrompt,
           'cache_control': {'type': 'ephemeral'},
         },
       ],
@@ -656,6 +698,26 @@ Progress and style:
       attachmentResumeId: resumeId,
       attachmentFilename: filename,
     );
+  }
+
+  /// Builds the onboarding handoff card from a `complete_onboarding` tool
+  /// call. The role comes from the agent's tool input (what it captured in
+  /// conversation); the optional summary comes from the tool's response data.
+  /// Returns null when the role is missing — without it the CTA can't write
+  /// the profile, so the turn falls back to a plain pause.
+  OnboardingCompleteBlock? _onboardingCompleteBlockFromInput({
+    required String id,
+    required Map<String, dynamic> input,
+    required Object? data,
+  }) {
+    final role = (input['role'] as String?)?.trim() ?? '';
+    if (role.isEmpty) return null;
+    String? summary;
+    if (data is Map) {
+      final raw = (data['summary'] as String?)?.trim();
+      if (raw != null && raw.isNotEmpty) summary = raw;
+    }
+    return OnboardingCompleteBlock(id: id, role: role, summary: summary);
   }
 
   String _tailorPauseMessage(Object? data) {

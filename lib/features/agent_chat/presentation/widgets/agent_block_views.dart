@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../../core/router/route_names.dart';
 import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/utils/motion.dart';
 import '../../models/agent_block.dart';
@@ -43,6 +45,8 @@ class AgentBlockView extends StatelessWidget {
         ActionProposalView(block: block as ActionProposalBlock),
       EmailDraftBlock() =>
         EmailDraftBlockView(block: block as EmailDraftBlock),
+      OnboardingCompleteBlock() =>
+        OnboardingCompleteBlockView(block: block as OnboardingCompleteBlock),
     };
   }
 }
@@ -1694,6 +1698,169 @@ class _ProposalButton extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Closing card of the onboarding chat. The agent emitted this via the
+/// `complete_onboarding` tool once it had captured the user's role; the user
+/// taps Enter Syncra to write the role to their profile and land on the
+/// dashboard. Pinned in-transcript (it doesn't dock above the composer) so it
+/// reads as the agent's final word, not a system prompt.
+class OnboardingCompleteBlockView extends ConsumerStatefulWidget {
+  const OnboardingCompleteBlockView({super.key, required this.block});
+
+  final OnboardingCompleteBlock block;
+
+  @override
+  ConsumerState<OnboardingCompleteBlockView> createState() =>
+      _OnboardingCompleteBlockViewState();
+}
+
+class _OnboardingCompleteBlockViewState
+    extends ConsumerState<OnboardingCompleteBlockView> {
+  bool _entering = false;
+
+  Future<void> _enter() async {
+    if (_entering ||
+        widget.block.state == OnboardingCompleteState.entered) {
+      return;
+    }
+    setState(() => _entering = true);
+    await ref
+        .read(agentChatProvider.notifier)
+        .completeOnboarding(widget.block.id);
+    if (!mounted) return;
+    // The router's auth refresh will redirect away from /onboarding once the
+    // role is written, but go() is faster and gives a deterministic landing.
+    context.go(RouteNames.dashboard);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final entered = widget.block.state == OnboardingCompleteState.entered;
+    final summary = widget.block.summary?.trim();
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+      decoration: BoxDecoration(
+        color: brand.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: brand.accent.withValues(alpha: 0.6), width: 1.4),
+        boxShadow: [
+          BoxShadow(
+            color: brand.shadow.withValues(alpha: 0.12),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: brand.ink,
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.auto_awesome_rounded,
+                  size: 18,
+                  color: brand.accent,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Profile ready',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.3,
+                        color: brand.textMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      widget.block.role,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: brand.ink,
+                        letterSpacing: -0.3,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            (summary != null && summary.isNotEmpty)
+                ? summary
+                : "Your AI career copilot is ready. I'll start finding matches in the background.",
+            style: TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w500,
+              color: brand.textMuted,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: entered ? null : _enter,
+            style: FilledButton.styleFrom(
+              backgroundColor: brand.ink,
+              foregroundColor: brand.inkInverse,
+              disabledBackgroundColor: brand.border,
+              disabledForegroundColor: brand.textMuted,
+              minimumSize: const Size.fromHeight(48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (_entering)
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: brand.inkInverse,
+                    ),
+                  )
+                else ...[
+                  Text(
+                    entered ? 'Opening Syncra…' : 'Enter Syncra',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.1,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.arrow_forward_rounded, size: 16),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

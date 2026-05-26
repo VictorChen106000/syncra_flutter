@@ -2,12 +2,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/dev/dev_flags_notifier.dart';
 import '../../../core/router/route_names.dart';
 import '../../../data/firestore/jobs_repository.dart';
 import '../../../data/firestore/resumes_repository.dart';
 import '../../../data/models/job.dart';
 import '../../../shared/state/running_task_notifier.dart';
 import '../../auth/state/auth_notifier.dart';
+import '../../auth/state/user_profile_notifier.dart';
 import '../../notifications/models/app_notification.dart';
 import '../../notifications/state/notifications_notifier.dart';
 import '../../resumes/services/resume_parser_service.dart';
@@ -21,15 +23,31 @@ import '../services/agent_service.dart';
 import '../services/anthropic_chat_service.dart';
 import '../services/chat_history_repository.dart';
 import '../tools/builtin_tools.dart';
+import '../tools/onboarding_tools.dart';
 import '../tools/tool_registry.dart';
+import 'agent_chat_mode.dart';
 
 /// The active [AgentService] for the app — Claude via the tool-use loop.
 /// Requires an `ANTHROPIC_API_KEY`; without one the agent surfaces an error
 /// at call time rather than falling back to scripted responses.
+///
+/// Rebuilds when [agentChatModeProvider] flips: the onboarding flow needs a
+/// stripped-down tool registry and its own system prompt, so we mint a fresh
+/// service instance per mode instead of mutating a shared one.
 final agentServiceProvider = Provider<AgentService>((ref) {
+  final mode = ref.watch(agentChatModeProvider);
   final registry = ToolRegistry();
-  registerBuiltinTools(registry);
-  return AnthropicChatService(registry: registry);
+  switch (mode) {
+    case AgentChatMode.jobs:
+      registerBuiltinTools(registry);
+      return AnthropicChatService(registry: registry);
+    case AgentChatMode.onboarding:
+      registerOnboardingTools(registry);
+      return AnthropicChatService(
+        registry: registry,
+        systemPromptOverride: onboardingSystemPrompt,
+      );
+  }
 });
 
 /// Persists the text-only transcript so chats survive app restarts. Scoped
@@ -88,17 +106,23 @@ class AgentChatState {
 }
 
 class AgentChatNotifier extends Notifier<AgentChatState> {
-  late final AgentService _service;
-  late final ChatHistoryRepository _history;
-  late final ResumeTailorOrchestrator _orchestrator;
+  late AgentService _service;
+  late ChatHistoryRepository _history;
+  late ResumeTailorOrchestrator _orchestrator;
   StreamSubscription<AgentEvent>? _activeSub;
   AgentTurn? _activeTurn;
   int _seq = 0;
   bool _hydrating = false;
   bool _serviceReady = false;
 
+  /// Which chat experience this notifier is driving — see [AgentChatMode].
+  /// In [AgentChatMode.onboarding] the notifier skips Firestore reads and
+  /// writes entirely; in [AgentChatMode.jobs] it persists every turn.
+  late AgentChatMode _mode;
+
   @override
   AgentChatState build() {
+    _mode = ref.watch(agentChatModeProvider);
     _service = ref.watch(agentServiceProvider);
     _serviceReady = true;
     _history = ref.watch(chatHistoryRepositoryProvider);
@@ -108,10 +132,22 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
       parser: ResumeParserService(),
       tailor: ResumeTailorService(),
     );
+    // Reset sequence counter so a mode swap doesn't carry stale ids over.
+    _seq = 0;
     ref.onDispose(() {
       _serviceReady = false;
       _activeSub?.cancel();
     });
+
+    // Onboarding is single-session by design: nothing persists, nothing
+    // hydrates, and the agent opens with a personalised greeting whose name
+    // depends on the signed-in user.
+    if (_mode == AgentChatMode.onboarding) {
+      return AgentChatState(
+        items: [_buildOnboardingOpener()],
+        conversationId: _newConversationId(),
+      );
+    }
 
     // Hydrate the most recent saved conversation in the background. We start
     // from a fresh opener and replace once the load completes, *iff* the user
@@ -173,6 +209,9 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
 
   void _persist() {
     if (_hydrating) return;
+    // Onboarding is single-shot — nothing about the first-run conversation
+    // belongs in the user's permanent chat history.
+    if (_mode == AgentChatMode.onboarding) return;
     final uid = _uid;
     if (uid == null) return;
     // Drop the opener turn from the persisted payload — it's reconstructed
@@ -203,6 +242,28 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
       }
     }
     return 'New chat';
+  }
+
+  /// First agent turn shown in onboarding mode — a personalised greeting
+  /// keyed to the signed-in user's first name. The agent's system prompt
+  /// tells it to follow up with an `ask_user` for the role; this opener just
+  /// sets the tone and avoids a blank screen while the first stream warms up.
+  AgentTurn _buildOnboardingOpener() {
+    final displayName = ref.read(authProvider).appUser?.displayName ?? '';
+    final firstName = displayName.split(' ').first.trim();
+    final greeting = firstName.isEmpty ? 'Hi!' : 'Hi $firstName!';
+    return AgentTurn(
+      id: 'turn-onboarding-opener',
+      blocks: [
+        TextBlock(
+          id: 'onboarding-opener-text',
+          text:
+              "$greeting I'm Syncra — I'll help you find, tailor, and apply to roles. "
+              "To get started, what role are you aiming for?",
+        ),
+      ],
+      isStreaming: false,
+    );
   }
 
   /// Builds the first agent turn shown when the chat opens. Adapts to the
@@ -938,6 +999,42 @@ Do not call send_email. Sending still requires explicit user approval.
     if (block.state != ProposedEditsState.reviewing) return;
     block.state = ProposedEditsState.dismissed;
     state = state.copyWith(items: [...state.items]);
+  }
+
+  /// Settles an [OnboardingCompleteBlock] once the user taps Enter Syncra.
+  /// Writes the captured role to `users/{uid}.role` (which trips the router
+  /// redirect that lands the user on the dashboard) and flips the card to
+  /// [OnboardingCompleteState.entered] so it can't be re-tapped on the way
+  /// out. Returns the role the page can use for any follow-up nav.
+  Future<String?> completeOnboarding(String blockId) async {
+    final block = _findOnboardingComplete(blockId);
+    if (block == null) return null;
+    if (block.state == OnboardingCompleteState.entered) return block.role;
+
+    block.state = OnboardingCompleteState.entered;
+    state = state.copyWith(items: [...state.items]);
+
+    await ref.read(userProfileProvider.notifier).setRole(block.role);
+    // Clear the dev "Show onboarding" toggle if it was the reason the user is
+    // here — otherwise the router redirect would bounce them straight back to
+    // /onboarding on the next refresh.
+    final dev = ref.read(devFlagsProvider);
+    if (dev.showOnboarding) {
+      await ref.read(devFlagsProvider.notifier).setShowOnboarding(false);
+    }
+    return block.role;
+  }
+
+  OnboardingCompleteBlock? _findOnboardingComplete(String blockId) {
+    for (final item in state.items) {
+      if (item is! AgentTurn) continue;
+      for (final block in item.blocks) {
+        if (block is OnboardingCompleteBlock && block.id == blockId) {
+          return block;
+        }
+      }
+    }
+    return null;
   }
 
   InputRequestBlock? _findInputRequest(String blockId) {
