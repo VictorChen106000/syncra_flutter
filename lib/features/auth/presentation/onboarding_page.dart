@@ -41,45 +41,80 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   @override
   void initState() {
     super.initState();
-    // Flip the shared chat infrastructure into onboarding mode. The provider
-    // rebuilds the AnthropicChatService with the onboarding system prompt +
-    // a minimal tool registry, and the notifier seeds a personalised opener.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      ref.read(agentChatModeProvider.notifier).set(AgentChatMode.onboarding);
-    });
+    // Flip the shared chat infrastructure into onboarding mode *synchronously*
+    // so the provider rebuilds before our first paint — otherwise the page
+    // would briefly render whatever jobs-mode chat state existed before.
+    // The provider rebuilds AnthropicChatService with the onboarding system
+    // prompt + a minimal tool registry, and seeds a personalised opener.
+    ref.read(agentChatModeProvider.notifier).set(AgentChatMode.onboarding);
   }
 
   @override
   void dispose() {
     _scrollController.dispose();
-    // Return the chat to normal mode so that whichever surface opens the
-    // chatbot next (dashboard "Ask Syncra", a job thread, etc.) gets the
-    // full job arsenal — not the stripped-down onboarding sandbox.
-    // ref.read is safe in dispose for providers that don't depend on the
-    // disposed widget's state.
-    Future.microtask(() {
-      ref.read(agentChatModeProvider.notifier).set(AgentChatMode.jobs);
-    });
+    // Return the chat to normal mode so the next surface that opens the
+    // chatbot (dashboard, job thread, …) gets the full job arsenal — but
+    // only if the user is still signed in. After a sign-out the auth/profile
+    // cascade is already rebuilding everything; piling another mode flip on
+    // top is just noise (and risks racing with the login route's own setup).
+    final stillSignedIn = ref.read(authProvider).isSignedIn;
+    if (stillSignedIn) {
+      // microtask defers past the current frame so we don't mutate a provider
+      // mid-build during a route transition.
+      Future.microtask(() {
+        ref.read(agentChatModeProvider.notifier).set(AgentChatMode.jobs);
+      });
+    }
     super.dispose();
   }
 
   /// Bypasses the agent-driven role capture and routes straight to the
-  /// dashboard. Writes a neutral placeholder role so the router redirect
-  /// doesn't immediately bounce the user back to `/onboarding` (the redirect
-  /// fires whenever `role` is empty), and clears the dev "Show onboarding"
-  /// toggle if it was the reason the user landed here. The user can edit the
-  /// placeholder from Profile later.
+  /// dashboard. Marks the user past first-run setup via the explicit
+  /// `hasCompletedOnboarding` flag — `role` stays empty on purpose, so the
+  /// agent never treats a placeholder as the user's real target. The user can
+  /// set a role later from Profile (or just by chatting).
   Future<void> _skipToDashboard() async {
     await ref
         .read(userProfileProvider.notifier)
-        .setRole('Exploring opportunities');
+        .setHasCompletedOnboarding(true);
     final dev = ref.read(devFlagsProvider);
     if (dev.showOnboarding) {
       await ref.read(devFlagsProvider.notifier).setShowOnboarding(false);
     }
     if (!mounted) return;
     context.go(RouteNames.dashboard);
+  }
+
+  /// Confirms with the user before destroying their session and dropping
+  /// them back at /login. The previous design used a back-arrow icon that
+  /// silently signed the user out on tap — a classic destructive-action-
+  /// disguised-as-navigation trap.
+  Future<void> _confirmBackToLogin() async {
+    final brand = context.brand;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: brand.surface,
+        title: const Text('Back to login?'),
+        content: const Text(
+          "You'll be signed out and returned to the login screen. "
+          "Your account stays — you can sign back in any time.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Stay here'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Sign out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (!mounted) return;
+    await ref.read(authProvider.notifier).signOut();
   }
 
   void _scheduleScrollToBottom() {
@@ -160,10 +195,9 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                 child: Row(
                   children: [
                     _FrostedIconBtn(
-                      icon: Icons.arrow_back_ios_new_rounded,
-                      tooltip: 'Sign out',
-                      onTap: () =>
-                          ref.read(authProvider.notifier).signOut(),
+                      icon: Icons.logout_rounded,
+                      tooltip: 'Back to login',
+                      onTap: _confirmBackToLogin,
                     ),
                     const Spacer(),
                     const _SetupChip(),

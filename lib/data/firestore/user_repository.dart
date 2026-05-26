@@ -27,6 +27,7 @@ class UserRepository {
       'is_agent_active': true,
       'morning_brief_enabled': false,
       'gmail_connected': false,
+      'has_completed_onboarding': false,
       'created_at': FieldValue.serverTimestamp(),
     });
   }
@@ -50,6 +51,7 @@ class UserRepository {
     bool? isAgentActive,
     bool? morningBriefEnabled,
     bool? gmailConnected,
+    bool? hasCompletedOnboarding,
   }) async {
     final patch = <String, dynamic>{};
     if (role != null) patch['role'] = role;
@@ -58,6 +60,9 @@ class UserRepository {
       patch['morning_brief_enabled'] = morningBriefEnabled;
     }
     if (gmailConnected != null) patch['gmail_connected'] = gmailConnected;
+    if (hasCompletedOnboarding != null) {
+      patch['has_completed_onboarding'] = hasCompletedOnboarding;
+    }
     if (patch.isEmpty) return;
     await _paths.user(uid).update(patch);
   }

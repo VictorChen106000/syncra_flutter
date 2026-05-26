@@ -77,9 +77,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         return RouteNames.morningBrief;
       }
 
-      final needsOnboarding = !isGuest &&
-          profile != null &&
-          (profile.role ?? '').trim().isEmpty;
+      // Onboarding is gated on an explicit flag, not on `role` being empty —
+      // the Skip path intentionally leaves the role blank but still marks the
+      // user past first-run setup so they aren't bounced back here every load.
+      final needsOnboarding =
+          !isGuest && profile != null && !profile.hasCompletedOnboarding;
       if (needsOnboarding && loc != RouteNames.onboarding) {
         return RouteNames.onboarding;
       }

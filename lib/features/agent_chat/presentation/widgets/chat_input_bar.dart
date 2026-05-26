@@ -10,6 +10,7 @@ import '../../../resumes/presentation/widgets/resume_attachment_chips.dart';
 import '../../../resumes/presentation/widgets/select_resumes_bottom_sheet.dart';
 import '../../../resumes/state/resume_notifier.dart';
 import '../../models/chat_message.dart';
+import '../../state/agent_chat_mode.dart';
 import '../../state/agent_chat_notifier.dart';
 
 /// Keyboard intent fired by Cmd+Enter / Ctrl+Enter to submit the composer.
@@ -98,6 +99,11 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
     final brand = context.brand;
     final chatState = ref.watch(agentChatProvider);
     final streaming = chatState.isStreaming;
+    // Onboarding is a stripped-down sandbox: the agent has no resume or model
+    // selection tools, so the composer drops the chrome that would dead-end
+    // and nudges the user toward answering with a target role.
+    final isOnboarding =
+        ref.watch(agentChatModeProvider) == AgentChatMode.onboarding;
     final hasText = _textController.text.trim().isNotEmpty;
     // Before the first message is sent, an attached resume is "pending" —
     // we preview it inside the composer. Once the chat is underway it's
@@ -191,8 +197,11 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                       letterSpacing: -0.1,
                     ),
                     decoration: InputDecoration(
-                      hintText:
-                          streaming ? 'Syncra is working…' : 'Message Syncra',
+                      hintText: streaming
+                          ? 'Syncra is working…'
+                          : (isOnboarding
+                                ? 'What role are you aiming for?'
+                                : 'Message Syncra'),
                       hintStyle: TextStyle(
                         color: brand.textSoft,
                         fontWeight: FontWeight.w500,
@@ -212,15 +221,17 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
               const SizedBox(height: 12),
               Row(
                 children: [
-                  _CircleAction(
-                    icon: Icons.add_rounded,
-                    tooltip: 'Attach resume',
-                    onTap: streaming
-                        ? null
-                        : () => SelectResumesBottomSheet.show(context),
-                  ),
-                  const SizedBox(width: 8),
-                  _ModelChip(streaming: streaming),
+                  if (!isOnboarding) ...[
+                    _CircleAction(
+                      icon: Icons.add_rounded,
+                      tooltip: 'Attach resume',
+                      onTap: streaming
+                          ? null
+                          : () => SelectResumesBottomSheet.show(context),
+                    ),
+                    const SizedBox(width: 8),
+                    _ModelChip(streaming: streaming),
+                  ],
                   const Spacer(),
                   _SendButton(
                     streaming: streaming,

@@ -8,6 +8,7 @@ import '../../../data/firestore/jobs_repository.dart';
 import '../../../data/firestore/resumes_repository.dart';
 import '../../../data/models/job.dart';
 import '../../../shared/state/running_task_notifier.dart';
+import '../../agent/state/passive_agent_notifier.dart';
 import '../../auth/state/auth_notifier.dart';
 import '../../auth/state/user_profile_notifier.dart';
 import '../../notifications/models/app_notification.dart';
@@ -1002,10 +1003,12 @@ Do not call send_email. Sending still requires explicit user approval.
   }
 
   /// Settles an [OnboardingCompleteBlock] once the user taps Enter Syncra.
-  /// Writes the captured role to `users/{uid}.role` (which trips the router
-  /// redirect that lands the user on the dashboard) and flips the card to
-  /// [OnboardingCompleteState.entered] so it can't be re-tapped on the way
-  /// out. Returns the role the page can use for any follow-up nav.
+  /// Writes the captured role and the `hasCompletedOnboarding` flag (which
+  /// trips the router redirect that lands the user on the dashboard), flips
+  /// the card to [OnboardingCompleteState.entered] so it can't be re-tapped,
+  /// and fires a first job scan in the background so the dashboard lands on
+  /// live pipeline activity instead of the "agent is idle" empty state.
+  /// Returns the role the page can use for any follow-up nav.
   Future<String?> completeOnboarding(String blockId) async {
     final block = _findOnboardingComplete(blockId);
     if (block == null) return null;
@@ -1014,7 +1017,12 @@ Do not call send_email. Sending still requires explicit user approval.
     block.state = OnboardingCompleteState.entered;
     state = state.copyWith(items: [...state.items]);
 
-    await ref.read(userProfileProvider.notifier).setRole(block.role);
+    final profile = ref.read(userProfileProvider.notifier);
+    // Order matters: write the role *first* so the profile stream carries
+    // both fields together; flipping the gate flag is what trips the router
+    // redirect, so the dashboard sees a non-empty role on first paint.
+    await profile.setRole(block.role);
+    await profile.setHasCompletedOnboarding(true);
     // Clear the dev "Show onboarding" toggle if it was the reason the user is
     // here — otherwise the router redirect would bounce them straight back to
     // /onboarding on the next refresh.
@@ -1022,6 +1030,15 @@ Do not call send_email. Sending still requires explicit user approval.
     if (dev.showOnboarding) {
       await ref.read(devFlagsProvider.notifier).setShowOnboarding(false);
     }
+
+    // Fire-and-forget: the brief runs through PassiveAgentNotifier (separate
+    // from this chat notifier's own service), so the imminent mode flip back
+    // to AgentChatMode.jobs won't interrupt it. The pipeline writes land in
+    // Firestore and stream into the dashboard's jobs page as they happen.
+    unawaited(
+      ref.read(passiveAgentProvider.notifier).runBrief(query: block.role),
+    );
+
     return block.role;
   }
 

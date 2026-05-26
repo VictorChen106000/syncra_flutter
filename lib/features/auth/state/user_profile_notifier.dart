@@ -91,6 +91,21 @@ class UserProfileNotifier extends Notifier<UserProfile?> {
       debugPrint('setAgentActive failed: $e');
     }
   }
+
+  /// Flips the user past first-run setup. Called by both `complete_onboarding`
+  /// (after the agent captures a role) and the Skip button (which leaves
+  /// `role` untouched). Used by the router redirect to decide whether the
+  /// user still needs the onboarding surface.
+  Future<void> setHasCompletedOnboarding(bool completed) async {
+    final uid = _boundUid;
+    if (uid == null) return;
+    state = state?.copyWith(hasCompletedOnboarding: completed);
+    try {
+      await _repository.update(uid, hasCompletedOnboarding: completed);
+    } catch (e) {
+      debugPrint('setHasCompletedOnboarding failed: $e');
+    }
+  }
 }
 
 final userProfileProvider =

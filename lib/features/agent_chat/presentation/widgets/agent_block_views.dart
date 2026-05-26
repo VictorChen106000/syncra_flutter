@@ -1733,7 +1733,9 @@ class _OnboardingCompleteBlockViewState
         .completeOnboarding(widget.block.id);
     if (!mounted) return;
     // The router's auth refresh will redirect away from /onboarding once the
-    // role is written, but go() is faster and gives a deterministic landing.
+    // hasCompletedOnboarding flag flips. An explicit go() here just makes the
+    // landing deterministic if the redirect runs a microtask late — both
+    // paths arrive at the dashboard and the router is idempotent.
     context.go(RouteNames.dashboard);
   }
 
