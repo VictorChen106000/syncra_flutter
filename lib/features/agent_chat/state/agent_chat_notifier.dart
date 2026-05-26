@@ -443,9 +443,6 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
       // they navigate to a different surface.
       originRoutes: const {
         RouteNames.agentChat,
-        RouteNames.tailor,
-        RouteNames.review,
-        RouteNames.submitted,
         RouteNames.resumes,
         RouteNames.resumePreview,
       },

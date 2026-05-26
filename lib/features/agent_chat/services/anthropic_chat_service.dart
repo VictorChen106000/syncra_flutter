@@ -225,7 +225,7 @@ Progress and style:
               if (handler == null) {
                 yield ToolCallCompleted(
                   blockId: toolBlock.id,
-                  summary: 'Not implemented yet',
+                  summary: 'Tool unavailable',
                   status: ToolCallStatus.failed,
                   detail: _formatToolDetail(
                     input,

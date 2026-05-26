@@ -12,10 +12,6 @@ class RouteNames {
   static const String agentChat = '/agent-chat';
   static const String jobs = '/jobs';
   static const String profile = '/profile';
-  static const String detail = '/jobs/detail';
-  static const String tailor = '/jobs/tailor';
-  static const String review = '/jobs/review';
-  static const String submitted = '/jobs/submitted';
   static const String applications = '/applications';
   static const String notifications = '/notifications';
 }

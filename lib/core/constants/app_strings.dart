@@ -75,26 +75,6 @@ class AppStrings {
   static const String notificationsTitle = 'Notifications';
   static const String markAllRead = 'Mark all read';
 
-  // Detail / Tailor / Review / Submitted
-  static const String matchAnalysis = 'Match analysis';
-  static const String requirementChecklist = 'Requirement checklist';
-  static const String resumeChanges = 'Recommended resume changes';
-  static const String executeApplication = 'Execute Application';
-  static const String tailorResume = 'Tailor Resume';
-  static const String before = 'Before';
-  static const String after = 'After';
-  static const String keywordsAdded = 'Keywords added';
-  static const String acceptChanges = 'Accept Changes';
-  static const String editChanges = 'Edit Changes';
-  static const String revertToOriginal = 'Revert to Original Resume';
-  static const String reviewApplication = 'Review Application';
-  static const String reviewSubtitle = 'You are always in control';
-  static const String approveAndAutoApply = 'Approve & Auto Apply';
-  static const String applicationSubmitted = 'Application submitted';
-  static const String backToHome = 'Back to Home';
-  static const String trackApplication = 'Track Application';
-  static const String undoSubmission = 'Undo Submission';
-
   // Profile
   static const String profileTitle = 'Settings';
   static const String careerPipeline = 'Career Pipeline';
