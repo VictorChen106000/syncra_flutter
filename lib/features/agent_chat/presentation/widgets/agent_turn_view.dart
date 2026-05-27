@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/utils/motion.dart';
-import '../../../../shared/widgets/reasoning_gooey.dart';
 import '../../models/agent_block.dart';
 import '../../models/chat_message.dart';
 import '../../state/agent_chat_notifier.dart';
@@ -90,8 +89,8 @@ class AgentTurnView extends StatelessWidget {
             ),
           ],
           if (turn.isStreaming && segments.isEmpty) ...[
-            const SizedBox(height: 8),
-            const Center(child: ReasoningGooey()),
+            const SizedBox(height: 4),
+            const _BouncingDots(),
           ],
           if (turn.status == AgentTurnStatus.failed) ...[
             const SizedBox(height: 10),
@@ -884,3 +883,38 @@ class _ThinkingLabel extends StatelessWidget {
   }
 }
 
+/// Three muted dots that bounce in sequence — the chat's "agent is about to
+/// stream" indicator while the active turn hasn't yielded a first segment
+/// yet. Deliberately small + quiet so it disappears the moment any real
+/// content lands.
+class _BouncingDots extends StatelessWidget {
+  const _BouncingDots();
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(3, (i) {
+        return Padding(
+          padding: EdgeInsets.only(right: i < 2 ? 6 : 0),
+          child: Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: brand.textMuted.withValues(alpha: 0.55),
+            ),
+          )
+              .animate(
+                onPlay: repeatIfMotion(context),
+                delay: (i * 180).ms,
+              )
+              .moveY(begin: 0, end: -3, duration: 380.ms, curve: Curves.easeOut)
+              .then()
+              .moveY(begin: -3, end: 0, duration: 380.ms, curve: Curves.easeIn),
+        );
+      }),
+    );
+  }
+}

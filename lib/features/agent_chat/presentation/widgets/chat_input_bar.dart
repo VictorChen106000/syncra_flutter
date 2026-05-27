@@ -208,7 +208,7 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                       hintText: streaming
                           ? 'Syncra is working…'
                           : (isOnboarding
-                                ? 'What role are you aiming for?'
+                                ? 'Brainstorm with me…'
                                 : 'Message Syncra'),
                       hintStyle: TextStyle(
                         color: brand.textSoft,

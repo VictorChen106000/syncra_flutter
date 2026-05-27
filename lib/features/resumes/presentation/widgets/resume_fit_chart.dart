@@ -4,126 +4,114 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/brand_theme.dart';
 import '../../models/resume_fit.dart';
 
-/// Card that renders a [ResumeFit] as a donut pie + interactive legend.
+/// Minimalist donut chart for a [ResumeFit] snapshot. Used in two surfaces:
+///   * the agent chat transcript when `propose_fit_chart` lands
+///   * the dashboard's chart view
 ///
-/// Used in two places:
-///   * `FitChartBlockView` (chat transcript) — the agent's onboarding chart
-///     drops into the chat the moment it emits `propose_fit_chart`.
-///   * The dashboard's "Chart" view — the persisted resume-fit snapshot on
-///     `users/{uid}.resume_fit` is re-rendered here so the user can revisit
-///     the read without re-uploading their resume.
-///
-/// Tapping a slice or a legend row focuses that segment: the slice puffs out
-/// and its rationale (if any) expands inline under the row.
+/// Visual contract:
+///   - No header, no surface chrome — the chart sits flush against whatever
+///     the parent gives it.
+///   - Gradient-green palette: the dominant slice is brand lime, successive
+///     slices step toward a deep forest green so dominance reads at a glance.
+///   - The agent's `headline` + `recommendation` are hidden by default.
+///     Tap the donut to reveal them with a smooth expand; tap again to hide.
 class ResumeFitChart extends StatefulWidget {
-  const ResumeFitChart({
-    super.key,
-    required this.fit,
-    this.title = 'Resume fit',
-    this.showHeader = true,
-    this.elevated = true,
-  });
+  const ResumeFitChart({super.key, required this.fit});
 
   final ResumeFit fit;
-
-  /// Small caps header shown above the headline. Hidden when [showHeader] is
-  /// false — the dashboard suppresses it because its own section title is
-  /// already in the segmented control.
-  final String title;
-  final bool showHeader;
-
-  /// When true, paints a surface + border + shadow around the card. The
-  /// dashboard variant turns this off so the chart sits flush against the
-  /// dashboard's own card chrome.
-  final bool elevated;
 
   @override
   State<ResumeFitChart> createState() => _ResumeFitChartState();
 }
 
 class _ResumeFitChartState extends State<ResumeFitChart> {
-  int _touchedIndex = -1;
+  /// When true, the headline (above the chart) and the recommendation (below
+  /// it) are revealed. Toggled by a tap on the donut.
+  bool _revealed = false;
 
-  List<Color> _palette(BrandTheme brand) => [
-        brand.ink,
-        brand.accent,
-        brand.textMuted,
-        brand.border,
-        brand.surfaceMuted,
-      ];
+  /// Deep forest green the gradient terminates at. Kept private here so the
+  /// chart's palette is self-contained; tweaking it doesn't ripple through
+  /// the app's brand theme.
+  static const Color _deepGreen = Color(0xFF1E4D14);
+
+  List<Color> _palette(BrandTheme brand) {
+    final base = brand.accent;
+    return [
+      base,
+      Color.lerp(base, _deepGreen, 0.28)!,
+      Color.lerp(base, _deepGreen, 0.52)!,
+      Color.lerp(base, _deepGreen, 0.72)!,
+      Color.lerp(base, _deepGreen, 0.88)!,
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
     final segments = widget.fit.segments;
     final palette = _palette(brand);
+    final hasMeta = widget.fit.headline != null ||
+        widget.fit.recommendation != null;
 
-    final content = Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (widget.showHeader)
-          Row(
-            children: [
-              Icon(Icons.donut_small_rounded, size: 16, color: brand.ink),
-              const SizedBox(width: 6),
-              Text(
-                widget.title,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.4,
-                  color: brand.ink,
+        // Headline reveals above the donut so the eye lands on it first
+        // when the user expands. AnimatedSize handles the height delta;
+        // AnimatedOpacity fades the text so it doesn't pop.
+        ClipRect(
+          child: AnimatedAlign(
+            alignment: Alignment.topCenter,
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            heightFactor: _revealed && widget.fit.headline != null ? 1 : 0,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: AnimatedOpacity(
+                opacity: _revealed && widget.fit.headline != null ? 1 : 0,
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOut,
+                child: Text(
+                  widget.fit.headline ?? '',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    height: 1.35,
+                    color: brand.ink,
+                    letterSpacing: -0.1,
+                  ),
                 ),
               ),
-            ],
-          ),
-        if (widget.fit.headline != null) ...[
-          if (widget.showHeader) const SizedBox(height: 10),
-          Text(
-            widget.fit.headline!,
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              height: 1.35,
-              color: brand.ink,
-              letterSpacing: -0.1,
             ),
           ),
-        ],
-        const SizedBox(height: 14),
+        ),
         LayoutBuilder(
           builder: (context, constraints) {
             final stacked = constraints.maxWidth < 340;
             final chart = AspectRatio(
               aspectRatio: 1,
-              child: PieChart(
-                PieChartData(
-                  pieTouchData: PieTouchData(
-                    touchCallback: (event, response) {
-                      setState(() {
-                        if (!event.isInterestedForInteractions ||
-                            response == null ||
-                            response.touchedSection == null) {
-                          _touchedIndex = -1;
-                          return;
-                        }
-                        _touchedIndex =
-                            response.touchedSection!.touchedSectionIndex;
-                      });
-                    },
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: hasMeta
+                    ? () => setState(() => _revealed = !_revealed)
+                    : null,
+                child: PieChart(
+                  PieChartData(
+                    // No touch focus — the whole donut is a single tap target
+                    // for the reveal interaction so the gesture stays
+                    // unambiguous.
+                    pieTouchData: PieTouchData(enabled: false),
+                    borderData: FlBorderData(show: false),
+                    sectionsSpace: 2,
+                    centerSpaceRadius: 38,
+                    sections: [
+                      for (var i = 0; i < segments.length; i++)
+                        _sectionFor(
+                          segments[i],
+                          palette[i % palette.length],
+                        ),
+                    ],
                   ),
-                  borderData: FlBorderData(show: false),
-                  sectionsSpace: 2,
-                  centerSpaceRadius: 36,
-                  sections: [
-                    for (var i = 0; i < segments.length; i++)
-                      _sectionFor(
-                        segments[i],
-                        palette[i % palette.length],
-                        touched: i == _touchedIndex,
-                        brand: brand,
-                      ),
-                  ],
                 ),
               ),
             );
@@ -135,12 +123,8 @@ class _ResumeFitChartState extends State<ResumeFitChart> {
                   _LegendRow(
                     segment: segments[i],
                     color: palette[i % palette.length],
-                    focused: i == _touchedIndex,
-                    onTap: () => setState(() {
-                      _touchedIndex = _touchedIndex == i ? -1 : i;
-                    }),
                   ),
-                  if (i != segments.length - 1) const SizedBox(height: 8),
+                  if (i != segments.length - 1) const SizedBox(height: 10),
                 ],
               ],
             );
@@ -148,195 +132,139 @@ class _ResumeFitChartState extends State<ResumeFitChart> {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  SizedBox(height: 160, child: Center(child: chart)),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 168, child: Center(child: chart)),
+                  const SizedBox(height: 16),
                   legend,
                 ],
               );
             }
             return SizedBox(
-              height: 160,
+              height: 168,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  SizedBox(width: 160, child: chart),
-                  const SizedBox(width: 16),
+                  SizedBox(width: 168, child: chart),
+                  const SizedBox(width: 20),
                   Expanded(child: legend),
                 ],
               ),
             );
           },
         ),
-        if (widget.fit.recommendation != null) ...[
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-            decoration: BoxDecoration(
-              color: brand.surfaceMuted,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: brand.border),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.auto_awesome_rounded,
-                  size: 14,
-                  color: brand.accent,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    widget.fit.recommendation!,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: brand.ink,
-                      height: 1.4,
-                      letterSpacing: -0.1,
-                    ),
+        // Recommendation reveals below the chart with the same animation
+        // contract as the headline. Sits in a quiet pill so the agent's
+        // nudge reads as a sticky-note, not body copy.
+        ClipRect(
+          child: AnimatedAlign(
+            alignment: Alignment.topCenter,
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            heightFactor:
+                _revealed && widget.fit.recommendation != null ? 1 : 0,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 14),
+              child: AnimatedOpacity(
+                opacity:
+                    _revealed && widget.fit.recommendation != null ? 1 : 0,
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOut,
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  decoration: BoxDecoration(
+                    color: brand.accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.auto_awesome_rounded,
+                        size: 14,
+                        color: _deepGreen,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          widget.fit.recommendation ?? '',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: brand.ink,
+                            height: 1.4,
+                            letterSpacing: -0.1,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
+              ),
             ),
           ),
-        ],
+        ),
       ],
-    );
-
-    if (!widget.elevated) return content;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-      decoration: BoxDecoration(
-        color: brand.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: brand.border),
-        boxShadow: [
-          BoxShadow(
-            color: brand.shadow.withValues(alpha: 0.10),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: content,
     );
   }
 
-  PieChartSectionData _sectionFor(
-    ResumeFitSegment segment,
-    Color color, {
-    required bool touched,
-    required BrandTheme brand,
-  }) {
-    final radius = touched ? 64.0 : 54.0;
-    final fontSize = touched ? 14.0 : 11.0;
-    final percent = segment.percent.round();
+  PieChartSectionData _sectionFor(ResumeFitSegment segment, Color color) {
     return PieChartSectionData(
       color: color,
       value: segment.percent,
-      radius: radius,
-      title: '$percent%',
-      titleStyle: TextStyle(
-        fontSize: fontSize,
-        fontWeight: FontWeight.w900,
-        color: brand.inkInverse,
-        letterSpacing: -0.1,
-      ),
+      radius: 56,
+      // Titles inside slices removed — percentages live in the legend so the
+      // donut itself stays clean (and so the tap-target reads as "tap the
+      // shape" rather than "tap one of these numbers").
+      showTitle: false,
     );
   }
 }
 
 class _LegendRow extends StatelessWidget {
-  const _LegendRow({
-    required this.segment,
-    required this.color,
-    required this.focused,
-    required this.onTap,
-  });
+  const _LegendRow({required this.segment, required this.color});
 
   final ResumeFitSegment segment;
   final Color color;
-  final bool focused;
-  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
     final percent = segment.percent.round();
-    final hasRationale =
-        segment.rationale != null && segment.rationale!.isNotEmpty;
-    return Material(
-      color: focused ? brand.surfaceMuted : Colors.transparent,
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(6, 6, 8, 6),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                margin: const EdgeInsets.only(top: 4),
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            segment.label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              color: brand.ink,
-                              letterSpacing: -0.1,
-                            ),
-                          ),
-                        ),
-                        Text(
-                          '$percent%',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
-                            color: brand.textMuted,
-                            letterSpacing: -0.1,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (focused && hasRationale) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        segment.rationale!,
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w500,
-                          color: brand.textMuted,
-                          height: 1.35,
-                          letterSpacing: -0.05,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
           ),
         ),
-      ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            segment.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: brand.ink,
+              letterSpacing: -0.1,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          '$percent%',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            color: brand.textMuted,
+            letterSpacing: -0.1,
+          ),
+        ),
+      ],
     );
   }
 }

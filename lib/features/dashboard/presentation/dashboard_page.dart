@@ -27,7 +27,6 @@ import '../../auth/state/auth_notifier.dart';
 import '../../auth/state/user_profile_notifier.dart';
 import '../../notifications/presentation/notifications_drawer.dart';
 import '../../notifications/state/notifications_notifier.dart';
-import '../../resumes/models/resume_fit.dart';
 import '../../resumes/presentation/widgets/resume_fit_chart.dart';
 import '../../resumes/state/resume_notifier.dart';
 
@@ -177,8 +176,7 @@ class _Avatar extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 /// Switches the dashboard's hero area between the agent card fan (once the
-/// agent has built a pipeline) and a calm gooey-orb empty state.
-/// Which visualisation the user has picked for the agent section.
+/// agent has built a pipeline) and the resume-fit donut chart.
 enum _AgentView { cards, chart }
 
 class _AgentSection extends ConsumerStatefulWidget {
@@ -189,11 +187,24 @@ class _AgentSection extends ConsumerStatefulWidget {
 }
 
 class _AgentSectionState extends ConsumerState<_AgentSection> {
-  /// View selection is ephemeral — re-opening the dashboard always lands on
-  /// Cards. Persisting this across sessions would mean a user who skipped
-  /// onboarding gets dropped on an empty chart tab, which is worse than the
-  /// stable default.
-  _AgentView _view = _AgentView.cards;
+  /// User's manual choice, or null while the section is still auto-picking
+  /// a view. We auto-pick so the post-onboarding flow lands on the chart
+  /// (calm, informative) and then promotes itself to the card stack the
+  /// moment the brief produces a pipeline — without overriding a user who
+  /// has explicitly tapped the swap icon.
+  _AgentView? _override;
+
+  void _setView(_AgentView v) => setState(() => _override = v);
+
+  _AgentView _resolveView({required bool hasPipeline, required bool hasFit}) {
+    if (_override != null) return _override!;
+    // Pipeline takes precedence — that's the "work to do". Otherwise show
+    // the fit chart while the brief is still warming up so the user has
+    // something to read instead of an empty stage.
+    if (hasPipeline) return _AgentView.cards;
+    if (hasFit) return _AgentView.chart;
+    return _AgentView.cards;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -202,191 +213,117 @@ class _AgentSectionState extends ConsumerState<_AgentSection> {
     final resumeFit =
         ref.watch(userProfileProvider.select((p) => p?.resumeFit));
 
-    // Hide the toggle entirely while neither view has data — the dashboard
-    // collapses to its existing empty state and avoids surfacing a control
-    // whose Chart side would only ever read "no chart yet".
-    final canShowToggle = hasPipeline || resumeFit != null;
+    final view = _resolveView(
+      hasPipeline: hasPipeline,
+      hasFit: resumeFit != null,
+    );
 
+    // The swap icon is only meaningful when BOTH sides have something to show.
+    // Otherwise the dashboard collapses to whichever side has data, with no
+    // toggle (no need to offer a swap that lands on an empty state).
+    final canShowToggle = hasPipeline && resumeFit != null;
+
+    final Widget body;
+    if (view == _AgentView.chart && resumeFit != null) {
+      body = ResumeFitChart(fit: resumeFit);
+    } else if (hasPipeline) {
+      body = const _AgentCardStack();
+    } else {
+      body = const _DashboardAgentEmptyState();
+    }
+
+    if (!canShowToggle) return body;
+
+    // Toggle sits in a tight top-right slot so it reads as a control on the
+    // section, not its own surface. AnimatedSwitcher cross-fades the body so
+    // the swap doesn't snap.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (canShowToggle) ...[
-          _AgentViewToggle(
-            value: _view,
-            onChanged: (v) => setState(() => _view = v),
-            chartAvailable: resumeFit != null,
+        Align(
+          alignment: Alignment.centerRight,
+          child: _AgentViewSwap(
+            view: view,
+            onTap: () => _setView(
+              view == _AgentView.cards
+                  ? _AgentView.chart
+                  : _AgentView.cards,
+            ),
           ),
-          const SizedBox(height: 16),
-        ],
-        if (_view == _AgentView.cards)
-          hasPipeline
-              ? const _AgentCardStack()
-              : const _DashboardAgentEmptyState()
-        else
-          _AgentChartView(fit: resumeFit),
+        ),
+        const SizedBox(height: 8),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, anim) => FadeTransition(
+              opacity: anim,
+              child: child,
+            ),
+            child: KeyedSubtree(key: ValueKey(view), child: body),
+          ),
+        ),
       ],
     );
   }
 }
 
-/// Two-pill segmented control: "Cards" / "Chart". The Chart pill softens
-/// when no resume-fit snapshot is available — the user can still tap it, but
-/// the body explains the empty state instead of pretending to have data.
-class _AgentViewToggle extends StatelessWidget {
-  const _AgentViewToggle({
-    required this.value,
-    required this.onChanged,
-    required this.chartAvailable,
-  });
+/// Single-icon swap control anchored to the top-right of the agent section.
+/// Tapping flips the view; the icon morphs (cards ↔ donut) to telegraph what
+/// the *next* tap will reveal — i.e. it shows the OTHER view's icon, not the
+/// current one. Matches how iOS Photos / Apple Music phrase their view
+/// toggles.
+class _AgentViewSwap extends StatelessWidget {
+  const _AgentViewSwap({required this.view, required this.onTap});
 
-  final _AgentView value;
-  final ValueChanged<_AgentView> onChanged;
-  final bool chartAvailable;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: brand.surfaceMuted,
-        borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: brand.border),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _ToggleSegment(
-              label: 'Cards',
-              icon: Icons.style_rounded,
-              selected: value == _AgentView.cards,
-              dimmed: false,
-              onTap: () => onChanged(_AgentView.cards),
-            ),
-          ),
-          Expanded(
-            child: _ToggleSegment(
-              label: 'Chart',
-              icon: Icons.donut_small_rounded,
-              selected: value == _AgentView.chart,
-              dimmed: !chartAvailable,
-              onTap: () => onChanged(_AgentView.chart),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ToggleSegment extends StatelessWidget {
-  const _ToggleSegment({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.dimmed,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final bool dimmed;
+  final _AgentView view;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final bg = selected ? brand.ink : Colors.transparent;
-    final fg = selected
-        ? brand.inkInverse
-        : (dimmed ? brand.textSoft : brand.ink);
-    return Material(
-      color: bg,
-      borderRadius: BorderRadius.circular(99),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(99),
-        child: Container(
-          height: 36,
-          alignment: Alignment.center,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 15, color: fg),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: fg,
-                  letterSpacing: -0.1,
-                ),
+    final showingCards = view == _AgentView.cards;
+    final nextIcon =
+        showingCards ? Icons.donut_small_rounded : Icons.style_rounded;
+    final nextLabel = showingCards ? 'Show chart' : 'Show cards';
+    return Tooltip(
+      message: nextLabel,
+      child: Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(),
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: brand.surfaceMuted,
+            ),
+            alignment: Alignment.center,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              switchInCurve: Curves.easeOutCubic,
+              transitionBuilder: (child, anim) => RotationTransition(
+                turns: Tween<double>(begin: 0.85, end: 1).animate(anim),
+                child: FadeTransition(opacity: anim, child: child),
               ),
-            ],
+              child: Icon(
+                nextIcon,
+                key: ValueKey(nextIcon),
+                size: 18,
+                color: brand.ink,
+              ),
+            ),
           ),
         ),
       ),
     );
-  }
-}
-
-/// Dashboard variant of the resume-fit chart. Wraps the shared
-/// [ResumeFitChart] widget when a snapshot exists; otherwise surfaces an
-/// empty-state card that explains the chart appears once the agent has read
-/// the user's resume.
-class _AgentChartView extends StatelessWidget {
-  const _AgentChartView({required this.fit});
-
-  final ResumeFit? fit;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    if (fit == null) {
-      return Container(
-        padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
-        decoration: BoxDecoration(
-          color: brand.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: brand.border),
-        ),
-        child: Column(
-          children: [
-            Icon(
-              Icons.donut_large_outlined,
-              size: 36,
-              color: brand.textMuted,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'No resume fit yet',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w900,
-                color: brand.ink,
-                letterSpacing: -0.1,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              "Upload your resume during onboarding and I'll show "
-              "which role categories you read strongest for.",
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: brand.textMuted,
-                height: 1.4,
-                letterSpacing: -0.1,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-    return ResumeFitChart(fit: fit!, showHeader: false);
   }
 }
 

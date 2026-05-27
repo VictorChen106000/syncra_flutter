@@ -14,7 +14,8 @@ import '../services/anthropic_service.dart';
 import '../../agent_chat/models/agent_block.dart';
 import '../../agent_chat/services/agent_service.dart';
 import '../../agent_chat/services/anthropic_chat_service.dart';
-import '../../agent_chat/state/agent_chat_notifier.dart';
+import '../../agent_chat/tools/builtin_tools.dart';
+import '../../agent_chat/tools/tool_registry.dart';
 import '../../notifications/state/notifications_notifier.dart';
 
 /// Lifecycle of the agent's passive job-discovery brief.
@@ -146,6 +147,24 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
   final JobsRepository _jobsRepository;
   final PipelineRepository _pipelineRepository;
 
+  /// The brief's own agentic-loop service. Built lazily and reused across
+  /// briefs. Critically NOT shared with the chat's `agentServiceProvider` —
+  /// that one rebuilds with the onboarding tool registry while
+  /// `agentChatModeProvider` is `onboarding`, so a brief kicked off from
+  /// `completeOnboarding` would inherit the stripped-down tool set and hang
+  /// trying to call `search_jobs` (which doesn't exist there). Owning our
+  /// own service keeps the brief running the full job arsenal regardless of
+  /// what mode the chat happens to be in.
+  AnthropicChatService? _briefService;
+
+  AnthropicChatService _ensureBriefService() {
+    final existing = _briefService;
+    if (existing != null) return existing;
+    final registry = ToolRegistry();
+    registerBuiltinTools(registry);
+    return _briefService = AnthropicChatService(registry: registry);
+  }
+
   @override
   PassiveAgentState build() {
     ref.onDispose(() {
@@ -186,11 +205,11 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
   Future<void> runBrief({String? query}) async {
     if (state.isRunning) return;
 
-    final service = ref.read(agentServiceProvider);
+    final service = _ensureBriefService();
     final effectiveQuery =
         (query == null || query.trim().isEmpty) ? _defaultBriefQuery : query.trim();
 
-    if (service is AnthropicChatService && service.hasApiKey) {
+    if (service.hasApiKey) {
       await _runAgentBrief(service, query: effectiveQuery);
       return;
     }

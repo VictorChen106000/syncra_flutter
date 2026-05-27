@@ -296,21 +296,22 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     }
     if (context.failed) {
       final reason = context.failureMessage ?? "I couldn't read that file";
-      return "$greeting $reason. No worries — just tell me the role you're "
-          "aiming for and we'll start with that.";
+      return "$greeting $reason. No worries — tell me what kind of work "
+          "you're drawn to and we'll start there.";
     }
     final resume = context.resume;
     if (resume != null) {
       final headline = _resumeHeadline(resume);
       if (headline.isNotEmpty) {
         return "$greeting I read your resume — $headline. "
-            "One quick question and we're in.";
+            "Tell me where you want to take it and we're set.";
       }
-      return "$greeting I read your resume. One quick question and we're in.";
+      return "$greeting I read your resume. Tell me where you want to "
+          "take it and we're set.";
     }
-    return "$greeting I'm Syncra — I'll help you find, tailor, and apply to "
-        "roles. Drop your resume below (tap the + to upload) and I'll tailor "
-        "everything to you. No resume yet? Just say 'skip'.";
+    return "$greeting I'm Syncra. Brainstorm with me — what kind of work "
+        "are you drawn to next? Or drop your resume below (tap the +) and "
+        "I'll start from what's already there.";
   }
 
   /// One-line "what I see" headline drawn from the parsed resume — fed into
