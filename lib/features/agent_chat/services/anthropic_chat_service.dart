@@ -343,7 +343,7 @@ Progress and style:
               } catch (e) {
                 yield ToolCallCompleted(
                   blockId: toolBlock.id,
-                  summary: 'Failed: ${_shortError(e)}',
+                  summary: 'Error',
                   status: ToolCallStatus.failed,
                   detail: _formatToolDetail(input, output: 'Error: $e'),
                 );

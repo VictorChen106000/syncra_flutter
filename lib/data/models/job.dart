@@ -33,9 +33,9 @@ class Job {
   /// UI used to show a numeric `${matchScore}%` — the raw score still drives
   /// sort order behind the scenes, but the user only ever sees this label.
   String get matchLabel => switch (category) {
-        JobCategory.ready => 'Strong match',
-        JobCategory.inputNeeded => 'Partial match',
-        JobCategory.exploration => 'Stretch',
+        JobCategory.ready => 'Fully match',
+        JobCategory.inputNeeded => 'Several match',
+        JobCategory.exploration => 'No match',
       };
 
   factory Job.fromJson(Map<String, dynamic> json) => Job(

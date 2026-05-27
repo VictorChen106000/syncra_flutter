@@ -507,7 +507,7 @@ class _SwipeDismissible extends StatelessWidget {
 }
 
 /// Categorical match pill that replaced the old numeric ring. Reads its
-/// label off [Job.matchLabel] — "Strong match" / "Partial match" / "Stretch"
+/// label off [Job.matchLabel] — "Fully match" / "Several match" / "No match"
 /// — so the user never sees a percent.
 class _MatchPill extends StatelessWidget {
   const _MatchPill({required this.label, required this.color});
