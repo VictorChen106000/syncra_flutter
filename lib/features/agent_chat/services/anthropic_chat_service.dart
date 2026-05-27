@@ -754,13 +754,8 @@ Progress and style:
                 ))
             .toList();
 
-    final headline = (input['headline'] as String?)?.trim();
-    final recommendation = (input['recommendation'] as String?)?.trim();
     final fit = ResumeFit(
       segments: normalised,
-      headline: (headline?.isEmpty ?? true) ? null : headline,
-      recommendation:
-          (recommendation?.isEmpty ?? true) ? null : recommendation,
       generatedAt: DateTime.now(),
     );
     return FitChartBlock(id: id, fit: fit);

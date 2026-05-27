@@ -1,9 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-/// Persisted snapshot of the agent's read on the user's resume — which role
-/// categories it weights toward, plus an optional headline and one
-/// recommendation. Lives under `users/{uid}.resume_fit` so the dashboard can
-/// re-render the chart any time without a fresh agent call.
+/// Persisted snapshot of the agent's read on the user's resume — the
+/// role-category breakdown the donut chart renders. Lives under
+/// `users/{uid}.resume_fit` so the dashboard can re-render the chart any
+/// time without a fresh agent call.
 ///
 /// Produced during onboarding via the `propose_fit_chart` tool; refreshed
 /// whenever the user runs onboarding again with a different resume.
@@ -11,30 +11,18 @@ class ResumeFit {
   const ResumeFit({
     required this.segments,
     required this.generatedAt,
-    this.headline,
-    this.recommendation,
   });
 
   /// Biggest-first list of category slices. Normalised so percents sum to
   /// ~100 — the chart renderer doesn't need to defend against drift.
   final List<ResumeFitSegment> segments;
 
-  /// One-line read of the chart, written by the agent
-  /// ("Reads strongest for backend with a real AI lean.").
-  final String? headline;
-
-  /// Optional follow-up nudge surfaced under the chart
-  /// ("Aim Senior Backend at AI-first teams.").
-  final String? recommendation;
-
-  /// When this snapshot was produced — drives the dashboard "Updated …" line
+  /// When this snapshot was produced. Drives the dashboard "Updated …" line
   /// so a stale fit (different resume since) is at least dateable.
   final DateTime generatedAt;
 
   Map<String, dynamic> toJson() => {
         'segments': segments.map((s) => s.toJson()).toList(),
-        if (headline != null) 'headline': headline,
-        if (recommendation != null) 'recommendation': recommendation,
         'generated_at': Timestamp.fromDate(generatedAt),
       };
 
@@ -48,13 +36,6 @@ class ResumeFit {
     final genAt = json['generated_at'];
     return ResumeFit(
       segments: segments,
-      headline: (json['headline'] as String?)?.trim().isEmpty ?? true
-          ? null
-          : (json['headline'] as String).trim(),
-      recommendation:
-          (json['recommendation'] as String?)?.trim().isEmpty ?? true
-              ? null
-              : (json['recommendation'] as String).trim(),
       generatedAt: genAt is Timestamp
           ? genAt.toDate()
           : (genAt is DateTime ? genAt : DateTime.now()),

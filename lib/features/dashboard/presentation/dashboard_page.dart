@@ -56,15 +56,31 @@ class DashboardPage extends ConsumerWidget {
             children: [
               _DashboardHeader(),
               Expanded(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(
-                    AppConstants.screenHorizontalPadding,
-                    12,
-                    AppConstants.screenHorizontalPadding,
-                    _kFloatingAreaReservedHeight,
-                  ),
-                  child: const _AgentSection(),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // ConstrainedBox lets the scroll child stretch to the
+                    // visible viewport — without it, a Center inside the
+                    // _AgentSection would collapse to the chart's intrinsic
+                    // height and hug the profile header instead of sitting
+                    // optically between header and floating input area.
+                    final minBodyHeight = (constraints.maxHeight
+                            - 12
+                            - _kFloatingAreaReservedHeight)
+                        .clamp(0.0, double.infinity);
+                    return SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(
+                        AppConstants.screenHorizontalPadding,
+                        12,
+                        AppConstants.screenHorizontalPadding,
+                        _kFloatingAreaReservedHeight,
+                      ),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(minHeight: minBodyHeight),
+                        child: const _AgentSection(),
+                      ),
+                    );
+                  },
                 ),
               ),
             ],
@@ -225,7 +241,10 @@ class _AgentSectionState extends ConsumerState<_AgentSection> {
 
     final Widget body;
     if (view == _AgentView.chart && resumeFit != null) {
-      body = ResumeFitChart(fit: resumeFit);
+      // Center vertically in the scroll viewport (the parent ConstrainedBox
+      // gives us the full height to work with) so the donut sits optically
+      // between the profile header and the floating input area.
+      body = Center(child: ResumeFitChart(fit: resumeFit));
     } else if (hasPipeline) {
       body = const _AgentCardStack();
     } else {

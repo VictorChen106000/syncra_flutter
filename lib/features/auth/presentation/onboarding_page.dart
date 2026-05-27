@@ -41,6 +41,15 @@ class OnboardingPage extends ConsumerStatefulWidget {
 class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   final ScrollController _scrollController = ScrollController();
 
+  /// Cached notifier references captured during the post-frame init pass.
+  /// They're held here so [dispose] can mutate them WITHOUT touching `ref`
+  /// — Riverpod considers `ref` unsafe once the widget is deactivating
+  /// (throws "Using `ref` when a widget is about to or has been unmounted").
+  /// The captured notifiers themselves persist for the ProviderContainer's
+  /// lifetime, so calling methods on them after dispose is safe.
+  AgentChatModeNotifier? _chatModeNotifier;
+  OnboardingResumeContextNotifier? _resumeContextNotifier;
+
   @override
   void initState() {
     super.initState();
@@ -51,7 +60,11 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     // jobs-mode for a single frame, then the onboarding rebuild lands.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      ref.read(agentChatModeProvider.notifier).set(AgentChatMode.onboarding);
+      // Capture the notifiers now so dispose can use them without `ref`.
+      _chatModeNotifier = ref.read(agentChatModeProvider.notifier);
+      _resumeContextNotifier =
+          ref.read(onboardingResumeContextProvider.notifier);
+      _chatModeNotifier!.set(AgentChatMode.onboarding);
       _maybeIngestExistingResume();
     });
   }
@@ -79,24 +92,12 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   @override
   void dispose() {
     _scrollController.dispose();
-    // Return the chat to normal mode so the next surface that opens the
-    // chatbot (dashboard, job thread, …) gets the full job arsenal — but
-    // only if the user is still signed in. After a sign-out the auth/profile
-    // cascade is already rebuilding everything; piling another mode flip on
-    // top is just noise (and risks racing with the login route's own setup).
-    final stillSignedIn = ref.read(authProvider).isSignedIn;
-    if (stillSignedIn) {
-      // microtask defers past the current frame so we don't mutate a provider
-      // mid-build during a route transition.
-      Future.microtask(() {
-        ref.read(agentChatModeProvider.notifier).set(AgentChatMode.jobs);
-        // Drop the cached parsed resume so the next time this surface opens
-        // (a second onboarding for the same user, or a sign-in after Skip)
-        // starts from a clean slate instead of an opener grounded in a
-        // resume the user may have since deleted.
-        ref.read(onboardingResumeContextProvider.notifier).reset();
-      });
-    }
+    // Use the captured notifiers — `ref` is unsafe here. If the init
+    // post-frame never ran (the widget mounted and unmounted in the same
+    // frame), the notifiers are null and we skip; there's nothing to undo
+    // because the mode was never flipped in the first place.
+    _chatModeNotifier?.set(AgentChatMode.jobs);
+    _resumeContextNotifier?.reset();
     super.dispose();
   }
 

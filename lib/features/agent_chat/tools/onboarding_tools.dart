@@ -26,11 +26,9 @@ void registerOnboardingTools(ToolRegistry registry) {
           'Pick 3 to 5 buckets relevant to what you see (e.g. "Backend '
           'Engineering", "AI / ML", "DevOps", "Product"). Percentages should '
           'sum to ~100 and reflect the weight of evidence in their resume — '
-          'not a guess. Include a one-line headline ("Reads strongest for '
-          'backend with a real AI lean") and a single recommendation aimed at '
-          'their likely best target. The pie is informational; after it lands '
-          'you still need to call ask_user to confirm their target role and '
-          'then complete_onboarding.',
+          'not a guess. The chart is informational; after it lands you still '
+          'need to call ask_user to confirm their target role and then '
+          'complete_onboarding.',
       inputSchema: {
         'type': 'object',
         'properties': {
@@ -57,23 +55,13 @@ void registerOnboardingTools(ToolRegistry registry) {
                 'rationale': {
                   'type': 'string',
                   'description':
-                      'Optional one-line "why" the user can read on tap.',
+                      'Optional one-line "why this slice has this weight" — '
+                      'the user reads it when they tap that slice on the '
+                      'chart. Keep it short and specific to that category.',
                 },
               },
               'required': ['label', 'percent'],
             },
-          },
-          'headline': {
-            'type': 'string',
-            'description':
-                'One-line read of the chart ("Reads strongest for backend '
-                'with a real AI lean.") Under 90 chars.',
-          },
-          'recommendation': {
-            'type': 'string',
-            'description':
-                'Optional one-line nudge aimed at the dominant category '
-                '("Aim Senior Backend at AI-first teams."). Under 110 chars.',
           },
         },
         'required': ['segments'],
@@ -111,10 +99,6 @@ void registerOnboardingTools(ToolRegistry registry) {
         summary: 'Fit chart ready',
         data: {
           'segments': cleaned,
-          if ((args['headline'] as String?)?.trim().isNotEmpty ?? false)
-            'headline': (args['headline'] as String).trim(),
-          if ((args['recommendation'] as String?)?.trim().isNotEmpty ?? false)
-            'recommendation': (args['recommendation'] as String).trim(),
           // Tells the agent it should follow up — the chart is a beat, not
           // the end of the conversation.
           'next_step': 'ask_for_target_role',
@@ -199,12 +183,15 @@ ${_resumeBrief(resume)}
 Hard rules:
 - Keep every message short — 1-2 sentences, warm but not generic.
 - FIRST move: call `propose_fit_chart` with 3-5 role-category slices grounded
-  in what's in the resume above. Order biggest-first. Include a one-line
-  headline and a single recommendation. This is the "wow, it read it" beat.
+  in what's in the resume above. Order biggest-first. For each slice, include
+  a one-line `rationale` — the user reads it when they tap that slice on
+  the chart, so make it specific to that category.
 - SECOND move (same turn, after the chart tool returns): emit one short text
-  inviting them to brainstorm — e.g. "Your resume reads strongest for X.
-  Want to lean in there, or stretch toward something new?" — do NOT
-  re-summarise the chart.
+  that paraphrases what you inferred from the resume (level + focus + a
+  concrete detail) and ends with a single open question — e.g. "Reads like
+  senior backend, 6 years, last at Stripe — lean further in, or stretch
+  toward something new?" Confirmation of what you already see is cheaper
+  than collection; do NOT re-summarise the chart.
 - If the user replies with ANY target (even vague — "yeah, AI engineer" /
   "I want to manage people" / "same thing, just senior"), commit to it
   immediately by calling `complete_onboarding`. Take the most reasonable
@@ -214,6 +201,17 @@ Hard rules:
   `complete_onboarding` with that category as the role. Don't ask again.
 - Use `ask_user` at most ONCE during the whole conversation. After that,
   the next move MUST be `complete_onboarding` — no more questions.
+- NEVER ask about (these are captured later, in context, by the jobs-mode
+  agent — asking here turns onboarding into a form):
+    • location / remote preference
+    • salary or comp expectations
+    • years of experience or seniority specifics
+    • work authorization / visa
+    • notice period or search urgency
+    • industry vertical or company size
+    • specific skills to emphasize or downplay
+  If the user volunteers any of this, acknowledge it in one line and still
+  proceed straight to `complete_onboarding`.
 - You have no access to job search, tailoring, or email tools here. Don't
   promise to do any of that — the dashboard handles it once the user lands.
 ''';
@@ -238,6 +236,10 @@ Hard rules:
   seniority or industry; take what you get.
 - Use `ask_user` at most ONCE. After the answer, the next move MUST be
   `complete_onboarding`.
+- NEVER ask about location, salary, seniority specifics, work
+  authorization, notice period, industry vertical, company size, or
+  specific skills — those are captured later, in context, by the
+  jobs-mode agent. Asking here turns onboarding into a form.
 - Do NOT keep asking them to re-upload — they can do that later from the
   resumes screen.
 ''';
@@ -266,6 +268,10 @@ Hard rules:
   `complete_onboarding`. Do not push for clarification beyond one round.
 - Use `ask_user` at most ONCE. After the answer, the next move MUST be
   `complete_onboarding`.
+- NEVER ask about location, salary, seniority specifics, work
+  authorization, notice period, industry vertical, company size, or
+  specific skills — those are captured later, in context, by the
+  jobs-mode agent. Asking here turns onboarding into a form.
 - You have no access to job search, resume parsing, or email tools here.
   Don't promise to do any of that — the dashboard handles it once the user
   lands.
