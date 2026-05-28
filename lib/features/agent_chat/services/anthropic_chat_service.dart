@@ -657,11 +657,21 @@ Progress and style:
     final body = (data['body'] as String?)?.trim() ?? '';
     if (recipient.isEmpty || subject.isEmpty || body.isEmpty) return null;
 
+    // draft_email tailors the resume to the job and flags the PDF to attach;
+    // the view downloads the bytes by id. Absent (older results) → no file.
+    final attachmentId = (data['attachment_resume_id'] as String?)?.trim();
+    final attachmentName = (data['attachment_filename'] as String?)?.trim();
+
     return EmailDraftBlock(
       id: id,
       recipient: recipient,
       subject: subject,
       body: body,
+      attachmentResumeId:
+          (attachmentId == null || attachmentId.isEmpty) ? null : attachmentId,
+      attachmentFilename: (attachmentName == null || attachmentName.isEmpty)
+          ? null
+          : attachmentName,
     );
   }
 
