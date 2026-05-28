@@ -217,8 +217,14 @@ class GmailService {
   }
 
   /// Builds an RFC 2822 message and returns it base64url-encoded, the form
-  /// the Gmail `raw` field expects. Text and attachment parts are both
-  /// base64-encoded so UTF-8 bodies and binary PDFs survive transport.
+  /// the Gmail `raw` field expects.
+  ///
+  /// The body is always sent as a `multipart/alternative` (plain text + HTML)
+  /// so Gmail renders a properly formatted message — paragraphs and line
+  /// breaks survive — while text-only clients still get a readable copy. When
+  /// there are attachments, that alternative is nested inside a
+  /// `multipart/mixed` alongside the files. Every part is base64-encoded so
+  /// UTF-8 bodies and binary PDFs survive transport.
   String _buildMimeMessage({
     required String to,
     required String subject,
@@ -232,29 +238,31 @@ class GmailService {
       ..write('MIME-Version: 1.0$crlf');
 
     final message = StringBuffer();
+    final altBoundary = _boundary('alt');
     if (attachments.isEmpty) {
       message
         ..write(headers)
-        ..write('Content-Type: text/plain; charset="UTF-8"$crlf')
-        ..write('Content-Transfer-Encoding: base64$crlf')
+        ..write(
+            'Content-Type: multipart/alternative; boundary="$altBoundary"$crlf')
         ..write(crlf)
-        ..write(_chunk(base64.encode(utf8.encode(body))));
+        ..write(_alternativeBody(body, altBoundary));
     } else {
-      final boundary = 'syncra_${DateTime.now().microsecondsSinceEpoch}';
+      final mixedBoundary = _boundary('mixed');
       message
         ..write(headers)
-        ..write('Content-Type: multipart/mixed; boundary="$boundary"$crlf')
+        ..write(
+            'Content-Type: multipart/mixed; boundary="$mixedBoundary"$crlf')
         ..write(crlf)
-        ..write('--$boundary$crlf')
-        ..write('Content-Type: text/plain; charset="UTF-8"$crlf')
-        ..write('Content-Transfer-Encoding: base64$crlf')
+        ..write('--$mixedBoundary$crlf')
+        ..write(
+            'Content-Type: multipart/alternative; boundary="$altBoundary"$crlf')
         ..write(crlf)
-        ..write(_chunk(base64.encode(utf8.encode(body))))
+        ..write(_alternativeBody(body, altBoundary))
         ..write(crlf);
       for (final att in attachments) {
         final name = _encodeHeaderValue(att.filename);
         message
-          ..write('--$boundary$crlf')
+          ..write('--$mixedBoundary$crlf')
           ..write('Content-Type: ${att.mimeType}; name="$name"$crlf')
           ..write('Content-Transfer-Encoding: base64$crlf')
           ..write('Content-Disposition: attachment; filename="$name"$crlf')
@@ -262,11 +270,59 @@ class GmailService {
           ..write(_chunk(base64.encode(att.bytes)))
           ..write(crlf);
       }
-      message.write('--$boundary--');
+      message.write('--$mixedBoundary--');
     }
 
     return base64Url.encode(utf8.encode(message.toString()));
   }
+
+  /// A `multipart/alternative` section carrying the message as both plain text
+  /// and HTML. Returns the section's parts plus its closing delimiter — the
+  /// caller writes the enclosing `Content-Type: multipart/alternative` header.
+  String _alternativeBody(String body, String boundary) {
+    const crlf = '\r\n';
+    return (StringBuffer()
+          ..write('--$boundary$crlf')
+          ..write('Content-Type: text/plain; charset="UTF-8"$crlf')
+          ..write('Content-Transfer-Encoding: base64$crlf')
+          ..write(crlf)
+          ..write(_chunk(base64.encode(utf8.encode(body))))
+          ..write(crlf)
+          ..write('--$boundary$crlf')
+          ..write('Content-Type: text/html; charset="UTF-8"$crlf')
+          ..write('Content-Transfer-Encoding: base64$crlf')
+          ..write(crlf)
+          ..write(_chunk(base64.encode(utf8.encode(_bodyToHtml(body)))))
+          ..write(crlf)
+          ..write('--$boundary--$crlf'))
+        .toString();
+  }
+
+  /// A unique MIME boundary. The [tag] keeps the mixed/alternative boundaries
+  /// distinct even when minted in the same microsecond.
+  String _boundary(String tag) =>
+      'syncra_${tag}_${DateTime.now().microsecondsSinceEpoch}';
+
+  /// Renders a plain-text body as email-safe HTML so it reads like a normal
+  /// formatted Gmail message: blank lines become paragraphs, single newlines
+  /// become `<br>`. All text is HTML-escaped first.
+  String _bodyToHtml(String body) {
+    final paragraphs =
+        body.replaceAll('\r\n', '\n').trim().split(RegExp(r'\n{2,}'));
+    final blocks = paragraphs
+        .map((p) =>
+            '<p style="margin:0 0 12px;">${_escapeHtml(p).replaceAll('\n', '<br>')}</p>')
+        .join();
+    return '<!DOCTYPE html><html><body style="font-family:-apple-system,'
+        'Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:14px;'
+        'line-height:1.5;color:#1a1a1a;">$blocks</body></html>';
+  }
+
+  /// Escapes the five characters that would otherwise be parsed as HTML.
+  String _escapeHtml(String text) => text
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
 
   /// RFC 2047 encoded-word for non-ASCII header values (e.g. an emoji in the
   /// subject). Pure-ASCII values pass through untouched.

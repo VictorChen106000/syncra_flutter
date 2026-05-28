@@ -812,9 +812,12 @@ void _registerDraftEmail(
       name: 'draft_email',
       description:
           'Draft a cold outreach email for a job, optionally to a specific '
-          'recipient. Drafts against the resume identified by resume_id — '
-          'pass the tailored_resume_id from apply_resume_edits when available. '
-          'Returns { subject, body, recipient }. Does NOT send.',
+          'recipient. Tailors the resume to the job requirements and attaches '
+          'the tailored PDF to the draft (falls back to the original resume if '
+          'it is already a strong fit). Pass resume_id to choose the source '
+          'resume; defaults to the latest manual one. Returns '
+          '{ subject, body, recipient, attachment_resume_id, '
+          'attachment_filename, tailored }. Does NOT send.',
       inputSchema: {
         'type': 'object',
         'properties': {
@@ -857,18 +860,44 @@ void _registerDraftEmail(
       if (uid == null) {
         return ToolResult.error('Sign in to draft an email.');
       }
-      final resumeId = (args['resume_id'] as String?)?.trim();
+
+      // Resolve the source resume up front so we can both load its context and
+      // attach (the tailored copy of) it to the draft.
+      final providedResumeId = (args['resume_id'] as String?)?.trim();
+      final sourceResumeId =
+          (providedResumeId == null || providedResumeId.isEmpty)
+              ? await orchestrator.latestManualResumeId(uid)
+              : providedResumeId;
+      if (sourceResumeId == null || sourceResumeId.isEmpty) {
+        return ToolResult.error(
+          'No resume uploaded yet. Upload a resume so I can attach it.',
+        );
+      }
 
       final Map<String, dynamic> resumeJson;
       try {
         resumeJson = await _loadResumeContextForAgent(
           uid: uid,
           orchestrator: orchestrator,
-          resumeId: resumeId,
+          resumeId: sourceResumeId,
         );
       } catch (e) {
         return ToolResult.error(_shortToolError(e));
       }
+
+      // Tailor the original resume to this job and attach the tailored PDF.
+      // If the resume is already a strong fit (no edits proposed) or tailoring
+      // fails, we fall back to attaching the original — the draft still gets a
+      // resume either way. Nothing is sent here, so applying edits without the
+      // diff viewer is safe: the user reviews everything before saving/sending.
+      final attachment = await _tailorAndAttachForDraft(
+        uid: uid,
+        sourceResumeId: sourceResumeId,
+        resumeJson: resumeJson,
+        job: job,
+        paraphrase: paraphrase,
+        orchestrator: orchestrator,
+      );
 
       try {
         final draft = await paraphrase.draftColdEmail(
@@ -883,6 +912,9 @@ void _registerDraftEmail(
             'subject': draft['subject'],
             'body': draft['body'],
             'recipient': recipient,
+            'attachment_resume_id': attachment.resumeId,
+            'attachment_filename': attachment.filename,
+            'tailored': attachment.tailored,
           },
         );
       } catch (e) {
@@ -890,6 +922,84 @@ void _registerDraftEmail(
       }
     },
   );
+}
+
+/// The resume to attach to a drafted email — the tailored PDF when tailoring
+/// produced edits, otherwise the original.
+class _DraftAttachment {
+  const _DraftAttachment({
+    required this.resumeId,
+    required this.filename,
+    required this.tailored,
+  });
+
+  final String resumeId;
+  final String filename;
+  final bool tailored;
+}
+
+/// Tailors [sourceResumeId] to [job] and renders a new PDF when the resume can
+/// be improved for the role; returns that tailored resume to attach. When the
+/// resume already fits well (no edits) or tailoring fails, returns the original
+/// resume so the draft is never left without an attachment. Best-effort — a
+/// tailoring hiccup must not block the draft.
+Future<_DraftAttachment> _tailorAndAttachForDraft({
+  required String uid,
+  required String sourceResumeId,
+  required Map<String, dynamic> resumeJson,
+  required Job job,
+  required AnthropicParaphraseService paraphrase,
+  required ResumeTailorOrchestrator orchestrator,
+}) async {
+  final fallbackName = _resumeFileNameFor(job.company);
+  try {
+    final result = await paraphrase.tailorResume(
+      resumeJson: resumeJson,
+      job: job,
+    );
+    final edits = (result['proposed_edits'] as List? ?? const [])
+        .whereType<Map>()
+        .map((m) => ProposedEdit.fromJson(m.cast<String, dynamic>()))
+        .where((e) => e.isValid)
+        .toList();
+
+    // No edits → the resume is already a strong fit for the job; attach it.
+    if (edits.isEmpty) {
+      return _DraftAttachment(
+        resumeId: sourceResumeId,
+        filename: fallbackName,
+        tailored: false,
+      );
+    }
+
+    final applied = await orchestrator.applyEdits(
+      uid: uid,
+      resumeId: sourceResumeId,
+      acceptedEdits: edits,
+      jobId: job.id,
+    );
+    return _DraftAttachment(
+      resumeId: applied.file.id,
+      filename: applied.file.name,
+      tailored: true,
+    );
+  } catch (e) {
+    debugPrint('draft_email: auto-tailor failed, attaching original ($e)');
+    return _DraftAttachment(
+      resumeId: sourceResumeId,
+      filename: fallbackName,
+      tailored: false,
+    );
+  }
+}
+
+/// A friendly attachment filename for an untailored resume, e.g.
+/// `Acme_Resume.pdf`. Mirrors the orchestrator's tailored-file naming.
+String _resumeFileNameFor(String company) {
+  final safe = company
+      .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '_')
+      .replaceAll(RegExp(r'^_+|_+$'), '');
+  return safe.isEmpty ? 'Resume.pdf' : '${safe}_Resume.pdf';
 }
 
 JobCategory _jobCategoryFromWire(
