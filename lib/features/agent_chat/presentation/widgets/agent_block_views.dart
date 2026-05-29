@@ -13,7 +13,9 @@ import '../../../../core/utils/motion.dart';
 import '../../../../shared/state/running_task_notifier.dart';
 import '../../../../shared/widgets/gooey_orb.dart';
 import '../../models/agent_block.dart';
+import '../../state/agent_chat_mode.dart';
 import '../../state/agent_chat_notifier.dart';
+import '../../state/onboarding_resume_context.dart';
 import '../../../resumes/models/proposed_edit.dart';
 import '../../../resumes/presentation/tailored_preview_page.dart';
 import '../../../resumes/presentation/widgets/resume_fit_chart.dart';
@@ -1761,6 +1763,11 @@ class _OnboardingCompleteBlockViewState
     if (!mounted) return;
     _routeTimer = Timer(_dwell, () {
       if (!mounted) return;
+      // Flip the chat experience back to jobs BEFORE navigating, so the
+      // dashboard's "Ask Syncra" bar mounts already showing the jobs opener
+      // instead of briefly echoing the onboarding completion turn.
+      ref.read(agentChatModeProvider.notifier).set(AgentChatMode.jobs);
+      ref.read(onboardingResumeContextProvider.notifier).reset();
       context.go(RouteNames.dashboard);
     });
   }

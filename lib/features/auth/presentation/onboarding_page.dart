@@ -92,10 +92,11 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   @override
   void dispose() {
     _scrollController.dispose();
-    // Use the captured notifiers — `ref` is unsafe here. If the init
-    // post-frame never ran (the widget mounted and unmounted in the same
-    // frame), the notifiers are null and we skip; there's nothing to undo
-    // because the mode was never flipped in the first place.
+    // Fallback only: the Skip and Enter-Syncra paths flip the chat mode
+    // BEFORE navigating so the dashboard mounts with fresh state. We still
+    // catch dispose() so a back-button / sign-out exit doesn't leave the
+    // chat stuck in onboarding mode. `set` is idempotent — if those paths
+    // already flipped it, this is a no-op.
     _chatModeNotifier?.set(AgentChatMode.jobs);
     _resumeContextNotifier?.reset();
     super.dispose();
@@ -114,6 +115,12 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     if (dev.showOnboarding) {
       await ref.read(devFlagsProvider.notifier).setShowOnboarding(false);
     }
+    // Flip chat mode back to jobs BEFORE navigating, not in dispose().
+    // The dashboard mounts and reads agentChatProvider on its first frame —
+    // doing this in dispose() means the dashboard's "Ask Syncra" bar briefly
+    // echoes the onboarding transcript before the rebuild lands.
+    ref.read(agentChatModeProvider.notifier).set(AgentChatMode.jobs);
+    ref.read(onboardingResumeContextProvider.notifier).reset();
     if (!mounted) return;
     context.go(RouteNames.dashboard);
   }

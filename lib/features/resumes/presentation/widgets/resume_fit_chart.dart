@@ -13,10 +13,13 @@ import '../../models/resume_fit.dart';
 ///     no persistent legend).
 ///   - Gradient-green palette: the dominant slice is brand lime, successive
 ///     slices step toward a deep forest green.
-///   - Tap a slice → that slice puffs out, and the slice's label / percent /
-///     rationale fade in *below* the donut. Tap again (or another slice) to
-///     swap focus; tap outside to dismiss. The chart starts silent — users
-///     discover the text by exploring.
+///   - On first paint the dominant slice is pre-focused (puffed + text panel
+///     open) so the user sees the headline number without having to discover
+///     the interaction.
+///   - Tap a slice → that slice puffs out, the panel swaps to it. Tap the
+///     focused slice to collapse. Only the *tap-up* event toggles focus —
+///     fl_chart fires many in-flight pointer events per gesture and reacting
+///     to all of them was making a single tap toggle focus on/off mid-press.
 class ResumeFitChart extends StatefulWidget {
   const ResumeFitChart({super.key, required this.fit});
 
@@ -29,7 +32,34 @@ class ResumeFitChart extends StatefulWidget {
 class _ResumeFitChartState extends State<ResumeFitChart> {
   /// Index of the slice the user has tapped. -1 means "nothing focused" —
   /// the donut reads as a quiet shape and the text panel is collapsed.
+  /// Defaults to the dominant segment on mount so the user lands on a useful
+  /// number; [didUpdateWidget] re-points it if the fit data swaps underneath.
   int _touched = -1;
+
+  @override
+  void initState() {
+    super.initState();
+    _touched = _dominantIndex(widget.fit.segments);
+  }
+
+  @override
+  void didUpdateWidget(covariant ResumeFitChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.fit, widget.fit)) {
+      _touched = _dominantIndex(widget.fit.segments);
+    }
+  }
+
+  /// Index of the highest-percent slice, or -1 for an empty list. Ties go to
+  /// the earlier slice so the palette's bright lime stays the focus.
+  static int _dominantIndex(List<ResumeFitSegment> segments) {
+    if (segments.isEmpty) return -1;
+    var best = 0;
+    for (var i = 1; i < segments.length; i++) {
+      if (segments[i].percent > segments[best].percent) best = i;
+    }
+    return best;
+  }
 
   /// Deep forest green the gradient terminates at. Private here so the
   /// chart's palette doesn't ripple into the global brand theme.
@@ -65,13 +95,15 @@ class _ResumeFitChartState extends State<ResumeFitChart> {
           child: PieChart(
             PieChartData(
               pieTouchData: PieTouchData(
+                // Only the tap-up edge toggles focus. fl_chart fires
+                // FlPanDown / FlPanUpdate / FlTapDown / FlTapUp / FlPointerExit
+                // for a single finger gesture; reacting to all of them caused
+                // the focus to flicker on/off mid-tap.
                 touchCallback: (event, response) {
-                  if (!event.isInterestedForInteractions ||
-                      response == null ||
-                      response.touchedSection == null) {
-                    return;
-                  }
-                  final i = response.touchedSection!.touchedSectionIndex;
+                  if (event is! FlTapUpEvent) return;
+                  final section = response?.touchedSection;
+                  if (section == null) return;
+                  final i = section.touchedSectionIndex;
                   if (i < 0) return;
                   setState(() => _touched = _touched == i ? -1 : i);
                 },
