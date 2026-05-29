@@ -158,6 +158,48 @@ class ProposedEditsBlock extends AgentBlock {
   ];
 }
 
+/// Lifecycle of an agent-built (from-scratch) resume card. The agent assembles
+/// the whole [ResumeJson] via `build_resume`, so there's nothing to accept or
+/// reject — the card renders the draft, the notifier renders its PDF, and the
+/// user previews then saves it to their library.
+enum ResumeDraftState { rendering, ready }
+
+/// A complete resume the agent built from scratch (via `build_resume`),
+/// awaiting a preview-and-save. Parallel to [ProposedEditsBlock] but for a
+/// brand-new base resume rather than a diff against an existing one.
+class ResumeDraftBlock extends AgentBlock {
+  ResumeDraftBlock({
+    required super.id,
+    required this.resume,
+    required this.fileName,
+    this.state = ResumeDraftState.rendering,
+  });
+
+  /// The structured resume the agent assembled. Rendered to a PDF preview by
+  /// the notifier and persisted verbatim as the saved doc's `resume_json` —
+  /// so a built resume never needs parsing and can be tailored immediately.
+  final ResumeJson resume;
+
+  /// Suggested file name for the saved resume (e.g. `Jane_Doe_Resume.pdf`).
+  final String fileName;
+
+  /// Card lifecycle. Mutable so the notifier can flip it in place and re-emit.
+  ResumeDraftState state;
+
+  /// The rendered-but-unsaved PDF, set once the render completes. The preview
+  /// screen reads this; null until then (or if rendering failed).
+  Uint8List? previewBytes;
+
+  /// Set once the previewed PDF has been saved to the resume library. While
+  /// null, the draft exists only in memory.
+  String? savedResumeId;
+
+  /// Last render/save error, surfaced inline so the user can retry.
+  String? error;
+
+  bool get isSaved => savedResumeId != null;
+}
+
 enum InputRequestState { pending, answered }
 
 /// The agent paused mid-loop because it needs information only the user can
