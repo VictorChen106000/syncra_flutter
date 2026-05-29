@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import '../../resumes/models/proposed_edit.dart';
+import '../../resumes/models/resume_fit.dart';
 import '../../resumes/models/resume_json.dart';
 
 /// One unit of agent output inside an [AgentTurn].
@@ -243,6 +244,18 @@ class OnboardingCompleteBlock extends AgentBlock {
   final String? summary;
 
   OnboardingCompleteState state;
+}
+
+/// A resume-fit pie chart the agent emits during onboarding once the parsed
+/// resume is in its context. Wraps the canonical [ResumeFit] snapshot so the
+/// same data renders identically here (in the chat transcript) and on the
+/// dashboard (read from `users/{uid}.resume_fit`). Informational only — the
+/// user still gates handoff via the follow-up `ask_user` /
+/// `complete_onboarding` flow.
+class FitChartBlock extends AgentBlock {
+  FitChartBlock({required super.id, required this.fit});
+
+  final ResumeFit fit;
 }
 
 /// Lifecycle of an [EmailDraftBlock]. While [reviewing] the user can open the

@@ -12,9 +12,10 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
-import '../../../core/utils/motion.dart';
 import '../../../data/models/tracked_application.dart';
 import '../../agent_chat/agent_prompt_suggestions.dart';
+import '../../agent_chat/models/agent_block.dart';
+import '../../agent_chat/models/chat_message.dart';
 import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
@@ -23,8 +24,10 @@ import '../../agent/state/passive_agent_notifier.dart';
 import '../../agent_chat/state/agent_chat_notifier.dart';
 import '../../applications/state/applications_notifier.dart';
 import '../../auth/state/auth_notifier.dart';
+import '../../auth/state/user_profile_notifier.dart';
 import '../../notifications/presentation/notifications_drawer.dart';
 import '../../notifications/state/notifications_notifier.dart';
+import '../../resumes/presentation/widgets/resume_fit_chart.dart';
 import '../../resumes/state/resume_notifier.dart';
 
 /// Approximate vertical footprint of the bottom-anchored agent area
@@ -53,15 +56,31 @@ class DashboardPage extends ConsumerWidget {
             children: [
               _DashboardHeader(),
               Expanded(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(
-                    AppConstants.screenHorizontalPadding,
-                    12,
-                    AppConstants.screenHorizontalPadding,
-                    _kFloatingAreaReservedHeight,
-                  ),
-                  child: const _AgentSection(),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // ConstrainedBox lets the scroll child stretch to the
+                    // visible viewport — without it, a Center inside the
+                    // _AgentSection would collapse to the chart's intrinsic
+                    // height and hug the profile header instead of sitting
+                    // optically between header and floating input area.
+                    final minBodyHeight = (constraints.maxHeight
+                            - 12
+                            - _kFloatingAreaReservedHeight)
+                        .clamp(0.0, double.infinity);
+                    return SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(
+                        AppConstants.screenHorizontalPadding,
+                        12,
+                        AppConstants.screenHorizontalPadding,
+                        _kFloatingAreaReservedHeight,
+                      ),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(minHeight: minBodyHeight),
+                        child: const _AgentSection(),
+                      ),
+                    );
+                  },
                 ),
               ),
             ],
@@ -89,7 +108,6 @@ class _DashboardHeader extends ConsumerWidget {
       ),
       name: user?.displayName ?? 'there',
       role: AppStrings.dashboardGreetingRole,
-      bottom: const _AgentLiveBanner(),
     );
   }
 }
@@ -168,138 +186,163 @@ class _Avatar extends StatelessWidget {
   }
 }
 
-class _AgentLiveBanner extends ConsumerWidget {
-  const _AgentLiveBanner();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final brand = context.brand;
-    final isRunning = ref.watch(
-      passiveAgentProvider.select((s) => s.isRunning),
-    );
-    final label = isRunning ? AppStrings.agentLive : AppStrings.agentIdle;
-    final detail = isRunning ? AppStrings.activeTask : AppStrings.idleTask;
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: isRunning
-              ? brand.accent.withValues(alpha: 0.14)
-              : brand.surfaceMuted,
-          borderRadius: BorderRadius.circular(AppConstants.pillRadius),
-          border: Border.all(
-            color: isRunning
-                ? brand.accent.withValues(alpha: 0.30)
-                : brand.border,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _LiveDot(active: isRunning),
-            const SizedBox(width: 8),
-            Text(
-              label.toUpperCase(),
-              style: TextStyle(
-                color: brand.ink,
-                fontSize: 10.5,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.2,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              width: 3,
-              height: 3,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: brand.textMuted.withValues(alpha: 0.5),
-              ),
-            ),
-            const SizedBox(width: 8),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 220),
-              child: Text(
-                detail,
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-                style: TextStyle(
-                  color: brand.textMuted,
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _LiveDot extends StatelessWidget {
-  const _LiveDot({this.active = true});
-
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return SizedBox(
-      width: 8,
-      height: 8,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          if (active)
-            Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: brand.accentBright.withValues(alpha: 0.55),
-              ),
-            )
-                .animate(onPlay: repeatIfMotion(context))
-                .scale(
-                  duration: 1400.ms,
-                  begin: const Offset(0.6, 0.6),
-                  end: const Offset(1.8, 1.8),
-                  curve: Curves.easeOut,
-                )
-                .fadeOut(duration: 1400.ms),
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: active ? brand.accentBright : brand.textSoft,
-              shape: BoxShape.circle,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Agent hero area — card fan once a pipeline exists, gooey-orb empty state
 // before the agent has surfaced anything.
 // ---------------------------------------------------------------------------
 
 /// Switches the dashboard's hero area between the agent card fan (once the
-/// agent has built a pipeline) and a calm gooey-orb empty state.
-class _AgentSection extends ConsumerWidget {
+/// agent has built a pipeline) and the resume-fit donut chart.
+enum _AgentView { cards, chart }
+
+class _AgentSection extends ConsumerStatefulWidget {
   const _AgentSection();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_AgentSection> createState() => _AgentSectionState();
+}
+
+class _AgentSectionState extends ConsumerState<_AgentSection> {
+  /// User's manual choice, or null while the section is still auto-picking
+  /// a view. We auto-pick so the post-onboarding flow lands on the chart
+  /// (calm, informative) and then promotes itself to the card stack the
+  /// moment the brief produces a pipeline — without overriding a user who
+  /// has explicitly tapped the swap icon.
+  _AgentView? _override;
+
+  void _setView(_AgentView v) => setState(() => _override = v);
+
+  _AgentView _resolveView({required bool hasPipeline, required bool hasFit}) {
+    if (_override != null) return _override!;
+    // Pipeline takes precedence — that's the "work to do". Otherwise show
+    // the fit chart while the brief is still warming up so the user has
+    // something to read instead of an empty stage.
+    if (hasPipeline) return _AgentView.cards;
+    if (hasFit) return _AgentView.chart;
+    return _AgentView.cards;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final hasPipeline =
         ref.watch(passiveAgentProvider.select((s) => s.hasPipeline));
-    return hasPipeline
-        ? const _AgentCardStack()
-        : const _DashboardAgentEmptyState();
+    final resumeFit =
+        ref.watch(userProfileProvider.select((p) => p?.resumeFit));
+
+    final view = _resolveView(
+      hasPipeline: hasPipeline,
+      hasFit: resumeFit != null,
+    );
+
+    // The swap icon is only meaningful when BOTH sides have something to show.
+    // Otherwise the dashboard collapses to whichever side has data, with no
+    // toggle (no need to offer a swap that lands on an empty state).
+    final canShowToggle = hasPipeline && resumeFit != null;
+
+    final Widget body;
+    if (view == _AgentView.chart && resumeFit != null) {
+      // Center vertically in the scroll viewport (the parent ConstrainedBox
+      // gives us the full height to work with) so the donut sits optically
+      // between the profile header and the floating input area.
+      body = Center(child: ResumeFitChart(fit: resumeFit));
+    } else if (hasPipeline) {
+      body = const _AgentCardStack();
+    } else {
+      body = const _DashboardAgentEmptyState();
+    }
+
+    if (!canShowToggle) return body;
+
+    // Toggle sits in a tight top-right slot so it reads as a control on the
+    // section, not its own surface. AnimatedSwitcher cross-fades the body so
+    // the swap doesn't snap.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: _AgentViewSwap(
+            view: view,
+            onTap: () => _setView(
+              view == _AgentView.cards
+                  ? _AgentView.chart
+                  : _AgentView.cards,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, anim) => FadeTransition(
+              opacity: anim,
+              child: child,
+            ),
+            child: KeyedSubtree(key: ValueKey(view), child: body),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Single-icon swap control anchored to the top-right of the agent section.
+/// Tapping flips the view; the icon morphs (cards ↔ donut) to telegraph what
+/// the *next* tap will reveal — i.e. it shows the OTHER view's icon, not the
+/// current one. Matches how iOS Photos / Apple Music phrase their view
+/// toggles.
+class _AgentViewSwap extends StatelessWidget {
+  const _AgentViewSwap({required this.view, required this.onTap});
+
+  final _AgentView view;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final showingCards = view == _AgentView.cards;
+    final nextIcon =
+        showingCards ? Icons.donut_small_rounded : Icons.style_rounded;
+    final nextLabel = showingCards ? 'Show chart' : 'Show cards';
+    return Tooltip(
+      message: nextLabel,
+      child: Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(),
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: brand.surfaceMuted,
+            ),
+            alignment: Alignment.center,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              switchInCurve: Curves.easeOutCubic,
+              transitionBuilder: (child, anim) => RotationTransition(
+                turns: Tween<double>(begin: 0.85, end: 1).animate(anim),
+                child: FadeTransition(opacity: anim, child: child),
+              ),
+              child: Icon(
+                nextIcon,
+                key: ValueKey(nextIcon),
+                size: 18,
+                color: brand.ink,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -315,9 +358,31 @@ class _DashboardAgentEmptyState extends ConsumerWidget {
         (ref.watch(authProvider).appUser?.displayName ?? '').trim();
     final firstName =
         fullName.isEmpty ? '' : fullName.split(RegExp(r'\s+')).first;
-    final greeting = firstName.isEmpty
-        ? 'How can I help you?'
-        : 'How can I help you, $firstName?';
+    // When the passive agent is mid-brief (most likely the first one auto-
+    // fired by completeOnboarding), swap the generic greeting for a live
+    // status that names the target role. This is the UX bridge between
+    // onboarding's "I'll find roles for you" promise and the dashboard's
+    // empty state — the user lands on visible activity, not stillness.
+    final isRunning =
+        ref.watch(passiveAgentProvider.select((s) => s.isRunning));
+    final role =
+        (ref.watch(userProfileProvider)?.role ?? '').trim();
+
+    final String headline;
+    final String? subline;
+    if (isRunning && role.isNotEmpty) {
+      headline = 'Looking for $role roles…';
+      subline = "I'll drop matches here as I find them.";
+    } else if (isRunning) {
+      headline = 'Scanning roles…';
+      subline = "I'll drop matches here as I find them.";
+    } else if (firstName.isEmpty) {
+      headline = 'How can I help you?';
+      subline = null;
+    } else {
+      headline = 'How can I help you, $firstName?';
+      subline = null;
+    }
 
     return Padding(
       padding: const EdgeInsets.only(top: 44, bottom: 8),
@@ -333,7 +398,7 @@ class _DashboardAgentEmptyState extends ConsumerWidget {
               ),
           const SizedBox(height: 26),
           Text(
-            greeting,
+            headline,
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 24,
@@ -346,6 +411,22 @@ class _DashboardAgentEmptyState extends ConsumerWidget {
               .animate(delay: 120.ms)
               .fadeIn(duration: 420.ms)
               .moveY(begin: 8, end: 0, curve: Curves.easeOutCubic),
+          if (subline != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              subline,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: brand.textMuted,
+                height: 1.4,
+                letterSpacing: -0.1,
+              ),
+            )
+                .animate(delay: 220.ms)
+                .fadeIn(duration: 420.ms),
+          ],
         ],
       ),
     );
@@ -990,13 +1071,16 @@ class _PromptSuggestionCard extends ConsumerWidget {
 /// Dashboard "Ask Syncra" bar. Deliberately *not* an editable field — tapping
 /// anywhere on it jumps straight to the chat page with the composer focused.
 /// Typing (and the conversation's history) lives entirely on the chat page, so
-/// the user never has to wonder where the chatbot is.
-class _AgentInputBar extends StatelessWidget {
+/// the user never has to wonder where the chatbot is. The label echoes the
+/// latest chat turn so the bar reads as a continuation of the conversation.
+class _AgentInputBar extends ConsumerWidget {
   const _AgentInputBar();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final brand = context.brand;
+    final items = ref.watch(agentChatProvider.select((s) => s.items));
+    final label = _lastTurnLabel(items) ?? 'Chat with Syncra';
     return Semantics(
       button: true,
       label: 'Ask Syncra — opens chat',
@@ -1021,24 +1105,12 @@ class _AgentInputBar extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: brand.surfaceMuted,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(
-                    Icons.auto_awesome_rounded,
-                    color: brand.ink,
-                    size: 18,
-                  ),
-                ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    AppStrings.askSyncra,
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: brand.textSoft,
                       fontWeight: FontWeight.w600,
@@ -1046,6 +1118,7 @@ class _AgentInputBar extends StatelessWidget {
                     ),
                   ),
                 ),
+                const SizedBox(width: 10),
                 Container(
                   width: 40,
                   height: 40,
@@ -1066,5 +1139,28 @@ class _AgentInputBar extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String? _lastTurnLabel(List<ChatItem> items) {
+    for (final item in items.reversed) {
+      if (item is UserMessage) {
+        final text = item.text.trim();
+        if (text.isNotEmpty) return text;
+      } else if (item is AgentTurn) {
+        final text = _firstTextFromBlocks(item.blocks);
+        if (text != null && text.isNotEmpty) return text;
+      }
+    }
+    return null;
+  }
+
+  String? _firstTextFromBlocks(List<AgentBlock> blocks) {
+    for (final block in blocks) {
+      if (block is TextBlock) {
+        final t = block.text.trim();
+        if (t.isNotEmpty) return t;
+      }
+    }
+    return null;
   }
 }

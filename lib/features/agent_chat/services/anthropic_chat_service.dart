@@ -11,6 +11,7 @@ import '../models/chat_message.dart';
 import '../tools/tool_registry.dart';
 import 'agent_service.dart';
 import '../../resumes/models/proposed_edit.dart';
+import '../../resumes/models/resume_fit.dart';
 
 /// Real-Anthropic implementation of [AgentService] with **tool use**.
 ///
@@ -295,6 +296,20 @@ Progress and style:
                         "I drafted the email below. Review it and save it to "
                         "your Gmail Drafts — I won't send anything myself.";
                   }
+                }
+
+                // The onboarding-only `propose_fit_chart` lifts a list of
+                // role-category slices into a [FitChartBlock] the user sees
+                // inline as a pie + legend. Unlike `complete_onboarding`,
+                // the loop does NOT pause here — the agent is supposed to
+                // continue with a short text + ask_user in the same turn so
+                // the chart lands inside a single, coherent moment.
+                if (!result.isError && name == 'propose_fit_chart') {
+                  final fitBlock = _fitChartBlockFromInput(
+                    id: nextBlockId('fit'),
+                    input: input,
+                  );
+                  if (fitBlock != null) yield BlockAdded(fitBlock);
                 }
 
                 // The onboarding-only `complete_onboarding` tool returns the
@@ -708,6 +723,52 @@ Progress and style:
       attachmentResumeId: resumeId,
       attachmentFilename: filename,
     );
+  }
+
+  /// Builds the resume-fit pie card from a `propose_fit_chart` tool call.
+  /// Lifts the model's slice list out of the tool input, clamps each percent
+  /// into [0, 100], drops anything that resolves to zero, sorts biggest-first,
+  /// and renormalises so totals sum to 100 regardless of the model's
+  /// arithmetic. Returns null when fewer than 2 usable slices survive — the
+  /// pie needs a real comparison or it isn't worth surfacing.
+  FitChartBlock? _fitChartBlockFromInput({
+    required String id,
+    required Map<String, dynamic> input,
+  }) {
+    final raw = (input['segments'] as List?) ?? const [];
+    final segments = <ResumeFitSegment>[];
+    for (final entry in raw) {
+      if (entry is! Map) continue;
+      final label = (entry['label'] as String?)?.trim() ?? '';
+      final percent = (entry['percent'] as num?)?.toDouble();
+      if (label.isEmpty || percent == null || percent <= 0) continue;
+      final rationale = (entry['rationale'] as String?)?.trim();
+      segments.add(ResumeFitSegment(
+        label: label,
+        percent: percent.clamp(0, 100),
+        rationale: (rationale == null || rationale.isEmpty) ? null : rationale,
+      ));
+    }
+    if (segments.length < 2) return null;
+
+    segments.sort((a, b) => b.percent.compareTo(a.percent));
+
+    final total = segments.fold<double>(0, (sum, s) => sum + s.percent);
+    final normalised = total <= 0
+        ? segments
+        : segments
+            .map((s) => ResumeFitSegment(
+                  label: s.label,
+                  percent: (s.percent / total) * 100,
+                  rationale: s.rationale,
+                ))
+            .toList();
+
+    final fit = ResumeFit(
+      segments: normalised,
+      generatedAt: DateTime.now(),
+    );
+    return FitChartBlock(id: id, fit: fit);
   }
 
   /// Builds the onboarding handoff card from a `complete_onboarding` tool

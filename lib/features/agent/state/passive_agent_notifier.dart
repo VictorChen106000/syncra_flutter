@@ -14,7 +14,8 @@ import '../services/anthropic_service.dart';
 import '../../agent_chat/models/agent_block.dart';
 import '../../agent_chat/services/agent_service.dart';
 import '../../agent_chat/services/anthropic_chat_service.dart';
-import '../../agent_chat/state/agent_chat_notifier.dart';
+import '../../agent_chat/tools/builtin_tools.dart';
+import '../../agent_chat/tools/tool_registry.dart';
 import '../../notifications/state/notifications_notifier.dart';
 
 /// Lifecycle of the agent's passive job-discovery brief.
@@ -110,11 +111,15 @@ class PassiveAgentState {
 }
 
 class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
-  static const _briefPrompt = '''
+  static const _defaultBriefQuery =
+      'UX Designer Frontend Developer Product Designer';
+
+  String _briefPrompt(String query) =>
+      '''
     Run today's career brief.
 
     Use the tool flow only:
-    1. Call search_jobs with query "UX Designer Frontend Developer Product Designer" and location "Remote".
+    1. Call search_jobs with query "$query" and location "Remote".
     2. Call read_resume.
     3. Call match_jobs for the best jobs returned by search_jobs.
     4. Call save_to_pipeline once for each of the top 5 matched jobs.
@@ -125,6 +130,9 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
     - Do not call draft_email.
     - Do not call send_email.
     - Do not ask the user questions during this brief. If information is missing, classify the job as input_needed and save it to the pipeline.
+    - If read_resume returns no resume (the user has not uploaded one yet),
+      skip match_jobs and instead save the top 5 search results directly with
+      category "exploration" — do not fabricate scores.
     - End with one short sentence summarizing what you saved.
     ''';
   PassiveAgentNotifier({
@@ -138,6 +146,24 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
   final AnthropicService _service;
   final JobsRepository _jobsRepository;
   final PipelineRepository _pipelineRepository;
+
+  /// The brief's own agentic-loop service. Built lazily and reused across
+  /// briefs. Critically NOT shared with the chat's `agentServiceProvider` —
+  /// that one rebuilds with the onboarding tool registry while
+  /// `agentChatModeProvider` is `onboarding`, so a brief kicked off from
+  /// `completeOnboarding` would inherit the stripped-down tool set and hang
+  /// trying to call `search_jobs` (which doesn't exist there). Owning our
+  /// own service keeps the brief running the full job arsenal regardless of
+  /// what mode the chat happens to be in.
+  AnthropicChatService? _briefService;
+
+  AnthropicChatService _ensureBriefService() {
+    final existing = _briefService;
+    if (existing != null) return existing;
+    final registry = ToolRegistry();
+    registerBuiltinTools(registry);
+    return _briefService = AnthropicChatService(registry: registry);
+  }
 
   @override
   PassiveAgentState build() {
@@ -173,20 +199,25 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
     state = state.copyWith(morningBriefShown: true);
   }
 
-  Future<void> runBrief() async {
+  /// Kicks off the agent brief. [query] overrides the default search keyword
+  /// set — onboarding passes the user's just-captured target role here so the
+  /// pipeline that lands on the dashboard is actually relevant to them.
+  Future<void> runBrief({String? query}) async {
     if (state.isRunning) return;
 
-    final service = ref.read(agentServiceProvider);
+    final service = _ensureBriefService();
+    final effectiveQuery =
+        (query == null || query.trim().isEmpty) ? _defaultBriefQuery : query.trim();
 
-    if (service is AnthropicChatService && service.hasApiKey) {
-      await _runAgentBrief(service);
+    if (service.hasApiKey) {
+      await _runAgentBrief(service, query: effectiveQuery);
       return;
     }
 
     await _runLegacyMockBrief();
   }
 
-  Future<void> _runAgentBrief(AgentService service) async {
+  Future<void> _runAgentBrief(AgentService service, {required String query}) async {
     state = state.copyWith(
       briefId: 'brief_${DateTime.now().millisecondsSinceEpoch}',
       status: AgentBriefStatus.scanning,
@@ -210,7 +241,7 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
       // The brief is a self-contained one-shot — run it non-threaded so it
       // neither inherits nor pollutes the chat's running conversation.
       await for (final event in service.runPrompt(
-        prompt: _briefPrompt,
+        prompt: _briefPrompt(query),
         threaded: false,
       )) {
         ref.read(notificationsProvider.notifier).onAgentEvent(event);

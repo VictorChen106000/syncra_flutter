@@ -883,6 +883,10 @@ class _ThinkingLabel extends StatelessWidget {
   }
 }
 
+/// Three muted dots that bounce in sequence — the chat's "agent is about to
+/// stream" indicator while the active turn hasn't yielded a first segment
+/// yet. Deliberately small + quiet so it disappears the moment any real
+/// content lands.
 class _BouncingDots extends StatelessWidget {
   const _BouncingDots();
 

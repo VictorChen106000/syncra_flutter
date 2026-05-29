@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
 import '../../features/auth/models/user_profile.dart';
+import '../../features/resumes/models/resume_fit.dart';
 import 'firestore_paths.dart';
 
 class UserRepository {
@@ -27,6 +28,7 @@ class UserRepository {
       'is_agent_active': true,
       'morning_brief_enabled': false,
       'gmail_connected': false,
+      'has_completed_onboarding': false,
       'created_at': FieldValue.serverTimestamp(),
     });
   }
@@ -50,6 +52,8 @@ class UserRepository {
     bool? isAgentActive,
     bool? morningBriefEnabled,
     bool? gmailConnected,
+    bool? hasCompletedOnboarding,
+    ResumeFit? resumeFit,
   }) async {
     final patch = <String, dynamic>{};
     if (role != null) patch['role'] = role;
@@ -58,6 +62,10 @@ class UserRepository {
       patch['morning_brief_enabled'] = morningBriefEnabled;
     }
     if (gmailConnected != null) patch['gmail_connected'] = gmailConnected;
+    if (hasCompletedOnboarding != null) {
+      patch['has_completed_onboarding'] = hasCompletedOnboarding;
+    }
+    if (resumeFit != null) patch['resume_fit'] = resumeFit.toJson();
     if (patch.isEmpty) return;
     await _paths.user(uid).update(patch);
   }

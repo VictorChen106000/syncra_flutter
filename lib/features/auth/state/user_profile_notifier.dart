@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/firestore/user_repository.dart';
+import '../../resumes/models/resume_fit.dart';
 import '../models/user_profile.dart';
 import 'auth_notifier.dart';
 
@@ -89,6 +90,56 @@ class UserProfileNotifier extends Notifier<UserProfile?> {
       await _repository.update(uid, isAgentActive: active);
     } catch (e) {
       debugPrint('setAgentActive failed: $e');
+    }
+  }
+
+  /// Flips the user past first-run setup. Called by the Skip button (which
+  /// leaves `role` untouched). Used by the router redirect to decide whether
+  /// the user still needs the onboarding surface.
+  Future<void> setHasCompletedOnboarding(bool completed) async {
+    final uid = _boundUid;
+    if (uid == null) return;
+    state = state?.copyWith(hasCompletedOnboarding: completed);
+    try {
+      await _repository.update(uid, hasCompletedOnboarding: completed);
+    } catch (e) {
+      debugPrint('setHasCompletedOnboarding failed: $e');
+    }
+  }
+
+  /// Persists the agent's read on the user's resume. Called when the
+  /// onboarding agent emits a `FitChartBlock` (via `propose_fit_chart`) — the
+  /// dashboard's "Chart" view reads from this so the visualisation survives
+  /// across sessions without re-running the agent.
+  Future<void> setResumeFit(ResumeFit fit) async {
+    final uid = _boundUid;
+    if (uid == null) return;
+    state = state?.copyWith(resumeFit: fit);
+    try {
+      await _repository.update(uid, resumeFit: fit);
+    } catch (e) {
+      debugPrint('setResumeFit failed: $e');
+    }
+  }
+
+  /// Writes the captured role and flips `hasCompletedOnboarding` in a single
+  /// Firestore round-trip — used by `complete_onboarding`. Doing both in one
+  /// `update()` keeps the profile stream from briefly emitting a state where
+  /// role is set but the gate flag is still false (which would trip the
+  /// router back to /onboarding mid-transition).
+  Future<void> setRoleAndComplete(String role) async {
+    final uid = _boundUid;
+    if (uid == null) return;
+    final trimmed = role.trim();
+    state = state?.copyWith(role: trimmed, hasCompletedOnboarding: true);
+    try {
+      await _repository.update(
+        uid,
+        role: trimmed,
+        hasCompletedOnboarding: true,
+      );
+    } catch (e) {
+      debugPrint('setRoleAndComplete failed: $e');
     }
   }
 }

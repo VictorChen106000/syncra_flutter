@@ -10,10 +10,15 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/utils/motion.dart';
+import '../../../../shared/state/running_task_notifier.dart';
+import '../../../../shared/widgets/gooey_orb.dart';
 import '../../models/agent_block.dart';
+import '../../state/agent_chat_mode.dart';
 import '../../state/agent_chat_notifier.dart';
+import '../../state/onboarding_resume_context.dart';
 import '../../../resumes/models/proposed_edit.dart';
 import '../../../resumes/presentation/tailored_preview_page.dart';
+import '../../../resumes/presentation/widgets/resume_fit_chart.dart';
 import '../../../resumes/state/resume_notifier.dart';
 import '../../../email/presentation/email_review_page.dart';
 import '../../../email/services/gmail_service.dart';
@@ -47,6 +52,7 @@ class AgentBlockView extends StatelessWidget {
         EmailDraftBlockView(block: block as EmailDraftBlock),
       OnboardingCompleteBlock() =>
         OnboardingCompleteBlockView(block: block as OnboardingCompleteBlock),
+      FitChartBlock() => FitChartBlockView(block: block as FitChartBlock),
     };
   }
 }
@@ -1720,144 +1726,118 @@ class OnboardingCompleteBlockView extends ConsumerStatefulWidget {
 
 class _OnboardingCompleteBlockViewState
     extends ConsumerState<OnboardingCompleteBlockView> {
-  bool _entering = false;
+  /// How long the user dwells on the gooey before the router lands them on
+  /// the dashboard. Long enough to read the role + first running-task label;
+  /// short enough that it doesn't feel like an artificial wait.
+  static const _dwell = Duration(milliseconds: 3000);
 
-  Future<void> _enter() async {
-    if (_entering ||
-        widget.block.state == OnboardingCompleteState.entered) {
-      return;
-    }
-    setState(() => _entering = true);
-    await ref
-        .read(agentChatProvider.notifier)
-        .completeOnboarding(widget.block.id);
+  Timer? _routeTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Auto-progress: the moment this card mounts, we settle the profile
+    // (writes role + flips hasCompletedOnboarding + fires the brief) and
+    // start a short dwell timer. No user tap needed — the agent decided we
+    // had enough.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _settleAndRoute());
+  }
+
+  @override
+  void dispose() {
+    _routeTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _settleAndRoute() async {
     if (!mounted) return;
-    // The router's auth refresh will redirect away from /onboarding once the
-    // role is written, but go() is faster and gives a deterministic landing.
-    context.go(RouteNames.dashboard);
+    if (widget.block.state != OnboardingCompleteState.entered) {
+      // `completeOnboarding` writes role + the gate flag in a single
+      // Firestore round-trip AND kicks off the first brief via
+      // PassiveAgentNotifier. We await it so the dashboard already sees the
+      // brief running when it mounts — no flicker between empty and busy.
+      await ref
+          .read(agentChatProvider.notifier)
+          .completeOnboarding(widget.block.id);
+    }
+    if (!mounted) return;
+    _routeTimer = Timer(_dwell, () {
+      if (!mounted) return;
+      // Flip the chat experience back to jobs BEFORE navigating, so the
+      // dashboard's "Ask Syncra" bar mounts already showing the jobs opener
+      // instead of briefly echoing the onboarding completion turn.
+      ref.read(agentChatModeProvider.notifier).set(AgentChatMode.jobs);
+      ref.read(onboardingResumeContextProvider.notifier).reset();
+      context.go(RouteNames.dashboard);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final entered = widget.block.state == OnboardingCompleteState.entered;
     final summary = widget.block.summary?.trim();
+    // Live caption from the running task — once the brief starts firing,
+    // this swaps from "Setting things up…" to "Searching jobs…", etc., so
+    // the user sees the agent doing real work during the dwell.
+    final taskLabel = ref.watch(
+      runningTaskProvider.select((s) => s.label.trim()),
+    );
+    final caption = taskLabel.isNotEmpty
+        ? taskLabel
+        : ((summary != null && summary.isNotEmpty)
+            ? summary
+            : 'Setting things up…');
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-      decoration: BoxDecoration(
-        color: brand.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: brand.accent.withValues(alpha: 0.6), width: 1.4),
-        boxShadow: [
-          BoxShadow(
-            color: brand.shadow.withValues(alpha: 0.12),
-            blurRadius: 22,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
+      padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: brand.ink,
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  Icons.auto_awesome_rounded,
-                  size: 18,
-                  color: brand.accent,
-                ),
+          GooeyOrb(size: 132)
+              .animate()
+              .fadeIn(duration: 480.ms)
+              .scale(
+                begin: const Offset(0.86, 0.86),
+                end: const Offset(1, 1),
+                curve: Curves.easeOutCubic,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Profile ready',
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.3,
-                        color: brand.textMuted,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      widget.block.role,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: brand.ink,
-                        letterSpacing: -0.3,
-                        height: 1.2,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 22),
           Text(
-            (summary != null && summary.isNotEmpty)
-                ? summary
-                : "Your AI career copilot is ready. I'll start finding matches in the background.",
+            widget.block.role,
+            maxLines: 2,
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w500,
-              color: brand.textMuted,
-              height: 1.45,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: brand.ink,
+              letterSpacing: -0.3,
+              height: 1.2,
             ),
-          ),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: entered ? null : _enter,
-            style: FilledButton.styleFrom(
-              backgroundColor: brand.ink,
-              foregroundColor: brand.inkInverse,
-              disabledBackgroundColor: brand.border,
-              disabledForegroundColor: brand.textMuted,
-              minimumSize: const Size.fromHeight(48),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
+          )
+              .animate(delay: 120.ms)
+              .fadeIn(duration: 420.ms)
+              .moveY(begin: 6, end: 0, curve: Curves.easeOutCubic),
+          const SizedBox(height: 8),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 260),
+            transitionBuilder: (child, anim) => FadeTransition(
+              opacity: anim,
+              child: child,
+            ),
+            child: Text(
+              caption,
+              key: ValueKey(caption),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                color: brand.textMuted,
+                height: 1.4,
+                letterSpacing: -0.1,
               ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (_entering)
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: brand.inkInverse,
-                    ),
-                  )
-                else ...[
-                  Text(
-                    entered ? 'Opening Syncra…' : 'Enter Syncra',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.1,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Icon(Icons.arrow_forward_rounded, size: 16),
-                ],
-              ],
             ),
           ),
         ],
@@ -1865,3 +1845,22 @@ class _OnboardingCompleteBlockViewState
     );
   }
 }
+
+/// Thin wrapper around [ResumeFitChart] for chat-transcript rendering. The
+/// agent emits a `FitChartBlock` via `propose_fit_chart`; here we hand its
+/// payload straight to the shared chart widget. Same widget powers the
+/// dashboard's chart view so the two surfaces never visually drift.
+class FitChartBlockView extends StatelessWidget {
+  const FitChartBlockView({super.key, required this.block});
+
+  final FitChartBlock block;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: ResumeFitChart(fit: block.fit),
+    );
+  }
+}
+

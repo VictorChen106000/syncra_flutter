@@ -15,6 +15,9 @@ import '../../agent_chat/presentation/widgets/chat_message_bubble.dart';
 import '../../agent_chat/presentation/widgets/docked_panels.dart';
 import '../../agent_chat/state/agent_chat_mode.dart';
 import '../../agent_chat/state/agent_chat_notifier.dart';
+import '../../agent_chat/state/onboarding_resume_context.dart';
+import '../../resumes/models/resume_file.dart';
+import '../../resumes/state/resume_notifier.dart';
 import '../state/auth_notifier.dart';
 import '../state/user_profile_notifier.dart';
 
@@ -38,48 +41,120 @@ class OnboardingPage extends ConsumerStatefulWidget {
 class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   final ScrollController _scrollController = ScrollController();
 
+  /// Cached notifier references captured during the post-frame init pass.
+  /// They're held here so [dispose] can mutate them WITHOUT touching `ref`
+  /// — Riverpod considers `ref` unsafe once the widget is deactivating
+  /// (throws "Using `ref` when a widget is about to or has been unmounted").
+  /// The captured notifiers themselves persist for the ProviderContainer's
+  /// lifetime, so calling methods on them after dispose is safe.
+  AgentChatModeNotifier? _chatModeNotifier;
+  OnboardingResumeContextNotifier? _resumeContextNotifier;
+
   @override
   void initState() {
     super.initState();
-    // Flip the shared chat infrastructure into onboarding mode. The provider
-    // rebuilds the AnthropicChatService with the onboarding system prompt +
-    // a minimal tool registry, and the notifier seeds a personalised opener.
+    // Defer provider mutation past the current build. Calling `set()` straight
+    // from initState can fire while ancestor consumers (router, theme) are
+    // still mid-build and throws a "modified a provider while the tree was
+    // building" assertion. One post-frame tick is enough — the page paints
+    // jobs-mode for a single frame, then the onboarding rebuild lands.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      ref.read(agentChatModeProvider.notifier).set(AgentChatMode.onboarding);
+      // Capture the notifiers now so dispose can use them without `ref`.
+      _chatModeNotifier = ref.read(agentChatModeProvider.notifier);
+      _resumeContextNotifier =
+          ref.read(onboardingResumeContextProvider.notifier);
+      _chatModeNotifier!.set(AgentChatMode.onboarding);
+      _maybeIngestExistingResume();
     });
+  }
+
+  /// On first entry, if the user already has at least one manual resume in
+  /// their library, ingest the most recent one automatically. The agent then
+  /// opens with "I read your resume" instead of "drop one below" — fewer
+  /// taps for the common returning-user / sign-in-after-skip case.
+  void _maybeIngestExistingResume() {
+    final uid = ref.read(authProvider).appUser?.uid;
+    if (uid == null) return;
+    final resumes = ref.read(resumeProvider).resumes;
+    if (resumes.isEmpty) return;
+    _ingest(uid, resumes.first);
+  }
+
+  /// Idempotent thin wrapper around the context notifier — keeps the
+  /// `ref.listen` callback below tidy.
+  void _ingest(String uid, ResumeFile resume) {
+    ref
+        .read(onboardingResumeContextProvider.notifier)
+        .ingest(uid: uid, resumeId: resume.id);
   }
 
   @override
   void dispose() {
     _scrollController.dispose();
-    // Return the chat to normal mode so that whichever surface opens the
-    // chatbot next (dashboard "Ask Syncra", a job thread, etc.) gets the
-    // full job arsenal — not the stripped-down onboarding sandbox.
-    // ref.read is safe in dispose for providers that don't depend on the
-    // disposed widget's state.
-    Future.microtask(() {
-      ref.read(agentChatModeProvider.notifier).set(AgentChatMode.jobs);
-    });
+    // Fallback only: the Skip and Enter-Syncra paths flip the chat mode
+    // BEFORE navigating so the dashboard mounts with fresh state. We still
+    // catch dispose() so a back-button / sign-out exit doesn't leave the
+    // chat stuck in onboarding mode. `set` is idempotent — if those paths
+    // already flipped it, this is a no-op.
+    _chatModeNotifier?.set(AgentChatMode.jobs);
+    _resumeContextNotifier?.reset();
     super.dispose();
   }
 
   /// Bypasses the agent-driven role capture and routes straight to the
-  /// dashboard. Writes a neutral placeholder role so the router redirect
-  /// doesn't immediately bounce the user back to `/onboarding` (the redirect
-  /// fires whenever `role` is empty), and clears the dev "Show onboarding"
-  /// toggle if it was the reason the user landed here. The user can edit the
-  /// placeholder from Profile later.
+  /// dashboard. Marks the user past first-run setup via the explicit
+  /// `hasCompletedOnboarding` flag — `role` stays empty on purpose, so the
+  /// agent never treats a placeholder as the user's real target. The user can
+  /// set a role later from Profile (or just by chatting).
   Future<void> _skipToDashboard() async {
     await ref
         .read(userProfileProvider.notifier)
-        .setRole('Exploring opportunities');
+        .setHasCompletedOnboarding(true);
     final dev = ref.read(devFlagsProvider);
     if (dev.showOnboarding) {
       await ref.read(devFlagsProvider.notifier).setShowOnboarding(false);
     }
+    // Flip chat mode back to jobs BEFORE navigating, not in dispose().
+    // The dashboard mounts and reads agentChatProvider on its first frame —
+    // doing this in dispose() means the dashboard's "Ask Syncra" bar briefly
+    // echoes the onboarding transcript before the rebuild lands.
+    ref.read(agentChatModeProvider.notifier).set(AgentChatMode.jobs);
+    ref.read(onboardingResumeContextProvider.notifier).reset();
     if (!mounted) return;
     context.go(RouteNames.dashboard);
+  }
+
+  /// Confirms with the user before destroying their session and dropping
+  /// them back at /login. The previous design used a back-arrow icon that
+  /// silently signed the user out on tap — a classic destructive-action-
+  /// disguised-as-navigation trap.
+  Future<void> _confirmBackToLogin() async {
+    final brand = context.brand;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: brand.surface,
+        title: const Text('Back to login?'),
+        content: const Text(
+          "You'll be signed out and returned to the login screen. "
+          "Your account stays — you can sign back in any time.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Stay here'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Sign out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (!mounted) return;
+    await ref.read(authProvider.notifier).signOut();
   }
 
   void _scheduleScrollToBottom() {
@@ -99,6 +174,26 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     ref.listen<AgentChatState>(
       agentChatProvider,
       (_, _) => _scheduleScrollToBottom(),
+    );
+    // Watch the user's resume library so a fresh upload during onboarding
+    // immediately becomes the context the agent is grounded in. Selecting on
+    // the most-recent resume id (rather than the whole list) means we only
+    // re-trigger when something genuinely new lands — toggling the resumes
+    // page elsewhere won't churn ingestion.
+    ref.listen<String?>(
+      resumeProvider.select(
+        (s) => s.resumes.isEmpty ? null : s.resumes.first.id,
+      ),
+      (prev, next) {
+        if (next == null || prev == next) return;
+        final uid = ref.read(authProvider).appUser?.uid;
+        if (uid == null) return;
+        final resume = ref
+            .read(resumeProvider)
+            .resumes
+            .firstWhere((r) => r.id == next);
+        _ingest(uid, resume);
+      },
     );
 
     final state = ref.watch(agentChatProvider);
@@ -160,10 +255,9 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                 child: Row(
                   children: [
                     _FrostedIconBtn(
-                      icon: Icons.arrow_back_ios_new_rounded,
-                      tooltip: 'Sign out',
-                      onTap: () =>
-                          ref.read(authProvider.notifier).signOut(),
+                      icon: Icons.logout_rounded,
+                      tooltip: 'Back to login',
+                      onTap: _confirmBackToLogin,
                     ),
                     const Spacer(),
                     const _SetupChip(),
