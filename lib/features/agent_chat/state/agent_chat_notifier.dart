@@ -634,6 +634,13 @@ Do not call send_email. Sending still requires explicit user approval.
       case BlockAdded(:final block):
         turn.blocks.add(block);
         _reflectRunningTask(block);
+        // A freshly-tailored edits card arrives already "applied" but with no
+        // rendered PDF — render it now so its preview has bytes to show.
+        if (block is ProposedEditsBlock &&
+            block.state == ProposedEditsState.applied &&
+            block.previewBytes == null) {
+          unawaited(_autoRenderAppliedEdits(block));
+        }
         // A FitChartBlock arriving during onboarding is the agent's read on
         // the user's resume — persist it to `users/{uid}.resume_fit` so the
         // dashboard's "Chart" view can re-render it on subsequent sessions
@@ -942,6 +949,28 @@ Do not call send_email. Sending still requires explicit user approval.
     block.applyError = null;
     state = state.copyWith(items: [...state.items]);
 
+    final error = await _renderEditsPreview(block, uid);
+    if (error == null) {
+      block.state = ProposedEditsState.applied;
+    } else {
+      // Roll back to reviewing so the user can adjust and retry; the error
+      // surfaces inline above the action buttons.
+      block.state = ProposedEditsState.reviewing;
+      block.applyError = error;
+    }
+    state = state.copyWith(items: [...state.items]);
+  }
+
+  /// Renders the tailored PDF for [block]'s accepted edits and stores the
+  /// result on the block ([ProposedEditsBlock.previewBytes] et al.). Returns
+  /// `null` on success or a short, user-facing message on failure. The caller
+  /// owns the surrounding state transitions and the re-emit. Shared by the
+  /// user-driven [applyProposedEdits] and the auto-applied tailor path
+  /// ([_autoRenderAppliedEdits]).
+  Future<String?> _renderEditsPreview(
+    ProposedEditsBlock block,
+    String uid,
+  ) async {
     try {
       var resumeId = block.resumeId;
       if (resumeId == null || resumeId.isEmpty) {
@@ -964,15 +993,44 @@ Do not call send_email. Sending still requires explicit user approval.
       block.appliedCount = rendered.appliedCount;
       block.skippedCount = rendered.skippedCount;
       block.resolvedResumeId = resumeId;
-      block.state = ProposedEditsState.applied;
-      state = state.copyWith(items: [...state.items]);
+      return null;
     } catch (e) {
-      // Roll back to reviewing so the user can adjust and retry; the error
-      // surfaces inline above the action buttons.
-      block.state = ProposedEditsState.reviewing;
-      block.applyError = _shortError(e);
-      state = state.copyWith(items: [...state.items]);
+      return _shortError(e);
     }
+  }
+
+  /// Renders the preview PDF for an auto-applied tailor card the instant it
+  /// lands in the chat. `tailor_resume` surfaces its edits as an already-
+  /// `applied`, read-only diff (see `_proposedEditsBlockFromData`), but the
+  /// card carries no rendered PDF — without this the preview screen would have
+  /// no bytes and show "Preview unavailable". Keeps the card in [applying]
+  /// (the "Rendering…" spinner) while the PDF builds so the preview button
+  /// only appears once there are bytes behind it; on failure it falls back to
+  /// [reviewing] so the user can retry via "Apply N edits".
+  Future<void> _autoRenderAppliedEdits(ProposedEditsBlock block) async {
+    if (!_serviceReady) return;
+    if (block.previewBytes != null) return;
+    if (block.acceptedEdits.isEmpty) return;
+
+    final uid = _uid;
+    if (uid == null) {
+      // Guests have no resume library to render against; leave the read-only
+      // diff in place without a preview.
+      return;
+    }
+
+    block.state = ProposedEditsState.applying;
+    block.applyError = null;
+    state = state.copyWith(items: [...state.items]);
+
+    final error = await _renderEditsPreview(block, uid);
+    if (error == null) {
+      block.state = ProposedEditsState.applied;
+    } else {
+      block.state = ProposedEditsState.reviewing;
+      block.applyError = error;
+    }
+    state = state.copyWith(items: [...state.items]);
   }
 
   /// Persists the previewed tailored PDF to the resume library so it appears
