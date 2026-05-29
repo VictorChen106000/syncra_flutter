@@ -33,7 +33,7 @@ JSON object matching this schema:
   "header": {
     "name": string,
     "email": string?, "phone": string?, "location": string?,
-    "linkedin": string?, "website": string?
+    "linkedin": string?, "website": string?, "github": string?, "twitter": string?
   },
   "summary": string?,
   "experience": [
@@ -42,20 +42,40 @@ JSON object matching this schema:
   ],
   "education": [
     { "school": string, "degree": string, "start": string?, "end": string?,
-      "details": string? }
+      "details": string?, "bullets": string[] }
   ],
-  "skills": string[],
   "projects": [
-    { "name": string, "description": string?, "bullets": string[], "link": string? }
+    { "name": string, "description": string?, "date": string?,
+      "bullets": string[], "link": string? }
+  ],
+  "certifications": [
+    { "name": string, "issuer": string?, "date": string?, "bullets": string[] }
+  ],
+  "skill_groups": [
+    { "category": string, "items": string[] }
   ]
 }
 
 Rules:
 - Return ONLY the JSON object. No prose, no markdown fences, no commentary.
+- Capture EVERY section the resume contains. Never drop content. If text
+  doesn't fit experience/education/projects, it almost always belongs in
+  `certifications` (certificates, scholarships, awards, language tests like
+  IELTS/TOEFL) — put it there rather than discarding it.
 - Preserve the original wording of bullets — do not paraphrase or condense.
 - If a field is missing in the resume, omit it (don't invent placeholders).
 - Use "Present" for ongoing roles' `end` field.
-- Skills: deduplicate, preserve original casing.
+- education[].bullets: each sub-point under a degree (special programs, honors,
+  relevant coursework) is its own bullet — do not merge them into `details`.
+- header: split contact links by kind — GitHub URLs go in `github`, a
+  personal/portfolio site in `website`, an X/Twitter handle in `twitter`,
+  LinkedIn in `linkedin`.
+- skill_groups: keep the resume's own categories (e.g. "Languages",
+  "Tools & Frameworks"). If skills are listed flat with no categories, infer
+  sensible groups for the candidate's field — for engineers usually
+  "Languages" and "Tools & Frameworks"; for non-technical roles a single
+  "Skills" or "Tools" group is fine. Deduplicate items, preserve original
+  casing.
 ''';
 
   final String _apiKey;

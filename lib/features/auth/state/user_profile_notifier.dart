@@ -82,6 +82,17 @@ class UserProfileNotifier extends Notifier<UserProfile?> {
     }
   }
 
+  Future<void> setGmailConnected(bool connected) async {
+    final uid = _boundUid;
+    if (uid == null) return;
+    state = state?.copyWith(gmailConnected: connected);
+    try {
+      await _repository.update(uid, gmailConnected: connected);
+    } catch (e) {
+      debugPrint('setGmailConnected failed: $e');
+    }
+  }
+
   Future<void> setAgentActive(bool active) async {
     final uid = _boundUid;
     if (uid == null) return;
@@ -107,10 +118,10 @@ class UserProfileNotifier extends Notifier<UserProfile?> {
     }
   }
 
-  /// Persists the agent's read on the user's resume. Called when the
-  /// onboarding agent emits a `FitChartBlock` (via `propose_fit_chart`) — the
-  /// dashboard's "Chart" view reads from this so the visualisation survives
-  /// across sessions without re-running the agent.
+  /// Persists the agent's read on the user's resume. Written during onboarding
+  /// once the resume is parsed and the role-fit is inferred — the dashboard's
+  /// "Chart" view reads from this so the visualisation survives across sessions
+  /// without re-running the agent.
   Future<void> setResumeFit(ResumeFit fit) async {
     final uid = _boundUid;
     if (uid == null) return;

@@ -14,7 +14,6 @@ import '../../features/auth/state/auth_notifier.dart';
 import '../../features/auth/state/user_profile_notifier.dart';
 import '../../features/dashboard/presentation/dashboard_page.dart';
 import '../../features/jobs/presentation/jobs_page.dart';
-import '../../features/notifications/presentation/notifications_page.dart';
 import '../../features/profile/presentation/profile_page.dart';
 import '../../features/resumes/models/resume_file.dart';
 import '../../features/resumes/presentation/resume_lists_page.dart';
@@ -195,10 +194,5 @@ List<RouteBase> _routes(Page<void> Function(GoRouterState, Widget) fadePage) =>
         path: RouteNames.applications,
         pageBuilder: (context, state) =>
             fadePage(state, const ApplicationsPage()),
-      ),
-      GoRoute(
-        path: RouteNames.notifications,
-        pageBuilder: (context, state) =>
-            fadePage(state, const NotificationsPage()),
       ),
     ];

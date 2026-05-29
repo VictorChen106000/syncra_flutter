@@ -217,10 +217,15 @@ class _ProfileHeaderCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final brand = context.brand;
     final user = ref.watch(authProvider).appUser;
+    final profile = ref.watch(userProfileProvider);
     final displayName = user?.displayName ?? 'there';
     final initial = user?.initial ?? 'D';
     final email = user?.email ?? '';
     final photoUrl = user?.photoUrl;
+    final agentActive = profile?.isAgentActive ?? true;
+    final role = (profile?.role ?? '').trim();
+    final fitSegments = profile?.resumeFit?.segments ?? const [];
+    final topStrength = fitSegments.isNotEmpty ? fitSegments.first : null;
 
     return Container(
       padding: const EdgeInsets.all(AppConstants.cardPadding),
@@ -274,10 +279,10 @@ class _ProfileHeaderCard extends ConsumerWidget {
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        const _PulsingActiveDot(),
+                        _PulsingActiveDot(active: agentActive),
                         const SizedBox(width: 8),
                         Text(
-                          'Agent Active',
+                          agentActive ? 'Agent active' : 'Agent paused',
                           style: TextStyle(
                             color: brand.textMuted,
                             fontSize: 12,
@@ -295,10 +300,18 @@ class _ProfileHeaderCard extends ConsumerWidget {
           const SizedBox(height: 16),
           Divider(height: 1, color: brand.bg),
           const SizedBox(height: 4),
-          const _SearchCriteriaRow(label: 'Target roles', value: 'Not set'),
-          const _SearchCriteriaRow(label: 'Location', value: 'Not set'),
-          const _SearchCriteriaRow(label: 'Comp floor', value: 'Not set'),
-          const _SearchCriteriaRow(label: 'Seniority', value: 'Not set'),
+          // Real, agent-captured search context — the role onboarding set and
+          // the dominant strength the resume analysis read. No placeholders:
+          // rows only appear once there's actual data behind them.
+          _SearchCriteriaRow(
+            label: 'Target role',
+            value: role.isEmpty ? 'Not set yet' : role,
+          ),
+          if (topStrength != null)
+            _SearchCriteriaRow(
+              label: 'Top strength',
+              value: '${topStrength.label} · ${topStrength.percent.round()}%',
+            ),
         ],
       ),
     );
@@ -394,11 +407,26 @@ class _ProfileAvatar extends StatelessWidget {
 }
 
 class _PulsingActiveDot extends StatelessWidget {
-  const _PulsingActiveDot();
+  const _PulsingActiveDot({this.active = true});
+
+  /// When false the dot stops pulsing and renders a muted, static state —
+  /// reflecting `UserProfile.isAgentActive` instead of always reading "live".
+  final bool active;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
+    if (!active) {
+      return Container(
+        width: 8,
+        height: 8,
+        margin: const EdgeInsets.all(1),
+        decoration: BoxDecoration(
+          color: brand.textSoft,
+          shape: BoxShape.circle,
+        ),
+      );
+    }
     return SizedBox(
       width: 10,
       height: 10,
@@ -500,56 +528,51 @@ class _CountChip extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Connections — third-party integrations. Gmail is UI-only for now; the
-// toggle keeps local state until the OAuth flow is wired up.
+// Connections — third-party integrations. Gmail send/draft authorizes
+// on-demand at send time (GmailService), so this toggle records the user's
+// intent in their profile (`gmail_connected`) rather than keeping throwaway
+// local state that resets on every visit.
 // ---------------------------------------------------------------------------
 
-class _IntegrationSection extends StatefulWidget {
+class _IntegrationSection extends ConsumerWidget {
   const _IntegrationSection();
 
   @override
-  State<_IntegrationSection> createState() => _IntegrationSectionState();
-}
-
-class _IntegrationSectionState extends State<_IntegrationSection> {
-  List<_Integration> _integrations = [
-    const _Integration(
-      icon: Icons.mail_outline_rounded,
-      title: 'Gmail Workspace',
-      subtitle: 'Allow Agent to draft outreach and parse rejections',
-      active: true,
-    ),
-  ];
-
-  void _toggle(int i) {
-    setState(() {
-      _integrations = List.of(_integrations);
-      _integrations[i] =
-          _integrations[i].copyWith(active: !_integrations[i].active);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(userProfileProvider);
+    final connected = profile?.gmailConnected ?? false;
     return _GroupedCard(
       children: [
-        for (var i = 0; i < _integrations.length; i++) ...[
-          _IntegrationTile(
-            integration: _integrations[i],
-            onToggle: () => _toggle(i),
-          ),
-          if (i < _integrations.length - 1) const _GroupedDivider(),
-        ],
+        _IntegrationTile(
+          icon: Icons.mail_outline_rounded,
+          title: 'Gmail Workspace',
+          subtitle: 'Allow Agent to draft outreach and parse rejections',
+          active: connected,
+          onToggle: profile == null
+              ? null
+              : () => ref
+                  .read(userProfileProvider.notifier)
+                  .setGmailConnected(!connected),
+        ),
       ],
     );
   }
 }
 
 class _IntegrationTile extends StatelessWidget {
-  const _IntegrationTile({required this.integration, required this.onToggle});
+  const _IntegrationTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.active,
+    required this.onToggle,
+  });
 
-  final _Integration integration;
-  final VoidCallback onToggle;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool active;
+  final VoidCallback? onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -563,12 +586,12 @@ class _IntegrationTile extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: integration.active ? brand.accent : brand.surfaceMuted,
+              color: active ? brand.accent : brand.surfaceMuted,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
-              integration.icon,
-              color: integration.active ? brand.onAccent : brand.textSoft,
+              icon,
+              color: active ? brand.onAccent : brand.textSoft,
               size: 18,
             ),
           ),
@@ -578,7 +601,7 @@ class _IntegrationTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  integration.title,
+                  title,
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
@@ -587,7 +610,7 @@ class _IntegrationTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  integration.subtitle,
+                  subtitle,
                   style: TextStyle(
                     fontSize: 12,
                     color: brand.textMuted,
@@ -609,14 +632,13 @@ class _IntegrationTile extends StatelessWidget {
               padding: const EdgeInsets.all(2),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
-                color: integration.active ? brand.ink : brand.border,
+                color: active ? brand.ink : brand.border,
               ),
               child: AnimatedAlign(
                 duration: const Duration(milliseconds: 280),
                 curve: Curves.easeOutCubic,
-                alignment: integration.active
-                    ? Alignment.centerRight
-                    : Alignment.centerLeft,
+                alignment:
+                    active ? Alignment.centerRight : Alignment.centerLeft,
                 child: Container(
                   width: 20,
                   height: 20,
@@ -641,27 +663,6 @@ class _IntegrationTile extends StatelessWidget {
   }
 }
 
-class _Integration {
-  const _Integration({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.active,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final bool active;
-
-  _Integration copyWith({bool? active}) => _Integration(
-        icon: icon,
-        title: title,
-        subtitle: subtitle,
-        active: active ?? this.active,
-      );
-}
-
 // ---------------------------------------------------------------------------
 // Agent behavior — how the agent acts on your behalf.
 // ---------------------------------------------------------------------------
@@ -673,8 +674,80 @@ class _AgentBehaviorSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return const _GroupedCard(
       children: [
+        _AgentActiveTile(),
+        _GroupedDivider(),
         _MorningBriefTile(),
+        _GroupedDivider(),
+        _RunBriefTile(),
       ],
+    );
+  }
+}
+
+/// Master switch for whether the agent acts on the user's behalf. Wires the
+/// previously-orphaned `UserProfileNotifier.setAgentActive` to a real control,
+/// and the profile header's status dot reflects it.
+class _AgentActiveTile extends ConsumerWidget {
+  const _AgentActiveTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
+    final profile = ref.watch(userProfileProvider);
+    final active = profile?.isAgentActive ?? true;
+    return _PreferenceRow(
+      icon: Icons.bolt_rounded,
+      title: 'Agent active',
+      subtitle: active
+          ? 'Syncra works on your behalf'
+          : 'Paused — Syncra waits for you',
+      trailing: Switch.adaptive(
+        value: active,
+        activeThumbColor: brand.ink,
+        onChanged: profile == null
+            ? null
+            : (v) =>
+                ref.read(userProfileProvider.notifier).setAgentActive(v),
+      ),
+    );
+  }
+}
+
+/// Triggers the passive agent's job brief on demand and opens the morning
+/// brief surface so the run is visible. Lets anyone (developer or user) watch
+/// the brief end-to-end without waiting for a sign-in cycle.
+class _RunBriefTile extends ConsumerWidget {
+  const _RunBriefTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
+    final running = ref.watch(
+      passiveAgentProvider.select((s) => s.isRunning),
+    );
+    return _PreferenceRow(
+      icon: Icons.play_circle_outline_rounded,
+      title: running ? 'Brief running…' : "Run today's brief",
+      subtitle: 'Scan fresh roles and open the brief',
+      trailing: running
+          ? SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation(brand.ink),
+              ),
+            )
+          : Icon(Icons.chevron_right_rounded, color: brand.border, size: 20),
+      onTap: running
+          ? null
+          : () {
+              // Kick the brief off, then open the morning-brief surface so the
+              // run is visible. The page no-ops the launch if one is already
+              // in flight, so this stays safe to tap repeatedly.
+              ref.read(passiveAgentProvider.notifier).runBrief();
+              context.go(RouteNames.morningBrief);
+            },
     );
   }
 }

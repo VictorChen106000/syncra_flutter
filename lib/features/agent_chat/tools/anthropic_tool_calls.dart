@@ -113,6 +113,59 @@ class AnthropicParaphraseService {
     return {'proposed_edits': rawEdits};
   }
 
+  /// Reads a parsed resume and infers, in one headless call, the user's most
+  /// likely target role plus a 3-5 slice role-fit breakdown. This is the
+  /// non-interactive equivalent of the old onboarding chat's
+  /// `propose_fit_chart` + `complete_onboarding` combo — used by the dedicated
+  /// upload onboarding so the agent can set the user up without a Q&A.
+  ///
+  /// Returns:
+  /// {
+  ///   "role": "Senior Backend Engineer",
+  ///   "segments": [ {"label": "Backend Engineering", "percent": 55,
+  ///                  "rationale": "..."}, ... ]
+  /// }
+  Future<Map<String, dynamic>> inferOnboardingProfile({
+    required Map<String, dynamic> resumeJson,
+  }) async {
+    final response = await _call(
+      system: _onboardingInferSystem,
+      user: '''
+Resume (JSON):
+${const JsonEncoder.withIndent('  ').convert(resumeJson)}
+
+Return ONLY the JSON object described in the system prompt.''',
+      maxTokens: 700,
+    );
+
+    final cleaned = _stripFences(response);
+    final Map<String, dynamic> decoded;
+    try {
+      decoded = jsonDecode(cleaned) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('inferOnboardingProfile parse failed: $e\nRaw: $response');
+      throw Exception('Could not parse onboarding profile JSON.');
+    }
+
+    final role = (decoded['role'] as String?)?.trim() ?? '';
+    final rawSegments = (decoded['segments'] as List? ?? const [])
+        .whereType<Map>()
+        .map((m) {
+          final label = (m['label'] as String?)?.trim() ?? '';
+          final percent = (m['percent'] as num?)?.toDouble() ?? 0;
+          final rationale = (m['rationale'] as String?)?.trim() ?? '';
+          return {
+            'label': label,
+            'percent': percent,
+            if (rationale.isNotEmpty) 'rationale': rationale,
+          };
+        })
+        .where((m) => (m['label'] as String).isNotEmpty && (m['percent'] as double) > 0)
+        .toList();
+
+    return {'role': role, 'segments': rawSegments};
+  }
+
   /// Returns `{ subject, body }`.
   Future<Map<String, dynamic>> draftColdEmail({
     required Map<String, dynamic> resumeJson,
@@ -272,9 +325,17 @@ Rules:
 - `target_path` must point to a specific editable field in the ResumeJSON, such as:
   - profile.summary
   - experience[0].bullets[2]
-  - skills[3]
+  - projects[0].bullets[1]
+  - education[0].bullets[0]
+  - skill_groups[0].items[3]
+  - certifications[1].bullets[0]
 - `original_text` must be copied verbatim from the provided resume.
 - `proposed_text` may rephrase the original text, but must not invent experience.
+- Never DELETE the candidate's content. The diff is non-destructive by design:
+  it can only improve wording or add confirmed items. Never propose an edit
+  whose `proposed_text` empties, removes, or guts existing text, and never drop
+  a section, entry, bullet, skill, or certification. Losing the base resume is
+  the worst outcome — keep everything that's there.
 - Never invent employers, titles, dates, metrics, tools, certifications, degrees, or achievements.
 - If the resume does not support a stronger claim, keep the proposed text close to the original.
 - `reason` must be one sentence explaining why the edit helps for this specific job.
@@ -303,6 +364,33 @@ Adding new content (op: "add"):
     overwrites a field that already has text; use a `replace` for that.
 - Do not output markdown fences.
 - Do not output prose outside the JSON object.
+''';
+
+  static const _onboardingInferSystem = '''
+You are Syncra, an AI career copilot setting up a new user from their resume.
+You are given the parsed resume JSON. Infer two things and return them as JSON.
+
+1. role: the single target role this person is most likely aiming for next,
+   grounded in their most recent experience and strongest skills. Be specific
+   but concise (under 60 chars), e.g. "Senior Backend Engineer",
+   "Product Designer", "Data Scientist". Use the seniority their experience
+   supports. Never invent a domain the resume does not support.
+
+2. segments: 3 to 5 role-category slices showing which kinds of roles their
+   resume reads strongest for. Order biggest-first (segment[0] is dominant).
+   Percents are the weight of evidence in the resume and should sum to ~100.
+   Each slice has a short `label` (under 24 chars) and a one-line `rationale`
+   grounded in the resume.
+
+Return ONLY this JSON object — no markdown fences, no prose:
+{
+  "role": "...",
+  "segments": [
+    {"label": "Backend Engineering", "percent": 55, "rationale": "..."},
+    {"label": "AI / ML", "percent": 25, "rationale": "..."},
+    {"label": "DevOps", "percent": 20, "rationale": "..."}
+  ]
+}
 ''';
 
   static const _emailSystem = '''

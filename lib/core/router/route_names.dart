@@ -13,5 +13,4 @@ class RouteNames {
   static const String jobs = '/jobs';
   static const String profile = '/profile';
   static const String applications = '/applications';
-  static const String notifications = '/notifications';
 }

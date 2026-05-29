@@ -4,6 +4,14 @@
 /// Shape mirrors the backend's old Pydantic ResumeJSON so we can swap data
 /// in either direction without translation. Stored under the resume's
 /// Firestore doc as the `resume_json` map.
+///
+/// ### What gets preserved
+/// Every section a real resume carries has a home here so the tailor pipeline
+/// never silently drops content: header, summary, experience, education (with
+/// its own sub-bullets), projects, **achievements & certifications**, and
+/// skills (grouped by category — "Languages", "Tools", … — not a flat blob).
+/// A field the resume doesn't have simply stays empty; nothing is invented and
+/// nothing is lost on the round-trip through the parser + template.
 class ResumeJson {
   const ResumeJson({
     required this.header,
@@ -11,37 +19,74 @@ class ResumeJson {
     this.experience = const [],
     this.education = const [],
     this.skills = const [],
+    this.skillGroups = const [],
     this.projects = const [],
+    this.certifications = const [],
   });
 
   final ResumeHeader header;
   final String? summary;
   final List<ResumeExperience> experience;
   final List<ResumeEducation> education;
+
+  /// Flat, de-categorized skills. Kept for callers that only need a quick list
+  /// (headlines, briefs) and for legacy resumes parsed before [skillGroups]
+  /// existed. When [skillGroups] is populated this mirrors a flattened view of
+  /// it, so the two never disagree.
   final List<String> skills;
+
+  /// Skills organized under their resume categories ("Languages",
+  /// "Tools & Frameworks", …). This is what the PDF template renders; [skills]
+  /// is the legacy/flat fallback used only when this is empty.
+  final List<ResumeSkillGroup> skillGroups;
+
   final List<ResumeProject> projects;
 
-  factory ResumeJson.fromJson(Map<String, dynamic> json) => ResumeJson(
-        header: ResumeHeader.fromJson(
-          (json['header'] as Map?)?.cast<String, dynamic>() ?? const {},
-        ),
-        summary: json['summary'] as String?,
-        experience: ((json['experience'] as List?) ?? const [])
-            .whereType<Map>()
-            .map((m) => ResumeExperience.fromJson(m.cast<String, dynamic>()))
-            .toList(),
-        education: ((json['education'] as List?) ?? const [])
-            .whereType<Map>()
-            .map((m) => ResumeEducation.fromJson(m.cast<String, dynamic>()))
-            .toList(),
-        skills: ((json['skills'] as List?) ?? const [])
-            .map((e) => e.toString())
-            .toList(),
-        projects: ((json['projects'] as List?) ?? const [])
-            .whereType<Map>()
-            .map((m) => ResumeProject.fromJson(m.cast<String, dynamic>()))
-            .toList(),
-      );
+  /// Achievements & certifications: certificates, scholarships, language tests
+  /// (IELTS/TOEFL), awards. Previously unrepresented — which is why this whole
+  /// section used to vanish from tailored resumes.
+  final List<ResumeCertification> certifications;
+
+  factory ResumeJson.fromJson(Map<String, dynamic> json) {
+    final groups = ((json['skill_groups'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((m) => ResumeSkillGroup.fromJson(m.cast<String, dynamic>()))
+        .where((g) => g.items.isNotEmpty)
+        .toList();
+
+    final flatSkills =
+        ((json['skills'] as List?) ?? const []).map((e) => e.toString()).toList();
+
+    return ResumeJson(
+      header: ResumeHeader.fromJson(
+        (json['header'] as Map?)?.cast<String, dynamic>() ?? const {},
+      ),
+      summary: json['summary'] as String?,
+      experience: ((json['experience'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((m) => ResumeExperience.fromJson(m.cast<String, dynamic>()))
+          .toList(),
+      education: ((json['education'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((m) => ResumeEducation.fromJson(m.cast<String, dynamic>()))
+          .toList(),
+      // When groups are present they're the source of truth; keep the flat list
+      // a faithful flattening of them so cosmetic callers stay in sync after a
+      // tailor edits a `skill_groups[..]` path.
+      skills: groups.isNotEmpty
+          ? [for (final g in groups) ...g.items]
+          : flatSkills,
+      skillGroups: groups,
+      projects: ((json['projects'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((m) => ResumeProject.fromJson(m.cast<String, dynamic>()))
+          .toList(),
+      certifications: ((json['certifications'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((m) => ResumeCertification.fromJson(m.cast<String, dynamic>()))
+          .toList(),
+    );
+  }
 
   Map<String, dynamic> toJson() => {
         'header': header.toJson(),
@@ -49,7 +94,9 @@ class ResumeJson {
         'experience': experience.map((e) => e.toJson()).toList(),
         'education': education.map((e) => e.toJson()).toList(),
         'skills': skills,
+        'skill_groups': skillGroups.map((g) => g.toJson()).toList(),
         'projects': projects.map((p) => p.toJson()).toList(),
+        'certifications': certifications.map((c) => c.toJson()).toList(),
       };
 }
 
@@ -61,6 +108,8 @@ class ResumeHeader {
     this.location,
     this.linkedin,
     this.website,
+    this.github,
+    this.twitter,
   });
 
   final String name;
@@ -69,6 +118,8 @@ class ResumeHeader {
   final String? location;
   final String? linkedin;
   final String? website;
+  final String? github;
+  final String? twitter;
 
   factory ResumeHeader.fromJson(Map<String, dynamic> json) => ResumeHeader(
         name: (json['name'] as String?) ?? '',
@@ -77,6 +128,8 @@ class ResumeHeader {
         location: json['location'] as String?,
         linkedin: json['linkedin'] as String?,
         website: json['website'] as String?,
+        github: json['github'] as String?,
+        twitter: (json['twitter'] ?? json['x']) as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -86,6 +139,8 @@ class ResumeHeader {
         'location': ?location,
         'linkedin': ?linkedin,
         'website': ?website,
+        'github': ?github,
+        'twitter': ?twitter,
       };
 }
 
@@ -135,6 +190,7 @@ class ResumeEducation {
     this.start,
     this.end,
     this.details,
+    this.bullets = const [],
   });
 
   final String school;
@@ -143,6 +199,11 @@ class ResumeEducation {
   final String? end;
   final String? details;
 
+  /// Sub-points under a degree — special programs, honors, relevant
+  /// coursework. Kept as a list so the structure survives the round-trip
+  /// instead of being mashed into [details].
+  final List<String> bullets;
+
   factory ResumeEducation.fromJson(Map<String, dynamic> json) =>
       ResumeEducation(
         school: (json['school'] as String?) ?? '',
@@ -150,6 +211,9 @@ class ResumeEducation {
         start: json['start'] as String?,
         end: json['end'] as String?,
         details: json['details'] as String?,
+        bullets: ((json['bullets'] as List?) ?? const [])
+            .map((e) => e.toString())
+            .toList(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -158,6 +222,7 @@ class ResumeEducation {
         'start': ?start,
         'end': ?end,
         'details': ?details,
+        'bullets': bullets,
       };
 }
 
@@ -167,12 +232,17 @@ class ResumeProject {
     this.description,
     this.bullets = const [],
     this.link,
+    this.date,
   });
 
   final String name;
   final String? description;
   final List<String> bullets;
   final String? link;
+
+  /// Right-aligned date for the entry (e.g. "Spring 2025"). Optional — many
+  /// projects are undated.
+  final String? date;
 
   factory ResumeProject.fromJson(Map<String, dynamic> json) => ResumeProject(
         name: (json['name'] as String?) ?? '',
@@ -181,6 +251,7 @@ class ResumeProject {
             .map((e) => e.toString())
             .toList(),
         link: json['link'] as String?,
+        date: json['date'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -188,5 +259,68 @@ class ResumeProject {
         'description': ?description,
         'bullets': bullets,
         'link': ?link,
+        'date': ?date,
+      };
+}
+
+/// A labeled group of skills, e.g. category "Languages" with items
+/// ["Dart", "Python"]. For software roles these are typically Languages /
+/// Tools & Frameworks; for other roles the categories differ (a marketer's
+/// might be "Tools": Microsoft Office, Slack, HubSpot). The parser infers the
+/// right categories from the resume's own wording.
+class ResumeSkillGroup {
+  const ResumeSkillGroup({
+    required this.category,
+    this.items = const [],
+  });
+
+  final String category;
+  final List<String> items;
+
+  factory ResumeSkillGroup.fromJson(Map<String, dynamic> json) =>
+      ResumeSkillGroup(
+        category: (json['category'] as String?) ?? '',
+        items: ((json['items'] as List?) ?? const [])
+            .map((e) => e.toString())
+            .toList(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'category': category,
+        'items': items,
+      };
+}
+
+/// One achievement / certification entry. Covers certificates, scholarships,
+/// language tests, and awards. [issuer] and [date] are optional; [bullets]
+/// holds any sub-points (what was built, what was verified, etc.).
+class ResumeCertification {
+  const ResumeCertification({
+    required this.name,
+    this.issuer,
+    this.date,
+    this.bullets = const [],
+  });
+
+  final String name;
+  final String? issuer;
+  final String? date;
+  final List<String> bullets;
+
+  factory ResumeCertification.fromJson(Map<String, dynamic> json) =>
+      ResumeCertification(
+        name: (json['name'] as String?) ?? '',
+        issuer: json['issuer'] as String?,
+        date: json['date'] as String?,
+        bullets: ((json['bullets'] as List?) ?? const [])
+            .map((e) => e.toString())
+            .toList(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'issuer': ?issuer,
+        'date': ?date,
+        'bullets': bullets,
       };
 }

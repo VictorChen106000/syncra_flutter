@@ -4,21 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import '../../../../core/router/route_names.dart';
 import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/utils/motion.dart';
-import '../../../../shared/state/running_task_notifier.dart';
-import '../../../../shared/widgets/gooey_orb.dart';
 import '../../models/agent_block.dart';
-import '../../state/agent_chat_mode.dart';
 import '../../state/agent_chat_notifier.dart';
-import '../../state/onboarding_resume_context.dart';
 import '../../../resumes/models/proposed_edit.dart';
 import '../../../resumes/presentation/tailored_preview_page.dart';
-import '../../../resumes/presentation/widgets/resume_fit_chart.dart';
 import '../../../resumes/state/resume_notifier.dart';
 import '../../../email/presentation/email_review_page.dart';
 import '../../../email/services/gmail_service.dart';
@@ -50,9 +43,6 @@ class AgentBlockView extends StatelessWidget {
         ActionProposalView(block: block as ActionProposalBlock),
       EmailDraftBlock() =>
         EmailDraftBlockView(block: block as EmailDraftBlock),
-      OnboardingCompleteBlock() =>
-        OnboardingCompleteBlockView(block: block as OnboardingCompleteBlock),
-      FitChartBlock() => FitChartBlockView(block: block as FitChartBlock),
     };
   }
 }
@@ -1709,158 +1699,4 @@ class _ProposalButton extends StatelessWidget {
   }
 }
 
-/// Closing card of the onboarding chat. The agent emitted this via the
-/// `complete_onboarding` tool once it had captured the user's role; the user
-/// taps Enter Syncra to write the role to their profile and land on the
-/// dashboard. Pinned in-transcript (it doesn't dock above the composer) so it
-/// reads as the agent's final word, not a system prompt.
-class OnboardingCompleteBlockView extends ConsumerStatefulWidget {
-  const OnboardingCompleteBlockView({super.key, required this.block});
-
-  final OnboardingCompleteBlock block;
-
-  @override
-  ConsumerState<OnboardingCompleteBlockView> createState() =>
-      _OnboardingCompleteBlockViewState();
-}
-
-class _OnboardingCompleteBlockViewState
-    extends ConsumerState<OnboardingCompleteBlockView> {
-  /// How long the user dwells on the gooey before the router lands them on
-  /// the dashboard. Long enough to read the role + first running-task label;
-  /// short enough that it doesn't feel like an artificial wait.
-  static const _dwell = Duration(milliseconds: 3000);
-
-  Timer? _routeTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    // Auto-progress: the moment this card mounts, we settle the profile
-    // (writes role + flips hasCompletedOnboarding + fires the brief) and
-    // start a short dwell timer. No user tap needed — the agent decided we
-    // had enough.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _settleAndRoute());
-  }
-
-  @override
-  void dispose() {
-    _routeTimer?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _settleAndRoute() async {
-    if (!mounted) return;
-    if (widget.block.state != OnboardingCompleteState.entered) {
-      // `completeOnboarding` writes role + the gate flag in a single
-      // Firestore round-trip AND kicks off the first brief via
-      // PassiveAgentNotifier. We await it so the dashboard already sees the
-      // brief running when it mounts — no flicker between empty and busy.
-      await ref
-          .read(agentChatProvider.notifier)
-          .completeOnboarding(widget.block.id);
-    }
-    if (!mounted) return;
-    _routeTimer = Timer(_dwell, () {
-      if (!mounted) return;
-      // Flip the chat experience back to jobs BEFORE navigating, so the
-      // dashboard's "Ask Syncra" bar mounts already showing the jobs opener
-      // instead of briefly echoing the onboarding completion turn.
-      ref.read(agentChatModeProvider.notifier).set(AgentChatMode.jobs);
-      ref.read(onboardingResumeContextProvider.notifier).reset();
-      context.go(RouteNames.dashboard);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final summary = widget.block.summary?.trim();
-    // Live caption from the running task — once the brief starts firing,
-    // this swaps from "Setting things up…" to "Searching jobs…", etc., so
-    // the user sees the agent doing real work during the dwell.
-    final taskLabel = ref.watch(
-      runningTaskProvider.select((s) => s.label.trim()),
-    );
-    final caption = taskLabel.isNotEmpty
-        ? taskLabel
-        : ((summary != null && summary.isNotEmpty)
-            ? summary
-            : 'Setting things up…');
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          GooeyOrb(size: 132)
-              .animate()
-              .fadeIn(duration: 480.ms)
-              .scale(
-                begin: const Offset(0.86, 0.86),
-                end: const Offset(1, 1),
-                curve: Curves.easeOutCubic,
-              ),
-          const SizedBox(height: 22),
-          Text(
-            widget.block.role,
-            maxLines: 2,
-            textAlign: TextAlign.center,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: brand.ink,
-              letterSpacing: -0.3,
-              height: 1.2,
-            ),
-          )
-              .animate(delay: 120.ms)
-              .fadeIn(duration: 420.ms)
-              .moveY(begin: 6, end: 0, curve: Curves.easeOutCubic),
-          const SizedBox(height: 8),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 260),
-            transitionBuilder: (child, anim) => FadeTransition(
-              opacity: anim,
-              child: child,
-            ),
-            child: Text(
-              caption,
-              key: ValueKey(caption),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w600,
-                color: brand.textMuted,
-                height: 1.4,
-                letterSpacing: -0.1,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Thin wrapper around [ResumeFitChart] for chat-transcript rendering. The
-/// agent emits a `FitChartBlock` via `propose_fit_chart`; here we hand its
-/// payload straight to the shared chart widget. Same widget powers the
-/// dashboard's chart view so the two surfaces never visually drift.
-class FitChartBlockView extends StatelessWidget {
-  const FitChartBlockView({super.key, required this.block});
-
-  final FitChartBlock block;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: ResumeFitChart(fit: block.fit),
-    );
-  }
-}
 

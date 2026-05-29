@@ -2,7 +2,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import '../../resumes/models/proposed_edit.dart';
-import '../../resumes/models/resume_fit.dart';
 import '../../resumes/models/resume_json.dart';
 
 /// One unit of agent output inside an [AgentTurn].
@@ -215,47 +214,6 @@ class ActionProposalBlock extends AgentBlock {
   final String? continuationPrompt;
 
   ActionState state;
-}
-
-enum OnboardingCompleteState { pending, entered }
-
-/// Final agent emission of the onboarding chat: the user's profile is ready
-/// and the agent is handing them off to the dashboard. Renders as a single
-/// "Enter Syncra" CTA card; tapping it writes the captured [role] to the user
-/// profile and navigates the user into the app.
-///
-/// Mutable [state] mirrors the pattern used by [ActionProposalBlock] —
-/// the notifier flips it to [entered] once the user taps the CTA, so a cold
-/// reload of the transcript renders the card in its settled state.
-class OnboardingCompleteBlock extends AgentBlock {
-  OnboardingCompleteBlock({
-    required super.id,
-    required this.role,
-    this.summary,
-    this.state = OnboardingCompleteState.pending,
-  });
-
-  /// The target role the agent captured during the conversation — written to
-  /// `users/{uid}.role` when the user taps Enter Syncra.
-  final String role;
-
-  /// Optional one-liner the agent included with the handoff, shown beneath the
-  /// title. Null falls back to a static welcome line.
-  final String? summary;
-
-  OnboardingCompleteState state;
-}
-
-/// A resume-fit pie chart the agent emits during onboarding once the parsed
-/// resume is in its context. Wraps the canonical [ResumeFit] snapshot so the
-/// same data renders identically here (in the chat transcript) and on the
-/// dashboard (read from `users/{uid}.resume_fit`). Informational only — the
-/// user still gates handoff via the follow-up `ask_user` /
-/// `complete_onboarding` flow.
-class FitChartBlock extends AgentBlock {
-  FitChartBlock({required super.id, required this.fit});
-
-  final ResumeFit fit;
 }
 
 /// Lifecycle of an [EmailDraftBlock]. While [reviewing] the user can open the
