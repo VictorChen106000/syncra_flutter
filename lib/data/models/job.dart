@@ -1,5 +1,17 @@
 enum JobCategory { ready, inputNeeded, exploration }
 
+/// Single source of truth for the user-facing match label per category, used
+/// on job pills, in the chatbot, and in the morning brief. The numeric score
+/// stays internal (it only drives sort order); the user only ever sees these
+/// words — never a `78/100` or a percentage.
+extension JobCategoryLabel on JobCategory {
+  String get matchLabel => switch (this) {
+        JobCategory.ready => 'Strong match',
+        JobCategory.inputNeeded => 'Partial match',
+        JobCategory.exploration => 'Stretch',
+      };
+}
+
 class Job {
   const Job({
     required this.id,
@@ -32,11 +44,7 @@ class Job {
   /// LinkedIn-style match label derived from [category]. Used everywhere the
   /// UI used to show a numeric `${matchScore}%` — the raw score still drives
   /// sort order behind the scenes, but the user only ever sees this label.
-  String get matchLabel => switch (category) {
-        JobCategory.ready => 'Fully match',
-        JobCategory.inputNeeded => 'Several match',
-        JobCategory.exploration => 'No match',
-      };
+  String get matchLabel => category.matchLabel;
 
   factory Job.fromJson(Map<String, dynamic> json) => Job(
         id: json['id'].toString(),

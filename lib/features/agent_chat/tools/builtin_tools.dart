@@ -395,9 +395,11 @@ void _registerMatchJobs(
       description:
         'Score a list of jobs against the user\'s resume. Use resume_id '
         'when the user attached a resume. Returns each job ranked with a '
-        'category (ready / input_needed / exploration), a 0-100 score, a '
-        'one-sentence justification, and any missing skills. Call AFTER '
-        'search_jobs and read_resume.',
+        'category (ready / input_needed / exploration), a `match` label to '
+        'show the user ("Strong match" / "Partial match" / "Stretch"), an '
+        'internal 0-100 match_score (for ranking only — never shown to the '
+        'user), a one-sentence justification, and any missing skills. Call '
+        'AFTER search_jobs and read_resume.',
       inputSchema: {
         'type': 'object',
         'properties': {
@@ -468,6 +470,11 @@ void _registerMatchJobs(
               .map((r) => {
                     'job_id': r.jobId,
                     'category': r.category.name,
+                    // User-facing words for how well the job fits. Show THIS to
+                    // the user, never the numeric match_score below.
+                    'match': r.category.matchLabel,
+                    // Internal only — drives ranking and save_to_pipeline.
+                    // Never surface this number to the user.
                     'match_score': r.matchScore,
                     'justification': r.justification,
                     'missing_skills': r.missingSkills,
@@ -511,7 +518,9 @@ void _registerSaveToPipeline(
           },
           'match_score': {
             'type': 'integer',
-            'description': '0-100 score from match_jobs.',
+            'description':
+                'Internal 0-100 score from match_jobs, used only for ranking. '
+                'Never shown to the user.',
           },
           'agent_action': {
             'type': 'string',

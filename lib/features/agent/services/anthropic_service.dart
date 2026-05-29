@@ -60,6 +60,13 @@ class AnthropicService {
   /// "Overloaded" blip doesn't surface as a failed job-match pass.
   static const _maxApiAttempts = 4;
 
+  /// Output ceiling for one scoring pass. 1024 was too low: each job yields a
+  /// ~60-120 token result object, so a batch of ~15+ jobs overran it and the
+  /// JSON got truncated mid-object — which then failed to parse. 4096 fits a
+  /// large batch comfortably; output is billed per token actually generated,
+  /// so a higher ceiling costs nothing when the reply is short.
+  static const _maxOutputTokens = 4096;
+
   final String _apiKey;
   final http.Client _client;
   final String model;
@@ -80,7 +87,7 @@ class AnthropicService {
 
     final body = jsonEncode({
       'model': model,
-      'max_tokens': 1024,
+      'max_tokens': _maxOutputTokens,
       'system': _systemPrompt,
       'messages': [
         {
@@ -102,7 +109,11 @@ class AnthropicService {
         .whereType<Map<String, dynamic>>()
         .firstWhere((b) => b['type'] == 'text', orElse: () => const {});
     final text = textBlock['text'] as String? ?? '';
-    return _parseMatcherJson(text, jobs);
+    // `max_tokens` stop reason means the JSON was cut off mid-object — surface
+    // a clearer error so the caller (or the agent) knows to retry with fewer
+    // jobs rather than guessing at a generic parse failure.
+    final truncated = decoded['stop_reason'] == 'max_tokens';
+    return _parseMatcherJson(text, jobs, truncated: truncated);
   }
 
   /// POSTs [body] to Anthropic, retrying transient failures (429 / 5xx /
@@ -202,14 +213,20 @@ $jobLines
 Score every job. Return the JSON object described in the system prompt.''';
   }
 
-  List<MatcherResult> _parseMatcherJson(String text, List<Job> jobs) {
-    final cleaned = _stripMarkdownFences(text);
-    final Map<String, dynamic> parsed;
-    try {
-      parsed = jsonDecode(cleaned) as Map<String, dynamic>;
-    } catch (e) {
-      debugPrint('Failed to parse Anthropic JSON: $e\nRaw: $text');
-      throw AnthropicException('Could not parse matcher response.');
+  List<MatcherResult> _parseMatcherJson(
+    String text,
+    List<Job> jobs, {
+    bool truncated = false,
+  }) {
+    final parsed = _decodeJsonObject(text);
+    if (parsed == null) {
+      debugPrint('Failed to parse Anthropic matcher JSON.\nRaw: $text');
+      throw AnthropicException(
+        truncated
+            ? 'Scoring response was cut off — too many jobs at once. '
+                'Score fewer jobs per call.'
+            : 'Could not parse matcher response.',
+      );
     }
 
     final raw = parsed['results'] as List? ?? const [];
@@ -233,6 +250,33 @@ Score every job. Return the JSON object described in the system prompt.''';
     }
 
     return results;
+  }
+
+  /// Decodes the matcher's JSON object, tolerating stray prose or markdown
+  /// fences around it. Returns null when no valid object can be recovered
+  /// (e.g. the reply was truncated mid-object).
+  Map<String, dynamic>? _decodeJsonObject(String text) {
+    final cleaned = _stripMarkdownFences(text);
+    // Fast path: the reply is exactly the JSON object we asked for.
+    try {
+      final value = jsonDecode(cleaned);
+      if (value is Map<String, dynamic>) return value;
+    } catch (_) {
+      // Fall through to the carve-out below.
+    }
+    // Fallback: carve out the outermost { ... } and retry. Salvages a reply
+    // wrapped in a stray "Here are the results:" preamble or trailing note.
+    final start = cleaned.indexOf('{');
+    final end = cleaned.lastIndexOf('}');
+    if (start != -1 && end > start) {
+      try {
+        final value = jsonDecode(cleaned.substring(start, end + 1));
+        if (value is Map<String, dynamic>) return value;
+      } catch (_) {
+        // Unrecoverable.
+      }
+    }
+    return null;
   }
 
   String _stripMarkdownFences(String text) {

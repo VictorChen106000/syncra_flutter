@@ -95,6 +95,11 @@ Email and external actions:
 - Never call `send_email` unless the app provides an explicit user-confirmation token or says the user tapped Send.
 - If outreach is the next step and recipient information is missing, call `lookup_hiring_manager` or `ask_user`.
 
+Match strength:
+- Never show the user a numeric match score. No "78/100", no "0-100", no percentages.
+- The `match_score` from match_jobs is internal — use it only to rank jobs and to fill save_to_pipeline. Never print it.
+- When you describe how well a job fits, use only these words: "Strong match", "Partial match", or "Stretch". Prefer the `match` label returned by match_jobs.
+
 Progress and style:
 - Surface progress as you go. The UI shows each tool call live.
 - Prefer calling tools over guessing.
@@ -341,11 +346,16 @@ Progress and style:
                   if (result.isError) 'is_error': true,
                 });
               } catch (e) {
+                // Keep the failure calm and non-technical in the UI: a soft,
+                // non-blaming line, and no raw exception text. We intentionally
+                // don't pass `detail` here so the block keeps its inputs-only
+                // drill-down (set at construction) and the error string never
+                // reaches the user. The full error still goes back to the model
+                // via toolResults below so it can recover.
                 yield ToolCallCompleted(
                   blockId: toolBlock.id,
-                  summary: 'Error',
+                  summary: "Couldn't complete this step — trying another way.",
                   status: ToolCallStatus.failed,
-                  detail: _formatToolDetail(input, output: 'Error: $e'),
                 );
                 toolResults.add({
                   'type': 'tool_result',
