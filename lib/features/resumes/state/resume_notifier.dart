@@ -333,7 +333,7 @@ class ResumeNotifier extends Notifier<ResumeState> {
 
     state = state.copyWith(
       uploadQueue: [
-        UploadQueueItem(id: queueId, name: name, size: size, progress: 50),
+        UploadQueueItem(id: queueId, name: name, size: size, progress: 0),
         ...state.uploadQueue,
       ],
     );
@@ -344,6 +344,7 @@ class ResumeNotifier extends Notifier<ResumeState> {
         name: name,
         bytes: bytes,
         contentType: type,
+        onProgress: (percent) => _setQueueProgress(queueId, percent),
       );
 
       // Seed the cache so the immediate preview after upload is instant.
@@ -385,6 +386,26 @@ class ResumeNotifier extends Notifier<ResumeState> {
         ),
       );
     }
+  }
+
+  /// Updates the live upload progress for the queued item [queueId]. No-op if
+  /// the item has already left the queue (completed/failed) so a late progress
+  /// event can't resurrect it. Never moves progress backwards.
+  void _setQueueProgress(String queueId, int percent) {
+    var changed = false;
+    final next = state.uploadQueue.map((item) {
+      if (item.id != queueId || item.hasError || percent <= item.progress) {
+        return item;
+      }
+      changed = true;
+      return UploadQueueItem(
+        id: item.id,
+        name: item.name,
+        size: item.size,
+        progress: percent,
+      );
+    }).toList();
+    if (changed) state = state.copyWith(uploadQueue: next);
   }
 
   /// Seed the cache with bytes for a resume the caller just produced

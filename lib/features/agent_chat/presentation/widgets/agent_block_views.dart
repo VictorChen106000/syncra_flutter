@@ -84,35 +84,22 @@ class JobsBlockView extends StatelessWidget {
             ),
           ),
         ),
-        // Full-bleed rail: cancel the chat's 20px horizontal content padding so
-        // cards scroll edge-to-edge while the header/footer stay inset.
-        LayoutBuilder(
-          builder: (context, constraints) {
-            const bleed = 20.0;
-            final fullWidth = constraints.maxWidth + bleed * 2;
-            return OverflowBox(
-              maxWidth: fullWidth,
-              alignment: Alignment.center,
-              child: SizedBox(
-                width: fullWidth,
-                height: 164,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(horizontal: bleed),
-                  clipBehavior: Clip.none,
-                  itemCount: jobs.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 12),
-                  itemBuilder: (context, i) {
-                    return _JobMatchCard(job: jobs[i])
-                        .animate(delay: (i * 70).ms)
-                        .fadeIn(duration: 300.ms)
-                        .moveX(begin: 18, end: 0, curve: Curves.easeOutCubic);
-                  },
-                ),
-              ),
-            );
-          },
+        SizedBox(
+          height: 164,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            padding: EdgeInsets.zero,
+            clipBehavior: Clip.none,
+            itemCount: jobs.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (context, i) {
+              return _JobMatchCard(job: jobs[i])
+                  .animate(delay: (i * 70).ms)
+                  .fadeIn(duration: 300.ms)
+                  .moveX(begin: 18, end: 0, curve: Curves.easeOutCubic);
+            },
+          ),
         ),
         const SizedBox(height: 12),
         const _SeeAllJobsButton(),

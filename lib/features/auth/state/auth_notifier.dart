@@ -41,11 +41,22 @@ class AuthNotifier extends Notifier<AuthState> {
   AuthNotifier({
     GoogleAuthService? authService,
     UserRepository? userRepository,
-  })  : _authService = authService ?? GoogleAuthService(),
-        _userRepository = userRepository ?? UserRepository();
+  })  : _injectedAuthService = authService,
+        _injectedUserRepository = userRepository;
 
-  final GoogleAuthService _authService;
-  final UserRepository _userRepository;
+  // Built lazily on first use, not in the field initializer, so a test
+  // subclass that overrides `build()` never triggers `FirebaseAuth.instance`
+  // (which needs `Firebase.initializeApp`). Production code path is unchanged.
+  final GoogleAuthService? _injectedAuthService;
+  final UserRepository? _injectedUserRepository;
+  GoogleAuthService? _authServiceCache;
+  UserRepository? _userRepositoryCache;
+
+  GoogleAuthService get _authService =>
+      _authServiceCache ??= _injectedAuthService ?? GoogleAuthService();
+  UserRepository get _userRepository =>
+      _userRepositoryCache ??= _injectedUserRepository ?? UserRepository();
+
   StreamSubscription? _authSubscription;
 
   @override

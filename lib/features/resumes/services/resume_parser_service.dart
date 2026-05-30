@@ -16,7 +16,11 @@ import '../models/resume_json.dart';
 class ResumeParserService {
   ResumeParserService({
     AnthropicClient? client,
-    this.model = 'claude-haiku-4-5-20251001',
+    // Parsing a full resume into structured JSON without dropping a section or
+    // merging coursework bullets is precise instruction-following — Haiku
+    // routinely slips here. Sonnet is the floor for this, and the result is
+    // cached, so the stronger parse is paid for once per resume.
+    this.model = 'claude-sonnet-4-6',
   }) : _client = client ?? AnthropicClient();
 
   final AnthropicClient _client;
