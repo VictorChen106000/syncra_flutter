@@ -175,6 +175,7 @@ ToolResult _searchJobsResult(List<Job> jobs) {
                 'company': j.company,
                 'location': j.location,
                 'salary': j.salary,
+                'category': j.category.name,
                 'description_excerpt': j.why.length > 240
                     ? '${j.why.substring(0, 240)}…'
                     : j.why,

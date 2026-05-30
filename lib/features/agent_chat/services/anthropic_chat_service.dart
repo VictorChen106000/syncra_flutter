@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../data/services/anthropic_client.dart';
+import '../../../data/models/job.dart';
 import '../models/agent_block.dart';
 import '../models/chat_message.dart';
 import '../tools/tool_registry.dart';
@@ -75,6 +76,9 @@ User gates:
 - If you need information such as target salary, resume choice, recipient email, or preference, call `ask_user`.
 - When required information is missing, call `ask_user` with 2-3 short suggestion chips unless the question is genuinely open-ended.
 - Never invent personal details, resume details, recipient details, or user preferences.
+
+Job results:
+- When you call `search_jobs`, the app renders the returned roles as interactive cards the user can swipe and tap. Do not re-list those jobs in prose — add at most one short sentence introducing them, then continue.
 
 Resume tailoring:
 - When tailoring a resume, propose changes — never overwrite directly.
@@ -270,6 +274,16 @@ Progress and style:
                 } else {
                   toolSuccessesThisTurn += 1;
                 } 
+                if (!result.isError && name == 'search_jobs') {
+                  final jobsBlock = _jobsBlockFromData(
+                    id: nextBlockId('jobs'),
+                    data: result.data,
+                  );
+                  if (jobsBlock != null) {
+                    yield BlockAdded(jobsBlock);
+                  }
+                }
+
                 if (!result.isError &&
                     name == 'tailor_resume' &&
                     _hasProposedEditsPayload(result.data)) {
@@ -529,6 +543,53 @@ Progress and style:
     _logCacheUsage(response['usage']);
     return response;
   }
+
+  /// Builds the swipeable job-rail card from a `search_jobs` result. The tool
+  /// returns lean job descriptors; this parses them into [Job]s with safe
+  /// fallbacks for the fields a raw search result doesn't carry (skills, the
+  /// agent's reasoning, etc.). Returns null when there are no usable jobs, so
+  /// the turn falls back to the plain tool summary rather than an empty rail.
+  JobsBlock? _jobsBlockFromData({required String id, required Object? data}) {
+    if (data is! Map) return null;
+    final rawJobs = data['jobs'];
+    if (rawJobs is! List) return null;
+
+    final jobs = <Job>[];
+    for (final raw in rawJobs) {
+      if (raw is! Map) continue;
+      final m = raw.cast<String, dynamic>();
+      final jobId = m['id']?.toString() ?? '';
+      final title = (m['title'] as String?)?.trim() ?? '';
+      if (jobId.isEmpty || title.isEmpty) continue;
+      jobs.add(Job(
+        id: jobId,
+        title: title,
+        company: (m['company'] as String?)?.trim() ?? '',
+        location: (m['location'] as String?)?.trim() ?? '',
+        salary: (m['salary'] as String?)?.trim() ?? '',
+        category: _jobCategoryFromName(m['category'] as String?),
+        matchScore: (m['match'] as num?)?.toInt() ?? 0,
+        agentAction: '',
+        agentJustification: '',
+        skills: const [],
+        missingSkills: const [],
+        why: (m['description_excerpt'] as String?)?.trim() ?? '',
+      ));
+    }
+
+    if (jobs.isEmpty) return null;
+    return JobsBlock(id: id, jobs: jobs);
+  }
+
+  /// Lenient enum mapping for the `category` string a job descriptor carries.
+  /// Accepts both the enum name (`inputNeeded`) and the snake_case form
+  /// (`input_needed`); anything unrecognised falls back to a strong match.
+  JobCategory _jobCategoryFromName(String? name) => switch (name) {
+        'ready' => JobCategory.ready,
+        'inputNeeded' || 'input_needed' => JobCategory.inputNeeded,
+        'exploration' => JobCategory.exploration,
+        _ => JobCategory.ready,
+      };
 
   ProposedEditsBlock? _proposedEditsBlockFromData({
     required String id,

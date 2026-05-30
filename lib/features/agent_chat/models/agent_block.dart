@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import '../../../data/models/job.dart';
 import '../../resumes/models/proposed_edit.dart';
 import '../../resumes/models/resume_json.dart';
 
@@ -54,6 +55,16 @@ class ToolCallBlock extends AgentBlock {
 class TextBlock extends AgentBlock {
   TextBlock({required super.id, required this.text});
   final String text;
+}
+
+/// A list of job matches the agent surfaced via `search_jobs`. Rendered as a
+/// horizontally-swipeable rail of "prompt cards" — the same card language as
+/// the dashboard — instead of the agent narrating the roles as prose. The rail
+/// is read-only chrome; tapping a card opens the shared job action sheet.
+class JobsBlock extends AgentBlock {
+  JobsBlock({required super.id, required this.jobs});
+
+  final List<Job> jobs;
 }
 
 /// Where a single proposed edit stands in the user's review. Each edit starts

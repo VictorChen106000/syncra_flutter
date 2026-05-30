@@ -8,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/utils/motion.dart';
+import '../../../../data/models/job.dart';
 import '../../models/agent_block.dart';
 import '../../state/agent_chat_notifier.dart';
 import '../../../resumes/models/proposed_edit.dart';
@@ -15,6 +16,7 @@ import '../../../resumes/presentation/tailored_preview_page.dart';
 import '../../../resumes/state/resume_notifier.dart';
 import '../../../email/presentation/email_review_page.dart';
 import '../../../email/services/gmail_service.dart';
+import '../../../jobs/presentation/widgets/job_action_sheet.dart';
 
 class AgentBlockView extends StatelessWidget {
   const AgentBlockView({
@@ -43,7 +45,197 @@ class AgentBlockView extends StatelessWidget {
         ActionProposalView(block: block as ActionProposalBlock),
       EmailDraftBlock() =>
         EmailDraftBlockView(block: block as EmailDraftBlock),
+      JobsBlock() => JobsBlockView(block: block as JobsBlock),
     };
+  }
+}
+
+/// A horizontally-swipeable rail of job matches the agent surfaced — the chat's
+/// "generative UI" answer to a [JobsBlock]. Each role is a compact card in the
+/// same visual language as the dashboard prompt cards (surface, radius-24, ink
+/// icon chip). Tapping a card opens the shared [JobActionSheet] so the user can
+/// save it, draft an application email, share, or dismiss — without leaving the
+/// conversation.
+class JobsBlockView extends StatelessWidget {
+  const JobsBlockView({super.key, required this.block});
+
+  final JobsBlock block;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final jobs = block.jobs;
+    if (jobs.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 2, bottom: 10),
+          child: Text(
+            '${jobs.length} ${jobs.length == 1 ? 'ROLE' : 'ROLES'} FOUND · SWIPE',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.4,
+              color: brand.textMuted,
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 164,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            padding: EdgeInsets.zero,
+            clipBehavior: Clip.none,
+            itemCount: jobs.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (context, i) {
+              return _JobMatchCard(job: jobs[i])
+                  .animate(delay: (i * 70).ms)
+                  .fadeIn(duration: 300.ms)
+                  .moveX(begin: 18, end: 0, curve: Curves.easeOutCubic);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// One job in the [JobsBlockView] rail — a near-clone of the dashboard's prompt
+/// suggestion card, adapted to carry a match-quality kicker, the role title,
+/// and a company · salary subtitle.
+class _JobMatchCard extends StatelessWidget {
+  const _JobMatchCard({required this.job});
+
+  final Job job;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final (matchColor, matchLabel) = switch (job.category) {
+      JobCategory.ready => (brand.success, 'STRONG MATCH'),
+      JobCategory.inputNeeded => (brand.textMuted, 'PARTIAL MATCH'),
+      JobCategory.exploration => (brand.textSoft, 'STRETCH'),
+    };
+    final subtitle = [
+      if (job.company.isNotEmpty) job.company,
+      if (job.salary.isNotEmpty) job.salary,
+    ].join(' · ');
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => JobActionSheet.show(context, job),
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          width: 232,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: brand.surface,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: brand.border),
+            boxShadow: [
+              BoxShadow(
+                color: brand.shadow,
+                blurRadius: 24,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: brand.ink,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      Icons.work_outline_rounded,
+                      color: brand.accent,
+                      size: 18,
+                    ),
+                  ),
+                  const Spacer(),
+                  Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: brand.surfaceMuted,
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      Icons.north_east_rounded,
+                      size: 14,
+                      color: brand.ink,
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              Row(
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: matchColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    matchLabel,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                      color: brand.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                job.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: brand.ink,
+                  letterSpacing: -0.2,
+                  height: 1.25,
+                ),
+              ),
+              if (subtitle.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: brand.textMuted,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
