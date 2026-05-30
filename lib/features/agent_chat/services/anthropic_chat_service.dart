@@ -4,8 +4,8 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
+import '../../../data/services/anthropic_client.dart';
 import '../models/agent_block.dart';
 import '../models/chat_message.dart';
 import '../tools/tool_registry.dart';
@@ -26,12 +26,10 @@ import '../../resumes/models/proposed_edit.dart';
 class AnthropicChatService implements AgentService {
   AnthropicChatService({
     required this.registry,
-    String? apiKey,
-    http.Client? client,
+    AnthropicClient? client,
     this.model = 'claude-haiku-4-5-20251001',
     String? systemPromptOverride,
-  })  : _apiKey = apiKey ?? const String.fromEnvironment('ANTHROPIC_API_KEY'),
-        _client = client ?? http.Client(),
+  })  : _client = client ?? AnthropicClient(),
         _systemPrompt = systemPromptOverride ?? systemPrompt;
 
   /// The system prompt actually sent on every request. Defaults to the main
@@ -39,8 +37,6 @@ class AnthropicChatService implements AgentService {
   /// [systemPromptOverride] for a one-off session with different framing.
   final String _systemPrompt;
 
-  static const _endpoint = 'https://api.anthropic.com/v1/messages';
-  static const _version = '2023-06-01';
   static const _maxLoopIterations = 8;
 
   /// Upper bound on retained conversation messages for a threaded session.
@@ -51,20 +47,17 @@ class AnthropicChatService implements AgentService {
   /// user prompt, never an orphaned tool_result.
   static const _maxConversationMessages = 30;
 
-  /// Per-request retry budget for transient API failures (429 / 5xx / 529).
-  /// Kept at 4 so an "Overloaded" blip gets three backoff retries (~1s/2s/4s)
-  /// before the turn fails — extended-thinking requests are slower, so a
-  /// little extra patience here avoids surfacing a transient 529 to the user.
-  static const _maxApiAttempts = 4;
-
   /// Extended-thinking budget, in tokens. Must be ≥1024 and strictly less
   /// than [_maxTokens]; the model's visible output (text + tool calls) gets
   /// whatever is left over.
   static const _thinkingBudget = 2048;
 
-  /// Total output ceiling. Sits above [_thinkingBudget] so the agent still
-  /// has room for tool calls and a short reply after it finishes reasoning.
-  static const _maxTokens = 4096;
+  /// Total output ceiling. Sits well above [_thinkingBudget] so the agent has
+  /// ample room for tool calls and a reply after it finishes reasoning — a
+  /// tight ceiling here truncates the turn (handled as a clean failure below,
+  /// but better avoided). Haiku 4.5 allows far more; only generated tokens
+  /// are billed.
+  static const _maxTokens = 8192;
 
 static const systemPrompt = '''
 You are Syncra, an AI career copilot inside a Flutter app. Your job is to help
@@ -102,8 +95,7 @@ Progress and style:
 ''';
 
   final ToolRegistry registry;
-  final String _apiKey;
-  final http.Client _client;
+  final AnthropicClient _client;
   final String model;
 
   /// Pending `ask_user` calls, keyed by the InputRequestBlock id.
@@ -118,7 +110,7 @@ Progress and style:
 
   int _seq = 0;
 
-  bool get hasApiKey => _apiKey.isNotEmpty;
+  bool get hasApiKey => _client.hasApiKey;
 
   @override
   Stream<AgentEvent> runPrompt({
@@ -162,6 +154,19 @@ Progress and style:
         final response = await _callAnthropic(messages);
         final content = response['content'] as List? ?? const [];
         final stopReason = response['stop_reason'] as String? ?? '';
+
+        // A truncated turn (hit the output ceiling) can carry an incomplete
+        // tool_use block; appending it to history would leave a malformed
+        // turn the next request can't continue. Bail cleanly instead — in a
+        // threaded session the conversation stays ending on the user prompt,
+        // so the user's next message simply folds in.
+        if (stopReason == 'max_tokens') {
+          yield TurnFailed(
+            'That response got cut off before I finished. Try a narrower '
+            'request, or ask for one step at a time.',
+          );
+          return;
+        }
 
         // Record the assistant turn verbatim so the next request has full context.
         messages.add({'role': 'assistant', 'content': content});
@@ -437,6 +442,11 @@ Progress and style:
   @override
   void resetConversation() => _conversation.clear();
 
+  /// Closes the underlying Anthropic client (and its HTTP connection pool).
+  /// Call when the owning notifier is disposed. Not part of the
+  /// [AgentService] interface — hence no `@override`.
+  void dispose() => _client.dispose();
+
   /// Appends a user turn to [_conversation]. When the trailing message is
   /// already a `user` turn — the tool_result batch left by a tailor-resume
   /// pause or a bailed-out turn — the new prompt is folded into it instead of
@@ -485,7 +495,9 @@ Progress and style:
       ...registry.definitions.map((t) => t.toApiJson()),
     ];
 
-    final payload = {
+    // Transport (auth, retry/backoff, error handling) lives in the shared
+    // AnthropicClient; this builds the payload and logs cache effectiveness.
+    final response = await _client.createMessage({
       'model': model,
       'max_tokens': _maxTokens,
       'thinking': {
@@ -512,68 +524,10 @@ Progress and style:
       // for them. Two breakpoints total, well under the 4-per-request cap.
       'cache_control': {'type': 'ephemeral'},
       'messages': messages,
-    };
-    final body = jsonEncode(payload);
+    });
 
-    // Transient failures (429 rate-limit, 529 "Overloaded", 5xx, timeouts)
-    // are retried with exponential backoff instead of failing the turn on
-    // the first blip. Permanent errors (auth, bad request) fail immediately.
-    Object lastError = Exception('Anthropic request failed');
-    for (var attempt = 1; attempt <= _maxApiAttempts; attempt++) {
-      try {
-        final response = await _client
-            .post(
-              Uri.parse(_endpoint),
-              headers: {
-                'content-type': 'application/json',
-                'x-api-key': _apiKey,
-                'anthropic-version': _version,
-                'anthropic-dangerous-direct-browser-access': 'true',
-              },
-              body: body,
-            )
-            .timeout(const Duration(seconds: 45));
-
-        if (response.statusCode == 200) {
-          final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-          _logCacheUsage(decoded['usage']);
-          return decoded;
-        }
-
-        final error = Exception(
-          _extractError(response.body, response.statusCode),
-        );
-        // Permanent error, or retries exhausted → surface it.
-        if (!_isRetryableStatus(response.statusCode) ||
-            attempt == _maxApiAttempts) {
-          throw error;
-        }
-        lastError = error;
-        await Future<void>.delayed(
-          _backoffDelay(attempt, response.headers['retry-after']),
-        );
-      } on TimeoutException catch (e) {
-        if (attempt == _maxApiAttempts) rethrow;
-        lastError = e;
-        await Future<void>.delayed(_backoffDelay(attempt, null));
-      }
-    }
-    throw lastError;
-  }
-
-  /// Transient HTTP statuses worth retrying: 429 rate-limit and any 5xx
-  /// server error (529 "Overloaded" included).
-  static bool _isRetryableStatus(int code) =>
-      code == 429 || (code >= 500 && code < 600);
-
-  /// Exponential backoff — ~1s then 2s between attempts. Honors a server
-  /// `Retry-After` header (in seconds) when present.
-  Duration _backoffDelay(int attempt, String? retryAfterHeader) {
-    final retryAfter = int.tryParse(retryAfterHeader ?? '');
-    if (retryAfter != null && retryAfter > 0) {
-      return Duration(seconds: retryAfter.clamp(1, 30));
-    }
-    return Duration(milliseconds: 500 * (1 << attempt));
+    _logCacheUsage(response['usage']);
+    return response;
   }
 
   ProposedEditsBlock? _proposedEditsBlockFromData({
@@ -737,16 +691,6 @@ Progress and style:
       'read: ${usage['cache_read_input_tokens'] ?? 0}, '
       'uncached: ${usage['input_tokens'] ?? 0}',
     );
-  }
-
-  String _extractError(String body, int status) {
-    try {
-      final decoded = jsonDecode(body) as Map<String, dynamic>;
-      final error = decoded['error'] as Map<String, dynamic>?;
-      return error?['message']?.toString() ?? 'HTTP $status';
-    } catch (_) {
-      return 'HTTP $status';
-    }
   }
 
   String _shortError(Object e) {

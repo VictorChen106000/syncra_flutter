@@ -24,6 +24,134 @@ class ResumeJson {
     this.certifications = const [],
   });
 
+  /// JSON Schema describing this object's wire shape, for the Messages API
+  /// `output_config.format` (structured outputs). Constrains the parser and
+  /// tailor responses to valid, parseable resume JSON — removing the need for
+  /// "reply with ONLY JSON" prompt hedging, markdown-fence stripping, and the
+  /// malformed-JSON retry. Every object sets `additionalProperties: false`
+  /// (required by structured outputs); the section arrays are required (the
+  /// model emits them empty when absent) so it always considers every section
+  /// and never silently drops one. The flat `skills` list is intentionally
+  /// omitted — [fromJson] derives it from `skill_groups`.
+  static const Map<String, dynamic> outputSchema = {
+    'type': 'object',
+    'additionalProperties': false,
+    'required': [
+      'header',
+      'experience',
+      'education',
+      'projects',
+      'certifications',
+      'skill_groups',
+    ],
+    'properties': {
+      'header': {
+        'type': 'object',
+        'additionalProperties': false,
+        'required': ['name'],
+        'properties': {
+          'name': {'type': 'string'},
+          'email': {'type': 'string'},
+          'phone': {'type': 'string'},
+          'location': {'type': 'string'},
+          'linkedin': {'type': 'string'},
+          'website': {'type': 'string'},
+          'github': {'type': 'string'},
+          'twitter': {'type': 'string'},
+        },
+      },
+      'summary': {'type': 'string'},
+      'experience': {
+        'type': 'array',
+        'items': {
+          'type': 'object',
+          'additionalProperties': false,
+          'required': ['company', 'role', 'bullets'],
+          'properties': {
+            'company': {'type': 'string'},
+            'role': {'type': 'string'},
+            'start': {'type': 'string'},
+            'end': {'type': 'string'},
+            'location': {'type': 'string'},
+            'bullets': {
+              'type': 'array',
+              'items': {'type': 'string'},
+            },
+          },
+        },
+      },
+      'education': {
+        'type': 'array',
+        'items': {
+          'type': 'object',
+          'additionalProperties': false,
+          'required': ['school', 'degree', 'bullets'],
+          'properties': {
+            'school': {'type': 'string'},
+            'degree': {'type': 'string'},
+            'start': {'type': 'string'},
+            'end': {'type': 'string'},
+            'details': {'type': 'string'},
+            'bullets': {
+              'type': 'array',
+              'items': {'type': 'string'},
+            },
+          },
+        },
+      },
+      'projects': {
+        'type': 'array',
+        'items': {
+          'type': 'object',
+          'additionalProperties': false,
+          'required': ['name', 'bullets'],
+          'properties': {
+            'name': {'type': 'string'},
+            'description': {'type': 'string'},
+            'date': {'type': 'string'},
+            'link': {'type': 'string'},
+            'bullets': {
+              'type': 'array',
+              'items': {'type': 'string'},
+            },
+          },
+        },
+      },
+      'certifications': {
+        'type': 'array',
+        'items': {
+          'type': 'object',
+          'additionalProperties': false,
+          'required': ['name', 'bullets'],
+          'properties': {
+            'name': {'type': 'string'},
+            'issuer': {'type': 'string'},
+            'date': {'type': 'string'},
+            'bullets': {
+              'type': 'array',
+              'items': {'type': 'string'},
+            },
+          },
+        },
+      },
+      'skill_groups': {
+        'type': 'array',
+        'items': {
+          'type': 'object',
+          'additionalProperties': false,
+          'required': ['category', 'items'],
+          'properties': {
+            'category': {'type': 'string'},
+            'items': {
+              'type': 'array',
+              'items': {'type': 'string'},
+            },
+          },
+        },
+      },
+    },
+  };
+
   final ResumeHeader header;
   final String? summary;
   final List<ResumeExperience> experience;

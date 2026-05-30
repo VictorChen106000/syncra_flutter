@@ -1,10 +1,11 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 
 import '../../../data/models/job.dart';
+import '../../../data/services/anthropic_client.dart';
+
+export '../../../data/services/anthropic_client.dart' show AnthropicException;
 
 /// Result from a single matcher call: category + score + 1-sentence
 /// justification + missing skills list. Mirrors the backend Haiku
@@ -25,46 +26,60 @@ class MatcherResult {
   final List<String> missingSkills;
 }
 
-class AnthropicException implements Exception {
-  AnthropicException(this.message, {this.statusCode});
-
-  final String message;
-  final int? statusCode;
-
-  @override
-  String toString() => 'AnthropicException($statusCode): $message';
-}
-
-/// Thin HTTP client for Anthropic's Messages API.
+/// Scores candidate jobs against a resume via Anthropic's Messages API.
 ///
-/// Reads the API key from `--dart-define=ANTHROPIC_API_KEY=sk-ant-…`.
-/// Returns `null` from [scoreJobs] when no key is configured so the caller
-/// can fall back to mock-only behavior.
-///
-/// Security note: in production, route this through your backend so the
-/// key never ships to the client. This client-side path is for the
-/// school-project demo only.
+/// Transport (auth, retries, error handling) lives in the shared
+/// [AnthropicClient]; this service owns the matcher prompt and the structured
+/// output schema. Returns `null` from [scoreJobs] when no key is configured so
+/// the caller can fall back to mock-only behavior.
 class AnthropicService {
   AnthropicService({
-    String? apiKey,
-    http.Client? client,
+    AnthropicClient? client,
     this.model = 'claude-haiku-4-5-20251001',
-  })  : _apiKey = apiKey ?? const String.fromEnvironment('ANTHROPIC_API_KEY'),
-        _client = client ?? http.Client();
+  }) : _client = client ?? AnthropicClient(timeout: const Duration(seconds: 30));
 
-  static const _endpoint = 'https://api.anthropic.com/v1/messages';
-  static const _version = '2023-06-01';
-
-  /// Per-request retry budget for transient API failures (429 / 5xx / 529).
-  /// Four attempts → three backoff retries (~1s/2s/4s) before failing, so an
-  /// "Overloaded" blip doesn't surface as a failed job-match pass.
-  static const _maxApiAttempts = 4;
-
-  final String _apiKey;
-  final http.Client _client;
+  final AnthropicClient _client;
   final String model;
 
-  bool get hasApiKey => _apiKey.isNotEmpty;
+  bool get hasApiKey => _client.hasApiKey;
+
+  /// Structured-output schema: a `results` array of per-job scores. Enforced
+  /// via `output_config.format`, so the model can only return valid,
+  /// parseable JSON of exactly this shape — no prose, no markdown fences.
+  static const Map<String, dynamic> _outputSchema = {
+    'type': 'object',
+    'additionalProperties': false,
+    'required': ['results'],
+    'properties': {
+      'results': {
+        'type': 'array',
+        'items': {
+          'type': 'object',
+          'additionalProperties': false,
+          'required': [
+            'job_id',
+            'category',
+            'match_score',
+            'justification',
+            'missing_skills',
+          ],
+          'properties': {
+            'job_id': {'type': 'string'},
+            'category': {
+              'type': 'string',
+              'enum': ['ready', 'input_needed', 'exploration'],
+            },
+            'match_score': {'type': 'integer'},
+            'justification': {'type': 'string'},
+            'missing_skills': {
+              'type': 'array',
+              'items': {'type': 'string'},
+            },
+          },
+        },
+      },
+    },
+  };
 
   /// Asks Claude to score each candidate job against the given resume.
   ///
@@ -78,10 +93,13 @@ class AnthropicService {
     if (!hasApiKey) return null;
     if (jobs.isEmpty) return [];
 
-    final body = jsonEncode({
+    final response = await _client.createMessage({
       'model': model,
       'max_tokens': 1024,
       'system': _systemPrompt,
+      'output_config': {
+        'format': {'type': 'json_schema', 'schema': _outputSchema},
+      },
       'messages': [
         {
           'role': 'user',
@@ -90,97 +108,23 @@ class AnthropicService {
       ],
     });
 
-    final response = await _postWithRetry(body);
-
-    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-    final content = decoded['content'] as List?;
-    if (content == null || content.isEmpty) {
+    final text = AnthropicClient.textOf(response);
+    if (text.isEmpty) {
       throw AnthropicException('Anthropic returned no content.');
     }
-
-    final textBlock = content
-        .whereType<Map<String, dynamic>>()
-        .firstWhere((b) => b['type'] == 'text', orElse: () => const {});
-    final text = textBlock['text'] as String? ?? '';
     return _parseMatcherJson(text, jobs);
-  }
-
-  /// POSTs [body] to Anthropic, retrying transient failures (429 / 5xx /
-  /// 529 "Overloaded" / timeouts) up to [_maxApiAttempts] times with ~1s/2s/4s
-  /// backoff. A 200 returns immediately; permanent errors (auth, bad request)
-  /// fail without retrying.
-  Future<http.Response> _postWithRetry(String body) async {
-    Object lastError = AnthropicException('Anthropic request failed.');
-    for (var attempt = 1; attempt <= _maxApiAttempts; attempt++) {
-      try {
-        final response = await _client
-            .post(
-              Uri.parse(_endpoint),
-              headers: {
-                'content-type': 'application/json',
-                'x-api-key': _apiKey,
-                'anthropic-version': _version,
-                // Required for direct browser calls (web). Harmless elsewhere.
-                'anthropic-dangerous-direct-browser-access': 'true',
-              },
-              body: body,
-            )
-            .timeout(const Duration(seconds: 30));
-
-        if (response.statusCode == 200) return response;
-
-        final error = AnthropicException(
-          _extractError(response.body),
-          statusCode: response.statusCode,
-        );
-        if (!_isRetryableStatus(response.statusCode) ||
-            attempt == _maxApiAttempts) {
-          throw error;
-        }
-        lastError = error;
-        await Future<void>.delayed(
-          _backoffDelay(attempt, response.headers['retry-after']),
-        );
-      } on TimeoutException {
-        if (attempt == _maxApiAttempts) {
-          throw AnthropicException(
-            'Anthropic request timed out. Please try again.',
-          );
-        }
-        await Future<void>.delayed(_backoffDelay(attempt, null));
-      }
-    }
-    throw lastError;
-  }
-
-  /// Transient HTTP statuses worth retrying: 429 rate-limit and any 5xx
-  /// server error (529 "Overloaded" included).
-  static bool _isRetryableStatus(int code) =>
-      code == 429 || (code >= 500 && code < 600);
-
-  /// Exponential backoff — ~1s, 2s, 4s between attempts. Honors a server
-  /// `Retry-After` header (in seconds) when present.
-  Duration _backoffDelay(int attempt, String? retryAfterHeader) {
-    final retryAfter = int.tryParse(retryAfterHeader ?? '');
-    if (retryAfter != null && retryAfter > 0) {
-      return Duration(seconds: retryAfter.clamp(1, 30));
-    }
-    return Duration(milliseconds: 500 * (1 << attempt));
   }
 
   static const String _systemPrompt = '''
 You are Syncra's job matcher. Score each candidate job against the user's resume.
 
-For every job, respond with:
+For every job, return:
 - category: one of "ready" (90%+ fit, no major gaps), "input_needed" (strong but missing a specific skill or signal), or "exploration" (interesting stretch / strategic pivot worth exploring).
 - match_score: integer 0-100. Used only for sort order, never shown to the user.
 - justification: ONE short sentence in second person, written like a teammate explaining the call.
 - missing_skills: array of strings if category is "input_needed" or there are clear gaps, else empty.
 
-Reply with ONLY a single JSON object of the shape:
-{"results": [{"job_id": "...", "category": "...", "match_score": 0, "justification": "...", "missing_skills": []}, ...]}
-
-No prose, no markdown fences, no extra keys.
+Return one result object per candidate job, carrying that job's job_id verbatim.
 ''';
 
   String _buildUserPrompt({
@@ -199,16 +143,17 @@ $resumeJson
 Candidate jobs:
 $jobLines
 
-Score every job. Return the JSON object described in the system prompt.''';
+Score every job and return the results array.''';
   }
 
   List<MatcherResult> _parseMatcherJson(String text, List<Job> jobs) {
-    final cleaned = _stripMarkdownFences(text);
     final Map<String, dynamic> parsed;
     try {
-      parsed = jsonDecode(cleaned) as Map<String, dynamic>;
+      parsed = jsonDecode(text) as Map<String, dynamic>;
     } catch (e) {
-      debugPrint('Failed to parse Anthropic JSON: $e\nRaw: $text');
+      // Structured outputs guarantees schema-valid JSON on a normal stop;
+      // this only fires on a refusal or a max_tokens truncation.
+      debugPrint('Failed to parse matcher JSON: $e\nRaw: $text');
       throw AnthropicException('Could not parse matcher response.');
     }
 
@@ -235,19 +180,6 @@ Score every job. Return the JSON object described in the system prompt.''';
     return results;
   }
 
-  String _stripMarkdownFences(String text) {
-    final trimmed = text.trim();
-    if (trimmed.startsWith('```')) {
-      final firstNewline = trimmed.indexOf('\n');
-      final stripped = firstNewline == -1
-          ? trimmed.substring(3)
-          : trimmed.substring(firstNewline + 1);
-      final end = stripped.lastIndexOf('```');
-      return end == -1 ? stripped.trim() : stripped.substring(0, end).trim();
-    }
-    return trimmed;
-  }
-
   JobCategory _categoryFrom(String? value) {
     switch (value) {
       case 'ready':
@@ -261,17 +193,5 @@ Score every job. Return the JSON object described in the system prompt.''';
     }
   }
 
-  String _extractError(String body) {
-    try {
-      final decoded = jsonDecode(body) as Map<String, dynamic>;
-      final error = decoded['error'] as Map<String, dynamic>?;
-      return error?['message']?.toString() ?? body;
-    } catch (_) {
-      return body;
-    }
-  }
-
-  void dispose() {
-    _client.close();
-  }
+  void dispose() => _client.dispose();
 }
