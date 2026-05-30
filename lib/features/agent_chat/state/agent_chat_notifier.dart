@@ -293,7 +293,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
         - title: ${job.title}
         - company: ${job.company}
         - location: ${job.location}
-        - match_score: ${job.matchScore}
+        - match: ${job.matchLabel}
         - missing_skill: $missingSkill
         - agent_justification: ${job.agentJustification}
 
