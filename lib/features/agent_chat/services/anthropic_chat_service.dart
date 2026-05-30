@@ -274,7 +274,8 @@ Progress and style:
                 } else {
                   toolSuccessesThisTurn += 1;
                 } 
-                if (!result.isError && name == 'search_jobs') {
+                if (!result.isError &&
+                    (name == 'search_jobs' || name == 'match_jobs')) {
                   final jobsBlock = _jobsBlockFromData(
                     id: nextBlockId('jobs'),
                     data: result.data,

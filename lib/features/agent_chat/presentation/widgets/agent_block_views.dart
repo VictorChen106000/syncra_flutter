@@ -5,7 +5,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../../core/router/route_names.dart';
 import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/utils/motion.dart';
 import '../../../../data/models/job.dart';
@@ -82,24 +84,81 @@ class JobsBlockView extends StatelessWidget {
             ),
           ),
         ),
-        SizedBox(
-          height: 164,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            padding: EdgeInsets.zero,
-            clipBehavior: Clip.none,
-            itemCount: jobs.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 12),
-            itemBuilder: (context, i) {
-              return _JobMatchCard(job: jobs[i])
-                  .animate(delay: (i * 70).ms)
-                  .fadeIn(duration: 300.ms)
-                  .moveX(begin: 18, end: 0, curve: Curves.easeOutCubic);
-            },
+        // Full-bleed rail: cancel the chat's 20px horizontal content padding so
+        // cards scroll edge-to-edge while the header/footer stay inset.
+        LayoutBuilder(
+          builder: (context, constraints) {
+            const bleed = 20.0;
+            final fullWidth = constraints.maxWidth + bleed * 2;
+            return OverflowBox(
+              maxWidth: fullWidth,
+              alignment: Alignment.center,
+              child: SizedBox(
+                width: fullWidth,
+                height: 164,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: bleed),
+                  clipBehavior: Clip.none,
+                  itemCount: jobs.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 12),
+                  itemBuilder: (context, i) {
+                    return _JobMatchCard(job: jobs[i])
+                        .animate(delay: (i * 70).ms)
+                        .fadeIn(duration: 300.ms)
+                        .moveX(begin: 18, end: 0, curve: Curves.easeOutCubic);
+                  },
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 12),
+        const _SeeAllJobsButton(),
+      ],
+    );
+  }
+}
+
+/// Footer CTA under the job rail — jumps to the full Jobs page where every
+/// surfaced role (and the saved pipeline) lives.
+class _SeeAllJobsButton extends StatelessWidget {
+  const _SeeAllJobsButton();
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => context.go(RouteNames.jobs),
+        borderRadius: BorderRadius.circular(99),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          decoration: BoxDecoration(
+            color: brand.surface,
+            borderRadius: BorderRadius.circular(99),
+            border: Border.all(color: brand.border),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'See all in Jobs',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                  color: brand.ink,
+                  letterSpacing: -0.1,
+                ),
+              ),
+              const SizedBox(width: 5),
+              Icon(Icons.arrow_forward_rounded, size: 14, color: brand.ink),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 }

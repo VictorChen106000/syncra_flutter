@@ -462,18 +462,27 @@ void _registerMatchJobs(
       if (results == null) {
         return ToolResult.error('Scoring returned no data.');
       }
+      final jobsById = {for (final j in jobs) j.id: j};
       return ToolResult(
         summary: '${results.length} matches scored',
         data: {
-          'results': results
-              .map((r) => {
-                    'job_id': r.jobId,
-                    'category': r.category.name,
-                    'match_score': r.matchScore,
-                    'justification': r.justification,
-                    'missing_skills': r.missingSkills,
-                  })
-              .toList(),
+          // One array that serves both the model (category / score /
+          // justification / missing skills) and the chat's job rail (title /
+          // company / location / salary, merged back from the searched jobs).
+          'jobs': [
+            for (final r in results)
+              {
+                'id': r.jobId,
+                'title': jobsById[r.jobId]?.title ?? '',
+                'company': jobsById[r.jobId]?.company ?? '',
+                'location': jobsById[r.jobId]?.location ?? '',
+                'salary': jobsById[r.jobId]?.salary ?? '',
+                'category': r.category.name,
+                'match': r.matchScore,
+                'justification': r.justification,
+                'missing_skills': r.missingSkills,
+              },
+          ],
         },
       );
     },
