@@ -22,6 +22,7 @@ import '../services/anthropic_chat_service.dart';
 import '../services/chat_history_repository.dart';
 import '../tools/builtin_tools.dart';
 import '../tools/tool_registry.dart';
+import '../../jobs/state/jobs_notifier.dart';
 
 /// The active [AgentService] for the app — Claude via the tool-use loop.
 /// Requires an `ANTHROPIC_API_KEY`; without one the agent surfaces an error
@@ -96,6 +97,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
   int _seq = 0;
   bool _hydrating = false;
   bool _serviceReady = false;
+  bool _threadPipelineMarkedComplete = false;
 
   @override
   AgentChatState build() {
@@ -109,6 +111,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
       tailor: ResumeTailorService(),
     );
     _seq = 0;
+    _threadPipelineMarkedComplete = false;
     ref.onDispose(() {
       _serviceReady = false;
       _activeSub?.cancel();
@@ -354,7 +357,9 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
   /// turn. Called by the pipeline when a card is tapped — the chatbot is
   /// the single thread for every agentic interaction.
   void openJobThread(Job job) {
+    if (state.isStreaming) return;
     _service.resetConversation();
+    _threadPipelineMarkedComplete = false;
     state = AgentChatState(
       items: [_buildOpener(job)],
       conversationId: _newConversationId(),
@@ -380,6 +385,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     final uid = _uid;
     if (uid == null) return;
     _service.resetConversation();
+    _threadPipelineMarkedComplete = false;
     final saved = await _history.load(uid, conversationId);
     state = AgentChatState(
       items: [_buildOpener(null), ...saved],
@@ -507,6 +513,10 @@ Do not call send_email. Sending still requires explicit user approval.
       case BlockAdded(:final block):
         turn.blocks.add(block);
         _reflectRunningTask(block);
+
+        if (block is EmailDraftBlock) {
+          _markThreadPipelineProcessed();
+        }
         // A freshly-tailored edits card arrives already "applied" but with no
         // rendered PDF — render it now so its preview has bytes to show.
         if (block is ProposedEditsBlock &&
@@ -525,6 +535,11 @@ Do not call send_email. Sending still requires explicit user approval.
             b.status = status;
             b.resultSummary = summary;
             if (detail != null) b.detail = detail;
+
+            if (b.name == 'draft_email' && status == ToolCallStatus.done) {
+              _markThreadPipelineProcessed();
+            }
+
             break;
           }
         }
@@ -552,26 +567,30 @@ Do not call send_email. Sending still requires explicit user approval.
     final inbox = ref.read(notificationsProvider.notifier);
     switch (event) {
       case BlockAdded(:final block) when block is InputRequestBlock:
-        inbox.add(AppNotification(
-          id: 'n-input-${block.id}',
-          kind: NotificationKind.intercept,
-          title: 'Agent needs your input',
-          body: block.question,
-          timestamp: 'Just now',
-          actionLabel: 'Answer',
-          targetBlockId: block.id,
-        ));
+        inbox.add(
+          AppNotification(
+            id: 'n-input-${block.id}',
+            kind: NotificationKind.intercept,
+            title: 'Agent needs your input',
+            body: block.question,
+            timestamp: 'Just now',
+            actionLabel: 'Answer',
+            targetBlockId: block.id,
+          ),
+        );
       case BlockAdded(:final block) when block is ActionProposalBlock:
-        inbox.add(AppNotification(
-          id: 'n-prop-${block.id}',
-          kind: NotificationKind.proposal,
-          title: block.title,
-          body: block.description,
-          timestamp: 'Just now',
-          actionLabel: block.acceptLabel,
-          secondaryActionLabel: block.editLabel,
-          targetBlockId: block.id,
-        ));
+        inbox.add(
+          AppNotification(
+            id: 'n-prop-${block.id}',
+            kind: NotificationKind.proposal,
+            title: block.title,
+            body: block.description,
+            timestamp: 'Just now',
+            actionLabel: block.acceptLabel,
+            secondaryActionLabel: block.editLabel,
+            targetBlockId: block.id,
+          ),
+        );
       case _:
         break;
     }
@@ -600,6 +619,17 @@ Do not call send_email. Sending still requires explicit user approval.
     state = state.copyWith(items: [...state.items], isStreaming: false);
     _runningTask.complete();
     _persist();
+  }
+
+  void _markThreadPipelineProcessed() {
+    if (_threadPipelineMarkedComplete) return;
+
+    final job = state.threadJob;
+    if (job == null) return;
+
+    _threadPipelineMarkedComplete = true;
+
+    unawaited(ref.read(jobsProvider.notifier).approveByJobId(job.id));
   }
 
   void _failActiveTurn(String message) {
@@ -655,9 +685,7 @@ Do not call send_email. Sending still requires explicit user approval.
     if (block.state != ActionState.pending) return;
 
     block.state = ActionState.accepted;
-    ref
-        .read(notificationsProvider.notifier)
-        .markReadByTargetBlock(blockId);
+    ref.read(notificationsProvider.notifier).markReadByTargetBlock(blockId);
     state = state.copyWith(items: [...state.items]);
 
     _continueAfterAcceptedProposal(block);
@@ -712,9 +740,7 @@ Do not call send_email. Sending still requires explicit user approval.
     final block = _findProposal(blockId);
     if (block == null) return;
     block.state = ActionState.dismissed;
-    ref
-        .read(notificationsProvider.notifier)
-        .markReadByTargetBlock(blockId);
+    ref.read(notificationsProvider.notifier).markReadByTargetBlock(blockId);
     state = state.copyWith(items: [...state.items]);
   }
 
@@ -958,7 +984,8 @@ Do not call send_email. Sending still requires explicit user approval.
       blocks: [
         TextBlock(
           id: _nextId('text'),
-          text: 'I saved your tailored resume and drafted an email to you '
+          text:
+              'I saved your tailored resume and drafted an email to you '
               'with it attached. Open it to review and save it to your Gmail '
               "Drafts — I won't send anything myself.",
         ),
@@ -966,7 +993,8 @@ Do not call send_email. Sending still requires explicit user approval.
           id: _nextId('email'),
           recipient: email,
           subject: 'Your tailored resume',
-          body: 'Hi,\n\n'
+          body:
+              'Hi,\n\n'
               'Here is your resume tailored for this role, attached as a PDF. '
               'Save this draft to keep a copy in your inbox, or forward it '
               'when you apply.\n\n'
@@ -1020,9 +1048,7 @@ Do not call send_email. Sending still requires explicit user approval.
 
     block.state = InputRequestState.answered;
     block.answer = trimmed;
-    ref
-        .read(notificationsProvider.notifier)
-        .markReadByTargetBlock(blockId);
+    ref.read(notificationsProvider.notifier).markReadByTargetBlock(blockId);
     state = state.copyWith(items: [...state.items]);
 
     final continuation = block.continuationPrompt?.trim();
