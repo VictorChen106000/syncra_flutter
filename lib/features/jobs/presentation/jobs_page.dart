@@ -82,8 +82,9 @@ class _JobsPageState extends ConsumerState<JobsPage> {
     final visible = state.pendingCards
         .where((c) => !state.isDismissed(c.job.id))
         .toList();
-    final agentHasRun =
-        ref.watch(passiveAgentProvider.select((s) => s.lastBriefAt != null));
+    final agentHasRun = ref.watch(
+      passiveAgentProvider.select((s) => s.lastBriefAt != null),
+    );
 
     return AppScreen(
       showBottomNav: false,
@@ -130,9 +131,11 @@ class _AgentTimeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final needs = cards
-        .where((c) =>
-            c.job.category == JobCategory.inputNeeded ||
-            c.job.category == JobCategory.exploration)
+        .where(
+          (c) =>
+              c.job.category == JobCategory.inputNeeded ||
+              c.job.category == JobCategory.exploration,
+        )
         .toList();
     final sent = cards
         .where((c) => c.job.category == JobCategory.ready)
@@ -155,23 +158,30 @@ class _AgentTimeline extends StatelessWidget {
             ),
             children: [
               if (cards.isEmpty) _buildEmptyState(context),
+              if (cards.isNotEmpty) ...[
+                _MissionControlSummary(
+                  needsCount: needs.length,
+                  handledCount: sent.length,
+                ),
+                const SizedBox(height: 18),
+              ],
               if (needs.isNotEmpty) ...[
                 _SectionHeader(
-                  label: 'Needs you',
+                  label: 'Needs your approval',
                   count: needs.length,
                   accent: AppColors.categoryInputDeep,
                 ),
                 const SizedBox(height: 12),
                 for (var i = 0; i < needs.length; i++)
                   _SwipeDismissible(
-                    key: ValueKey('need-${needs[i].job.id}'),
-                    onDismissed: () => onDismiss(needs[i].job),
-                    child: _JobCard(
-                      job: needs[i].job,
-                      onDismiss: () => onDismiss(needs[i].job),
-                      onMore: () => onMore(needs[i].job),
-                    ),
-                  )
+                        key: ValueKey('need-${needs[i].job.id}'),
+                        onDismissed: () => onDismiss(needs[i].job),
+                        child: _JobCard(
+                          job: needs[i].job,
+                          onDismiss: () => onDismiss(needs[i].job),
+                          onMore: () => onMore(needs[i].job),
+                        ),
+                      )
                       .animate(delay: (i * 60).ms)
                       .fadeIn()
                       .moveY(begin: 16, end: 0),
@@ -179,7 +189,7 @@ class _AgentTimeline extends StatelessWidget {
               if (sent.isNotEmpty) ...[
                 if (needs.isNotEmpty) const SizedBox(height: 8),
                 _SectionHeader(
-                  label: 'Sent today',
+                  label: 'Handled today',
                   count: sent.length,
                   accent: AppColors.success,
                 ),
@@ -187,8 +197,9 @@ class _AgentTimeline extends StatelessWidget {
                 Container(
                   decoration: BoxDecoration(
                     color: context.brand.surface,
-                    borderRadius:
-                        BorderRadius.circular(AppConstants.cardRadius),
+                    borderRadius: BorderRadius.circular(
+                      AppConstants.cardRadius,
+                    ),
                     border: Border.all(
                       color: context.brand.border.withValues(alpha: 0.60),
                     ),
@@ -205,8 +216,7 @@ class _AgentTimeline extends StatelessWidget {
                           Divider(
                             height: 1,
                             thickness: 1,
-                            color: context.brand.border
-                                .withValues(alpha: 0.55),
+                            color: context.brand.border.withValues(alpha: 0.55),
                           ),
                       ],
                     ],
@@ -228,8 +238,9 @@ class _AgentTimeline extends StatelessWidget {
     if (!agentHasRun) {
       return EmptyStateCard(
         icon: Icons.bolt_rounded,
-        title: 'Your agent is idle',
-        body: 'Enable "Today\'s brief" in Settings, then tap '
+        title: 'Mission Control is idle',
+        body:
+            'Enable "Today\'s brief" in Settings, then tap '
             '"Run today\'s brief" on the dashboard. The agent will '
             'scan roles and drop them here.',
         actionLabel: 'Open dashboard',
@@ -239,8 +250,9 @@ class _AgentTimeline extends StatelessWidget {
     if (!hasAnyPipeline) {
       return EmptyStateCard(
         icon: Icons.search_rounded,
-        title: 'No new roles right now',
-        body: 'The agent scanned but didn\'t find any strong matches. '
+        title: 'No missions queued right now',
+        body:
+            'The agent scanned but didn\'t find any strong matches. '
             'Try broadening your criteria in Settings, or ask the agent '
             'to explore a different direction.',
         actionLabel: 'Ask the agent',
@@ -249,8 +261,9 @@ class _AgentTimeline extends StatelessWidget {
     }
     return EmptyStateCard(
       icon: Icons.check_circle_outline_rounded,
-      title: 'You\'re all caught up',
-      body: 'Every role the agent surfaced has been handled. '
+      title: 'Mission Control cleared',
+      body:
+          'Every role the agent surfaced has been handled. '
           'The next brief will refill this list.',
       actionLabel: 'Back to dashboard',
       onAction: () => context.go(RouteNames.dashboard),
@@ -259,10 +272,179 @@ class _AgentTimeline extends StatelessWidget {
 
   String _stats(int needs, int sent) {
     final parts = <String>[];
-    if (sent > 0) parts.add('$sent sent today');
-    if (needs > 0) parts.add('$needs needs you');
-    if (parts.isEmpty) return 'Quiet — no agent activity yet';
+    if (sent > 0) parts.add('$sent handled today');
+    if (needs > 0) {
+      parts.add(
+        needs == 1 ? '1 awaiting approval' : '$needs awaiting approval',
+      );
+    }
+    if (parts.isEmpty) return 'AI mission board is quiet';
     return parts.join(' · ');
+  }
+}
+
+class _MissionControlSummary extends StatelessWidget {
+  const _MissionControlSummary({
+    required this.needsCount,
+    required this.handledCount,
+  });
+
+  final int needsCount;
+  final int handledCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final total = needsCount + handledCount;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: brand.surface,
+        borderRadius: BorderRadius.circular(AppConstants.cardRadius),
+        border: Border.all(color: brand.border.withValues(alpha: 0.60)),
+        boxShadow: [
+          BoxShadow(
+            color: brand.shadow,
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: brand.ink,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(Icons.route_rounded, color: brand.accent, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Application Mission Control',
+                      style: TextStyle(
+                        color: brand.ink,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Syncra prepared your queue. Review what needs approval and what was handled.',
+                      style: TextStyle(
+                        color: brand.textMuted,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _MissionStatTile(
+                  label: 'Total missions',
+                  value: '$total',
+                  icon: Icons.auto_awesome_rounded,
+                  color: brand.ink,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _MissionStatTile(
+                  label: 'Need approval',
+                  value: '$needsCount',
+                  icon: Icons.touch_app_rounded,
+                  color: AppColors.categoryInputDeep,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _MissionStatTile(
+                  label: 'Handled',
+                  value: '$handledCount',
+                  icon: Icons.check_circle_rounded,
+                  color: AppColors.success,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MissionStatTile extends StatelessWidget {
+  const _MissionStatTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: brand.surfaceMuted,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: brand.border.withValues(alpha: 0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 17),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              color: brand.ink,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.4,
+              height: 1,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: brand.textMuted,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -282,10 +464,7 @@ class _SectionHeader extends StatelessWidget {
         Container(
           width: 6,
           height: 6,
-          decoration: BoxDecoration(
-            color: accent,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
         ),
         const SizedBox(width: 8),
         Text(
@@ -556,35 +735,35 @@ class _JobCard extends ConsumerStatefulWidget {
 
 class _JobCardState extends ConsumerState<_JobCard> {
   Color _accentColor(BrandTheme brand) => switch (widget.job.category) {
-        JobCategory.ready => brand.ink,
-        JobCategory.inputNeeded => AppColors.categoryInputDeep,
-        JobCategory.exploration => AppColors.categoryExploreDeep,
-      };
+    JobCategory.ready => brand.ink,
+    JobCategory.inputNeeded => AppColors.categoryInputDeep,
+    JobCategory.exploration => AppColors.categoryExploreDeep,
+  };
 
   IconData get _justificationIcon => switch (widget.job.category) {
-        JobCategory.ready => Icons.auto_awesome_rounded,
-        JobCategory.inputNeeded => Icons.error_outline_rounded,
-        JobCategory.exploration => Icons.star_rounded,
-      };
+    JobCategory.ready => Icons.auto_awesome_rounded,
+    JobCategory.inputNeeded => Icons.error_outline_rounded,
+    JobCategory.exploration => Icons.star_rounded,
+  };
 
   String get _primaryLabel => switch (widget.job.category) {
-        JobCategory.ready => 'Send',
-        JobCategory.inputNeeded => 'Open chat',
-        JobCategory.exploration => 'Draft',
-      };
+    JobCategory.ready => 'Send',
+    JobCategory.inputNeeded => 'Open chat',
+    JobCategory.exploration => 'Draft',
+  };
 
   IconData get _primaryIcon => switch (widget.job.category) {
-        JobCategory.ready => Icons.arrow_forward_rounded,
-        JobCategory.inputNeeded => Icons.chat_bubble_outline_rounded,
-        JobCategory.exploration => Icons.auto_awesome_rounded,
-      };
+    JobCategory.ready => Icons.arrow_forward_rounded,
+    JobCategory.inputNeeded => Icons.chat_bubble_outline_rounded,
+    JobCategory.exploration => Icons.auto_awesome_rounded,
+  };
 
   // Agentic flow: every pipeline interaction routes to the chatbot — no
   // secondary review/tailor/data-viz pages. The agent owns the thread.
   VoidCallback _onPrimaryTap(BuildContext context) => () {
-        ref.read(agentChatProvider.notifier).openJobThread(widget.job);
-        context.go(RouteNames.agentChat);
-      };
+    ref.read(agentChatProvider.notifier).openJobThread(widget.job);
+    context.go(RouteNames.agentChat);
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -712,8 +891,11 @@ class _JobCardState extends ConsumerState<_JobCard> {
                           children: [
                             Row(
                               children: [
-                                Icon(_justificationIcon,
-                                    size: 13, color: accentColor),
+                                Icon(
+                                  _justificationIcon,
+                                  size: 13,
+                                  color: accentColor,
+                                ),
                                 const SizedBox(width: 6),
                                 Expanded(
                                   child: Text(
@@ -749,9 +931,7 @@ class _JobCardState extends ConsumerState<_JobCard> {
                                             fontWeight: FontWeight.w800,
                                           ),
                                         ),
-                                        TextSpan(
-                                          text: job.agentJustification,
-                                        ),
+                                        TextSpan(text: job.agentJustification),
                                       ],
                                     ),
                                   )
@@ -793,7 +973,9 @@ class _JobCardState extends ConsumerState<_JobCard> {
                                 backgroundColor: accentColor,
                                 foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 14),
+                                  horizontal: 14,
+                                  vertical: 14,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -808,7 +990,9 @@ class _JobCardState extends ConsumerState<_JobCard> {
                                 foregroundColor: brand.textMuted,
                                 side: BorderSide(color: brand.border),
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 14),
+                                  horizontal: 14,
+                                  vertical: 14,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -843,7 +1027,9 @@ class _JobCardState extends ConsumerState<_JobCard> {
                                 backgroundColor: brand.ink,
                                 foregroundColor: brand.inkInverse,
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 14),
+                                  horizontal: 14,
+                                  vertical: 14,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -913,23 +1099,23 @@ class _CategoryBadge extends StatelessWidget {
     final brand = context.brand;
     final (label, bg, fg, icon) = switch (category) {
       JobCategory.ready => (
-          'Ready to Send',
-          brand.accent,
-          brand.onAccent,
-          Icons.check_circle_outline_rounded,
-        ),
+        'Ready to Send',
+        brand.accent,
+        brand.onAccent,
+        Icons.check_circle_outline_rounded,
+      ),
       JobCategory.inputNeeded => (
-          'Needs Your Input',
-          AppColors.categoryInput,
-          AppColors.ink,
-          Icons.error_outline_rounded,
-        ),
+        'Needs Your Input',
+        AppColors.categoryInput,
+        AppColors.ink,
+        Icons.error_outline_rounded,
+      ),
       JobCategory.exploration => (
-          'Strategic Pivot',
-          AppColors.categoryExplore,
-          Colors.white,
-          Icons.star_rounded,
-        ),
+        'Strategic Pivot',
+        AppColors.categoryExplore,
+        Colors.white,
+        Icons.star_rounded,
+      ),
     };
 
     return Container(

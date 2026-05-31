@@ -11,7 +11,8 @@ class AppStrings {
   static const String loginTerms =
       'By continuing, you accept our Terms, Privacy Policy, and chat guidelines.';
   static const String signUpTitle = 'Create your account';
-  static const String signUpSubtitle = 'Start building your AI-powered career profile';
+  static const String signUpSubtitle =
+      'Start building your AI-powered career profile';
   static const String createAccount = 'Create account';
   static const String alreadyHaveAccount = 'Already have an account?';
   static const String signIn = 'Sign in';
@@ -28,7 +29,8 @@ class AppStrings {
   static const String myUploads = 'My Uploads';
   static const String aiTailored = 'AI Tailored';
   static const String uploadResume = 'Tap to upload or drag & drop';
-  static const String uploadResumeHint = 'PDF, DOC, DOCX up to 5MB • Max 10 at once';
+  static const String uploadResumeHint =
+      'PDF, DOC, DOCX up to 5MB • Max 10 at once';
   static const String noResumesTitle = 'No resumes yet';
   static const String noResumesBody =
       'Upload a resume to use it for AI matching, tailoring, and applications.';
@@ -57,13 +59,13 @@ class AppStrings {
   static const String chatTypingTitle = 'Syncra is drafting...';
 
   // Jobs
-  static const String agentPipeline = 'Pipeline';
+  static const String agentPipeline = 'Mission Control';
   static const String reviewQueue = 'Review Queue';
   static const String history = 'History';
   static const String agentPipelineQueueSubtitle =
-      'I processed 142 roles. Here are the ones that need you.';
+      'Syncra prepared your job queue. Review what needs approval and what was handled.';
   static const String agentPipelineHistorySubtitle =
-      'Completed actions and timeline history.';
+      'Completed applications, drafts, and agent actions.';
   static const String searchJobsHint = 'Search roles, companies…';
 
   // Applications (was Tracker — merged tracker + history into one page)
