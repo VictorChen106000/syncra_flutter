@@ -758,6 +758,55 @@ class _JobCardState extends ConsumerState<_JobCard> {
     JobCategory.exploration => Icons.auto_awesome_rounded,
   };
 
+  String _matchedSkillLabel(Job job) {
+    final count = job.skills.length;
+    if (count == 0) return 'Match explanation ready';
+    if (count == 1) return '1 matched skill found';
+    return '$count matched skills found';
+  }
+
+  List<String> _preparedItems(Job job) {
+    return [
+      'Role fit analysis',
+      _matchedSkillLabel(job),
+      switch (job.category) {
+        JobCategory.ready => 'Application path prepared',
+        JobCategory.inputNeeded => 'Question prepared for missing context',
+        JobCategory.exploration => 'Stretch-role strategy prepared',
+      },
+    ];
+  }
+
+  List<String> _needsItems(Job job) {
+    return switch (job.category) {
+      JobCategory.ready => const [
+        'Review the prepared next step',
+        'Approve before Syncra continues',
+      ],
+      JobCategory.inputNeeded => [
+        job.missingSkills.isEmpty
+            ? 'Provide the missing context'
+            : 'Answer: ${job.missingSkills.first}',
+        'Syncra will continue after your answer',
+      ],
+      JobCategory.exploration => const [
+        'Decide if this stretch role is worth pursuing',
+        'Approve before Syncra drafts outreach',
+      ],
+    };
+  }
+
+  String _missionNextAction(Job job) {
+    return switch (job.category) {
+      JobCategory.ready =>
+        'Next: review and approve the prepared application step.',
+      JobCategory.inputNeeded =>
+        'Next: answer the missing-info question so Syncra can continue.',
+      JobCategory.exploration =>
+        'Next: decide whether Syncra should pursue this strategic role.',
+    };
+  }
+
   // Agentic flow: every pipeline interaction routes to the chatbot — no
   // secondary review/tailor/data-viz pages. The agent owns the thread.
   VoidCallback _onPrimaryTap(BuildContext context) => () {
@@ -943,6 +992,13 @@ class _JobCardState extends ConsumerState<_JobCard> {
                                       height: 1.5,
                                     ),
                                   ),
+                            const SizedBox(height: 12),
+                            _MissionPreparedPanel(
+                              preparedItems: _preparedItems(job),
+                              needsItems: _needsItems(job),
+                              nextAction: _missionNextAction(job),
+                              accentColor: accentColor,
+                            ),
                           ],
                         ),
                       ),
@@ -1049,6 +1105,179 @@ class _JobCardState extends ConsumerState<_JobCard> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _MissionPreparedPanel extends StatelessWidget {
+  const _MissionPreparedPanel({
+    required this.preparedItems,
+    required this.needsItems,
+    required this.nextAction,
+    required this.accentColor,
+  });
+
+  final List<String> preparedItems;
+  final List<String> needsItems;
+  final String nextAction;
+  final Color accentColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: brand.surfaceMuted,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: brand.border.withValues(alpha: 0.55)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _MissionMiniList(
+                  title: 'Syncra prepared',
+                  icon: Icons.auto_awesome_rounded,
+                  color: accentColor,
+                  items: preparedItems,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _MissionMiniList(
+                  title: 'Needs you',
+                  icon: Icons.touch_app_rounded,
+                  color: AppColors.categoryInputDeep,
+                  items: needsItems,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: brand.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: brand.border.withValues(alpha: 0.45)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.route_rounded, size: 15, color: accentColor),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    nextAction,
+                    style: TextStyle(
+                      color: brand.textMuted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MissionMiniList extends StatelessWidget {
+  const _MissionMiniList({
+    required this.title,
+    required this.icon,
+    required this.color,
+    required this.items,
+  });
+
+  final String title;
+  final IconData icon;
+  final Color color;
+  final List<String> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: color, size: 14),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: brand.ink,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.1,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        for (final item in items.take(3)) ...[
+          _MissionBullet(text: item),
+          const SizedBox(height: 5),
+        ],
+      ],
+    );
+  }
+}
+
+class _MissionBullet extends StatelessWidget {
+  const _MissionBullet({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 4,
+          height: 4,
+          margin: const EdgeInsets.only(top: 6),
+          decoration: BoxDecoration(
+            color: brand.textMuted.withValues(alpha: 0.65),
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 7),
+        Expanded(
+          child: Text(
+            text,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: brand.textMuted,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              height: 1.25,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
