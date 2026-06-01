@@ -11,7 +11,6 @@ import '../models/chat_message.dart';
 import '../tools/tool_registry.dart';
 import 'agent_service.dart';
 import '../../resumes/models/proposed_edit.dart';
-import '../../resumes/models/resume_fit.dart';
 import '../../resumes/models/resume_json.dart';
 
 /// Real-Anthropic implementation of [AgentService] with **tool use**.
