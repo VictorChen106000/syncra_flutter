@@ -211,6 +211,41 @@ class ResumeTailorOrchestrator {
     return saved;
   }
 
+  /// Renders a complete [ResumeJson] (assembled from scratch by `build_resume`)
+  /// to PDF bytes via the fixed template, **without saving**. Returns the bytes
+  /// so the caller can preview before persisting via [saveBuiltResume]. No
+  /// source resume, no diff — the agent built the whole structure.
+  Future<Uint8List> renderResume(ResumeJson resume) => _template.render(resume);
+
+  /// Persists an agent-built resume as a new `source: manual` base resume the
+  /// user can later tailor. Saves [bytes] to Storage and caches [resume] as the
+  /// doc's `resume_json` — so a built resume never needs PDF parsing.
+  Future<ResumeFile> saveBuiltResume({
+    required String uid,
+    required Uint8List bytes,
+    required ResumeJson resume,
+    required String name,
+  }) async {
+    final saved = await _resumes.uploadResume(
+      uid: uid,
+      name: name,
+      bytes: bytes,
+      contentType: 'application/pdf',
+      source: ResumeSource.manual,
+    );
+
+    try {
+      await _paths
+          .resumes(uid)
+          .doc(saved.id)
+          .update({'resume_json': resume.toJson()});
+    } catch (e) {
+      debugPrint('caching built resume_json failed: $e');
+    }
+
+    return saved;
+  }
+
   /// One-shot apply (render + save) for the agent's `apply_resume_edits` tool.
   /// The diff-viewer UI uses [renderEdits] / [saveRenderedResume] instead so
   /// it can preview before persisting.

@@ -11,6 +11,7 @@ import '../../../../core/utils/motion.dart';
 import '../../models/agent_block.dart';
 import '../../state/agent_chat_notifier.dart';
 import '../../../resumes/models/proposed_edit.dart';
+import '../../../resumes/presentation/resume_draft_preview_page.dart';
 import '../../../resumes/presentation/tailored_preview_page.dart';
 import '../../../resumes/state/resume_notifier.dart';
 import '../../../email/presentation/email_review_page.dart';
@@ -37,6 +38,8 @@ class AgentBlockView extends StatelessWidget {
       TextBlock(:final text) => _TextBlockView(text: text, animate: animateText),
       ProposedEditsBlock() =>
         _ProposedEditsBlockView(block: block as ProposedEditsBlock),
+      ResumeDraftBlock() =>
+        _ResumeDraftBlockView(block: block as ResumeDraftBlock),
       InputRequestBlock() =>
         InputRequestView(block: block as InputRequestBlock),
       ActionProposalBlock() =>
@@ -272,6 +275,170 @@ class _EmailMetaRow extends StatelessWidget {
             ),
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// Inline card for a [ResumeDraftBlock] — a resume the agent built from
+/// scratch. While [ResumeDraftState.rendering] it shows a spinner; once the
+/// notifier renders the PDF the card offers a magnifying glass that opens the
+/// full-screen preview where the user saves it to their library.
+class _ResumeDraftBlockView extends ConsumerWidget {
+  const _ResumeDraftBlockView({required this.block});
+
+  final ResumeDraftBlock block;
+
+  String get _summaryLine {
+    final parts = <String>[];
+    final exp = block.resume.experience.length;
+    final edu = block.resume.education.length;
+    final skills = block.resume.skills.length;
+    if (exp > 0) parts.add('$exp ${exp == 1 ? 'role' : 'roles'}');
+    if (edu > 0) parts.add('$edu ${edu == 1 ? 'school' : 'schools'}');
+    if (skills > 0) parts.add('$skills ${skills == 1 ? 'skill' : 'skills'}');
+    final name = block.resume.header.name.trim();
+    final detail = parts.join(' · ');
+    if (name.isEmpty) return detail;
+    return detail.isEmpty ? name : '$name · $detail';
+  }
+
+  void _openPreview(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => ResumeDraftPreviewPage(blockId: block.id),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
+    final saved = block.isSaved;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: brand.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: brand.border),
+        boxShadow: [
+          BoxShadow(
+            color: brand.shadow.withValues(alpha: 0.18),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: brand.ink,
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.note_add_rounded,
+                  color: brand.accent,
+                  size: 17,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'New resume',
+                  style: TextStyle(
+                    color: brand.ink,
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_summaryLine.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              _summaryLine,
+              style: TextStyle(
+                color: brand.textMuted,
+                fontSize: 12.5,
+                height: 1.4,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          _footer(context, brand, saved),
+        ],
+      ),
+    );
+  }
+
+  Widget _footer(
+    BuildContext context,
+    BrandTheme brand,
+    bool saved,
+  ) {
+    if (block.state == ResumeDraftState.rendering) {
+      return Row(
+        children: [
+          const SizedBox(
+            width: 15,
+            height: 15,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 9),
+          Text(
+            'Rendering your resume…',
+            style: TextStyle(
+              color: brand.textMuted,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.1,
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Ready: rendered (or render failed). Surface the error if there are no
+    // bytes to preview; otherwise the magnifying glass opens the preview.
+    if (block.previewBytes == null) {
+      return _ErrorLine(
+        message: block.error ?? 'Could not render this resume.',
+      );
+    }
+
+    return Row(
+      children: [
+        Icon(
+          saved ? Icons.check_circle_rounded : Icons.auto_awesome_rounded,
+          size: 15,
+          color: saved ? brand.success : brand.ink,
+        ),
+        const SizedBox(width: 7),
+        Expanded(
+          child: Text(
+            saved ? 'Saved to your resumes' : 'Draft ready — tap to review',
+            style: TextStyle(
+              color: brand.ink,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.1,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        _PreviewIconButton(onTap: () => _openPreview(context)),
       ],
     );
   }

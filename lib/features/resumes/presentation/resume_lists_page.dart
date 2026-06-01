@@ -10,6 +10,7 @@ import '../../../core/theme/brand_theme.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/empty_state_card.dart';
 import '../../../shared/widgets/section_title.dart';
+import '../../agent_chat/state/agent_chat_notifier.dart';
 import '../models/resume_file.dart';
 import '../state/resume_notifier.dart';
 import 'widgets/resume_upload_card.dart';
@@ -65,6 +66,15 @@ class ResumeListsPage extends ConsumerWidget {
                 ),
                 children: [
                   _UploadDropZone(onTap: notifier.pickAndUploadResumes),
+                  const SizedBox(height: 12),
+                  _BuildFromScratchCard(
+                    onTap: () {
+                      ref.read(agentChatProvider.notifier).sendPrompt(
+                            prompt: 'Help me build a resume from scratch.',
+                          );
+                      context.go(RouteNames.agentChat);
+                    },
+                  ),
                   for (final item in state.uploadQueue)
                     Padding(
                       padding: const EdgeInsets.only(top: 12),
@@ -127,6 +137,65 @@ class ResumeListsPage extends ConsumerWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Entry point into the agent's from-scratch resume builder. Seeds a goal
+/// prompt into the chat and routes there — the one agent then runs the
+/// `build_resume` flow (ask questions → draft → preview → save).
+class _BuildFromScratchCard extends StatelessWidget {
+  const _BuildFromScratchCard({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Material(
+      color: brand.ink,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Icon(Icons.auto_awesome_rounded, size: 20, color: brand.accent),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Build from scratch',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 14,
+                        color: brand.inkInverse,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      "No resume? Syncra will ask a few questions and build one.",
+                      style: TextStyle(
+                        color: brand.inkInverse.withValues(alpha: 0.7),
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: brand.inkInverse.withValues(alpha: 0.7),
+              ),
+            ],
+          ),
         ),
       ),
     );

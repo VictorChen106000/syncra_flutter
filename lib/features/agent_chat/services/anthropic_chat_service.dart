@@ -11,6 +11,8 @@ import '../models/chat_message.dart';
 import '../tools/tool_registry.dart';
 import 'agent_service.dart';
 import '../../resumes/models/proposed_edit.dart';
+import '../../resumes/models/resume_fit.dart';
+import '../../resumes/models/resume_json.dart';
 
 /// Real-Anthropic implementation of [AgentService] with **tool use**.
 ///
@@ -90,6 +92,12 @@ Resume tailoring:
 - Do not call `apply_resume_edits`, `draft_email`, or `send_email` until the user has accepted edits.
 - If the app later tells you the user approved and saved a tailored resume, continue the original workflow from there without asking the user to repeat the task.
 
+Building a resume from scratch:
+- If the user has no resume to upload, offer to build one with `build_resume`.
+- Collect the details conversationally with `ask_user`: contact info first, then each work experience (company, role, dates, 2-4 achievement bullets), then education and skills. Ask in small batches — not one field at a time — and let the user paste what they already have.
+- When you have enough, call `build_resume` ONCE with the full structure. It renders a preview only; it does NOT save. The user previews the PDF and taps Save.
+- NEVER invent employers, titles, dates, or metrics. Use only what the user gave you and omit fields you don't have.
+- Once saved, the new resume becomes a base resume the user can tailor to jobs — continue the workflow from there.
 Match presentation:
 - The matching system is purely qualitative. NEVER show the user a numeric score, percentage, rating, or any 0-100 value for a match.
 - When you present matches (including in a table), show match strength using ONLY the `match` label from match_jobs — e.g. "Strong match", "Partial match", "Possible match", or "Needs review".
@@ -177,6 +185,8 @@ Progress and style:
         var toolSuccessesThisTurn = 0;
         bool shouldPauseAfterTailorResume = false;
         String? tailorPauseMessage;
+        bool shouldPauseAfterBuildResume = false;
+        String? buildResumePauseMessage;
         bool shouldPauseAfterDraftEmail = false;
         String? draftPauseMessage;
         bool shouldPauseAfterResumeEmail = false;
@@ -287,6 +297,20 @@ Progress and style:
                   tailorPauseMessage = _tailorPauseMessage(result.data);
                 }
 
+                if (!result.isError && name == 'build_resume') {
+                  final draftBlock = _resumeDraftBlockFromData(
+                    id: nextBlockId('resume'),
+                    data: result.data,
+                  );
+                  if (draftBlock != null) {
+                    yield BlockAdded(draftBlock);
+                    shouldPauseAfterBuildResume = true;
+                    buildResumePauseMessage =
+                        'I drafted your resume below. Preview it, then save it '
+                        "to your resumes — nothing is saved until you tap Save.";
+                  }
+                }
+
                 if (!result.isError && name == 'draft_email') {
                   final draftBlock = _emailDraftBlockFromData(
                     id: nextBlockId('email'),
@@ -384,6 +408,20 @@ Progress and style:
             id: nextBlockId('text'),
             text: tailorPauseMessage ??
                 'I found proposed resume edits. Review them before I continue.',
+          ));
+          yield const TurnCompleted();
+          return;
+        }
+
+        // `build_resume` renders a preview only — saving is a user tap on the
+        // draft card. Stop the turn so the user previews and saves before the
+        // agent chains into anything that depends on the new resume.
+        if (shouldPauseAfterBuildResume) {
+          messages.add({'role': 'user', 'content': toolResults});
+          yield BlockAdded(TextBlock(
+            id: nextBlockId('text'),
+            text: buildResumePauseMessage ??
+                'I drafted your resume. Preview it before saving.',
           ));
           yield const TurnCompleted();
           return;
@@ -613,6 +651,36 @@ Progress and style:
     if (data is! Map) return false;
     final proposedEdits = data['proposed_edits'];
     return proposedEdits is List;
+  }
+
+  /// Builds the from-scratch resume draft card from a `build_resume` tool
+  /// result. Returns null when the payload has no usable resume (missing name)
+  /// so the turn falls back to the plain tool summary.
+  ResumeDraftBlock? _resumeDraftBlockFromData({
+    required String id,
+    required Object? data,
+  }) {
+    if (data is! Map) return null;
+    final raw = data['resume_json'];
+    if (raw is! Map) return null;
+
+    final resume = ResumeJson.fromJson(raw.cast<String, dynamic>());
+    if (resume.header.name.trim().isEmpty) return null;
+
+    return ResumeDraftBlock(
+      id: id,
+      resume: resume,
+      fileName: _resumeFileName(data['name'] as String?),
+    );
+  }
+
+  /// Filesystem-safe file name for a built resume, derived from the candidate
+  /// name (e.g. "Jane Doe" → `Jane_Doe_Resume.pdf`).
+  String _resumeFileName(String? name) {
+    final safe = (name ?? '')
+        .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    return safe.isEmpty ? 'Resume.pdf' : '${safe}_Resume.pdf';
   }
 
   /// Builds the inline review card from a `draft_email` tool result. Returns

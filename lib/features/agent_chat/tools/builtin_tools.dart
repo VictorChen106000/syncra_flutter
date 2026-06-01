@@ -13,6 +13,7 @@ import '../../email/services/email_send_service.dart';
 import '../../email/services/recipient_resolver.dart';
 import '../../agent/services/anthropic_service.dart';
 import '../../resumes/models/proposed_edit.dart';
+import '../../resumes/models/resume_json.dart';
 import '../../resumes/services/resume_parser_service.dart';
 import '../../resumes/services/resume_tailor_orchestrator.dart';
 import '../../resumes/services/resume_tailor_service.dart';
@@ -47,6 +48,7 @@ void registerBuiltinTools(ToolRegistry registry) {
   _registerMatchJobs(registry, jobs, anthropic, orchestrator);  _registerSaveToPipeline(registry, jobs, pipeline);
   _registerTailorResume(registry, jobs, paraphrase, orchestrator);
   _registerApplyResumeEdits(registry, orchestrator);
+  _registerBuildResume(registry);
   _registerDraftEmail(registry, jobs, paraphrase, orchestrator);
   _registerLookupHiringManager(registry);
   _registerSaveToTracker(registry, jobs, applications);
@@ -690,6 +692,157 @@ void _registerTailorResume(
       } catch (e) {
         return ToolResult.error('Tailor failed: $e');
       }
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// build_resume — REAL: assembles a brand-new resume from scratch for a user
+// with nothing to upload. Validates the structure the agent collected via
+// ask_user and echoes it back; the notifier renders the preview PDF and the
+// user saves it as a manual base resume. Saves nothing itself.
+// ---------------------------------------------------------------------------
+
+void _registerBuildResume(ToolRegistry registry) {
+  registry.register(
+    tool: const Tool(
+      name: 'build_resume',
+      description:
+          'Build a brand-new resume from scratch for a user who has nothing to '
+          'upload. FIRST collect the details conversationally with ask_user — '
+          'contact info, each work experience (with achievement bullets), '
+          'education, and skills — asking in small batches, not one field at a '
+          'time. THEN call this ONCE with the complete structure. It renders a '
+          'preview only and saves NOTHING: the user reviews the PDF and taps '
+          'Save. NEVER invent employers, titles, dates, or metrics — use only '
+          'what the user told you, and omit optional fields you do not have.',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'header': {
+            'type': 'object',
+            'description': 'Candidate contact block.',
+            'properties': {
+              'name': {'type': 'string', 'description': 'Full name (required).'},
+              'email': {'type': 'string'},
+              'phone': {'type': 'string'},
+              'location': {'type': 'string', 'description': 'City, region.'},
+              'linkedin': {'type': 'string'},
+              'website': {'type': 'string'},
+            },
+            'required': ['name'],
+          },
+          'summary': {
+            'type': 'string',
+            'description':
+                'Optional 1-3 sentence professional summary. Omit if the user '
+                'gave nothing to base it on — do not fabricate.',
+          },
+          'experience': {
+            'type': 'array',
+            'description': 'Work history, most recent first.',
+            'items': {
+              'type': 'object',
+              'properties': {
+                'company': {'type': 'string'},
+                'role': {'type': 'string', 'description': 'Job title.'},
+                'start': {
+                  'type': 'string',
+                  'description': 'Start date as the user gave it (e.g. "2021").',
+                },
+                'end': {
+                  'type': 'string',
+                  'description': 'End date, or "Present" for the current role.',
+                },
+                'location': {'type': 'string'},
+                'bullets': {
+                  'type': 'array',
+                  'description':
+                      '2-4 achievement bullets in the user\'s own words. Do '
+                      'not invent metrics.',
+                  'items': {'type': 'string'},
+                },
+              },
+              'required': ['company', 'role', 'start'],
+            },
+          },
+          'education': {
+            'type': 'array',
+            'items': {
+              'type': 'object',
+              'properties': {
+                'school': {'type': 'string'},
+                'degree': {'type': 'string'},
+                'start': {'type': 'string'},
+                'end': {'type': 'string'},
+                'details': {
+                  'type': 'string',
+                  'description': 'Optional honors, GPA, focus.',
+                },
+              },
+              'required': ['school', 'degree'],
+            },
+          },
+          'skills': {
+            'type': 'array',
+            'description': 'Flat list of skills/tools the user named.',
+            'items': {'type': 'string'},
+          },
+          'projects': {
+            'type': 'array',
+            'description': 'Optional notable projects.',
+            'items': {
+              'type': 'object',
+              'properties': {
+                'name': {'type': 'string'},
+                'description': {'type': 'string'},
+                'bullets': {
+                  'type': 'array',
+                  'items': {'type': 'string'},
+                },
+                'link': {'type': 'string'},
+              },
+              'required': ['name'],
+            },
+          },
+        },
+        'required': ['header'],
+      },
+      uiLabel: 'Building your resume…',
+      uiIcon: Icons.note_add_rounded,
+    ),
+    handler: (args) async {
+      final header =
+          (args['header'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final name = (header['name'] as String?)?.trim() ?? '';
+      if (name.isEmpty) {
+        return ToolResult.error(
+          'A resume needs at least the candidate\'s name. Ask the user for '
+          'their name and contact details before calling build_resume.',
+        );
+      }
+
+      final resume = ResumeJson.fromJson(args);
+      final hasContent = resume.experience.isNotEmpty ||
+          resume.education.isNotEmpty ||
+          resume.skills.isNotEmpty ||
+          resume.projects.isNotEmpty;
+      if (!hasContent) {
+        return ToolResult.error(
+          'A resume needs some content. Collect at least one work experience, '
+          'an education entry, or a set of skills before calling build_resume.',
+        );
+      }
+
+      // Echo the validated structure back; the notifier renders the preview
+      // PDF and the user saves it from the draft card. Nothing is persisted.
+      return ToolResult(
+        summary: 'Drafted a resume for $name',
+        data: {
+          'resume_json': resume.toJson(),
+          'name': name,
+        },
+      );
     },
   );
 }

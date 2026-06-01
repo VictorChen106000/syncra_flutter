@@ -514,6 +514,23 @@ Do not call send_email. Sending still requires explicit user approval.
             block.previewBytes == null) {
           unawaited(_autoRenderAppliedEdits(block));
         }
+        // A from-scratch resume draft lands with no rendered PDF — render it
+        // now so its preview has bytes to show.
+        if (block is ResumeDraftBlock &&
+            block.state == ResumeDraftState.rendering &&
+            block.previewBytes == null) {
+          unawaited(_autoRenderResumeDraft(block));
+        }
+        // A FitChartBlock arriving during onboarding is the agent's read on
+        // the user's resume — persist it to `users/{uid}.resume_fit` so the
+        // dashboard's "Chart" view can re-render it on subsequent sessions
+        // without rerunning the agent. Fire-and-forget; if Firestore is
+        // down the in-chat card still renders fine.
+        if (block is FitChartBlock && _mode == AgentChatMode.onboarding) {
+          unawaited(
+            ref.read(userProfileProvider.notifier).setResumeFit(block.fit),
+          );
+        }
       case ToolCallCompleted(
         :final blockId,
         :final summary,
@@ -894,6 +911,78 @@ Do not call send_email. Sending still requires explicit user approval.
       block.applyError = error;
     }
     state = state.copyWith(items: [...state.items]);
+  }
+
+  // -------------------------------------------------------------------------
+  // From-scratch resume drafts (build_resume → ResumeDraftBlock)
+  // -------------------------------------------------------------------------
+
+  /// Public lookup for a [ResumeDraftBlock] by id — used by the draft preview
+  /// screen to read the rendered bytes / saved state reactively.
+  ResumeDraftBlock? resumeDraftBlock(String blockId) =>
+      _findResumeDraft(blockId);
+
+  ResumeDraftBlock? _findResumeDraft(String blockId) {
+    for (final item in state.items) {
+      if (item is! AgentTurn) continue;
+      for (final block in item.blocks) {
+        if (block is ResumeDraftBlock && block.id == blockId) return block;
+      }
+    }
+    return null;
+  }
+
+  /// Renders the preview PDF for a from-scratch resume the instant its draft
+  /// card lands. `build_resume` carries the structured resume but no PDF — this
+  /// renders one (a pure template render, no Firestore) so the preview screen
+  /// has bytes to show. On failure it surfaces the error inline on the card.
+  Future<void> _autoRenderResumeDraft(ResumeDraftBlock block) async {
+    if (!_serviceReady) return;
+    if (block.previewBytes != null) return;
+
+    try {
+      block.previewBytes = await _orchestrator.renderResume(block.resume);
+      block.error = null;
+    } catch (e) {
+      block.error = _shortError(e);
+    }
+    block.state = ResumeDraftState.ready;
+    state = state.copyWith(items: [...state.items]);
+  }
+
+  /// Persists a previewed from-scratch resume as a new `source: manual` base
+  /// resume. No-op until the draft has rendered ([previewBytes] set) and only
+  /// saves once. Seeds the byte cache so opening it from the list is instant.
+  Future<void> saveBuiltResume(String blockId) async {
+    final block = _findResumeDraft(blockId);
+    if (block == null) return;
+    if (block.previewBytes == null) return;
+    if (block.isSaved) return;
+
+    final uid = _uid;
+    if (uid == null) {
+      block.error = 'Sign in to save resumes.';
+      state = state.copyWith(items: [...state.items]);
+      return;
+    }
+
+    try {
+      final saved = await _orchestrator.saveBuiltResume(
+        uid: uid,
+        bytes: block.previewBytes!,
+        resume: block.resume,
+        name: block.fileName,
+      );
+      block.savedResumeId = saved.id;
+      block.error = null;
+      ref
+          .read(resumeProvider.notifier)
+          .primeBytes(saved.id, block.previewBytes!);
+      state = state.copyWith(items: [...state.items]);
+    } catch (e) {
+      block.error = _shortError(e);
+      state = state.copyWith(items: [...state.items]);
+    }
   }
 
   /// Persists the previewed tailored PDF to the resume library so it appears
