@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
 import '../../../data/firestore/jobs_repository.dart';
@@ -48,6 +49,13 @@ final conversationListProvider =
       }
       return repo.watchConversations(user.uid);
     });
+
+/// One-slot "draft" handed from a prompt card to the chat composer. A prompt
+/// card (on the dashboard or in the chat's empty state) drops its prompt here
+/// and routes to the chat; [ChatInputBar] picks it up, pre-fills the field,
+/// and clears this — nothing sends until the user taps Send. This is what lets
+/// the user attach a resume before the prompt actually runs.
+final composerDraftProvider = StateProvider<String?>((ref) => null);
 
 @immutable
 class AgentChatState {

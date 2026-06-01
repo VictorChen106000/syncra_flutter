@@ -523,6 +523,32 @@ Progress and style:
       content is List &&
       content.any((b) => b is Map && b['type'] == 'tool_result');
 
+  /// Builds the `thinking` block for [model]. The request shape changed with
+  /// the 4.6 generation: Sonnet 4.6 and Opus 4.6/4.7/4.8 take adaptive
+  /// thinking (the model decides its own depth — no budget), while Haiku 4.5
+  /// and older take the legacy fixed `budget_tokens` form. This matters because
+  /// `budget_tokens` is *rejected* on Opus 4.7+ (HTTP 400), so hardcoding it
+  /// would break the agent the moment [model] is swapped to a newer one.
+  static Map<String, dynamic> _thinkingConfig(String model) {
+    if (_usesAdaptiveThinking(model)) {
+      return {'type': 'adaptive'};
+    }
+    return {'type': 'enabled', 'budget_tokens': _thinkingBudget};
+  }
+
+  /// True when [model] is the 4.6 generation or newer (major > 4, or major 4
+  /// with minor ≥ 6) — those use adaptive thinking. Parses the `-<major>-<minor>`
+  /// in the model id (e.g. `claude-opus-4-8` → 4.8, `claude-haiku-4-5-…` → 4.5).
+  /// An unrecognized id falls back to the legacy form, which is safe on older
+  /// models and the only thing Haiku 4.5 accepts.
+  static bool _usesAdaptiveThinking(String model) {
+    final match = RegExp(r'-(\d+)-(\d+)').firstMatch(model);
+    if (match == null) return false;
+    final major = int.parse(match.group(1)!);
+    final minor = int.parse(match.group(2)!);
+    return major > 4 || (major == 4 && minor >= 6);
+  }
+
   Future<Map<String, dynamic>> _callAnthropic(
     List<Map<String, dynamic>> messages,
   ) async {
@@ -536,10 +562,7 @@ Progress and style:
     final response = await _client.createMessage({
       'model': model,
       'max_tokens': _maxTokens,
-      'thinking': {
-        'type': 'enabled',
-        'budget_tokens': _thinkingBudget,
-      },
+      'thinking': _thinkingConfig(model),
       // Prompt caching. Request render order is tools → system → messages,
       // so a cache_control breakpoint on the system block caches the whole
       // static prefix — tool schemas AND system prompt — in one entry.

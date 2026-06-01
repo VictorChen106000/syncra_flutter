@@ -3,7 +3,6 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
@@ -380,8 +379,8 @@ class _NotificationCard extends StatelessWidget {
   (IconData, Color, Color) _icon(BrandTheme brand) => switch (notification.kind) {
         NotificationKind.intercept => (
             Icons.front_hand_outlined,
-            brand.warning.withValues(alpha: 0.20),
-            AppColors.categoryInputDeep,
+            brand.accent.withValues(alpha: 0.20),
+            brand.ink,
           ),
         NotificationKind.proposal => (
             Icons.task_alt_rounded,
@@ -405,8 +404,8 @@ class _NotificationCard extends StatelessWidget {
           ),
         NotificationKind.match => (
             Icons.auto_awesome_rounded,
-            AppColors.categoryExplore.withValues(alpha: 0.20),
-            AppColors.categoryExploreDeep,
+            brand.accent.withValues(alpha: 0.20),
+            brand.ink,
           ),
       };
 

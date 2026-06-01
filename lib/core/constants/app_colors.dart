@@ -28,13 +28,6 @@ class AppColors {
   static const Color warning = Color(0xFFFFBD2E);
   static const Color success = Color(0xFF27C93F);
 
-  // Category accents (jobs)
-  static const Color categoryReady = accent;
-  static const Color categoryInput = Color(0xFFFBBF24);
-  static const Color categoryInputDeep = Color(0xFFD97706);
-  static const Color categoryExplore = Color(0xFFA855F7);
-  static const Color categoryExploreDeep = Color(0xFF9333EA);
-
   // Login gradient stops
   static const Color loginGradientTop = Color(0xFF312E81);
   static const Color loginGradientMid = Color(0xFF581C87);
