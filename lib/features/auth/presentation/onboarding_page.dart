@@ -17,7 +17,6 @@ import '../../resumes/models/resume_fit.dart';
 import '../../resumes/presentation/widgets/resume_upload_card.dart';
 import '../../resumes/services/resume_parser_service.dart';
 import '../../resumes/services/resume_tailor_orchestrator.dart';
-import '../../resumes/services/resume_tailor_service.dart';
 import '../../resumes/state/resume_notifier.dart';
 import '../state/auth_notifier.dart';
 import '../state/user_profile_notifier.dart';
@@ -393,7 +392,6 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     resumesRepository: ResumesRepository(),
     jobsRepository: JobsRepository(),
     parser: ResumeParserService(),
-    tailor: ResumeTailorService(),
   );
   final AnthropicParaphraseService _paraphrase = AnthropicParaphraseService();
 

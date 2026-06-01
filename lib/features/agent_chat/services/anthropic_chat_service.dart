@@ -67,9 +67,17 @@ the user find, tailor, and apply to jobs. Be calm, capable, and concise.
 Agent workflow:
 - Treat the user's message as a goal, not as a single-step question.
 - Make a short internal plan and execute the safe steps with tools.
-- Do not ask the user to manually prompt every next step.
-- Continue the workflow until you either finish the useful work or reach a required user gate.
+- Drive the workflow forward yourself. After each milestone, proactively offer the next concrete step — never stop with just a result and no offered next step.
+- Offer next steps by calling `ask_user` with 2-3 tappable suggestion chips. Propose a specific action; never ask a vague "what would you like to do next?".
+- Continue the workflow until you either finish the useful work or reach a user gate.
 - Use tools to do the work. Do not just describe what you would do.
+
+Standard job-search sequence — follow it, one gate at a time:
+1. `search_jobs` renders the roles as interactive cards. Add at most one short sentence introducing them, then DO NOT end the turn. Immediately call `ask_user` to offer tailoring, e.g. "Want me to tailor your resume for one of these roles?" with chips like ["Tailor for the best match", "Let me pick a role", "Not now"].
+2. If the user wants tailoring but it is unclear which role, call `ask_user` so they choose the specific job. You need a job_id (and a resume) before tailoring.
+3. `tailor_resume` only PROPOSES edits. After it returns, stop and let the user review the diff. Do not call `apply_resume_edits`, `draft_email`, or `send_email` yet.
+4. After the app tells you the user saved the tailored resume, offer outreach: call `ask_user` — "Want me to draft an outreach email for this role?" with chips like ["Draft the email", "Not yet"]. Only call `draft_email` after the user says yes.
+5. `draft_email` produces a draft only. The user reviews and sends it from the review screen. Never call `send_email` yourself.
 
 User gates:
 - Pause only when you need information only the user can provide, or when an action requires approval.
@@ -78,7 +86,7 @@ User gates:
 - Never invent personal details, resume details, recipient details, or user preferences.
 
 Job results:
-- When you call `search_jobs`, the app renders the returned roles as interactive cards the user can swipe and tap. Do not re-list those jobs in prose — add at most one short sentence introducing them, then continue.
+- The job cards are interactive (the user can swipe and tap). Do not re-list the jobs in prose — one short sentence is enough, then follow the sequence above and offer to tailor.
 
 Resume tailoring:
 - When tailoring a resume, propose changes — never overwrite directly.
@@ -154,6 +162,10 @@ Progress and style:
 
     try {
       var consecutiveFailedToolTurns = 0;
+      // The job rail rendered this turn, if any. `search_jobs` mints it;
+      // `match_jobs` (and any repeat search) re-scores it in place instead of
+      // stacking a second identical rail below the first.
+      String? activeJobsRailId;
       for (var iteration = 0; iteration < _maxLoopIterations; iteration++) {
         final response = await _callAnthropic(messages);
         final content = response['content'] as List? ?? const [];
@@ -276,12 +288,21 @@ Progress and style:
                 } 
                 if (!result.isError &&
                     (name == 'search_jobs' || name == 'match_jobs')) {
-                  final jobsBlock = _jobsBlockFromData(
-                    id: nextBlockId('jobs'),
-                    data: result.data,
-                  );
-                  if (jobsBlock != null) {
-                    yield BlockAdded(jobsBlock);
+                  final jobs = _jobsFromData(result.data);
+                  if (jobs.isNotEmpty) {
+                    if (activeJobsRailId != null) {
+                      // A rail is already on screen — `match_jobs` re-scoring
+                      // the roles `search_jobs` surfaced, or a repeat search.
+                      // Update it in place so the same roles don't render twice.
+                      yield JobsBlockUpdated(
+                        blockId: activeJobsRailId,
+                        jobs: jobs,
+                      );
+                    } else {
+                      final id = nextBlockId('jobs');
+                      activeJobsRailId = id;
+                      yield BlockAdded(JobsBlock(id: id, jobs: jobs));
+                    }
                   }
                 }
 
@@ -550,10 +571,13 @@ Progress and style:
   /// fallbacks for the fields a raw search result doesn't carry (skills, the
   /// agent's reasoning, etc.). Returns null when there are no usable jobs, so
   /// the turn falls back to the plain tool summary rather than an empty rail.
-  JobsBlock? _jobsBlockFromData({required String id, required Object? data}) {
-    if (data is! Map) return null;
+  /// Parses a `search_jobs` / `match_jobs` result into the rail's [Job] list.
+  /// Returns an empty list when there are no usable jobs, so the caller can
+  /// fall back to the plain tool summary rather than an empty rail.
+  List<Job> _jobsFromData(Object? data) {
+    if (data is! Map) return const [];
     final rawJobs = data['jobs'];
-    if (rawJobs is! List) return null;
+    if (rawJobs is! List) return const [];
 
     final jobs = <Job>[];
     for (final raw in rawJobs) {
@@ -578,8 +602,7 @@ Progress and style:
       ));
     }
 
-    if (jobs.isEmpty) return null;
-    return JobsBlock(id: id, jobs: jobs);
+    return jobs;
   }
 
   /// Lenient enum mapping for the `category` string a job descriptor carries.

@@ -41,17 +41,25 @@ void main() {
 
   test('treats user messages as workflow goals', () {
     expect(prompt, contains('goal'));
-    expect(
-      prompt,
-      contains('do not ask the user to manually prompt every next step'),
-    );
+    expect(prompt, contains('drive the workflow forward yourself'));
+    expect(prompt, contains('proactively offer the next concrete step'));
     expect(prompt, contains('continue the workflow'));
   });
 
-  test('pauses only for required user gates', () {
+  test('pauses only at user gates', () {
     expect(prompt, contains('pause only'));
-    expect(prompt, contains('required user gate'));
+    expect(prompt, contains('user gate'));
     expect(prompt, contains('ask_user'));
+  });
+
+  test('drives the search → tailor → email sequence via ask_user offers', () {
+    expect(prompt, contains('standard job-search sequence'));
+    // After search, it must offer tailoring instead of stopping on a job list.
+    expect(prompt, contains('never stop with just a result'));
+    expect(prompt, contains('tailor your resume'));
+    // After the tailored resume is saved, it must offer outreach.
+    expect(prompt, contains('draft an outreach email'));
+    expect(prompt, contains('only call `draft_email` after the user says yes'));
   });
 
   test('continues after saved tailored resume approval', () {

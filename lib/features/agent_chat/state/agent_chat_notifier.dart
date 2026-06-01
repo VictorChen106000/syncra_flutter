@@ -12,7 +12,6 @@ import '../../notifications/models/app_notification.dart';
 import '../../notifications/state/notifications_notifier.dart';
 import '../../resumes/services/resume_parser_service.dart';
 import '../../resumes/services/resume_tailor_orchestrator.dart';
-import '../../resumes/services/resume_tailor_service.dart';
 import '../../resumes/state/resume_notifier.dart';
 import '../models/agent_block.dart';
 import '../models/chat_message.dart';
@@ -106,7 +105,6 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
       resumesRepository: ResumesRepository(),
       jobsRepository: JobsRepository(),
       parser: ResumeParserService(),
-      tailor: ResumeTailorService(),
     );
     _seq = 0;
     ref.onDispose(() {
@@ -494,8 +492,8 @@ Approval result:
 
 Continue the original application workflow from here without asking the user to repeat the task.
 Use tailored_resume_id as the resume_id for the next steps.
-If the next safe step is outreach, call draft_email.
-If recipient information is missing, call lookup_hiring_manager or ask_user.
+Now offer outreach: call ask_user to ask whether they want you to draft an outreach email for this role, with chips like ["Draft the email", "Not yet"]. Only call draft_email after the user confirms.
+If they confirm and recipient information is missing, call lookup_hiring_manager or ask_user.
 Do not call send_email. Sending still requires explicit user approval.
 ''');
   }
@@ -525,6 +523,15 @@ Do not call send_email. Sending still requires explicit user approval.
             b.status = status;
             b.resultSummary = summary;
             if (detail != null) b.detail = detail;
+            break;
+          }
+        }
+      case JobsBlockUpdated(:final blockId, :final jobs):
+        // match_jobs re-scored the rail search_jobs already rendered — swap in
+        // the scored roles in place so the same roles don't appear twice.
+        for (final b in turn.blocks) {
+          if (b is JobsBlock && b.id == blockId) {
+            b.jobs = jobs;
             break;
           }
         }

@@ -64,7 +64,9 @@ class TextBlock extends AgentBlock {
 class JobsBlock extends AgentBlock {
   JobsBlock({required super.id, required this.jobs});
 
-  final List<Job> jobs;
+  /// Mutable so `match_jobs` can re-score the rail in place — see
+  /// [JobsBlockUpdated]. A fresh search still mints a new block.
+  List<Job> jobs;
 }
 
 /// Where a single proposed edit stands in the user's review. Each edit starts

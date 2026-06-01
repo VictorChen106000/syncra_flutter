@@ -268,6 +268,11 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
           case TurnFailed(:final message):
             turnFailure = message;
 
+          case JobsBlockUpdated():
+            // Live job-block updates are a chat-UI concern; the brief flow
+            // reads the pipeline directly after the turn completes.
+            break;
+
           case TurnCompleted():
             break;
         }
