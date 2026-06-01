@@ -1,3 +1,4 @@
+import '../../../data/models/job.dart';
 import '../models/agent_block.dart';
 import '../models/chat_message.dart';
 
@@ -32,6 +33,16 @@ class ToolCallCompleted extends AgentEvent {
   /// Full inputs + outputs for the tool-call drill-down. Null leaves whatever
   /// [detail] the block was constructed with (its input args) untouched.
   final String? detail;
+}
+
+/// An existing [JobsBlock] should have its jobs replaced in place. Emitted when
+/// `match_jobs` re-scores the roles a prior `search_jobs` already rendered, so
+/// the rail updates with accurate match badges instead of a second, duplicate
+/// rail being appended below it.
+class JobsBlockUpdated extends AgentEvent {
+  const JobsBlockUpdated({required this.blockId, required this.jobs});
+  final String blockId;
+  final List<Job> jobs;
 }
 
 /// The streaming response is done.

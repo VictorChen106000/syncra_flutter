@@ -3,7 +3,6 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
@@ -159,7 +158,7 @@ class _AgentTimeline extends StatelessWidget {
                 _SectionHeader(
                   label: 'Needs you',
                   count: needs.length,
-                  accent: AppColors.categoryInputDeep,
+                  accent: context.brand.ink,
                 ),
                 const SizedBox(height: 12),
                 for (var i = 0; i < needs.length; i++)
@@ -181,7 +180,7 @@ class _AgentTimeline extends StatelessWidget {
                 _SectionHeader(
                   label: 'Sent today',
                   count: sent.length,
-                  accent: AppColors.success,
+                  accent: context.brand.accentBright,
                 ),
                 const SizedBox(height: 12),
                 Container(
@@ -510,27 +509,26 @@ class _SwipeDismissible extends StatelessWidget {
 /// label off [Job.matchLabel] — "Strong match" / "Partial match" / "Stretch"
 /// — so the user never sees a percent.
 class _MatchPill extends StatelessWidget {
-  const _MatchPill({required this.label, required this.color});
+  const _MatchPill({required this.label});
 
   final String label;
-  final Color color;
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.16),
+        color: brand.surfaceMuted,
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: color.withValues(alpha: 0.45), width: 1),
       ),
       child: Text(
         label,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          color: color,
-          fontSize: 11.5,
+          color: brand.textMuted,
+          fontSize: 11,
           fontWeight: FontWeight.w800,
           letterSpacing: -0.1,
         ),
@@ -555,12 +553,6 @@ class _JobCard extends ConsumerStatefulWidget {
 }
 
 class _JobCardState extends ConsumerState<_JobCard> {
-  Color _accentColor(BrandTheme brand) => switch (widget.job.category) {
-        JobCategory.ready => brand.ink,
-        JobCategory.inputNeeded => AppColors.categoryInputDeep,
-        JobCategory.exploration => AppColors.categoryExploreDeep,
-      };
-
   IconData get _justificationIcon => switch (widget.job.category) {
         JobCategory.ready => Icons.auto_awesome_rounded,
         JobCategory.inputNeeded => Icons.error_outline_rounded,
@@ -589,7 +581,6 @@ class _JobCardState extends ConsumerState<_JobCard> {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final accentColor = _accentColor(brand);
     final job = widget.job;
     final isInputNeeded = job.category == JobCategory.inputNeeded;
     final isStrategic = job.category == JobCategory.exploration;
@@ -599,29 +590,12 @@ class _JobCardState extends ConsumerState<_JobCard> {
       decoration: BoxDecoration(
         color: brand.surface,
         borderRadius: BorderRadius.circular(AppConstants.cardRadius),
-        border: Border.all(color: brand.border.withValues(alpha: 0.60)),
-        boxShadow: [
-          BoxShadow(
-            color: brand.shadow,
-            blurRadius: 24,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        border: Border.all(color: brand.border.withValues(alpha: 0.70)),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Stack(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Colored left accent stripe — category at a glance.
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: 5,
-            child: Container(color: accentColor),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
               // Tap anywhere on the card body to open the agent thread.
               Material(
                 color: Colors.transparent,
@@ -635,20 +609,6 @@ class _JobCardState extends ConsumerState<_JobCard> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Flexible(
-                                  child: _CategoryBadge(category: job.category),
-                                ),
-                                const Spacer(),
-                                _MatchPill(
-                                  label: job.matchLabel,
-                                  color: accentColor,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
                             Row(
                               children: [
                                 Container(
@@ -700,6 +660,8 @@ class _JobCardState extends ConsumerState<_JobCard> {
                                     ],
                                   ),
                                 ),
+                                const SizedBox(width: 10),
+                                _MatchPill(label: job.matchLabel),
                               ],
                             ),
                           ],
@@ -713,7 +675,7 @@ class _JobCardState extends ConsumerState<_JobCard> {
                             Row(
                               children: [
                                 Icon(_justificationIcon,
-                                    size: 13, color: accentColor),
+                                    size: 13, color: brand.textMuted),
                                 const SizedBox(width: 6),
                                 Expanded(
                                   child: Text(
@@ -724,7 +686,7 @@ class _JobCardState extends ConsumerState<_JobCard> {
                                       fontSize: 10.5,
                                       fontWeight: FontWeight.w900,
                                       letterSpacing: 1.4,
-                                      color: accentColor,
+                                      color: brand.textMuted,
                                     ),
                                   ),
                                 ),
@@ -745,7 +707,7 @@ class _JobCardState extends ConsumerState<_JobCard> {
                                           text:
                                               'Missing: ${job.missingSkills.join(', ')}. ',
                                           style: TextStyle(
-                                            color: accentColor,
+                                            color: brand.ink,
                                             fontWeight: FontWeight.w800,
                                           ),
                                         ),
@@ -790,8 +752,8 @@ class _JobCardState extends ConsumerState<_JobCard> {
                                 ),
                               ),
                               style: FilledButton.styleFrom(
-                                backgroundColor: accentColor,
-                                foregroundColor: Colors.white,
+                                backgroundColor: brand.ink,
+                                foregroundColor: brand.inkInverse,
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 14, vertical: 14),
                                 shape: RoundedRectangleBorder(
@@ -861,8 +823,6 @@ class _JobCardState extends ConsumerState<_JobCard> {
               ),
             ],
           ),
-        ],
-      ),
     );
   }
 }
@@ -898,65 +858,6 @@ class _IconActionButton extends StatelessWidget {
             child: Icon(icon, size: 20, color: brand.textMuted),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _CategoryBadge extends StatelessWidget {
-  const _CategoryBadge({required this.category});
-
-  final JobCategory category;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final (label, bg, fg, icon) = switch (category) {
-      JobCategory.ready => (
-          'Ready to Send',
-          brand.accent,
-          brand.onAccent,
-          Icons.check_circle_outline_rounded,
-        ),
-      JobCategory.inputNeeded => (
-          'Needs Your Input',
-          AppColors.categoryInput,
-          AppColors.ink,
-          Icons.error_outline_rounded,
-        ),
-      JobCategory.exploration => (
-          'Strategic Pivot',
-          AppColors.categoryExplore,
-          Colors.white,
-          Icons.star_rounded,
-        ),
-    };
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(99),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: fg),
-          const SizedBox(width: 6),
-          Flexible(
-            child: Text(
-              label.toUpperCase(),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                color: fg,
-                letterSpacing: 0.8,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

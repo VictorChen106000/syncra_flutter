@@ -4,8 +4,9 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
+import '../../../data/services/anthropic_client.dart';
+import '../../../data/models/job.dart';
 import '../models/agent_block.dart';
 import '../models/chat_message.dart';
 import '../tools/tool_registry.dart';
@@ -27,12 +28,10 @@ import '../../resumes/models/resume_json.dart';
 class AnthropicChatService implements AgentService {
   AnthropicChatService({
     required this.registry,
-    String? apiKey,
-    http.Client? client,
+    AnthropicClient? client,
     this.model = 'claude-haiku-4-5-20251001',
     String? systemPromptOverride,
-  })  : _apiKey = apiKey ?? const String.fromEnvironment('ANTHROPIC_API_KEY'),
-        _client = client ?? http.Client(),
+  })  : _client = client ?? AnthropicClient(),
         _systemPrompt = systemPromptOverride ?? systemPrompt;
 
   /// The system prompt actually sent on every request. Defaults to the main
@@ -40,8 +39,6 @@ class AnthropicChatService implements AgentService {
   /// [systemPromptOverride] for a one-off session with different framing.
   final String _systemPrompt;
 
-  static const _endpoint = 'https://api.anthropic.com/v1/messages';
-  static const _version = '2023-06-01';
   static const _maxLoopIterations = 8;
 
   /// Upper bound on retained conversation messages for a threaded session.
@@ -52,20 +49,17 @@ class AnthropicChatService implements AgentService {
   /// user prompt, never an orphaned tool_result.
   static const _maxConversationMessages = 30;
 
-  /// Per-request retry budget for transient API failures (429 / 5xx / 529).
-  /// Kept at 4 so an "Overloaded" blip gets three backoff retries (~1s/2s/4s)
-  /// before the turn fails — extended-thinking requests are slower, so a
-  /// little extra patience here avoids surfacing a transient 529 to the user.
-  static const _maxApiAttempts = 4;
-
   /// Extended-thinking budget, in tokens. Must be ≥1024 and strictly less
   /// than [_maxTokens]; the model's visible output (text + tool calls) gets
   /// whatever is left over.
   static const _thinkingBudget = 2048;
 
-  /// Total output ceiling. Sits above [_thinkingBudget] so the agent still
-  /// has room for tool calls and a short reply after it finishes reasoning.
-  static const _maxTokens = 4096;
+  /// Total output ceiling. Sits well above [_thinkingBudget] so the agent has
+  /// ample room for tool calls and a reply after it finishes reasoning — a
+  /// tight ceiling here truncates the turn (handled as a clean failure below,
+  /// but better avoided). Haiku 4.5 allows far more; only generated tokens
+  /// are billed.
+  static const _maxTokens = 8192;
 
 static const systemPrompt = '''
 You are Syncra, an AI career copilot inside a Flutter app. Your job is to help
@@ -74,15 +68,26 @@ the user find, tailor, and apply to jobs. Be calm, capable, and concise.
 Agent workflow:
 - Treat the user's message as a goal, not as a single-step question.
 - Make a short internal plan and execute the safe steps with tools.
-- Do not ask the user to manually prompt every next step.
-- Continue the workflow until you either finish the useful work or reach a required user gate.
+- Drive the workflow forward yourself. After each milestone, proactively offer the next concrete step — never stop with just a result and no offered next step.
+- Offer next steps by calling `ask_user` with 2-3 tappable suggestion chips. Propose a specific action; never ask a vague "what would you like to do next?".
+- Continue the workflow until you either finish the useful work or reach a user gate.
 - Use tools to do the work. Do not just describe what you would do.
+
+Standard job-search sequence — follow it, one gate at a time:
+1. `search_jobs` renders the roles as interactive cards. Add at most one short sentence introducing them, then DO NOT end the turn. Immediately call `ask_user` to offer tailoring, e.g. "Want me to tailor your resume for one of these roles?" with chips like ["Tailor for the best match", "Let me pick a role", "Not now"].
+2. If the user wants tailoring but it is unclear which role, call `ask_user` so they choose the specific job. You need a job_id (and a resume) before tailoring.
+3. `tailor_resume` only PROPOSES edits. After it returns, stop and let the user review the diff. Do not call `apply_resume_edits`, `draft_email`, or `send_email` yet.
+4. After the app tells you the user saved the tailored resume, offer outreach: call `ask_user` — "Want me to draft an outreach email for this role?" with chips like ["Draft the email", "Not yet"]. Only call `draft_email` after the user says yes.
+5. `draft_email` produces a draft only. The user reviews and sends it from the review screen. Never call `send_email` yourself.
 
 User gates:
 - Pause only when you need information only the user can provide, or when an action requires approval.
 - If you need information such as target salary, resume choice, recipient email, or preference, call `ask_user`.
 - When required information is missing, call `ask_user` with 2-3 short suggestion chips unless the question is genuinely open-ended.
 - Never invent personal details, resume details, recipient details, or user preferences.
+
+Job results:
+- The job cards are interactive (the user can swipe and tap). Do not re-list the jobs in prose — one short sentence is enough, then follow the sequence above and offer to tailor.
 
 Resume tailoring:
 - When tailoring a resume, propose changes — never overwrite directly.
@@ -115,8 +120,7 @@ Progress and style:
 ''';
 
   final ToolRegistry registry;
-  final String _apiKey;
-  final http.Client _client;
+  final AnthropicClient _client;
   final String model;
 
   /// Pending `ask_user` calls, keyed by the InputRequestBlock id.
@@ -131,7 +135,7 @@ Progress and style:
 
   int _seq = 0;
 
-  bool get hasApiKey => _apiKey.isNotEmpty;
+  bool get hasApiKey => _client.hasApiKey;
 
   @override
   Stream<AgentEvent> runPrompt({
@@ -171,10 +175,27 @@ Progress and style:
 
     try {
       var consecutiveFailedToolTurns = 0;
+      // The job rail rendered this turn, if any. `search_jobs` mints it;
+      // `match_jobs` (and any repeat search) re-scores it in place instead of
+      // stacking a second identical rail below the first.
+      String? activeJobsRailId;
       for (var iteration = 0; iteration < _maxLoopIterations; iteration++) {
         final response = await _callAnthropic(messages);
         final content = response['content'] as List? ?? const [];
         final stopReason = response['stop_reason'] as String? ?? '';
+
+        // A truncated turn (hit the output ceiling) can carry an incomplete
+        // tool_use block; appending it to history would leave a malformed
+        // turn the next request can't continue. Bail cleanly instead — in a
+        // threaded session the conversation stays ending on the user prompt,
+        // so the user's next message simply folds in.
+        if (stopReason == 'max_tokens') {
+          yield TurnFailed(
+            'That response got cut off before I finished. Try a narrower '
+            'request, or ask for one step at a time.',
+          );
+          return;
+        }
 
         // Record the assistant turn verbatim so the next request has full context.
         messages.add({'role': 'assistant', 'content': content});
@@ -280,6 +301,26 @@ Progress and style:
                 } else {
                   toolSuccessesThisTurn += 1;
                 } 
+                if (!result.isError &&
+                    (name == 'search_jobs' || name == 'match_jobs')) {
+                  final jobs = _jobsFromData(result.data);
+                  if (jobs.isNotEmpty) {
+                    if (activeJobsRailId != null) {
+                      // A rail is already on screen — `match_jobs` re-scoring
+                      // the roles `search_jobs` surfaced, or a repeat search.
+                      // Update it in place so the same roles don't render twice.
+                      yield JobsBlockUpdated(
+                        blockId: activeJobsRailId,
+                        jobs: jobs,
+                      );
+                    } else {
+                      final id = nextBlockId('jobs');
+                      activeJobsRailId = id;
+                      yield BlockAdded(JobsBlock(id: id, jobs: jobs));
+                    }
+                  }
+                }
+
                 if (!result.isError &&
                     name == 'tailor_resume' &&
                     _hasProposedEditsPayload(result.data)) {
@@ -480,6 +521,11 @@ Progress and style:
   @override
   void resetConversation() => _conversation.clear();
 
+  /// Closes the underlying Anthropic client (and its HTTP connection pool).
+  /// Call when the owning notifier is disposed. Not part of the
+  /// [AgentService] interface — hence no `@override`.
+  void dispose() => _client.dispose();
+
   /// Appends a user turn to [_conversation]. When the trailing message is
   /// already a `user` turn — the tool_result batch left by a tailor-resume
   /// pause or a bailed-out turn — the new prompt is folded into it instead of
@@ -520,6 +566,32 @@ Progress and style:
       content is List &&
       content.any((b) => b is Map && b['type'] == 'tool_result');
 
+  /// Builds the `thinking` block for [model]. The request shape changed with
+  /// the 4.6 generation: Sonnet 4.6 and Opus 4.6/4.7/4.8 take adaptive
+  /// thinking (the model decides its own depth — no budget), while Haiku 4.5
+  /// and older take the legacy fixed `budget_tokens` form. This matters because
+  /// `budget_tokens` is *rejected* on Opus 4.7+ (HTTP 400), so hardcoding it
+  /// would break the agent the moment [model] is swapped to a newer one.
+  static Map<String, dynamic> _thinkingConfig(String model) {
+    if (_usesAdaptiveThinking(model)) {
+      return {'type': 'adaptive'};
+    }
+    return {'type': 'enabled', 'budget_tokens': _thinkingBudget};
+  }
+
+  /// True when [model] is the 4.6 generation or newer (major > 4, or major 4
+  /// with minor ≥ 6) — those use adaptive thinking. Parses the `-<major>-<minor>`
+  /// in the model id (e.g. `claude-opus-4-8` → 4.8, `claude-haiku-4-5-…` → 4.5).
+  /// An unrecognized id falls back to the legacy form, which is safe on older
+  /// models and the only thing Haiku 4.5 accepts.
+  static bool _usesAdaptiveThinking(String model) {
+    final match = RegExp(r'-(\d+)-(\d+)').firstMatch(model);
+    if (match == null) return false;
+    final major = int.parse(match.group(1)!);
+    final minor = int.parse(match.group(2)!);
+    return major > 4 || (major == 4 && minor >= 6);
+  }
+
   Future<Map<String, dynamic>> _callAnthropic(
     List<Map<String, dynamic>> messages,
   ) async {
@@ -528,13 +600,12 @@ Progress and style:
       ...registry.definitions.map((t) => t.toApiJson()),
     ];
 
-    final payload = {
+    // Transport (auth, retry/backoff, error handling) lives in the shared
+    // AnthropicClient; this builds the payload and logs cache effectiveness.
+    final response = await _client.createMessage({
       'model': model,
       'max_tokens': _maxTokens,
-      'thinking': {
-        'type': 'enabled',
-        'budget_tokens': _thinkingBudget,
-      },
+      'thinking': _thinkingConfig(model),
       // Prompt caching. Request render order is tools → system → messages,
       // so a cache_control breakpoint on the system block caches the whole
       // static prefix — tool schemas AND system prompt — in one entry.
@@ -555,69 +626,60 @@ Progress and style:
       // for them. Two breakpoints total, well under the 4-per-request cap.
       'cache_control': {'type': 'ephemeral'},
       'messages': messages,
-    };
-    final body = jsonEncode(payload);
+    });
 
-    // Transient failures (429 rate-limit, 529 "Overloaded", 5xx, timeouts)
-    // are retried with exponential backoff instead of failing the turn on
-    // the first blip. Permanent errors (auth, bad request) fail immediately.
-    Object lastError = Exception('Anthropic request failed');
-    for (var attempt = 1; attempt <= _maxApiAttempts; attempt++) {
-      try {
-        final response = await _client
-            .post(
-              Uri.parse(_endpoint),
-              headers: {
-                'content-type': 'application/json',
-                'x-api-key': _apiKey,
-                'anthropic-version': _version,
-                'anthropic-dangerous-direct-browser-access': 'true',
-              },
-              body: body,
-            )
-            .timeout(const Duration(seconds: 45));
-
-        if (response.statusCode == 200) {
-          final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-          _logCacheUsage(decoded['usage']);
-          return decoded;
-        }
-
-        final error = Exception(
-          _extractError(response.body, response.statusCode),
-        );
-        // Permanent error, or retries exhausted → surface it.
-        if (!_isRetryableStatus(response.statusCode) ||
-            attempt == _maxApiAttempts) {
-          throw error;
-        }
-        lastError = error;
-        await Future<void>.delayed(
-          _backoffDelay(attempt, response.headers['retry-after']),
-        );
-      } on TimeoutException catch (e) {
-        if (attempt == _maxApiAttempts) rethrow;
-        lastError = e;
-        await Future<void>.delayed(_backoffDelay(attempt, null));
-      }
-    }
-    throw lastError;
+    _logCacheUsage(response['usage']);
+    return response;
   }
 
-  /// Transient HTTP statuses worth retrying: 429 rate-limit and any 5xx
-  /// server error (529 "Overloaded" included).
-  static bool _isRetryableStatus(int code) =>
-      code == 429 || (code >= 500 && code < 600);
+  /// Builds the swipeable job-rail card from a `search_jobs` result. The tool
+  /// returns lean job descriptors; this parses them into [Job]s with safe
+  /// fallbacks for the fields a raw search result doesn't carry (skills, the
+  /// agent's reasoning, etc.). Returns null when there are no usable jobs, so
+  /// the turn falls back to the plain tool summary rather than an empty rail.
+  /// Parses a `search_jobs` / `match_jobs` result into the rail's [Job] list.
+  /// Returns an empty list when there are no usable jobs, so the caller can
+  /// fall back to the plain tool summary rather than an empty rail.
+  List<Job> _jobsFromData(Object? data) {
+    if (data is! Map) return const [];
+    final rawJobs = data['jobs'];
+    if (rawJobs is! List) return const [];
 
-  /// Exponential backoff — ~1s then 2s between attempts. Honors a server
-  /// `Retry-After` header (in seconds) when present.
-  Duration _backoffDelay(int attempt, String? retryAfterHeader) {
-    final retryAfter = int.tryParse(retryAfterHeader ?? '');
-    if (retryAfter != null && retryAfter > 0) {
-      return Duration(seconds: retryAfter.clamp(1, 30));
+    final jobs = <Job>[];
+    for (final raw in rawJobs) {
+      if (raw is! Map) continue;
+      final m = raw.cast<String, dynamic>();
+      final jobId = m['id']?.toString() ?? '';
+      final title = (m['title'] as String?)?.trim() ?? '';
+      if (jobId.isEmpty || title.isEmpty) continue;
+      jobs.add(Job(
+        id: jobId,
+        title: title,
+        company: (m['company'] as String?)?.trim() ?? '',
+        location: (m['location'] as String?)?.trim() ?? '',
+        salary: (m['salary'] as String?)?.trim() ?? '',
+        category: _jobCategoryFromName(m['category'] as String?),
+        matchScore: (m['match'] as num?)?.toInt() ?? 0,
+        agentAction: '',
+        agentJustification: '',
+        skills: const [],
+        missingSkills: const [],
+        why: (m['description_excerpt'] as String?)?.trim() ?? '',
+      ));
     }
-    return Duration(milliseconds: 500 * (1 << attempt));
+
+    return jobs;
   }
+
+  /// Lenient enum mapping for the `category` string a job descriptor carries.
+  /// Accepts both the enum name (`inputNeeded`) and the snake_case form
+  /// (`input_needed`); anything unrecognised falls back to a strong match.
+  JobCategory _jobCategoryFromName(String? name) => switch (name) {
+        'ready' => JobCategory.ready,
+        'inputNeeded' || 'input_needed' => JobCategory.inputNeeded,
+        'exploration' => JobCategory.exploration,
+        _ => JobCategory.ready,
+      };
 
   ProposedEditsBlock? _proposedEditsBlockFromData({
     required String id,
@@ -810,16 +872,6 @@ Progress and style:
       'read: ${usage['cache_read_input_tokens'] ?? 0}, '
       'uncached: ${usage['input_tokens'] ?? 0}',
     );
-  }
-
-  String _extractError(String body, int status) {
-    try {
-      final decoded = jsonDecode(body) as Map<String, dynamic>;
-      final error = decoded['error'] as Map<String, dynamic>?;
-      return error?['message']?.toString() ?? 'HTTP $status';
-    } catch (_) {
-      return 'HTTP $status';
-    }
   }
 
   String _shortError(Object e) {

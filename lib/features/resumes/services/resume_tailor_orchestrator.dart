@@ -12,7 +12,6 @@ import 'pdf_template.dart';
 import 'pdf_text_extractor.dart';
 import 'resume_diff_service.dart';
 import 'resume_parser_service.dart';
-import 'resume_tailor_service.dart';
 
 /// One-shot orchestrator: load resume → (lazy) parse → tailor for a job →
 /// render to PDF via the fixed template → save to local disk + Firestore.
@@ -24,7 +23,6 @@ class ResumeTailorOrchestrator {
     required ResumesRepository resumesRepository,
     required JobsRepository jobsRepository,
     required ResumeParserService parser,
-    required ResumeTailorService tailor,
     ResumePdfTextExtractor? extractor,
     ResumePdfTemplate? template,
     ResumeDiffService? diff,
@@ -32,7 +30,6 @@ class ResumeTailorOrchestrator {
   })  : _resumes = resumesRepository,
         _jobs = jobsRepository,
         _parser = parser,
-        _tailor = tailor,
         _extractor = extractor ?? const ResumePdfTextExtractor(),
         _template = template ?? const ResumePdfTemplate(),
         _diff = diff ?? const ResumeDiffService(),
@@ -41,7 +38,6 @@ class ResumeTailorOrchestrator {
   final ResumesRepository _resumes;
   final JobsRepository _jobs;
   final ResumeParserService _parser;
-  final ResumeTailorService _tailor;
   final ResumePdfTextExtractor _extractor;
   final ResumePdfTemplate _template;
   final ResumeDiffService _diff;
@@ -102,44 +98,6 @@ class ResumeTailorOrchestrator {
       debugPrint('caching resume_json failed: $e');
     }
     return parsed;
-  }
-
-  /// Full tailor flow. Returns the newly created tailored [ResumeFile].
-  Future<ResumeFile> tailorForJob({
-    required String uid,
-    required String resumeId,
-    required String jobId,
-  }) async {
-    final job = await _jobs.fetchById(jobId);
-    if (job == null) {
-      throw TailorOrchestratorException('Job $jobId not found.');
-    }
-    final resumeJson = await readResumeJson(uid: uid, resumeId: resumeId);
-
-    final tailored = await _tailor.tailor(resume: resumeJson, job: job);
-    if (tailored == null) {
-      throw const TailorOrchestratorException(
-        'No Anthropic API key configured.',
-      );
-    }
-
-    final bytes = await _template.render(tailored);
-    final fileName = _fileNameFor(job: job);
-    final saved = await _resumes.saveGeneratedResume(
-      uid: uid,
-      name: fileName,
-      bytes: bytes,
-      parentResumeId: resumeId,
-      tailoredForJobId: jobId,
-    );
-
-    try {
-      final docRef = _paths.resumes(uid).doc(saved.id);
-      await docRef.update({'resume_json': tailored.toJson()});
-    } catch (e) {
-      debugPrint('caching tailored resume_json failed: $e');
-    }
-    return saved;
   }
 
   /// Renders the tailored PDF for a user-accepted edit subset **without

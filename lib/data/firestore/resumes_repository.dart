@@ -32,6 +32,7 @@ class ResumesRepository {
     required Uint8List bytes,
     required String contentType,
     ResumeSource source = ResumeSource.manual,
+    void Function(int percent)? onProgress,
   }) async {
     final docRef = _paths.resumes(uid).doc();
     final storagePath =
@@ -41,6 +42,7 @@ class ResumesRepository {
       path: storagePath,
       bytes: bytes,
       contentType: contentType,
+      onProgress: onProgress,
     );
 
     final uploadedAt = DateTime.now();
@@ -147,11 +149,31 @@ class ResumesRepository {
     required String path,
     required Uint8List bytes,
     required String contentType,
+    void Function(int percent)? onProgress,
   }) async {
-    await _storage.ref(path).putData(
+    final task = _storage.ref(path).putData(
           bytes,
           SettableMetadata(contentType: contentType),
         );
+
+    // Stream real byte-transfer progress, capped at 95% — the final 5% is
+    // reserved for the Firestore metadata write the caller does next, so the
+    // bar never reads 100% before the resume is actually queryable.
+    if (onProgress != null) {
+      task.snapshotEvents.listen(
+        (snapshot) {
+          final total = snapshot.totalBytes;
+          if (total <= 0) return;
+          final pct = (snapshot.bytesTransferred / total * 95).round();
+          onProgress(pct.clamp(0, 95));
+        },
+        // Swallow stream errors — the awaited task below surfaces the real
+        // failure with a proper stack, so a duplicate throw here is noise.
+        onError: (_) {},
+      );
+    }
+
+    await task;
   }
 
   Future<void> _safeDeleteBlob(String storagePath) async {

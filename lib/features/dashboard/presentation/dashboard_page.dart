@@ -12,6 +12,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
+import '../../../core/utils/motion.dart';
 import '../../../data/models/tracked_application.dart';
 import '../../agent_chat/agent_prompt_suggestions.dart';
 import '../../agent_chat/models/agent_block.dart';
@@ -982,8 +983,11 @@ class _PromptSuggestionCard extends ConsumerWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: () {
-          ref.read(agentChatProvider.notifier).sendPrompt(prompt: data.prompt);
-          context.go(RouteNames.agentChat);
+          // Hand the prompt to the chat composer rather than firing it — the
+          // user lands on the chat with the prompt pre-filled, attaches a
+          // resume, then taps Send themselves.
+          ref.read(composerDraftProvider.notifier).state = data.prompt;
+          context.go('${RouteNames.agentChat}?focus=1');
         },
         borderRadius: BorderRadius.circular(24),
         child: Container(
@@ -1010,13 +1014,15 @@ class _PromptSuggestionCard extends ConsumerWidget {
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: brand.ink,
+                      // Lime box + black glyph: reads as a bright chip in both
+                      // modes, and in dark mode it pops off the black backdrop.
+                      color: brand.accent,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     alignment: Alignment.center,
                     child: Icon(
                       data.icon,
-                      color: brand.accent,
+                      color: brand.onAccent,
                       size: 18,
                     ),
                   ),
@@ -1053,13 +1059,27 @@ class _PromptSuggestionCard extends ConsumerWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w700,
                   color: brand.ink,
-                  letterSpacing: -0.2,
-                  height: 1.35,
+                  letterSpacing: 0.1,
+                  height: 1.4,
                 ),
-              ),
+              )
+                  // A periodic on-brand glint sweeping across the prompt — a
+                  // subtle premium "shine". Plays once, waits, repeats; gated
+                  // on the OS reduce-motion setting like the app's other loops.
+                  .animate(
+                    onPlay: shouldAnimate(context)
+                        ? (controller) =>
+                            controller.repeat(period: 3200.ms)
+                        : null,
+                  )
+                  .shimmer(
+                    duration: 1500.ms,
+                    color: brand.accent,
+                    angle: 0.5,
+                  ),
             ],
           ),
         ),

@@ -16,7 +16,6 @@ import '../../resumes/models/proposed_edit.dart';
 import '../../resumes/models/resume_json.dart';
 import '../../resumes/services/resume_parser_service.dart';
 import '../../resumes/services/resume_tailor_orchestrator.dart';
-import '../../resumes/services/resume_tailor_service.dart';
 import 'anthropic_tool_calls.dart';
 import 'tool.dart';
 import 'tool_registry.dart';
@@ -39,7 +38,6 @@ void registerBuiltinTools(ToolRegistry registry) {
     resumesRepository: resumes,
     jobsRepository: jobs,
     parser: ResumeParserService(),
-    tailor: ResumeTailorService(),
   );
 
   _registerSearchJobs(registry, jsearch, jobs);
@@ -177,6 +175,7 @@ ToolResult _searchJobsResult(List<Job> jobs) {
                 'company': j.company,
                 'location': j.location,
                 'salary': j.salary,
+                'category': j.category.name,
                 'description_excerpt': j.why.length > 240
                     ? '${j.why.substring(0, 240)}…'
                     : j.why,
@@ -464,20 +463,27 @@ void _registerMatchJobs(
       if (results == null) {
         return ToolResult.error('Scoring returned no data.');
       }
+      final jobsById = {for (final j in jobs) j.id: j};
       return ToolResult(
         summary: '${results.length} matches reviewed',
         data: {
-          'results': results
-              .map((r) => {
-                    'job_id': r.jobId,
-                    // Qualitative only — never expose a numeric score to the
-                    // model, or it will render a number column in its table.
-                    'match': r.matchLabel,
-                    'category': r.category.name,
-                    'justification': r.justification,
-                    'missing_skills': r.missingSkills,
-                  })
-              .toList(),
+          // One array that serves both the model (category / score /
+          // justification / missing skills) and the chat's job rail (title /
+          // company / location / salary, merged back from the searched jobs).
+          'jobs': [
+            for (final r in results)
+              {
+                'id': r.jobId,
+                'title': jobsById[r.jobId]?.title ?? '',
+                'company': jobsById[r.jobId]?.company ?? '',
+                'location': jobsById[r.jobId]?.location ?? '',
+                'salary': jobsById[r.jobId]?.salary ?? '',
+                'category': r.category.name,
+                'match': r.matchScore,
+                'justification': r.justification,
+                'missing_skills': r.missingSkills,
+              },
+          ],
         },
       );
     },
@@ -1038,19 +1044,29 @@ void _registerDraftEmail(
         return ToolResult.error(_shortToolError(e));
       }
 
-      // Tailor the original resume to this job and attach the tailored PDF.
-      // If the resume is already a strong fit (no edits proposed) or tailoring
-      // fails, we fall back to attaching the original — the draft still gets a
-      // resume either way. Nothing is sent here, so applying edits without the
-      // diff viewer is safe: the user reviews everything before saving/sending.
-      final attachment = await _tailorAndAttachForDraft(
-        uid: uid,
-        sourceResumeId: sourceResumeId,
-        resumeJson: resumeJson,
-        job: job,
-        paraphrase: paraphrase,
-        orchestrator: orchestrator,
-      );
+      // Tailor the source resume to this job and attach the tailored PDF.
+      // BUT if the chosen resume is already a tailored copy — e.g. the user
+      // accepted tailor_resume edits, saved them, and that id was handed to
+      // draft_email — tailoring it again is wasted work (a second Sonnet pass
+      // that almost always yields no edits). Attach it as-is instead.
+      // Otherwise tailor the original; if it's already a strong fit (no edits)
+      // or tailoring fails, fall back to the original so the draft always has a
+      // resume. Nothing is sent here — the user reviews before saving/sending.
+      final sourceMeta = await _resumeSourceMeta(uid, sourceResumeId);
+      final attachment = sourceMeta.tailored
+          ? _DraftAttachment(
+              resumeId: sourceResumeId,
+              filename: _ensurePdfName(sourceMeta.name, job.company),
+              tailored: true,
+            )
+          : await _tailorAndAttachForDraft(
+              uid: uid,
+              sourceResumeId: sourceResumeId,
+              resumeJson: resumeJson,
+              job: job,
+              paraphrase: paraphrase,
+              orchestrator: orchestrator,
+            );
 
       try {
         final draft = await paraphrase.draftColdEmail(
@@ -1144,6 +1160,36 @@ Future<_DraftAttachment> _tailorAndAttachForDraft({
       tailored: false,
     );
   }
+}
+
+/// Reads a resume doc's `source` flag and display `name`. `draft_email` uses
+/// this to skip re-tailoring a resume that's already a tailored copy.
+/// Best-effort: on any read failure it reports "not tailored" so the caller
+/// falls back to the normal tailor-and-attach path.
+Future<({bool tailored, String name})> _resumeSourceMeta(
+  String uid,
+  String resumeId,
+) async {
+  try {
+    final paths = FirestorePaths(FirebaseFirestore.instance);
+    final snap = await paths.resumes(uid).doc(resumeId).get();
+    final data = snap.data() ?? const {};
+    return (
+      tailored: data['source'] == 'tailored',
+      name: (data['name'] as String?)?.trim() ?? '',
+    );
+  } catch (e) {
+    debugPrint('draft_email: resume source lookup failed for $resumeId: $e');
+    return (tailored: false, name: '');
+  }
+}
+
+/// Ensures [name] ends in `.pdf`, falling back to a company-based name when the
+/// resume doc carried no usable name.
+String _ensurePdfName(String name, String company) {
+  final n = name.trim();
+  if (n.isEmpty) return _resumeFileNameFor(company);
+  return n.toLowerCase().endsWith('.pdf') ? n : '$n.pdf';
 }
 
 /// A friendly attachment filename for an untailored resume, e.g.

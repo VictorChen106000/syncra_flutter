@@ -139,7 +139,10 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
                 ? _EmptyState(
                     topInset: topInset,
                     bottomInset: bottomInset,
-                    onPromptTap: (text) => notifier.sendPrompt(prompt: text),
+                    // Load the prompt into the composer instead of firing it,
+                    // so the user can attach a resume before sending.
+                    onPromptTap: (text) =>
+                        ref.read(composerDraftProvider.notifier).state = text,
                   )
                 : ListView(
                     controller: _scrollController,

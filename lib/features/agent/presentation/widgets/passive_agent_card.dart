@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../../core/theme/brand_theme.dart';
@@ -241,8 +240,7 @@ class _PipelineBreakdown extends StatelessWidget {
           child: _BreakdownTile(
             label: 'Ready',
             count: ready,
-            color: brand.accent,
-            fg: brand.onAccent,
+            dot: brand.accent,
           ),
         ),
         const SizedBox(width: 8),
@@ -250,8 +248,7 @@ class _PipelineBreakdown extends StatelessWidget {
           child: _BreakdownTile(
             label: 'Needs input',
             count: inputNeeded,
-            color: AppColors.categoryInput,
-            fg: AppColors.ink,
+            dot: brand.textSoft,
           ),
         ),
         const SizedBox(width: 8),
@@ -259,8 +256,7 @@ class _PipelineBreakdown extends StatelessWidget {
           child: _BreakdownTile(
             label: 'Strategic',
             count: exploration,
-            color: AppColors.categoryExploreDeep,
-            fg: Colors.white,
+            dot: brand.textSoft,
           ),
         ),
       ],
@@ -272,21 +268,23 @@ class _BreakdownTile extends StatelessWidget {
   const _BreakdownTile({
     required this.label,
     required this.count,
-    required this.color,
-    required this.fg,
+    required this.dot,
   });
 
   final String label;
   final int count;
-  final Color color;
-  final Color fg;
+
+  /// Small accent splash next to the label — lime for "Ready", a muted
+  /// grey for the rest. Keeps the tiles monochrome with a single accent.
+  final Color dot;
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: color,
+        color: brand.surfaceMuted,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -297,20 +295,33 @@ class _BreakdownTile extends StatelessWidget {
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w900,
-              color: fg,
+              color: brand.ink,
               height: 1,
               letterSpacing: -0.4,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.6,
-              color: fg.withValues(alpha: 0.85),
-            ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: dot,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.6,
+                  color: brand.textMuted,
+                ),
+              ),
+            ],
           ),
         ],
       ),

@@ -60,6 +60,23 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
         if (mounted) _focusNode.requestFocus();
       });
     }
+    // A prompt card may have parked a draft for us (e.g. the user tapped a
+    // dashboard suggestion). Pre-fill it so they can attach a resume and edit
+    // before sending — nothing fires until they tap Send.
+    final draft = ref.read(composerDraftProvider);
+    if (draft != null && draft.trim().isNotEmpty) _fillFromDraft(draft);
+  }
+
+  /// Drops [text] into the composer, parks the cursor at the end, focuses, and
+  /// clears the shared draft slot — without sending.
+  void _fillFromDraft(String text) {
+    _textController.text = text;
+    _textController.selection = TextSelection.collapsed(offset: text.length);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _focusNode.requestFocus();
+      ref.read(composerDraftProvider.notifier).state = null;
+    });
   }
 
   @override
@@ -96,6 +113,13 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
+    // A draft arriving while the composer is already on screen (e.g. tapping a
+    // suggestion in the chat's empty state) — load it the same way.
+    ref.listen<String?>(composerDraftProvider, (_, next) {
+      if (next == null || next.trim().isEmpty) return;
+      _fillFromDraft(next);
+      setState(() {});
+    });
     final chatState = ref.watch(agentChatProvider);
     final streaming = chatState.isStreaming;
     final hasText = _textController.text.trim().isNotEmpty;
@@ -371,17 +395,10 @@ class _SendButton extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: active ? brand.ink : brand.surfaceMuted,
+          // Lime primary action when it can be tapped; falls back to a muted
+          // grey circle while disabled. No glow.
+          color: active ? brand.accent : brand.surfaceMuted,
           shape: BoxShape.circle,
-          boxShadow: active
-              ? [
-                  BoxShadow(
-                    color: brand.ink.withValues(alpha: 0.22),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
         ),
         child: Material(
           color: Colors.transparent,
@@ -400,13 +417,13 @@ class _SendButton extends StatelessWidget {
                   ? Icon(
                       Icons.stop_rounded,
                       key: const ValueKey('stop'),
-                      color: brand.inkInverse,
+                      color: brand.onAccent,
                       size: 20,
                     )
                   : Icon(
                       Icons.arrow_upward_rounded,
                       key: const ValueKey('send'),
-                      color: active ? brand.inkInverse : brand.textSoft,
+                      color: active ? brand.onAccent : brand.textSoft,
                       size: 20,
                     ),
             ),

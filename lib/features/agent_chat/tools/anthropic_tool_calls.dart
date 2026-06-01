@@ -17,6 +17,7 @@ class AnthropicParaphraseService {
     String? apiKey,
     http.Client? client,
     this.model = 'claude-haiku-4-5-20251001',
+    this.tailorModel = 'claude-sonnet-4-6',
   })  : _apiKey = apiKey ?? const String.fromEnvironment('ANTHROPIC_API_KEY'),
         _client = client ?? http.Client();
 
@@ -30,7 +31,17 @@ class AnthropicParaphraseService {
 
   final String _apiKey;
   final http.Client _client;
+
+  /// Default model for paraphrase tasks (email draft, onboarding inference).
+  /// Haiku is fine for these — they're forgiving rewrites, not constraint-heavy.
   final String model;
+
+  /// Model for `tailorResume`. Sonnet by default: producing verbatim
+  /// `original_text` and never inventing/dropping content is precise
+  /// constraint-following that Haiku slips on (same reason the resume parser
+  /// runs on Sonnet). Tailoring is user-gated by the diff viewer, so the extra
+  /// latency/cost is paid once.
+  final String tailorModel;
 
   bool get hasApiKey => _apiKey.isNotEmpty;
 
@@ -78,6 +89,7 @@ class AnthropicParaphraseService {
       system: tailorSystemPrompt,
       user: userPrompt,
       maxTokens: 1200,
+      modelOverride: tailorModel,
     );
 
     try {
@@ -92,6 +104,7 @@ class AnthropicParaphraseService {
             'raw JSON object — no markdown fences, no commentary.\n\n'
             '$userPrompt',
         maxTokens: 1200,
+        modelOverride: tailorModel,
       );
       try {
         return _parseProposedEdits(retry);
@@ -203,9 +216,10 @@ Return ONLY a JSON object: {"subject": "...", "body": "..."}.''',
     required String system,
     required String user,
     required int maxTokens,
+    String? modelOverride,
   }) async {
     final body = jsonEncode({
-      'model': model,
+      'model': modelOverride ?? model,
       'max_tokens': maxTokens,
       'system': system,
       'messages': [
