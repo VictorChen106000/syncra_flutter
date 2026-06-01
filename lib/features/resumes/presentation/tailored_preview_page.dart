@@ -5,6 +5,21 @@ import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../shared/widgets/app_back_button.dart';
 import '../../agent_chat/state/agent_chat_notifier.dart';
+import '../models/resume_json.dart';
+
+/// Counts the populated top-level sections of a tailored resume. Drives the
+/// "all N sections kept" reassurance — the tailor is non-destructive, so this
+/// should match the source resume's section count.
+int _sectionCount(ResumeJson r) {
+  var n = 0;
+  if ((r.summary ?? '').trim().isNotEmpty) n++;
+  if (r.education.isNotEmpty) n++;
+  if (r.experience.isNotEmpty) n++;
+  if (r.projects.isNotEmpty) n++;
+  if (r.certifications.isNotEmpty) n++;
+  if (r.skillGroups.isNotEmpty || r.skills.isNotEmpty) n++;
+  return n;
+}
 
 /// Full-screen preview of a freshly tailored resume PDF that has been rendered
 /// but not yet saved. Mirrors the profile resume-preview look (white paper card
@@ -72,6 +87,7 @@ class _TailoredPreviewPageState extends ConsumerState<TailoredPreviewPage> {
         ref.read(agentChatProvider.notifier).proposedEditsBlock(widget.blockId);
     final bytes = block?.previewBytes;
     final isSaved = block?.isSaved ?? false;
+    final previewResume = block?.previewResume;
 
     return Scaffold(
       backgroundColor: brand.bg,
@@ -141,11 +157,21 @@ class _TailoredPreviewPageState extends ConsumerState<TailoredPreviewPage> {
                         : SfPdfViewer.memory(
                             bytes,
                             key: ValueKey('preview-${widget.blockId}-${bytes.length}'),
+                            // Fit the page to the card width with clean chrome so
+                            // the resume reads clearly without manual zooming.
+                            canShowScrollHead: false,
+                            canShowScrollStatus: false,
+                            canShowPaginationDialog: false,
                           ),
                   ),
                 ),
               ),
             ),
+            if (previewResume != null)
+              _PreservationNote(
+                sectionCount: _sectionCount(previewResume),
+                appliedCount: block?.appliedCount ?? 0,
+              ),
             _ActionBar(
               isSaved: isSaved,
               saving: _saving,
@@ -273,6 +299,61 @@ class _BarButton extends StatelessWidget {
                   ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Subtle reassurance that the tailor kept the whole resume: "All N sections
+/// kept · M edits applied". Surfaced just above the save bar so the user can
+/// see, before saving, that nothing was dropped.
+class _PreservationNote extends StatelessWidget {
+  const _PreservationNote({
+    required this.sectionCount,
+    required this.appliedCount,
+  });
+
+  final int sectionCount;
+  final int appliedCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final sections =
+        '$sectionCount section${sectionCount == 1 ? '' : 's'} kept';
+    final label = appliedCount > 0
+        ? 'All $sections · $appliedCount edit${appliedCount == 1 ? '' : 's'} applied'
+        : 'All $sections';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: brand.success.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(99),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.check_circle_rounded,
+                    size: 14, color: brand.success),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: brand.success,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -395,11 +395,12 @@ void _registerMatchJobs(
     tool: const Tool(
       name: 'match_jobs',
       description:
-        'Score a list of jobs against the user\'s resume. Use resume_id '
-        'when the user attached a resume. Returns each job ranked with a '
-        'category (ready / input_needed / exploration), a 0-100 score, a '
-        'one-sentence justification, and any missing skills. Call AFTER '
-        'search_jobs and read_resume.',
+        'Assess how well a list of jobs fits the user\'s resume. Use '
+        'resume_id when the user attached a resume. Returns each job with a '
+        'category (ready / input_needed / exploration), a qualitative `match` '
+        'label (e.g. "Strong match"), a one-sentence justification, and any '
+        'missing skills. There is NO numeric score. Call AFTER search_jobs '
+        'and read_resume.',
       inputSchema: {
         'type': 'object',
         'properties': {
@@ -464,13 +465,15 @@ void _registerMatchJobs(
         return ToolResult.error('Scoring returned no data.');
       }
       return ToolResult(
-        summary: '${results.length} matches scored',
+        summary: '${results.length} matches reviewed',
         data: {
           'results': results
               .map((r) => {
                     'job_id': r.jobId,
+                    // Qualitative only — never expose a numeric score to the
+                    // model, or it will render a number column in its table.
+                    'match': r.matchLabel,
                     'category': r.category.name,
-                    'match_score': r.matchScore,
                     'justification': r.justification,
                     'missing_skills': r.missingSkills,
                   })
@@ -510,10 +513,6 @@ void _registerSaveToPipeline(
             'enum': ['ready', 'input_needed', 'exploration'],
             'description':
                 'Match category from match_jobs. Defaults to ready.',
-          },
-          'match_score': {
-            'type': 'integer',
-            'description': '0-100 score from match_jobs.',
           },
           'agent_action': {
             'type': 'string',
@@ -559,8 +558,10 @@ void _registerSaveToPipeline(
         fallback: job.category,
       );
 
-      final matchScore =
-          (args['match_score'] as num?)?.toInt() ?? job.matchScore;
+      // No numeric score in the matching system — pipeline cards carry the
+      // job's category-derived label only. matchScore is retained internally
+      // (0 here) purely for legacy persistence.
+      final matchScore = job.matchScore;
 
       final agentAction =
           ((args['agent_action'] as String?) ?? job.agentAction).trim();
@@ -597,7 +598,6 @@ void _registerSaveToPipeline(
           'saved': true,
           'job_id': job.id,
           'category': category.name,
-          'match_score': matchScore.clamp(0, 100),
         },
       );
     },

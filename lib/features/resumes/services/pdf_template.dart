@@ -14,6 +14,18 @@ import '../models/resume_json.dart';
 /// (Times) on white, no color. The agent only paraphrases content; this
 /// template owns the layout. ASCII-only separators ('-', '|') are used because
 /// the built-in serif fonts have no em/en-dash glyphs (they'd render as tofu).
+///
+/// ### Section order (fixed)
+///   Header → Summary? → Education → Experience → Projects →
+///   Achievements & Certifications → Skills
+///
+/// ### Type hierarchy
+///   * **Section titles** (EDUCATION, SKILLS, …) — uppercase, letter-spaced,
+///     *regular* weight, with a full-width rule. Deliberately NOT bold so the
+///     bold entry titles stand out against them.
+///   * **Entry titles** (school, company, project, certification names) — bold.
+///   * **Dates** — right-aligned italic grey.
+///   * **Descriptions** — bulleted.
 class ResumePdfTemplate {
   const ResumePdfTemplate();
 
@@ -53,7 +65,9 @@ class ResumePdfTemplate {
       if ((h.phone ?? '').isNotEmpty) _Contact('Mobile:', h.phone!),
       if ((h.location ?? '').isNotEmpty) _Contact('Location:', h.location!),
       if ((h.linkedin ?? '').isNotEmpty) _Contact('LinkedIn:', h.linkedin!),
+      if ((h.github ?? '').isNotEmpty) _Contact('GitHub:', h.github!),
       if ((h.website ?? '').isNotEmpty) _Contact('Website:', h.website!),
+      if ((h.twitter ?? '').isNotEmpty) _Contact('X:', h.twitter!),
     ];
 
     return pw.Padding(
@@ -99,7 +113,7 @@ class ResumePdfTemplate {
   }
 
   // ---------------------------------------------------------------------------
-  // Body sections — only those with content are rendered.
+  // Body sections — only those with content are rendered, in a fixed order.
   // ---------------------------------------------------------------------------
 
   List<pw.Widget> _sections(ResumeJson resume) {
@@ -115,15 +129,15 @@ class ResumePdfTemplate {
       ]));
     }
 
-    if (resume.experience.isNotEmpty) {
-      out.add(_section('Experience', [
-        for (final e in resume.experience) _experienceEntry(e),
-      ]));
-    }
-
     if (resume.education.isNotEmpty) {
       out.add(_section('Education', [
         for (final e in resume.education) _educationEntry(e),
+      ]));
+    }
+
+    if (resume.experience.isNotEmpty) {
+      out.add(_section('Experience', [
+        for (final e in resume.experience) _experienceEntry(e),
       ]));
     }
 
@@ -133,16 +147,22 @@ class ResumePdfTemplate {
       ]));
     }
 
-    if (resume.skills.isNotEmpty) {
-      out.add(_section('Skills', [
-        pw.Text(resume.skills.join(', '), style: _body),
+    if (resume.certifications.isNotEmpty) {
+      out.add(_section('Achievements & Certifications', [
+        for (final c in resume.certifications) _certificationEntry(c),
       ]));
+    }
+
+    final skillLines = _skillLines(resume);
+    if (skillLines.isNotEmpty) {
+      out.add(_section('Skills', skillLines));
     }
 
     return out;
   }
 
-  /// A section: small-caps title, full-width rule, then [children] stacked.
+  /// A section: uppercase letter-spaced title (regular weight), a full-width
+  /// rule, then [children] stacked.
   pw.Widget _section(String title, List<pw.Widget> children) {
     return pw.Padding(
       padding: const pw.EdgeInsets.only(top: 14),
@@ -153,7 +173,7 @@ class ResumePdfTemplate {
             title.toUpperCase(),
             style: pw.TextStyle(
               fontSize: 12.5,
-              fontWeight: pw.FontWeight.bold,
+              fontWeight: pw.FontWeight.normal,
               letterSpacing: 1.5,
             ),
           ),
@@ -208,6 +228,7 @@ class ResumePdfTemplate {
           pw.SizedBox(height: 1),
           pw.Text(e.details!, style: _body),
         ],
+        ..._bullets(e.bullets),
       ],
     );
   }
@@ -216,7 +237,7 @@ class ResumePdfTemplate {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        _titleDateRow(p.name, ''),
+        _titleDateRow(p.name, p.date ?? ''),
         if ((p.description ?? '').isNotEmpty) ...[
           pw.SizedBox(height: 1),
           pw.Text(p.description!, style: _subtitle),
@@ -232,6 +253,52 @@ class ResumePdfTemplate {
             ),
           ),
         ],
+      ],
+    );
+  }
+
+  /// An achievement/certification: bold name (with the issuer appended in
+  /// regular weight), right-aligned italic date, then any sub-bullets.
+  pw.Widget _certificationEntry(ResumeCertification c) {
+    final issuer = (c.issuer ?? '').trim();
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Expanded(
+              child: pw.RichText(
+                text: pw.TextSpan(
+                  children: [
+                    pw.TextSpan(
+                      text: c.name,
+                      style: pw.TextStyle(
+                        fontSize: 11,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                    if (issuer.isNotEmpty)
+                      pw.TextSpan(
+                        text: ' - $issuer',
+                        style: const pw.TextStyle(fontSize: 11),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            if ((c.date ?? '').isNotEmpty)
+              pw.Text(
+                c.date!,
+                style: pw.TextStyle(
+                  fontSize: 9.5,
+                  fontStyle: pw.FontStyle.italic,
+                  color: PdfColors.grey800,
+                ),
+              ),
+          ],
+        ),
+        ..._bullets(c.bullets),
       ],
     );
   }
@@ -258,6 +325,46 @@ class ResumePdfTemplate {
           ),
       ],
     );
+  }
+
+  /// Skills as one "Category: a, b, c" line per group (category bold), falling
+  /// back to a single comma-joined line for resumes with no categories.
+  List<pw.Widget> _skillLines(ResumeJson resume) {
+    final groups = resume.skillGroups
+        .where((g) => g.items.isNotEmpty)
+        .toList(growable: false);
+
+    if (groups.isNotEmpty) {
+      return [
+        for (final g in groups)
+          pw.Padding(
+            padding: const pw.EdgeInsets.only(top: 1),
+            child: pw.RichText(
+              text: pw.TextSpan(
+                children: [
+                  if (g.category.trim().isNotEmpty)
+                    pw.TextSpan(
+                      text: '${g.category.trim()}: ',
+                      style: pw.TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                  pw.TextSpan(
+                    text: g.items.join(', '),
+                    style: _body,
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ];
+    }
+
+    if (resume.skills.isNotEmpty) {
+      return [pw.Text(resume.skills.join(', '), style: _body)];
+    }
+    return const [];
   }
 
   List<pw.Widget> _bullets(List<String> bullets) {

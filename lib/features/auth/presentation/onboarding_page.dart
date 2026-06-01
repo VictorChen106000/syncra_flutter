@@ -1,36 +1,37 @@
-import 'dart:ui';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/dev/dev_flags_notifier.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
-import '../../agent_chat/models/agent_block.dart';
-import '../../agent_chat/models/chat_message.dart';
-import '../../agent_chat/presentation/widgets/agent_turn_view.dart';
-import '../../agent_chat/presentation/widgets/chat_input_bar.dart';
-import '../../agent_chat/presentation/widgets/chat_message_bubble.dart';
-import '../../agent_chat/presentation/widgets/docked_panels.dart';
-import '../../agent_chat/state/agent_chat_mode.dart';
-import '../../agent_chat/state/agent_chat_notifier.dart';
-import '../../agent_chat/state/onboarding_resume_context.dart';
-import '../../resumes/models/resume_file.dart';
+import '../../../data/firestore/jobs_repository.dart';
+import '../../../data/firestore/resumes_repository.dart';
+import '../../../shared/widgets/gooey_orb.dart';
+import '../../agent/state/passive_agent_notifier.dart';
+import '../../agent_chat/tools/anthropic_tool_calls.dart';
+import '../../resumes/models/resume_fit.dart';
+import '../../resumes/presentation/widgets/resume_upload_card.dart';
+import '../../resumes/services/resume_parser_service.dart';
+import '../../resumes/services/resume_tailor_orchestrator.dart';
+import '../../resumes/services/resume_tailor_service.dart';
 import '../../resumes/state/resume_notifier.dart';
 import '../state/auth_notifier.dart';
 import '../state/user_profile_notifier.dart';
 
-/// First-run setup. Replaces the static scripted intro with a real
-/// agent-driven conversation: the Anthropic-backed chatbot (in
-/// [AgentChatMode.onboarding] mode) greets the user, calls `ask_user` to
-/// capture their target role, then calls `complete_onboarding` — which surfaces
-/// an "Enter Syncra" CTA card the user taps to land on the dashboard.
+/// First-run setup, reimagined as a dedicated **resume upload** moment.
 ///
-/// The visual scaffold is borrowed from [AiChatbotPage] (full-bleed
-/// transcript behind frosted top chrome, docked input request above the
-/// composer) so the onboarding moment is visually the same surface the user
-/// will live in afterwards.
+/// The user drops a resume and Syncra takes it from there: it parses the file,
+/// infers the user's target role + role-fit breakdown in one headless agent
+/// call, persists both to the profile, kicks off the first job brief, and
+/// routes straight to the dashboard. The middle phase shows a live checklist
+/// of what the agent is doing so the user is never staring at a frozen
+/// "loading" screen.
+///
+/// No chat, no Q&A, no "Enter Syncra" tap — upload, watch, land.
 class OnboardingPage extends ConsumerStatefulWidget {
   const OnboardingPage({super.key});
 
@@ -38,97 +39,39 @@ class OnboardingPage extends ConsumerStatefulWidget {
   ConsumerState<OnboardingPage> createState() => _OnboardingPageState();
 }
 
+enum _Phase { upload, setup }
+
 class _OnboardingPageState extends ConsumerState<OnboardingPage> {
-  final ScrollController _scrollController = ScrollController();
+  _Phase _phase = _Phase.upload;
 
-  /// Cached notifier references captured during the post-frame init pass.
-  /// They're held here so [dispose] can mutate them WITHOUT touching `ref`
-  /// — Riverpod considers `ref` unsafe once the widget is deactivating
-  /// (throws "Using `ref` when a widget is about to or has been unmounted").
-  /// The captured notifiers themselves persist for the ProviderContainer's
-  /// lifetime, so calling methods on them after dispose is safe.
-  AgentChatModeNotifier? _chatModeNotifier;
-  OnboardingResumeContextNotifier? _resumeContextNotifier;
+  /// True once the user explicitly tapped "Upload". Gates the auto-advance so
+  /// a returning user who already has a resume isn't yanked into setup before
+  /// they tap Continue.
+  bool _armed = false;
 
-  @override
-  void initState() {
-    super.initState();
-    // Defer provider mutation past the current build. Calling `set()` straight
-    // from initState can fire while ancestor consumers (router, theme) are
-    // still mid-build and throws a "modified a provider while the tree was
-    // building" assertion. One post-frame tick is enough — the page paints
-    // jobs-mode for a single frame, then the onboarding rebuild lands.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      // Capture the notifiers now so dispose can use them without `ref`.
-      _chatModeNotifier = ref.read(agentChatModeProvider.notifier);
-      _resumeContextNotifier =
-          ref.read(onboardingResumeContextProvider.notifier);
-      _chatModeNotifier!.set(AgentChatMode.onboarding);
-      _maybeIngestExistingResume();
-    });
+  void _goToSetup() {
+    if (_phase == _Phase.setup) return;
+    setState(() => _phase = _Phase.setup);
   }
 
-  /// On first entry, if the user already has at least one manual resume in
-  /// their library, ingest the most recent one automatically. The agent then
-  /// opens with "I read your resume" instead of "drop one below" — fewer
-  /// taps for the common returning-user / sign-in-after-skip case.
-  void _maybeIngestExistingResume() {
-    final uid = ref.read(authProvider).appUser?.uid;
-    if (uid == null) return;
-    final resumes = ref.read(resumeProvider).resumes;
-    if (resumes.isEmpty) return;
-    _ingest(uid, resumes.first);
+  Future<void> _pickResume() async {
+    _armed = true;
+    await ref.read(resumeProvider.notifier).pickAndUploadResumes();
   }
 
-  /// Idempotent thin wrapper around the context notifier — keeps the
-  /// `ref.listen` callback below tidy.
-  void _ingest(String uid, ResumeFile resume) {
-    ref
-        .read(onboardingResumeContextProvider.notifier)
-        .ingest(uid: uid, resumeId: resume.id);
-  }
-
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    // Fallback only: the Skip and Enter-Syncra paths flip the chat mode
-    // BEFORE navigating so the dashboard mounts with fresh state. We still
-    // catch dispose() so a back-button / sign-out exit doesn't leave the
-    // chat stuck in onboarding mode. `set` is idempotent — if those paths
-    // already flipped it, this is a no-op.
-    _chatModeNotifier?.set(AgentChatMode.jobs);
-    _resumeContextNotifier?.reset();
-    super.dispose();
-  }
-
-  /// Bypasses the agent-driven role capture and routes straight to the
-  /// dashboard. Marks the user past first-run setup via the explicit
-  /// `hasCompletedOnboarding` flag — `role` stays empty on purpose, so the
-  /// agent never treats a placeholder as the user's real target. The user can
-  /// set a role later from Profile (or just by chatting).
-  Future<void> _skipToDashboard() async {
-    await ref
-        .read(userProfileProvider.notifier)
-        .setHasCompletedOnboarding(true);
+  /// Skips upload entirely — marks the user past first-run setup with no role
+  /// captured (they can set one later by chatting). Mirrors the previous
+  /// flow's escape hatch.
+  Future<void> _skip() async {
+    await ref.read(userProfileProvider.notifier).setHasCompletedOnboarding(true);
     final dev = ref.read(devFlagsProvider);
     if (dev.showOnboarding) {
       await ref.read(devFlagsProvider.notifier).setShowOnboarding(false);
     }
-    // Flip chat mode back to jobs BEFORE navigating, not in dispose().
-    // The dashboard mounts and reads agentChatProvider on its first frame —
-    // doing this in dispose() means the dashboard's "Ask Syncra" bar briefly
-    // echoes the onboarding transcript before the rebuild lands.
-    ref.read(agentChatModeProvider.notifier).set(AgentChatMode.jobs);
-    ref.read(onboardingResumeContextProvider.notifier).reset();
     if (!mounted) return;
     context.go(RouteNames.dashboard);
   }
 
-  /// Confirms with the user before destroying their session and dropping
-  /// them back at /login. The previous design used a back-arrow icon that
-  /// silently signed the user out on tap — a classic destructive-action-
-  /// disguised-as-navigation trap.
   Future<void> _confirmBackToLogin() async {
     final brand = context.brand;
     final confirmed = await showDialog<bool>(
@@ -152,202 +95,71 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
         ],
       ),
     );
-    if (confirmed != true) return;
-    if (!mounted) return;
+    if (confirmed != true || !mounted) return;
     await ref.read(authProvider.notifier).signOut();
   }
 
-  void _scheduleScrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeOutCubic,
-      );
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    ref.listen<AgentChatState>(
-      agentChatProvider,
-      (_, _) => _scheduleScrollToBottom(),
-    );
-    // Watch the user's resume library so a fresh upload during onboarding
-    // immediately becomes the context the agent is grounded in. Selecting on
-    // the most-recent resume id (rather than the whole list) means we only
-    // re-trigger when something genuinely new lands — toggling the resumes
-    // page elsewhere won't churn ingestion.
-    ref.listen<String?>(
-      resumeProvider.select(
-        (s) => s.resumes.isEmpty ? null : s.resumes.first.id,
-      ),
+
+    // The moment a resume the user just uploaded lands in their library,
+    // advance into the setup phase. Selecting on the count keeps this from
+    // firing on unrelated resume-list churn.
+    ref.listen<int>(
+      resumeProvider.select((s) => s.resumes.length),
       (prev, next) {
-        if (next == null || prev == next) return;
-        final uid = ref.read(authProvider).appUser?.uid;
-        if (uid == null) return;
-        final resume = ref
-            .read(resumeProvider)
-            .resumes
-            .firstWhere((r) => r.id == next);
-        _ingest(uid, resume);
+        if (_armed && _phase == _Phase.upload && next > (prev ?? 0)) {
+          _goToSetup();
+        }
       },
     );
 
-    final state = ref.watch(agentChatProvider);
-    final pendingInput = _pendingInputRequest(state.items);
-
-    final media = MediaQuery.of(context);
-    final topSafe = media.padding.top;
-    final topInset = topSafe + 56;
-    double bottomInset = media.padding.bottom + 152;
-    if (pendingInput != null) bottomInset += 132;
-
     return Scaffold(
       backgroundColor: brand.surface,
-      body: Stack(
-        children: [
-          // Full-bleed transcript — scrolls behind the floating chrome.
-          Positioned.fill(
-            child: ListView(
-              controller: _scrollController,
-              padding: EdgeInsets.fromLTRB(20, topInset, 20, bottomInset),
-              children: [
-                for (final item in state.items)
-                  switch (item) {
-                    UserMessage() => UserMessageView(message: item),
-                    AgentTurn() => AgentTurnView(turn: item),
-                  },
-              ],
-            ),
-          ),
-
-          // Top fade scrim — keeps the back/skip button legible over the chat.
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: topSafe + 60,
-            child: IgnorePointer(child: _FadeScrim(brand: brand, top: true)),
-          ),
-
-          // Bottom fade scrim — softens the transcript into the composer.
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: bottomInset,
-            child: IgnorePointer(child: _FadeScrim(brand: brand, top: false)),
-          ),
-
-          // Floating top chrome: just a sign-out escape hatch and a "Setup"
-          // chip. No history drawer, no new-chat button, no thread context.
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                child: Row(
-                  children: [
-                    _FrostedIconBtn(
-                      icon: Icons.logout_rounded,
-                      tooltip: 'Back to login',
-                      onTap: _confirmBackToLogin,
-                    ),
-                    const Spacer(),
-                    const _SetupChip(),
-                    const Spacer(),
-                    _SkipButton(onTap: _skipToDashboard),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          // Floating bottom chrome: the docked input request (when the agent
-          // has paused for `ask_user`) plus the standard ChatInputBar. No
-          // resume attachment chrome is shown — onboarding has no resume yet.
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (pendingInput != null) DockedInputRequest(block: pendingInput),
-                const ChatInputBar(autofocus: false),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Pending `ask_user` request hoisted from the latest agent turn into the
-  /// docked island. Only the most recent unanswered question surfaces.
-  static InputRequestBlock? _pendingInputRequest(List<ChatItem> items) {
-    for (var i = items.length - 1; i >= 0; i--) {
-      final item = items[i];
-      if (item is! AgentTurn) continue;
-      for (var j = item.blocks.length - 1; j >= 0; j--) {
-        final block = item.blocks[j];
-        if (block is InputRequestBlock &&
-            block.state == InputRequestState.pending) {
-          return block;
-        }
-      }
-    }
-    return null;
-  }
-}
-
-/// Tiny pill that telegraphs the user is in first-run setup, not the regular
-/// chat. Visually echoes the chatbot's frosted top chrome but stays in the
-/// dead-centre so it reads as a status label, not a back action.
-class _SetupChip extends StatelessWidget {
-  const _SetupChip();
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(99),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: brand.surface.withValues(alpha: 0.78),
-            borderRadius: BorderRadius.circular(99),
-            border: Border.all(color: brand.border, width: 0.8),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          child: Column(
             children: [
-              Container(
-                width: 16,
-                height: 16,
-                decoration: BoxDecoration(
-                  color: brand.ink,
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: Icon(Icons.star_rounded, color: brand.accent, size: 10),
+              // Top chrome: sign-out escape hatch + a quiet "Setup" label.
+              Row(
+                children: [
+                  _FrostedIconBtn(
+                    icon: Icons.logout_rounded,
+                    tooltip: 'Back to login',
+                    onTap: _confirmBackToLogin,
+                  ),
+                  const Spacer(),
+                  Text(
+                    'Setup',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: brand.textMuted,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                  const Spacer(),
+                  const SizedBox(width: 42),
+                ],
               ),
-              const SizedBox(width: 8),
-              Text(
-                'Syncra AI Setup',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                  color: brand.ink,
-                  letterSpacing: -0.1,
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 320),
+                  switchInCurve: Curves.easeOutCubic,
+                  transitionBuilder: (child, anim) => FadeTransition(
+                    opacity: anim,
+                    child: child,
+                  ),
+                  child: _phase == _Phase.upload
+                      ? _UploadPhase(
+                          key: const ValueKey('upload'),
+                          onPick: _pickResume,
+                          onContinue: _goToSetup,
+                          onSkip: _skip,
+                        )
+                      : const _SetupPhase(key: ValueKey('setup')),
                 ),
               ),
             ],
@@ -358,15 +170,510 @@ class _SetupChip extends StatelessWidget {
   }
 }
 
-/// Frosted circular icon button — mirrors the chatbot's floating header
-/// controls so the back-out / sign-out affordance feels native to the
-/// chat-surface aesthetic.
-class _FrostedIconBtn extends StatelessWidget {
-  const _FrostedIconBtn({
-    required this.icon,
-    required this.onTap,
-    this.tooltip,
+// ---------------------------------------------------------------------------
+// Phase 1 — upload
+// ---------------------------------------------------------------------------
+
+class _UploadPhase extends ConsumerWidget {
+  const _UploadPhase({
+    super.key,
+    required this.onPick,
+    required this.onContinue,
+    required this.onSkip,
   });
+
+  final VoidCallback onPick;
+  final VoidCallback onContinue;
+  final VoidCallback onSkip;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final brand = context.brand;
+    final resumeState = ref.watch(resumeProvider);
+    final resumes = resumeState.resumes;
+    final uploading = resumeState.uploadQueue.where((i) => !i.hasError).toList();
+    final hasResume = resumes.isNotEmpty;
+
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      child: Column(
+        children: [
+          const SizedBox(height: 24),
+          GooeyOrb(size: 132)
+              .animate()
+              .fadeIn(duration: 480.ms)
+              .scale(begin: const Offset(0.85, 0.85), end: const Offset(1, 1)),
+          const SizedBox(height: 28),
+          Text(
+            "Let's set you up",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.w900,
+              color: brand.ink,
+              letterSpacing: -0.6,
+              height: 1.15,
+            ),
+          ).animate(delay: 100.ms).fadeIn().moveY(begin: 8, end: 0),
+          const SizedBox(height: 10),
+          Text(
+            'Drop in your resume — Syncra reads it and tailors everything '
+            'to you. No forms.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14.5,
+              fontWeight: FontWeight.w500,
+              color: brand.textMuted,
+              height: 1.5,
+              letterSpacing: -0.1,
+            ),
+          ).animate(delay: 180.ms).fadeIn(),
+          const SizedBox(height: 32),
+
+          // Live upload progress for any in-flight file.
+          for (final item in uploading)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: ResumeUploadCard(uploadingItem: item),
+            ),
+
+          // Existing resume(s) the user already has — lets returning users
+          // continue without re-uploading.
+          if (hasResume && uploading.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: ResumeUploadCard(resume: resumes.first),
+            ),
+
+          _UploadDropCard(onTap: onPick, compact: hasResume)
+              .animate(delay: 240.ms)
+              .fadeIn()
+              .moveY(begin: 10, end: 0),
+
+          const SizedBox(height: 20),
+
+          if (hasResume && uploading.isEmpty)
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: onContinue,
+                style: FilledButton.styleFrom(
+                  backgroundColor: brand.ink,
+                  foregroundColor: brand.inkInverse,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                ),
+                child: const Text(
+                  'Continue',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                ),
+              ),
+            ),
+
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: onSkip,
+            child: Text(
+              'Skip for now',
+              style: TextStyle(
+                color: brand.textMuted,
+                fontWeight: FontWeight.w700,
+                fontSize: 13.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UploadDropCard extends StatelessWidget {
+  const _UploadDropCard({required this.onTap, this.compact = false});
+
+  final VoidCallback onTap;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          width: double.infinity,
+          padding: EdgeInsets.symmetric(vertical: compact ? 18 : 30),
+          decoration: BoxDecoration(
+            color: brand.surfaceMuted,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: brand.border, width: 1.4),
+          ),
+          child: Column(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: brand.ink,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.upload_file_rounded,
+                  color: brand.accent,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                compact ? 'Upload a different resume' : 'Upload your resume',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                  color: brand.ink,
+                  letterSpacing: -0.2,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'PDF, DOC or DOCX · up to 5MB',
+                style: TextStyle(
+                  fontWeight: FontWeight.w500,
+                  fontSize: 12,
+                  color: brand.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — setup (live agent work)
+// ---------------------------------------------------------------------------
+
+enum _StepStatus { pending, active, done, failed }
+
+class _SetupPhase extends ConsumerStatefulWidget {
+  const _SetupPhase({super.key});
+
+  @override
+  ConsumerState<_SetupPhase> createState() => _SetupPhaseState();
+}
+
+class _SetupPhaseState extends ConsumerState<_SetupPhase> {
+  static const _labels = [
+    'Reading your resume',
+    'Mapping your strengths',
+    'Setting your target role',
+    'Finding roles for you',
+  ];
+  static const _icons = [
+    Icons.description_rounded,
+    Icons.insights_rounded,
+    Icons.flag_rounded,
+    Icons.travel_explore_rounded,
+  ];
+
+  final List<_StepStatus> _statuses =
+      List<_StepStatus>.filled(4, _StepStatus.pending);
+  String _detail = 'Getting started…';
+  String? _inferredRole;
+
+  /// Built locally (not via the agent tool layer) so onboarding owns its own
+  /// dependency graph and doesn't reach into the chat's tool registry.
+  late final ResumeTailorOrchestrator _orchestrator = ResumeTailorOrchestrator(
+    resumesRepository: ResumesRepository(),
+    jobsRepository: JobsRepository(),
+    parser: ResumeParserService(),
+    tailor: ResumeTailorService(),
+  );
+  final AnthropicParaphraseService _paraphrase = AnthropicParaphraseService();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _runSetup());
+  }
+
+  void _set(int i, _StepStatus status, {String? detail}) {
+    if (!mounted) return;
+    setState(() {
+      _statuses[i] = status;
+      if (detail != null) _detail = detail;
+    });
+  }
+
+  Future<void> _runSetup() async {
+    final uid = ref.read(authProvider).appUser?.uid;
+    if (uid == null) {
+      await _finish(roleSet: false);
+      return;
+    }
+
+    // Step 1 — read + parse the resume.
+    _set(0, _StepStatus.active, detail: 'Reading your resume…');
+    final dynamic parsed;
+    try {
+      final resumeId = await _orchestrator.latestManualResumeId(uid);
+      if (resumeId == null) {
+        throw Exception('No resume found.');
+      }
+      parsed = await _orchestrator.readResumeJson(uid: uid, resumeId: resumeId);
+      _set(0, _StepStatus.done);
+    } catch (e) {
+      // Scanned PDF / parse failure / missing key — don't trap the user. Mark
+      // them past setup and let them into the app; the agent can read the
+      // resume later from chat.
+      _set(0, _StepStatus.failed,
+          detail: "Couldn't read that file — you can still continue.");
+      await _finish(roleSet: false);
+      return;
+    }
+
+    // Step 2 — infer role + role-fit in one headless agent call.
+    _set(1, _StepStatus.active, detail: 'Mapping your strengths…');
+    String role = '';
+    try {
+      final inferred = await _paraphrase.inferOnboardingProfile(
+        resumeJson: parsed.toJson() as Map<String, dynamic>,
+      );
+      role = (inferred['role'] as String?)?.trim() ?? '';
+      final fit = _fitFrom(inferred['segments']);
+      if (fit != null) {
+        await ref.read(userProfileProvider.notifier).setResumeFit(fit);
+      }
+      _set(1, _StepStatus.done);
+    } catch (e) {
+      _set(1, _StepStatus.failed);
+    }
+
+    // Step 3 — persist the target role (without flipping the onboarding gate
+    // yet, so the router keeps us on this screen while the work finishes).
+    _set(2, _StepStatus.active, detail: 'Setting your target role…');
+    if (role.isNotEmpty) {
+      _inferredRole = role;
+      await ref.read(userProfileProvider.notifier).setRole(role);
+      _set(2, _StepStatus.done, detail: 'Target role: $role');
+    } else {
+      _set(2, _StepStatus.done, detail: 'You can set a target role anytime.');
+    }
+
+    // Step 4 — kick off the first brief. It runs in the background; the
+    // dashboard picks up the live "Looking for X roles…" state from here.
+    _set(3, _StepStatus.active, detail: 'Finding roles for you…');
+    unawaited(
+      ref.read(passiveAgentProvider.notifier).runBrief(
+            query: role.isEmpty ? null : role,
+          ),
+    );
+    // Brief stays running in the background — give it a beat so the handoff to
+    // the dashboard reads as continuous motion, not a hard cut.
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    _set(3, _StepStatus.done);
+    await _finish(roleSet: role.isNotEmpty);
+  }
+
+  ResumeFit? _fitFrom(dynamic rawSegments) {
+    if (rawSegments is! List) return null;
+    final segments = rawSegments
+        .whereType<Map>()
+        .map((m) => ResumeFitSegment(
+              label: (m['label'] as String?)?.trim() ?? '',
+              percent: (m['percent'] as num?)?.toDouble() ?? 0,
+              rationale: (m['rationale'] as String?)?.trim().isEmpty ?? true
+                  ? null
+                  : (m['rationale'] as String).trim(),
+            ))
+        .where((s) => s.label.isNotEmpty && s.percent > 0)
+        .toList();
+    if (segments.length < 2) return null;
+    return ResumeFit(segments: segments, generatedAt: DateTime.now());
+  }
+
+  /// Flips the onboarding gate and routes to the dashboard. Setting the flag
+  /// last (rather than during step 3) keeps the router from redirecting away
+  /// mid-setup, so the user actually sees the checklist complete.
+  Future<void> _finish({required bool roleSet}) async {
+    await ref
+        .read(userProfileProvider.notifier)
+        .setHasCompletedOnboarding(true);
+    final dev = ref.read(devFlagsProvider);
+    if (dev.showOnboarding) {
+      await ref.read(devFlagsProvider.notifier).setShowOnboarding(false);
+    }
+    if (!mounted) return;
+    context.go(RouteNames.dashboard);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Column(
+      children: [
+        const SizedBox(height: 24),
+        GooeyOrb(size: 120)
+            .animate(onPlay: (c) => c.repeat())
+            .shimmer(duration: 1800.ms, color: brand.accent.withValues(alpha: 0.3)),
+        const SizedBox(height: 24),
+        Text(
+          'Setting up your copilot',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w900,
+            color: brand.ink,
+            letterSpacing: -0.5,
+          ),
+        ),
+        const SizedBox(height: 8),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 240),
+          child: Text(
+            _detail,
+            key: ValueKey(_detail),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: brand.textMuted,
+              height: 1.4,
+            ),
+          ),
+        ),
+        const SizedBox(height: 36),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+          decoration: BoxDecoration(
+            color: brand.surface,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: brand.border),
+          ),
+          child: Column(
+            children: [
+              for (var i = 0; i < _labels.length; i++)
+                _StepRow(
+                  label: _statuses[i] == _StepStatus.done && i == 2 &&
+                          _inferredRole != null
+                      ? 'Target role · $_inferredRole'
+                      : _labels[i],
+                  icon: _icons[i],
+                  status: _statuses[i],
+                  isLast: i == _labels.length - 1,
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StepRow extends StatelessWidget {
+  const _StepRow({
+    required this.label,
+    required this.icon,
+    required this.status,
+    required this.isLast,
+  });
+
+  final String label;
+  final IconData icon;
+  final _StepStatus status;
+  final bool isLast;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final bool active = status == _StepStatus.active;
+    final bool done = status == _StepStatus.done;
+    final bool failed = status == _StepStatus.failed;
+
+    final Color tint = done
+        ? brand.accentBright
+        : failed
+            ? brand.warning
+            : active
+                ? brand.ink
+                : brand.textSoft;
+
+    return Padding(
+      padding: EdgeInsets.only(top: 12, bottom: isLast ? 12 : 12),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 26,
+            height: 26,
+            child: _leading(brand, active, done, failed),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 14.5,
+                fontWeight: active || done ? FontWeight.w800 : FontWeight.w600,
+                color: status == _StepStatus.pending ? brand.textMuted : brand.ink,
+                letterSpacing: -0.1,
+              ),
+            ),
+          ),
+          Icon(icon, size: 17, color: tint),
+        ],
+      ),
+    );
+  }
+
+  Widget _leading(BrandTheme brand, bool active, bool done, bool failed) {
+    if (active) {
+      return Padding(
+        padding: const EdgeInsets.all(4),
+        child: CircularProgressIndicator(
+          strokeWidth: 2.4,
+          valueColor: AlwaysStoppedAnimation(brand.ink),
+        ),
+      );
+    }
+    if (done) {
+      return Container(
+        decoration: BoxDecoration(
+          color: brand.accentBright,
+          shape: BoxShape.circle,
+        ),
+        alignment: Alignment.center,
+        child: Icon(Icons.check_rounded, size: 16, color: brand.onAccent),
+      );
+    }
+    if (failed) {
+      return Container(
+        decoration: BoxDecoration(
+          color: brand.warning.withValues(alpha: 0.15),
+          shape: BoxShape.circle,
+        ),
+        alignment: Alignment.center,
+        child: Icon(Icons.priority_high_rounded, size: 15, color: brand.warning),
+      );
+    }
+    return Container(
+      decoration: BoxDecoration(
+        color: brand.surfaceMuted,
+        shape: BoxShape.circle,
+        border: Border.all(color: brand.border),
+      ),
+    );
+  }
+}
+
+/// Frosted circular icon button — the sign-out / back-to-login escape hatch.
+class _FrostedIconBtn extends StatelessWidget {
+  const _FrostedIconBtn({required this.icon, required this.onTap, this.tooltip});
 
   final IconData icon;
   final VoidCallback? onTap;
@@ -375,120 +682,20 @@ class _FrostedIconBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final button = Container(
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: brand.shadow.withValues(alpha: 0.12),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ClipOval(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: Material(
-            color: brand.surface.withValues(alpha: 0.78),
-            shape: CircleBorder(
-              side: BorderSide(color: brand.border, width: 0.8),
-            ),
-            child: InkWell(
-              onTap: onTap,
-              customBorder: const CircleBorder(),
-              child: SizedBox(
-                width: 42,
-                height: 42,
-                child: Icon(icon, size: 18, color: brand.ink),
-              ),
-            ),
-          ),
+    final button = Material(
+      color: brand.surfaceMuted,
+      shape: CircleBorder(side: BorderSide(color: brand.border)),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: SizedBox(
+          width: 42,
+          height: 42,
+          child: Icon(icon, size: 18, color: brand.ink),
         ),
       ),
     );
     if (tooltip == null) return button;
     return Tooltip(message: tooltip!, child: button);
-  }
-}
-
-/// Quiet text pill in the top-right that bypasses the agent role-capture and
-/// drops the user on the dashboard with a placeholder role. Mostly a dev /
-/// "I'll fill this in later" escape hatch — visually subdued so it doesn't
-/// compete with the conversation.
-class _SkipButton extends StatelessWidget {
-  const _SkipButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(99),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-        child: Material(
-          color: brand.surface.withValues(alpha: 0.78),
-          shape: StadiumBorder(
-            side: BorderSide(color: brand.border, width: 0.8),
-          ),
-          child: InkWell(
-            onTap: onTap,
-            customBorder: const StadiumBorder(),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Skip',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: brand.textMuted,
-                      letterSpacing: -0.1,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    size: 16,
-                    color: brand.textMuted,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Soft gradient that fades the transcript into the background behind the
-/// floating chrome, copied from the chatbot scaffold so the visual treatment
-/// matches one-for-one.
-class _FadeScrim extends StatelessWidget {
-  const _FadeScrim({required this.brand, required this.top});
-
-  final BrandTheme brand;
-  final bool top;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: top ? Alignment.topCenter : Alignment.bottomCenter,
-          end: top ? Alignment.bottomCenter : Alignment.topCenter,
-          colors: [
-            brand.surface,
-            brand.surface.withValues(alpha: 0.0),
-          ],
-          stops: const [0.55, 1.0],
-        ),
-      ),
-    );
   }
 }

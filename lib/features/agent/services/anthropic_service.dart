@@ -16,6 +16,7 @@ class MatcherResult {
     required this.matchScore,
     required this.justification,
     required this.missingSkills,
+    this.needsReview = false,
   });
 
   final String jobId;
@@ -23,6 +24,22 @@ class MatcherResult {
   final int matchScore;
   final String justification;
   final List<String> missingSkills;
+
+  /// True when scoring fell back (the model's reply couldn't be parsed or the
+  /// request failed). The job still surfaces, just labelled "Needs review"
+  /// instead of vanishing behind a system error.
+  final bool needsReview;
+
+  /// The only match signal ever shown to the user — purely qualitative, never
+  /// a number. [matchScore] stays internal for sort/legacy only.
+  String get matchLabel {
+    if (needsReview) return 'Needs review';
+    return switch (category) {
+      JobCategory.ready => 'Strong match',
+      JobCategory.inputNeeded => 'Partial match',
+      JobCategory.exploration => 'Possible match',
+    };
+  }
 }
 
 class AnthropicException implements Exception {
@@ -78,9 +95,12 @@ class AnthropicService {
     if (!hasApiKey) return null;
     if (jobs.isEmpty) return [];
 
+    // 2048 (up from 1024): with several jobs each needing a category +
+    // justification + missing-skills array, 1024 tokens truncated the JSON
+    // mid-array — the root cause of "Could not parse matcher response".
     final body = jsonEncode({
       'model': model,
-      'max_tokens': 1024,
+      'max_tokens': 2048,
       'system': _systemPrompt,
       'messages': [
         {
@@ -90,19 +110,28 @@ class AnthropicService {
       ],
     });
 
-    final response = await _postWithRetry(body);
+    // Scoring must never surface as a hard failure to the user. Any error
+    // (network, truncation, unparseable reply) degrades to a "Needs review"
+    // result per job so the jobs still appear and the chat reads like a
+    // normal answer, not a red system error.
+    try {
+      final response = await _postWithRetry(body);
 
-    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-    final content = decoded['content'] as List?;
-    if (content == null || content.isEmpty) {
-      throw AnthropicException('Anthropic returned no content.');
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      final content = decoded['content'] as List?;
+      if (content == null || content.isEmpty) {
+        return _needsReviewFallback(jobs);
+      }
+
+      final textBlock = content
+          .whereType<Map<String, dynamic>>()
+          .firstWhere((b) => b['type'] == 'text', orElse: () => const {});
+      final text = textBlock['text'] as String? ?? '';
+      return _parseMatcherJson(text, jobs);
+    } catch (e) {
+      debugPrint('scoreJobs failed → needs-review fallback: $e');
+      return _needsReviewFallback(jobs);
     }
-
-    final textBlock = content
-        .whereType<Map<String, dynamic>>()
-        .firstWhere((b) => b['type'] == 'text', orElse: () => const {});
-    final text = textBlock['text'] as String? ?? '';
-    return _parseMatcherJson(text, jobs);
   }
 
   /// POSTs [body] to Anthropic, retrying transient failures (429 / 5xx /
@@ -203,22 +232,21 @@ Score every job. Return the JSON object described in the system prompt.''';
   }
 
   List<MatcherResult> _parseMatcherJson(String text, List<Job> jobs) {
-    final cleaned = _stripMarkdownFences(text);
-    final Map<String, dynamic> parsed;
-    try {
-      parsed = jsonDecode(cleaned) as Map<String, dynamic>;
-    } catch (e) {
-      debugPrint('Failed to parse Anthropic JSON: $e\nRaw: $text');
-      throw AnthropicException('Could not parse matcher response.');
+    final parsed = _extractJsonObject(text);
+    if (parsed == null) {
+      debugPrint('matcher: unparseable reply → needs-review fallback\nRaw: $text');
+      return _needsReviewFallback(jobs);
     }
 
     final raw = parsed['results'] as List? ?? const [];
     final byId = {for (final j in jobs) j.id: j};
     final results = <MatcherResult>[];
+    final seen = <String>{};
 
     for (final item in raw.whereType<Map<String, dynamic>>()) {
       final id = item['job_id']?.toString() ?? '';
-      if (!byId.containsKey(id)) continue;
+      if (!byId.containsKey(id) || seen.contains(id)) continue;
+      seen.add(id);
       results.add(
         MatcherResult(
           jobId: id,
@@ -232,7 +260,52 @@ Score every job. Return the JSON object described in the system prompt.''';
       );
     }
 
+    // Any job the model dropped comes back as "Needs review" rather than
+    // silently disappearing from the results table.
+    for (final job in jobs) {
+      if (!seen.contains(job.id)) results.add(_needsReviewResult(job));
+    }
+
+    if (results.isEmpty) return _needsReviewFallback(jobs);
     return results;
+  }
+
+  /// Every job, labelled "Needs review" — the graceful degrade when scoring
+  /// can't run or the reply can't be parsed. Keeps the jobs visible instead
+  /// of replacing the whole result with a system error.
+  List<MatcherResult> _needsReviewFallback(List<Job> jobs) =>
+      jobs.map(_needsReviewResult).toList();
+
+  MatcherResult _needsReviewResult(Job job) => MatcherResult(
+        jobId: job.id,
+        category: JobCategory.inputNeeded,
+        matchScore: 0,
+        justification:
+            "Couldn't score this one automatically — worth a quick review.",
+        missingSkills: const [],
+        needsReview: true,
+      );
+
+  /// Best-effort decode of the matcher's reply into a JSON object. Strips
+  /// markdown fences first; if a straight decode fails (stray prose or a
+  /// trailing truncation) it retries on the substring between the first `{`
+  /// and the last `}`. Returns null only when nothing parseable remains.
+  Map<String, dynamic>? _extractJsonObject(String text) {
+    final cleaned = _stripMarkdownFences(text);
+    try {
+      return jsonDecode(cleaned) as Map<String, dynamic>;
+    } catch (_) {
+      // fall through to substring extraction
+    }
+    final start = cleaned.indexOf('{');
+    final end = cleaned.lastIndexOf('}');
+    if (start == -1 || end == -1 || end <= start) return null;
+    try {
+      return jsonDecode(cleaned.substring(start, end + 1))
+          as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
   }
 
   String _stripMarkdownFences(String text) {

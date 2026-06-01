@@ -1,11 +1,8 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../data/firestore/firestore_paths.dart';
-import '../../../data/firestore/jobs_repository.dart';
 import '../../../data/firestore/pipeline_repository.dart';
 import '../../../data/models/job.dart';
 import '../../auth/state/auth_notifier.dart';
@@ -137,24 +134,18 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
     ''';
   PassiveAgentNotifier({
     AnthropicService? service,
-    JobsRepository? jobsRepository,
     PipelineRepository? pipelineRepository,
   }) : _service = service ?? AnthropicService(),
-       _jobsRepository = jobsRepository ?? JobsRepository(),
        _pipelineRepository = pipelineRepository ?? PipelineRepository();
 
   final AnthropicService _service;
-  final JobsRepository _jobsRepository;
   final PipelineRepository _pipelineRepository;
 
   /// The brief's own agentic-loop service. Built lazily and reused across
-  /// briefs. Critically NOT shared with the chat's `agentServiceProvider` —
-  /// that one rebuilds with the onboarding tool registry while
-  /// `agentChatModeProvider` is `onboarding`, so a brief kicked off from
-  /// `completeOnboarding` would inherit the stripped-down tool set and hang
-  /// trying to call `search_jobs` (which doesn't exist there). Owning our
-  /// own service keeps the brief running the full job arsenal regardless of
-  /// what mode the chat happens to be in.
+  /// briefs, with its own [ToolRegistry] so the brief's threaded run can't
+  /// pollute (or be polluted by) the chat's running conversation. The brief
+  /// is a self-contained one-shot, so it owns its service rather than sharing
+  /// the chat's `agentServiceProvider`.
   AnthropicChatService? _briefService;
 
   AnthropicChatService _ensureBriefService() {
@@ -209,12 +200,21 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
     final effectiveQuery =
         (query == null || query.trim().isEmpty) ? _defaultBriefQuery : query.trim();
 
-    if (service.hasApiKey) {
-      await _runAgentBrief(service, query: effectiveQuery);
+    // No mock path anymore: the brief always runs through the real Anthropic
+    // agent + live job search. Without a key there's nothing to fake, so we
+    // surface an actionable error instead of inventing a pipeline.
+    if (!service.hasApiKey) {
+      state = state.copyWith(
+        status: AgentBriefStatus.error,
+        lastError:
+            'Add an ANTHROPIC_API_KEY (--dart-define) to run the agent brief.',
+        lastMessage: 'Brief needs an Anthropic API key',
+        clearMessage: false,
+      );
       return;
     }
 
-    await _runLegacyMockBrief();
+    await _runAgentBrief(service, query: effectiveQuery);
   }
 
   Future<void> _runAgentBrief(AgentService service, {required String query}) async {
@@ -399,292 +399,6 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
     };
   }
 
-  /// Kicks off a fresh agent brief.
-  Future<void> _runLegacyMockBrief() async {
-    if (state.isRunning) return;
-
-    state = state.copyWith(
-      briefId: 'brief_${DateTime.now().millisecondsSinceEpoch}',
-      status: AgentBriefStatus.scanning,
-      clearError: true,
-    );
-
-    List<Job> candidates = const [];
-    try {
-      candidates = await _jobsRepository.fetchAll();
-    } catch (e) {
-      debugPrint('jobs fetch failed: $e');
-    }
-    if (candidates.isEmpty) {
-      _markFirstActivityDone();
-      state = state.copyWith(
-        status: AgentBriefStatus.done,
-        lastBriefAt: DateTime.now(),
-        lastMessage: 'Brief complete · no new roles found',
-      );
-      _pushActivity(
-        AgentActivityStep(
-          tool: 'BriefPipeline',
-          detail: 'No candidate roles available right now.',
-          status: 'done',
-          createdAt: DateTime.now(),
-        ),
-      );
-      return;
-    }
-
-    _pushActivity(
-      AgentActivityStep(
-        tool: 'Firestore',
-        detail: 'Scanning ${candidates.length} candidate roles…',
-        status: 'active',
-        createdAt: DateTime.now(),
-      ),
-    );
-
-    await Future.delayed(const Duration(milliseconds: 400));
-    _markFirstActivityDone();
-    state = state.copyWith(status: AgentBriefStatus.matching);
-    _pushActivity(
-      AgentActivityStep(
-        tool: _service.hasApiKey ? 'Claude Haiku' : 'BriefPipeline',
-        detail: _service.hasApiKey
-            ? 'Asking Claude Haiku to score each role against your resume…'
-            : 'Listing candidate roles (set ANTHROPIC_API_KEY to score them)…',
-        status: 'active',
-        createdAt: DateTime.now(),
-      ),
-    );
-
-    final user = ref.read(authProvider).appUser;
-    final uid = user?.uid;
-    final isGuest = user?.isGuest ?? true;
-
-    try {
-      List<Job> nextPipeline;
-      final resumeJson = (uid != null && !isGuest && _service.hasApiKey)
-          ? await _loadResumeJsonForBrief(uid)
-          : null;
-      final userSkills = _resumeSkills(resumeJson);
-      if (_service.hasApiKey && resumeJson != null) {
-        List<MatcherResult>? results;
-        try {
-          results = await _service.scoreJobs(
-            resume: resumeJson,
-            jobs: candidates,
-          );
-        } on AnthropicException catch (e) {
-          debugPrint('scoreJobs failed, using overlap fallback: $e');
-          results = null;
-          _pushActivity(
-            AgentActivityStep(
-              tool: 'BriefPipeline',
-              detail:
-                  "Claude couldn't score this brief — matching against your resume locally.",
-              status: 'active',
-              createdAt: DateTime.now(),
-            ),
-          );
-        }
-        nextPipeline = results != null
-            ? _applyResults(candidates, results, userSkills)
-            : _classifyByOverlap(candidates, userSkills);
-      } else if (userSkills.isNotEmpty) {
-        // No API key but we have skills to compare against — still ship a
-        // useful categorization rather than a flat unscored list.
-        await Future.delayed(const Duration(milliseconds: 300));
-        nextPipeline = _classifyByOverlap(candidates, userSkills);
-      } else {
-        await Future.delayed(const Duration(milliseconds: 900));
-        nextPipeline = List.of(candidates);
-      }
-
-      if (uid != null && !isGuest && nextPipeline.isNotEmpty) {
-        for (final j in nextPipeline) {
-          try {
-            await _pipelineRepository.createCard(
-              uid: uid,
-              job: j,
-              category: j.category,
-              matchScore: j.matchScore,
-              agentAction: j.agentAction,
-              agentJustification: j.agentJustification,
-              matchedSkills: j.skills,
-              missingSkills: j.missingSkills,
-            );
-          } catch (e) {
-            debugPrint('pipeline card write failed: $e');
-          }
-        }
-      }
-
-      final readyCount = nextPipeline
-          .where((j) => j.category == JobCategory.ready)
-          .length;
-      final inputCount = nextPipeline
-          .where((j) => j.category == JobCategory.inputNeeded)
-          .length;
-      final explorationCount = nextPipeline
-          .where((j) => j.category == JobCategory.exploration)
-          .length;
-
-      _markFirstActivityDone();
-      state = state.copyWith(
-        pipeline: nextPipeline,
-        status: AgentBriefStatus.done,
-        lastBriefAt: DateTime.now(),
-        lastMessage: 'Brief complete · ${nextPipeline.length} roles scored',
-      );
-      _pushActivity(
-        AgentActivityStep(
-          tool: 'BriefPipeline',
-          detail:
-              'Found $readyCount ready · $inputCount need input · $explorationCount strategic.',
-          status: 'done',
-          createdAt: DateTime.now(),
-        ),
-      );
-    } catch (e) {
-      // Anthropic failures are already converted to a fallback above, so a
-      // bare catch here only fires for pipeline-write or unexpected errors —
-      // surface them but keep whatever results we already accumulated.
-      _markFirstActivityDone();
-      state = state.copyWith(
-        status: AgentBriefStatus.error,
-        lastError: e.toString(),
-        lastMessage: 'Brief failed unexpectedly',
-      );
-      _pushActivity(
-        AgentActivityStep(
-          tool: 'BriefPipeline',
-          detail: 'Brief failed: $e',
-          status: 'waiting',
-          createdAt: DateTime.now(),
-        ),
-      );
-    }
-  }
-
-  List<Job> _applyResults(
-    List<Job> jobs,
-    List<MatcherResult> results,
-    List<String> userSkills,
-  ) {
-    final byId = {for (final r in results) r.jobId: r};
-    return jobs.map((job) {
-      final r = byId[job.id];
-      // Claude didn't return a row for this job — fall back to local skill
-      // overlap so it still gets a useful category instead of dropping out
-      // of the brief silently.
-      if (r == null) return _overlapJob(job, userSkills);
-      return _withCategory(
-        job,
-        category: r.category,
-        matchScore: r.matchScore,
-        justification: r.justification,
-        missingSkills: r.missingSkills,
-      );
-    }).toList();
-  }
-
-  /// Deterministic fallback when Claude can't score the brief: classify each
-  /// job by how many of its required skills appear on the user's resume.
-  List<Job> _classifyByOverlap(List<Job> jobs, List<String> userSkills) {
-    return jobs.map((job) => _overlapJob(job, userSkills)).toList();
-  }
-
-  Job _overlapJob(Job job, List<String> userSkills) {
-    if (job.skills.isEmpty) {
-      return _withCategory(
-        job,
-        category: JobCategory.exploration,
-        matchScore: 30,
-        justification: job.agentJustification,
-        missingSkills: const [],
-      );
-    }
-    final userSet = userSkills.toSet();
-    final missing = <String>[];
-    var matched = 0;
-    for (final s in job.skills) {
-      final key = s.toLowerCase().trim();
-      if (key.isEmpty) continue;
-      if (userSet.contains(key)) {
-        matched += 1;
-      } else {
-        missing.add(s);
-      }
-    }
-    final ratio = matched / job.skills.length;
-    final JobCategory category;
-    if (ratio >= 0.7) {
-      category = JobCategory.ready;
-    } else if (ratio >= 0.3) {
-      category = JobCategory.inputNeeded;
-    } else {
-      category = JobCategory.exploration;
-    }
-    return _withCategory(
-      job,
-      category: category,
-      matchScore: (ratio * 100).round(),
-      justification: job.agentJustification,
-      missingSkills: missing,
-    );
-  }
-
-  Job _withCategory(
-    Job job, {
-    required JobCategory category,
-    required int matchScore,
-    required String justification,
-    required List<String> missingSkills,
-  }) {
-    final action = switch (category) {
-      JobCategory.ready => 'Ready to send',
-      JobCategory.inputNeeded => 'Missing requirement',
-      JobCategory.exploration => 'Strategic pivot',
-    };
-    return Job(
-      id: job.id,
-      title: job.title,
-      company: job.company,
-      location: job.location,
-      salary: job.salary,
-      category: category,
-      matchScore: matchScore,
-      agentAction: action,
-      agentJustification:
-          justification.isEmpty ? job.agentJustification : justification,
-      skills: job.skills,
-      missingSkills: missingSkills.isEmpty ? job.missingSkills : missingSkills,
-      why: job.why,
-    );
-  }
-
-  /// Pulls a flat lowercase skill list out of the resume JSON. Tolerates both
-  /// `skills: [...]` as a list of strings and as a list of `{name: ...}` maps,
-  /// which is what the parser sometimes produces.
-  List<String> _resumeSkills(Map<String, dynamic>? resume) {
-    if (resume == null) return const [];
-    final raw = resume['skills'];
-    if (raw is! List) return const [];
-    final out = <String>[];
-    for (final entry in raw) {
-      if (entry is String) {
-        final s = entry.toLowerCase().trim();
-        if (s.isNotEmpty) out.add(s);
-      } else if (entry is Map) {
-        final name = entry['name'] ?? entry['skill'];
-        if (name is String) {
-          final s = name.toLowerCase().trim();
-          if (s.isNotEmpty) out.add(s);
-        }
-      }
-    }
-    return out;
-  }
-
   void _pushActivity(AgentActivityStep step) {
     state = state.copyWith(activity: [step, ...state.activity]);
   }
@@ -702,26 +416,6 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
       undoable: true,
     );
     state = state.copyWith(activity: next);
-  }
-
-  /// Reads the latest manual resume's cached structured JSON for brief
-  /// scoring. Returns `null` when the user has no parsed resume yet — the
-  /// brief then lists candidates unscored rather than inventing a resume.
-  Future<Map<String, dynamic>?> _loadResumeJsonForBrief(String uid) async {
-    try {
-      final snap = await FirestorePaths(
-        FirebaseFirestore.instance,
-      ).resumes(uid).orderBy('uploaded_at', descending: true).limit(10).get();
-      for (final doc in snap.docs) {
-        final data = doc.data();
-        if (data['source'] == 'manual' && data['resume_json'] is Map) {
-          return (data['resume_json'] as Map).cast<String, dynamic>();
-        }
-      }
-    } catch (e) {
-      debugPrint('brief resume load failed: $e');
-    }
-    return null;
   }
 }
 

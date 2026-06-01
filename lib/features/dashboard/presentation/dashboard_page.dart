@@ -359,10 +359,10 @@ class _DashboardAgentEmptyState extends ConsumerWidget {
     final firstName =
         fullName.isEmpty ? '' : fullName.split(RegExp(r'\s+')).first;
     // When the passive agent is mid-brief (most likely the first one auto-
-    // fired by completeOnboarding), swap the generic greeting for a live
-    // status that names the target role. This is the UX bridge between
-    // onboarding's "I'll find roles for you" promise and the dashboard's
-    // empty state — the user lands on visible activity, not stillness.
+    // fired by onboarding), swap the generic greeting for a live status that
+    // names the target role. This is the UX bridge between onboarding's
+    // "I'll find roles for you" promise and the dashboard's empty state —
+    // the user lands on visible activity, not stillness.
     final isRunning =
         ref.watch(passiveAgentProvider.select((s) => s.isRunning));
     final role =

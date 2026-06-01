@@ -10,9 +10,7 @@ import '../../../resumes/presentation/widgets/resume_attachment_chips.dart';
 import '../../../resumes/presentation/widgets/select_resumes_bottom_sheet.dart';
 import '../../../resumes/state/resume_notifier.dart';
 import '../../models/chat_message.dart';
-import '../../state/agent_chat_mode.dart';
 import '../../state/agent_chat_notifier.dart';
-import '../../state/onboarding_resume_context.dart';
 
 /// Keyboard intent fired by Cmd+Enter / Ctrl+Enter to submit the composer.
 class _SendIntent extends Intent {
@@ -100,18 +98,6 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
     final brand = context.brand;
     final chatState = ref.watch(agentChatProvider);
     final streaming = chatState.isStreaming;
-    // Onboarding is a stripped-down sandbox: the agent has no model-selection
-    // tool here. The composer drops the model chip but keeps the `+` button —
-    // in onboarding mode that button is the *primary* CTA (upload resume).
-    final isOnboarding =
-        ref.watch(agentChatModeProvider) == AgentChatMode.onboarding;
-    // Pulse the `+` button only when the user has not yet handed over a
-    // resume — once a resume is parsed (or ingestion is mid-flight), the
-    // emphasis goes away so the button stops competing with whatever the
-    // agent is about to say.
-    final highlightUpload = isOnboarding &&
-        !ref.watch(onboardingResumeContextProvider).hasResume &&
-        !ref.watch(onboardingResumeContextProvider).isLoading;
     final hasText = _textController.text.trim().isNotEmpty;
     // Before the first message is sent, an attached resume is "pending" —
     // we preview it inside the composer. Once the chat is underway it's
@@ -207,9 +193,7 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                     decoration: InputDecoration(
                       hintText: streaming
                           ? 'Syncra is working…'
-                          : (isOnboarding
-                                ? 'Brainstorm with me…'
-                                : 'Message Syncra'),
+                          : 'Message Syncra',
                       hintStyle: TextStyle(
                         color: brand.textSoft,
                         fontWeight: FontWeight.w500,
@@ -231,18 +215,13 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                 children: [
                   _CircleAction(
                     icon: Icons.add_rounded,
-                    tooltip: isOnboarding
-                        ? 'Upload your resume'
-                        : 'Upload or attach resume',
-                    highlighted: highlightUpload,
+                    tooltip: 'Upload or attach resume',
                     onTap: streaming
                         ? null
                         : () => SelectResumesBottomSheet.show(context),
                   ),
-                  if (!isOnboarding) ...[
-                    const SizedBox(width: 8),
-                    _ModelChip(streaming: streaming),
-                  ],
+                  const SizedBox(width: 8),
+                  _ModelChip(streaming: streaming),
                   const Spacer(),
                   _SendButton(
                     streaming: streaming,
@@ -332,53 +311,26 @@ class _CircleAction extends StatelessWidget {
     required this.icon,
     required this.tooltip,
     required this.onTap,
-    this.highlighted = false,
   });
 
   final IconData icon;
   final String tooltip;
   final VoidCallback? onTap;
 
-  /// When true, paints the button in the brand-ink "primary CTA" treatment
-  /// and gives it a slow pulse — used by onboarding to point the user at
-  /// "upload your resume" without adding a separate inline card.
-  final bool highlighted;
-
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
     final enabled = onTap != null;
-    final bg = highlighted ? brand.ink : brand.surfaceMuted;
-    final fg = highlighted
-        ? brand.inkInverse
-        : (enabled ? brand.ink : brand.textSoft);
-    Widget button = Container(
+    final button = Container(
       width: 36,
       height: 36,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: bg,
-        boxShadow: highlighted
-            ? [
-                BoxShadow(
-                  color: brand.ink.withValues(alpha: 0.22),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ]
-            : null,
+        color: brand.surfaceMuted,
       ),
       alignment: Alignment.center,
-      child: Icon(icon, size: 18, color: fg),
+      child: Icon(icon, size: 18, color: enabled ? brand.ink : brand.textSoft),
     );
-    if (highlighted) {
-      // Slow opacity pulse keys "tap me" without screaming for attention —
-      // matches the model-chip dot's cadence so the two animated bits in the
-      // composer stay visually in sync.
-      button = button
-          .animate(onPlay: repeatIfMotion(context, reverse: true))
-          .fadeIn(begin: 0.78, duration: 900.ms);
-    }
     return Tooltip(
       message: tooltip,
       child: Material(

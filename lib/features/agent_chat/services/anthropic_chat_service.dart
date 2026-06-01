@@ -37,8 +37,8 @@ class AnthropicChatService implements AgentService {
         _systemPrompt = systemPromptOverride ?? systemPrompt;
 
   /// The system prompt actually sent on every request. Defaults to the main
-  /// chatbot's [systemPrompt]; the onboarding flow overrides it with a
-  /// dedicated walkthrough script (see `agent_chat_mode.dart`).
+  /// chatbot's [systemPrompt]; callers may override it via
+  /// [systemPromptOverride] for a one-off session with different framing.
   final String _systemPrompt;
 
   static const _endpoint = 'https://api.anthropic.com/v1/messages';
@@ -98,6 +98,11 @@ Building a resume from scratch:
 - When you have enough, call `build_resume` ONCE with the full structure. It renders a preview only; it does NOT save. The user previews the PDF and taps Save.
 - NEVER invent employers, titles, dates, or metrics. Use only what the user gave you and omit fields you don't have.
 - Once saved, the new resume becomes a base resume the user can tailor to jobs — continue the workflow from there.
+Match presentation:
+- The matching system is purely qualitative. NEVER show the user a numeric score, percentage, rating, or any 0-100 value for a match.
+- When you present matches (including in a table), show match strength using ONLY the `match` label from match_jobs — e.g. "Strong match", "Partial match", "Possible match", or "Needs review".
+- Use a single "Match" column with that label. Do not add a score/number column, and do not invent your own numbers.
+- If match_jobs returns "Needs review" for jobs, present them normally as needing a quick review — do not describe it as an error or failure.
 
 Email and external actions:
 - Drafting an email is safe; sending an email is not.
@@ -186,8 +191,6 @@ Progress and style:
         String? draftPauseMessage;
         bool shouldPauseAfterResumeEmail = false;
         String? resumeEmailPauseMessage;
-        bool shouldPauseAfterOnboardingComplete = false;
-        String? onboardingPauseMessage;
         for (final raw in content) {
           if (raw is! Map<String, dynamic>) continue;
           final type = raw['type'] as String?;
@@ -322,39 +325,6 @@ Progress and style:
                   }
                 }
 
-                // The onboarding-only `propose_fit_chart` lifts a list of
-                // role-category slices into a [FitChartBlock] the user sees
-                // inline as a pie + legend. Unlike `complete_onboarding`,
-                // the loop does NOT pause here — the agent is supposed to
-                // continue with a short text + ask_user in the same turn so
-                // the chart lands inside a single, coherent moment.
-                if (!result.isError && name == 'propose_fit_chart') {
-                  final fitBlock = _fitChartBlockFromInput(
-                    id: nextBlockId('fit'),
-                    input: input,
-                  );
-                  if (fitBlock != null) yield BlockAdded(fitBlock);
-                }
-
-                // The onboarding-only `complete_onboarding` tool returns the
-                // captured role and a one-line summary; lift them into an
-                // [OnboardingCompleteBlock] so the user sees a celebratory
-                // CTA, and pause the loop — the user gates the dashboard
-                // handoff with a tap, not the agent.
-                if (!result.isError && name == 'complete_onboarding') {
-                  final completeBlock = _onboardingCompleteBlockFromInput(
-                    id: nextBlockId('done'),
-                    input: input,
-                    data: result.data,
-                  );
-                  if (completeBlock != null) {
-                    yield BlockAdded(completeBlock);
-                    shouldPauseAfterOnboardingComplete = true;
-                    onboardingPauseMessage =
-                        "You're all set. Tap Enter Syncra when you're ready.";
-                  }
-                }
-
                 // After the tailored PDF is rendered, automatically draft a
                 // self-delivery email with the resume attached so the user can
                 // save a copy to their own inbox in one tap.
@@ -467,20 +437,6 @@ Progress and style:
             id: nextBlockId('text'),
             text: draftPauseMessage ??
                 'I drafted an email. Review it before I continue.',
-          ));
-          yield const TurnCompleted();
-          return;
-        }
-
-        // Onboarding hands off via a user-tapped CTA. Stop the loop so the
-        // agent can't keep talking past the "Enter Syncra" card — the user
-        // owns the dashboard handoff, not the model.
-        if (shouldPauseAfterOnboardingComplete) {
-          messages.add({'role': 'user', 'content': toolResults});
-          yield BlockAdded(TextBlock(
-            id: nextBlockId('text'),
-            text: onboardingPauseMessage ??
-                "You're all set. Tap Enter Syncra when you're ready.",
           ));
           yield const TurnCompleted();
           return;
@@ -791,72 +747,6 @@ Progress and style:
       attachmentResumeId: resumeId,
       attachmentFilename: filename,
     );
-  }
-
-  /// Builds the resume-fit pie card from a `propose_fit_chart` tool call.
-  /// Lifts the model's slice list out of the tool input, clamps each percent
-  /// into [0, 100], drops anything that resolves to zero, sorts biggest-first,
-  /// and renormalises so totals sum to 100 regardless of the model's
-  /// arithmetic. Returns null when fewer than 2 usable slices survive — the
-  /// pie needs a real comparison or it isn't worth surfacing.
-  FitChartBlock? _fitChartBlockFromInput({
-    required String id,
-    required Map<String, dynamic> input,
-  }) {
-    final raw = (input['segments'] as List?) ?? const [];
-    final segments = <ResumeFitSegment>[];
-    for (final entry in raw) {
-      if (entry is! Map) continue;
-      final label = (entry['label'] as String?)?.trim() ?? '';
-      final percent = (entry['percent'] as num?)?.toDouble();
-      if (label.isEmpty || percent == null || percent <= 0) continue;
-      final rationale = (entry['rationale'] as String?)?.trim();
-      segments.add(ResumeFitSegment(
-        label: label,
-        percent: percent.clamp(0, 100),
-        rationale: (rationale == null || rationale.isEmpty) ? null : rationale,
-      ));
-    }
-    if (segments.length < 2) return null;
-
-    segments.sort((a, b) => b.percent.compareTo(a.percent));
-
-    final total = segments.fold<double>(0, (sum, s) => sum + s.percent);
-    final normalised = total <= 0
-        ? segments
-        : segments
-            .map((s) => ResumeFitSegment(
-                  label: s.label,
-                  percent: (s.percent / total) * 100,
-                  rationale: s.rationale,
-                ))
-            .toList();
-
-    final fit = ResumeFit(
-      segments: normalised,
-      generatedAt: DateTime.now(),
-    );
-    return FitChartBlock(id: id, fit: fit);
-  }
-
-  /// Builds the onboarding handoff card from a `complete_onboarding` tool
-  /// call. The role comes from the agent's tool input (what it captured in
-  /// conversation); the optional summary comes from the tool's response data.
-  /// Returns null when the role is missing — without it the CTA can't write
-  /// the profile, so the turn falls back to a plain pause.
-  OnboardingCompleteBlock? _onboardingCompleteBlockFromInput({
-    required String id,
-    required Map<String, dynamic> input,
-    required Object? data,
-  }) {
-    final role = (input['role'] as String?)?.trim() ?? '';
-    if (role.isEmpty) return null;
-    String? summary;
-    if (data is Map) {
-      final raw = (data['summary'] as String?)?.trim();
-      if (raw != null && raw.isNotEmpty) summary = raw;
-    }
-    return OnboardingCompleteBlock(id: id, role: role, summary: summary);
   }
 
   String _tailorPauseMessage(Object? data) {

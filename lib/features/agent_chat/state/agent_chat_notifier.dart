@@ -2,18 +2,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_strings.dart';
-import '../../../core/dev/dev_flags_notifier.dart';
 import '../../../core/router/route_names.dart';
 import '../../../data/firestore/jobs_repository.dart';
 import '../../../data/firestore/resumes_repository.dart';
 import '../../../data/models/job.dart';
 import '../../../shared/state/running_task_notifier.dart';
-import '../../agent/state/passive_agent_notifier.dart';
 import '../../auth/state/auth_notifier.dart';
-import '../../auth/state/user_profile_notifier.dart';
 import '../../notifications/models/app_notification.dart';
 import '../../notifications/state/notifications_notifier.dart';
-import '../../resumes/models/resume_json.dart';
 import '../../resumes/services/resume_parser_service.dart';
 import '../../resumes/services/resume_tailor_orchestrator.dart';
 import '../../resumes/services/resume_tailor_service.dart';
@@ -25,43 +21,15 @@ import '../services/agent_service.dart';
 import '../services/anthropic_chat_service.dart';
 import '../services/chat_history_repository.dart';
 import '../tools/builtin_tools.dart';
-import '../tools/onboarding_tools.dart';
 import '../tools/tool_registry.dart';
-import 'agent_chat_mode.dart';
-import 'onboarding_resume_context.dart';
 
 /// The active [AgentService] for the app — Claude via the tool-use loop.
 /// Requires an `ANTHROPIC_API_KEY`; without one the agent surfaces an error
 /// at call time rather than falling back to scripted responses.
-///
-/// Rebuilds when [agentChatModeProvider] flips: the onboarding flow needs a
-/// stripped-down tool registry and its own system prompt, so we mint a fresh
-/// service instance per mode instead of mutating a shared one.
 final agentServiceProvider = Provider<AgentService>((ref) {
-  final mode = ref.watch(agentChatModeProvider);
   final registry = ToolRegistry();
-  switch (mode) {
-    case AgentChatMode.jobs:
-      registerBuiltinTools(registry);
-      return AnthropicChatService(registry: registry);
-    case AgentChatMode.onboarding:
-      registerOnboardingTools(registry);
-      // The onboarding system prompt is a function of the resume context —
-      // before the user uploads, the agent is told to wait for it; once the
-      // parsed JSON arrives, the prompt is rebuilt with the resume inlined
-      // and the agent is told to ground its next question in what it saw.
-      // Watching the context here means a new upload rebuilds the service
-      // (and the AgentChatNotifier underneath) so the opener and tools
-      // re-derive from the new prompt automatically.
-      final resumeContext = ref.watch(onboardingResumeContextProvider);
-      return AnthropicChatService(
-        registry: registry,
-        systemPromptOverride: buildOnboardingSystemPrompt(
-          resume: resumeContext.resume,
-          ingestionFailed: resumeContext.failed,
-        ),
-      );
-  }
+  registerBuiltinTools(registry);
+  return AnthropicChatService(registry: registry);
 });
 
 /// Persists the text-only transcript so chats survive app restarts. Scoped
@@ -129,14 +97,8 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
   bool _hydrating = false;
   bool _serviceReady = false;
 
-  /// Which chat experience this notifier is driving — see [AgentChatMode].
-  /// In [AgentChatMode.onboarding] the notifier skips Firestore reads and
-  /// writes entirely; in [AgentChatMode.jobs] it persists every turn.
-  late AgentChatMode _mode;
-
   @override
   AgentChatState build() {
-    _mode = ref.watch(agentChatModeProvider);
     _service = ref.watch(agentServiceProvider);
     _serviceReady = true;
     _history = ref.watch(chatHistoryRepositoryProvider);
@@ -146,22 +108,11 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
       parser: ResumeParserService(),
       tailor: ResumeTailorService(),
     );
-    // Reset sequence counter so a mode swap doesn't carry stale ids over.
     _seq = 0;
     ref.onDispose(() {
       _serviceReady = false;
       _activeSub?.cancel();
     });
-
-    // Onboarding is single-session by design: nothing persists, nothing
-    // hydrates, and the agent opens with a personalised greeting whose name
-    // depends on the signed-in user.
-    if (_mode == AgentChatMode.onboarding) {
-      return AgentChatState(
-        items: [_buildOnboardingOpener()],
-        conversationId: _newConversationId(),
-      );
-    }
 
     // Hydrate the most recent saved conversation in the background. We start
     // from a fresh opener and replace once the load completes, *iff* the user
@@ -223,9 +174,6 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
 
   void _persist() {
     if (_hydrating) return;
-    // Onboarding is single-shot — nothing about the first-run conversation
-    // belongs in the user's permanent chat history.
-    if (_mode == AgentChatMode.onboarding) return;
     final uid = _uid;
     if (uid == null) return;
     // Drop the opener turn from the persisted payload — it's reconstructed
@@ -256,81 +204,6 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
       }
     }
     return 'New chat';
-  }
-
-  /// First agent turn shown in onboarding mode — a personalised greeting
-  /// keyed to the signed-in user's first name AND to whatever the resume
-  /// context provider currently holds. Branching the opener locally (rather
-  /// than streaming a fresh agent turn each time) keeps the moment cheap:
-  /// no Anthropic call needed to acknowledge the upload, and the user always
-  /// sees something the instant the page mounts.
-  AgentTurn _buildOnboardingOpener() {
-    final displayName = ref.read(authProvider).appUser?.displayName ?? '';
-    final firstName = displayName.split(' ').first.trim();
-    final greeting = firstName.isEmpty ? 'Hi!' : 'Hi $firstName!';
-
-    final context = ref.read(onboardingResumeContextProvider);
-    final text = _onboardingOpenerText(greeting, context);
-
-    return AgentTurn(
-      id: 'turn-onboarding-opener',
-      blocks: [
-        TextBlock(id: 'onboarding-opener-text', text: text),
-      ],
-      isStreaming: false,
-    );
-  }
-
-  /// Picks the opener copy that matches the current resume-ingestion state.
-  /// Resume present → a one-line acknowledgement that tees the agent's
-  /// grounded `ask_user` follow-up. Loading → a short "reading…" beat so the
-  /// user knows something is happening. Failed → a fall-back back to the
-  /// role-capture flow. Absent → the resume-first nudge with an explicit
-  /// skip path.
-  String _onboardingOpenerText(
-    String greeting,
-    OnboardingResumeContext context,
-  ) {
-    if (context.isLoading) {
-      return "$greeting Reading your resume now — give me a sec…";
-    }
-    if (context.failed) {
-      final reason = context.failureMessage ?? "I couldn't read that file";
-      return "$greeting $reason. No worries — tell me what kind of work "
-          "you're drawn to and we'll start there.";
-    }
-    final resume = context.resume;
-    if (resume != null) {
-      final headline = _resumeHeadline(resume);
-      if (headline.isNotEmpty) {
-        return "$greeting I read your resume — $headline. "
-            "Tell me where you want to take it and we're set.";
-      }
-      return "$greeting I read your resume. Tell me where you want to "
-          "take it and we're set.";
-    }
-    return "$greeting I'm Syncra. Brainstorm with me — what kind of work "
-        "are you drawn to next? Or drop your resume below (tap the +) and "
-        "I'll start from what's already there.";
-  }
-
-  /// One-line "what I see" headline drawn from the parsed resume — fed into
-  /// the opener so the user instantly knows the agent actually read it. Falls
-  /// back gracefully if the resume is unusually sparse.
-  String _resumeHeadline(ResumeJson resume) {
-    if (resume.experience.isNotEmpty) {
-      final latest = resume.experience.first;
-      final role = latest.role.trim();
-      final company = latest.company.trim();
-      if (role.isNotEmpty && company.isNotEmpty) {
-        return "looks like you've been $role @ $company";
-      }
-      if (role.isNotEmpty) return "looks like you've been a $role";
-    }
-    if (resume.skills.isNotEmpty) {
-      return 'strong on ${resume.skills.take(3).join(", ")}';
-    }
-    return '';
   }
 
   /// Builds the first agent turn shown when the chat opens. Adapts to the
@@ -420,7 +293,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
         - title: ${job.title}
         - company: ${job.company}
         - location: ${job.location}
-        - match_score: ${job.matchScore}
+        - match: ${job.matchLabel}
         - missing_skill: $missingSkill
         - agent_justification: ${job.agentJustification}
 
@@ -1213,59 +1086,6 @@ Do not call send_email. Sending still requires explicit user approval.
     if (block.state != ProposedEditsState.reviewing) return;
     block.state = ProposedEditsState.dismissed;
     state = state.copyWith(items: [...state.items]);
-  }
-
-  /// Settles an [OnboardingCompleteBlock] once the user taps Enter Syncra.
-  /// Writes the captured role and the `hasCompletedOnboarding` flag (which
-  /// trips the router redirect that lands the user on the dashboard), flips
-  /// the card to [OnboardingCompleteState.entered] so it can't be re-tapped,
-  /// and fires a first job scan in the background so the dashboard lands on
-  /// live pipeline activity instead of the "agent is idle" empty state.
-  /// Returns the role the page can use for any follow-up nav.
-  Future<String?> completeOnboarding(String blockId) async {
-    final block = _findOnboardingComplete(blockId);
-    if (block == null) return null;
-    if (block.state == OnboardingCompleteState.entered) return block.role;
-
-    block.state = OnboardingCompleteState.entered;
-    state = state.copyWith(items: [...state.items]);
-
-    // Single batched repo update: role + hasCompletedOnboarding land in the
-    // same Firestore round-trip, so the profile stream emits exactly one new
-    // snapshot — the router can't briefly see a state where role is set but
-    // the gate flag is still false and bounce back here mid-transition.
-    await ref
-        .read(userProfileProvider.notifier)
-        .setRoleAndComplete(block.role);
-    // Clear the dev "Show onboarding" toggle if it was the reason the user is
-    // here — otherwise the router redirect would bounce them straight back to
-    // /onboarding on the next refresh.
-    final dev = ref.read(devFlagsProvider);
-    if (dev.showOnboarding) {
-      await ref.read(devFlagsProvider.notifier).setShowOnboarding(false);
-    }
-
-    // Fire-and-forget: the brief runs through PassiveAgentNotifier (separate
-    // from this chat notifier's own service), so the imminent mode flip back
-    // to AgentChatMode.jobs won't interrupt it. The pipeline writes land in
-    // Firestore and stream into the dashboard's jobs page as they happen.
-    unawaited(
-      ref.read(passiveAgentProvider.notifier).runBrief(query: block.role),
-    );
-
-    return block.role;
-  }
-
-  OnboardingCompleteBlock? _findOnboardingComplete(String blockId) {
-    for (final item in state.items) {
-      if (item is! AgentTurn) continue;
-      for (final block in item.blocks) {
-        if (block is OnboardingCompleteBlock && block.id == blockId) {
-          return block;
-        }
-      }
-    }
-    return null;
   }
 
   InputRequestBlock? _findInputRequest(String blockId) {

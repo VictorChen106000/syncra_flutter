@@ -206,6 +206,11 @@ class _ResumePreviewBody extends ConsumerWidget {
               return SfPdfViewer.memory(
                 bytes,
                 key: ValueKey('${resume.id}-${bytes.length}'),
+                // Fit the page to the card width with clean chrome so the
+                // resume reads clearly without manual zooming.
+                canShowScrollHead: false,
+                canShowScrollStatus: false,
+                canShowPaginationDialog: false,
                 onDocumentLoaded: (details) {
                   debugPrint(
                     'PDF loaded: ${details.document.pages.count} pages',
