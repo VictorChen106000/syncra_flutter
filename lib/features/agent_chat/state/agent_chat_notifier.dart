@@ -521,16 +521,6 @@ Do not call send_email. Sending still requires explicit user approval.
             block.previewBytes == null) {
           unawaited(_autoRenderResumeDraft(block));
         }
-        // A FitChartBlock arriving during onboarding is the agent's read on
-        // the user's resume — persist it to `users/{uid}.resume_fit` so the
-        // dashboard's "Chart" view can re-render it on subsequent sessions
-        // without rerunning the agent. Fire-and-forget; if Firestore is
-        // down the in-chat card still renders fine.
-        if (block is FitChartBlock && _mode == AgentChatMode.onboarding) {
-          unawaited(
-            ref.read(userProfileProvider.notifier).setResumeFit(block.fit),
-          );
-        }
       case ToolCallCompleted(
         :final blockId,
         :final summary,
