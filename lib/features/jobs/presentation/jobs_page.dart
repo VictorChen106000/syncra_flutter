@@ -16,7 +16,6 @@ import '../../../shared/widgets/gooey_orb.dart';
 import '../../agent/state/passive_agent_notifier.dart';
 import '../../agent_chat/state/agent_chat_notifier.dart';
 import '../state/jobs_notifier.dart';
-import 'widgets/job_action_sheet.dart';
 
 class JobsPage extends ConsumerStatefulWidget {
   const JobsPage({super.key});
@@ -78,7 +77,6 @@ class _JobsPageState extends ConsumerState<JobsPage> {
         hadAnyPipeline: state.pendingCards.isNotEmpty,
         agentHasRun: agentHasRun,
         onDismiss: _dismiss,
-        onMore: (job) => JobActionSheet.show(context, job),
       ),
     );
   }
@@ -104,14 +102,12 @@ class _PipelineFeed extends ConsumerWidget {
     required this.hadAnyPipeline,
     required this.agentHasRun,
     required this.onDismiss,
-    required this.onMore,
   });
 
   final List<PipelineCard> cards;
   final bool hadAnyPipeline;
   final bool agentHasRun;
   final ValueChanged<Job> onDismiss;
-  final ValueChanged<Job> onMore;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -179,7 +175,6 @@ class _PipelineFeed extends ConsumerWidget {
             child: _PipelineRow(
               card: items[i],
               showDivider: i < items.length - 1,
-              onMore: () => onMore(items[i].job),
               onTap: () {
                 ref.read(agentChatProvider.notifier).openJobThread(items[i].job);
                 context.go(RouteNames.agentChat);
@@ -285,13 +280,11 @@ class _PipelineRow extends StatelessWidget {
   const _PipelineRow({
     required this.card,
     required this.onTap,
-    required this.onMore,
     this.showDivider = true,
   });
 
   final PipelineCard card;
   final VoidCallback onTap;
-  final VoidCallback onMore;
   final bool showDivider;
 
   /// The single status line under the stepper. Action-led for cards that need
@@ -324,6 +317,11 @@ class _PipelineRow extends StatelessWidget {
     final job = card.job;
     // Cards that need you weight their status line in ink; the rest stay muted.
     final actionable = card.needsYou;
+    // Salary · work mode/location — only the parts we actually have, so a card
+    // missing one never renders a dangling separator.
+    final meta = [job.salary, job.location]
+        .where((s) => s.trim().isNotEmpty)
+        .join('   ·   ');
 
     return Material(
       color: Colors.transparent,
@@ -338,69 +336,71 @@ class _PipelineRow extends StatelessWidget {
                   ),
                 )
               : null,
-          padding: const EdgeInsets.symmetric(vertical: 15),
-          child: Row(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(
-                            text: job.title,
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                              color: brand.ink,
-                              letterSpacing: -0.2,
-                            ),
-                          ),
-                          TextSpan(
-                            text: '   ${job.company}',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                              color: brand.textMuted,
-                              letterSpacing: -0.2,
-                            ),
-                          ),
-                        ],
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 9),
-                    Row(
-                      children: [
-                        _StageStepper(stage: card.stage),
-                        const SizedBox(width: 11),
-                        Flexible(
-                          child: Text(
-                            _phrase(),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: -0.1,
-                              color: actionable ? brand.ink : brand.textMuted,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+              // Company — a quiet eyebrow that sits above the role.
+              Text(
+                job.company,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: brand.textMuted,
+                  letterSpacing: -0.1,
                 ),
               ),
-              if (!card.isSent)
-                _IconActionButton(
-                  icon: Icons.more_horiz_rounded,
-                  semanticLabel: 'More actions',
-                  onTap: onMore,
+              const SizedBox(height: 2),
+              // Position — the headline the eye lands on first.
+              Text(
+                job.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: brand.ink,
+                  letterSpacing: -0.3,
+                  height: 1.15,
                 ),
+              ),
+              if (meta.isNotEmpty) ...[
+                const SizedBox(height: 3),
+                Text(
+                  meta,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    color: brand.textMuted,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 11),
+              Row(
+                children: [
+                  _StageStepper(stage: card.stage),
+                  const SizedBox(width: 11),
+                  Flexible(
+                    child: Text(
+                      _phrase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.1,
+                        color: actionable ? brand.ink : brand.textMuted,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -668,39 +668,3 @@ class _SwipeDismissible extends StatelessWidget {
   }
 }
 
-/// Borderless icon-only button used as a row's trailing overflow affordance.
-/// 44×44 keeps it a comfortable touch target despite the light visual weight.
-class _IconActionButton extends StatelessWidget {
-  const _IconActionButton({
-    required this.icon,
-    required this.onTap,
-    required this.semanticLabel,
-  });
-
-  final IconData icon;
-  final VoidCallback onTap;
-  final String semanticLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Semantics(
-      label: semanticLabel,
-      button: true,
-      child: Material(
-        color: Colors.transparent,
-        shape: const CircleBorder(),
-        child: InkWell(
-          onTap: onTap,
-          customBorder: const CircleBorder(),
-          excludeFromSemantics: true,
-          child: SizedBox(
-            width: 44,
-            height: 44,
-            child: Icon(icon, size: 20, color: brand.textMuted),
-          ),
-        ),
-      ),
-    );
-  }
-}
