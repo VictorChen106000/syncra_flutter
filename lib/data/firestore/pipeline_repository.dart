@@ -5,18 +5,43 @@ import 'firestore_paths.dart';
 
 enum PipelineCardStatus { pending, approved, dismissed }
 
+/// How far the agent has carried a job along the apply pipeline. Advanced by
+/// the agent tools as they complete: tailor_resume → [tailored],
+/// draft_email → [drafted], a confirmed send → [sent]. This is the per-card
+/// *progress* axis the Pipeline screen renders as a stepper.
+enum PipelineStage { matched, tailored, drafted, sent, replied }
+
 class PipelineCard {
   const PipelineCard({
     required this.id,
     required this.job,
     required this.status,
     required this.createdAt,
+    this.stage = PipelineStage.matched,
   });
 
   final String id;
   final Job job;
   final PipelineCardStatus status;
   final DateTime createdAt;
+
+  /// Current pipeline stage. Defaults to [PipelineStage.matched] for cards
+  /// written before the `stage` field existed, so old data still renders.
+  final PipelineStage stage;
+
+  /// Terminal stages — the agent (or user) already sent this one.
+  bool get isSent =>
+      stage == PipelineStage.sent || stage == PipelineStage.replied;
+
+  /// True when the card is waiting on the user. Orthogonal to [stage]: a
+  /// finished draft needs a review-and-send tap, and an early match the agent
+  /// flagged is missing info or needs a call. Sent cards never need you.
+  bool get needsYou {
+    if (isSent) return false;
+    if (stage == PipelineStage.drafted) return true;
+    return job.category == JobCategory.inputNeeded ||
+        job.category == JobCategory.exploration;
+  }
 }
 
 class PipelineRepository {
@@ -116,9 +141,18 @@ PipelineCard _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
       why: (data['why'] as String?) ?? '',
     ),
     status: _statusFromName(data['status'] as String?),
+    stage: _stageFromName(data['stage'] as String?),
     createdAt: _toDate(data['created_at']) ?? DateTime.now(),
   );
 }
+
+PipelineStage _stageFromName(String? name) => switch (name) {
+  'tailored' => PipelineStage.tailored,
+  'drafted' => PipelineStage.drafted,
+  'sent' => PipelineStage.sent,
+  'replied' => PipelineStage.replied,
+  _ => PipelineStage.matched,
+};
 
 PipelineCardStatus _statusFromName(String? name) => switch (name) {
   'approved' => PipelineCardStatus.approved,

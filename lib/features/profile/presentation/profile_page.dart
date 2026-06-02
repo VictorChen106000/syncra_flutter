@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -11,12 +10,10 @@ import '../../../core/dev/dev_flags_notifier.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../core/theme/theme_mode_notifier.dart';
-import '../../../core/utils/motion.dart';
 import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/section_title.dart';
-import '../../agent/state/passive_agent_notifier.dart';
 import '../../auth/state/auth_notifier.dart';
 import '../../auth/state/user_profile_notifier.dart';
 import '../../resumes/state/resume_notifier.dart';
@@ -50,9 +47,6 @@ class ProfilePage extends StatelessWidget {
                 const SectionTitle(title: 'Connections'),
                 const _IntegrationSection(),
                 const SizedBox(height: 24),
-                const SectionTitle(title: 'Agent behavior'),
-                const _AgentBehaviorSection(),
-                const SizedBox(height: 24),
                 const SectionTitle(title: 'Appearance'),
                 const _AppearanceSection(),
                 const SizedBox(height: 24),
@@ -73,16 +67,16 @@ class ProfilePage extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Shared row layout: icon · title (+ subtitle) · trailing.
-// Tappable when `onTap` is provided; title / icon color overridable so the
-// Account section can tint destructive rows without a separate widget.
+// Shared row layout: lime icon chip · title · trailing. Title-only, Gmail-style
+// — no subtitle, so the list reads as a calm column of labels.
+// Tappable when `onTap` is provided. A destructive row passes `iconColor`,
+// which tints both its chip and glyph so meaning never rides on shape alone.
 // ---------------------------------------------------------------------------
 
 class _PreferenceRow extends StatelessWidget {
   const _PreferenceRow({
     required this.icon,
     required this.title,
-    required this.subtitle,
     this.trailing,
     this.onTap,
     this.titleColor,
@@ -91,7 +85,6 @@ class _PreferenceRow extends StatelessWidget {
 
   final IconData icon;
   final String title;
-  final String subtitle;
   final Widget? trailing;
   final VoidCallback? onTap;
   final Color? titleColor;
@@ -104,42 +97,18 @@ class _PreferenceRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
         children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: brand.surfaceMuted,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            alignment: Alignment.center,
-            child: Icon(icon, size: 18, color: iconColor ?? brand.ink),
-          ),
-          const SizedBox(width: 12),
+          _IconChip(icon: icon, tint: iconColor),
+          const SizedBox(width: 14),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 14,
-                    color: titleColor ?? brand.ink,
-                    letterSpacing: -0.1,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: brand.textMuted,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
+            child: Text(
+              title,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 15.5,
+                height: 1.2,
+                color: titleColor ?? brand.ink,
+                letterSpacing: -0.2,
+              ),
             ),
           ),
           if (trailing != null) ...[
@@ -153,6 +122,36 @@ class _PreferenceRow extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(onTap: onTap, child: body),
+    );
+  }
+}
+
+/// The signature lime chip behind every settings glyph. Default is the full
+/// accent with a near-black icon; pass [tint] for a destructive row, which
+/// renders a soft tinted box with a full-strength colored icon.
+class _IconChip extends StatelessWidget {
+  const _IconChip({required this.icon, this.tint});
+
+  final IconData icon;
+  final Color? tint;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final tinted = tint != null;
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: tinted ? tint!.withValues(alpha: 0.14) : brand.accent,
+        borderRadius: BorderRadius.circular(11),
+      ),
+      alignment: Alignment.center,
+      child: Icon(
+        icon,
+        size: 19,
+        color: tinted ? tint! : brand.onAccent,
+      ),
     );
   }
 }
@@ -222,7 +221,6 @@ class _ProfileHeaderCard extends ConsumerWidget {
     final initial = user?.initial ?? 'D';
     final email = user?.email ?? '';
     final photoUrl = user?.photoUrl;
-    final agentActive = profile?.isAgentActive ?? true;
     final role = (profile?.role ?? '').trim();
     final fitSegments = profile?.resumeFit?.segments ?? const [];
     final topStrength = fitSegments.isNotEmpty ? fitSegments.first : null;
@@ -264,34 +262,19 @@ class _ProfileHeaderCard extends ConsumerWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     if (email.isNotEmpty) ...[
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 3),
                       Text(
                         email,
                         style: TextStyle(
                           color: brand.textMuted,
-                          fontSize: 12,
+                          fontSize: 13,
                           fontWeight: FontWeight.w500,
+                          letterSpacing: -0.1,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        _PulsingActiveDot(active: agentActive),
-                        const SizedBox(width: 8),
-                        Text(
-                          agentActive ? 'Agent active' : 'Agent paused',
-                          style: TextStyle(
-                            color: brand.textMuted,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.1,
-                          ),
-                        ),
-                      ],
-                    ),
                   ],
                 ),
               ),
@@ -406,61 +389,6 @@ class _ProfileAvatar extends StatelessWidget {
   }
 }
 
-class _PulsingActiveDot extends StatelessWidget {
-  const _PulsingActiveDot({this.active = true});
-
-  /// When false the dot stops pulsing and renders a muted, static state —
-  /// reflecting `UserProfile.isAgentActive` instead of always reading "live".
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    if (!active) {
-      return Container(
-        width: 8,
-        height: 8,
-        margin: const EdgeInsets.all(1),
-        decoration: BoxDecoration(
-          color: brand.textSoft,
-          shape: BoxShape.circle,
-        ),
-      );
-    }
-    return SizedBox(
-      width: 10,
-      height: 10,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: brand.accent.withValues(alpha: 0.45),
-            ),
-          )
-              .animate(onPlay: repeatIfMotion(context))
-              .scale(
-                duration: 1300.ms,
-                begin: const Offset(0.5, 0.5),
-                end: const Offset(1.6, 1.6),
-                curve: Curves.easeOut,
-              )
-              .fadeOut(duration: 1300.ms),
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: brand.accentBright,
-              shape: BoxShape.circle,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Resumes — entry point into the resume library (base uploads + tailored
 // variants). Trailing chip shows the combined count.
@@ -478,9 +406,6 @@ class _ResumesSection extends ConsumerWidget {
         _PreferenceRow(
           icon: Icons.description_outlined,
           title: 'Resume library',
-          subtitle: count == 0
-              ? 'Upload a resume to get started'
-              : '$count saved — base and tailored',
           trailing: _CountChip(count: count),
           onTap: () => context.go(RouteNames.resumes),
         ),
@@ -545,8 +470,7 @@ class _IntegrationSection extends ConsumerWidget {
       children: [
         _IntegrationTile(
           icon: Icons.mail_outline_rounded,
-          title: 'Gmail Workspace',
-          subtitle: 'Allow Agent to draft outreach and parse rejections',
+          title: 'Gmail',
           active: connected,
           onToggle: profile == null
               ? null
@@ -563,14 +487,12 @@ class _IntegrationTile extends StatelessWidget {
   const _IntegrationTile({
     required this.icon,
     required this.title,
-    required this.subtitle,
     required this.active,
     required this.onToggle,
   });
 
   final IconData icon;
   final String title;
-  final String subtitle;
   final bool active;
   final VoidCallback? onToggle;
 
@@ -581,205 +503,72 @@ class _IntegrationTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
         children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: active ? brand.accent : brand.surfaceMuted,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              icon,
-              color: active ? brand.onAccent : brand.textSoft,
-              size: 18,
-            ),
-          ),
-          const SizedBox(width: 12),
+          _IconChip(icon: icon),
+          const SizedBox(width: 14),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    color: brand.ink,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: brand.textMuted,
-                    height: 1.45,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
+            child: Text(
+              title,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 15.5,
+                height: 1.2,
+                color: brand.ink,
+                letterSpacing: -0.2,
+              ),
             ),
           ),
           const SizedBox(width: 12),
-          GestureDetector(
-            onTap: onToggle,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 280),
-              curve: Curves.easeOutCubic,
-              width: 44,
-              height: 24,
-              padding: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                color: active ? brand.ink : brand.border,
-              ),
-              child: AnimatedAlign(
-                duration: const Duration(milliseconds: 280),
-                curve: Curves.easeOutCubic,
-                alignment:
-                    active ? Alignment.centerRight : Alignment.centerLeft,
-                child: Container(
-                  width: 20,
-                  height: 20,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: brand.surface,
-                    boxShadow: [
-                      BoxShadow(
-                        color: brand.shadow,
-                        blurRadius: 4,
-                        offset: const Offset(0, 1),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
+          _LimeToggle(active: active, onToggle: onToggle),
         ],
       ),
     );
   }
 }
 
-// ---------------------------------------------------------------------------
-// Agent behavior — how the agent acts on your behalf.
-// ---------------------------------------------------------------------------
+/// Pill switch that fills lime when on and stays a neutral track when off —
+/// the thumb position carries the state too, so it never reads on colour alone.
+class _LimeToggle extends StatelessWidget {
+  const _LimeToggle({required this.active, required this.onToggle});
 
-class _AgentBehaviorSection extends StatelessWidget {
-  const _AgentBehaviorSection();
+  final bool active;
+  final VoidCallback? onToggle;
 
   @override
   Widget build(BuildContext context) {
-    return const _GroupedCard(
-      children: [
-        _AgentActiveTile(),
-        _GroupedDivider(),
-        _MorningBriefTile(),
-        _GroupedDivider(),
-        _RunBriefTile(),
-      ],
-    );
-  }
-}
-
-/// Master switch for whether the agent acts on the user's behalf. Wires the
-/// previously-orphaned `UserProfileNotifier.setAgentActive` to a real control,
-/// and the profile header's status dot reflects it.
-class _AgentActiveTile extends ConsumerWidget {
-  const _AgentActiveTile();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
     final brand = context.brand;
-    final profile = ref.watch(userProfileProvider);
-    final active = profile?.isAgentActive ?? true;
-    return _PreferenceRow(
-      icon: Icons.bolt_rounded,
-      title: 'Agent active',
-      subtitle: active
-          ? 'Syncra works on your behalf'
-          : 'Paused — Syncra waits for you',
-      trailing: Switch.adaptive(
-        value: active,
-        activeThumbColor: brand.onAccent,
-        onChanged: profile == null
-            ? null
-            : (v) =>
-                ref.read(userProfileProvider.notifier).setAgentActive(v),
-      ),
-    );
-  }
-}
-
-/// Triggers the passive agent's job brief on demand and opens the morning
-/// brief surface so the run is visible. Lets anyone (developer or user) watch
-/// the brief end-to-end without waiting for a sign-in cycle.
-class _RunBriefTile extends ConsumerWidget {
-  const _RunBriefTile();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final brand = context.brand;
-    final running = ref.watch(
-      passiveAgentProvider.select((s) => s.isRunning),
-    );
-    return _PreferenceRow(
-      icon: Icons.play_circle_outline_rounded,
-      title: running ? 'Brief running…' : "Run today's brief",
-      subtitle: 'Scan fresh roles and open the brief',
-      trailing: running
-          ? SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation(brand.ink),
-              ),
-            )
-          : Icon(Icons.chevron_right_rounded, color: brand.border, size: 20),
-      onTap: running
-          ? null
-          : () {
-              // Kick the brief off, then open the morning-brief surface so the
-              // run is visible. The page no-ops the launch if one is already
-              // in flight, so this stays safe to tap repeatedly.
-              ref.read(passiveAgentProvider.notifier).runBrief();
-              context.go(RouteNames.morningBrief);
-            },
-    );
-  }
-}
-
-class _MorningBriefTile extends ConsumerWidget {
-  const _MorningBriefTile();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final brand = context.brand;
-    final profile = ref.watch(userProfileProvider);
-    final enabled = profile?.morningBriefEnabled ?? false;
-    final running = ref.watch(
-      passiveAgentProvider.select((s) => s.isRunning),
-    );
-    return _PreferenceRow(
-      icon: Icons.wb_sunny_outlined,
-      title: "Today's brief",
-      subtitle: enabled
-          ? (running ? 'Running now…' : 'On — greets you after sign-in')
-          : 'Off',
-      trailing: Switch.adaptive(
-        value: enabled,
-        activeThumbColor: brand.onAccent,
-        // Flipping the toggle only stores the preference — it never fires the
-        // brief itself (no surprise token spend). The brief runs when the
-        // user taps "Run today's brief" or sees it after sign-in.
-        onChanged: profile == null
-            ? null
-            : (v) => ref
-                .read(userProfileProvider.notifier)
-                .setMorningBriefEnabled(v),
+    return GestureDetector(
+      onTap: onToggle,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+        width: 46,
+        height: 28,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(99),
+          color: active ? brand.accent : brand.surfaceMuted,
+        ),
+        child: AnimatedAlign(
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+          alignment: active ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: active ? brand.onAccent : brand.textSoft,
+              boxShadow: [
+                BoxShadow(
+                  color: brand.shadow,
+                  blurRadius: 4,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -808,15 +597,9 @@ class _ThemeModeTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selected = ref.watch(themeModeProvider);
-    final subtitle = switch (selected) {
-      ThemeMode.light => 'Always light',
-      ThemeMode.dark => 'Always dark',
-      ThemeMode.system => 'Match device',
-    };
     return _PreferenceRow(
       icon: Icons.contrast_rounded,
-      title: 'Appearance',
-      subtitle: subtitle,
+      title: 'Theme',
       trailing: _MiniSegmented<ThemeMode>(
         selected: selected,
         onChanged: (m) =>
@@ -887,7 +670,6 @@ class _AccountSection extends ConsumerWidget {
         _PreferenceRow(
           icon: Icons.refresh_rounded,
           title: 'Reset account',
-          subtitle: 'Clear all data — keep sign-in',
           iconColor: brand.warning,
           titleColor: brand.warning,
           onTap: loading ? null : () => _confirmAndReset(context, ref),
@@ -896,7 +678,6 @@ class _AccountSection extends ConsumerWidget {
         _PreferenceRow(
           icon: Icons.logout_rounded,
           title: loading ? 'Signing out…' : AppStrings.signOut,
-          subtitle: 'End your session on this device',
           iconColor: brand.danger,
           titleColor: brand.danger,
           trailing: loading
@@ -937,10 +718,10 @@ class _DevFlagsSection extends ConsumerWidget {
         _PreferenceRow(
           icon: Icons.flag_outlined,
           title: 'Show onboarding',
-          subtitle: 'Open the onboarding page (auto-clears on submit)',
           trailing: Switch.adaptive(
             value: flags.showOnboarding,
             activeThumbColor: brand.onAccent,
+            activeTrackColor: brand.accent,
             onChanged: notifier.setShowOnboarding,
           ),
         ),
@@ -948,10 +729,10 @@ class _DevFlagsSection extends ConsumerWidget {
         _PreferenceRow(
           icon: Icons.wb_twilight_outlined,
           title: 'Show morning brief',
-          subtitle: 'Open the morning brief (auto-clears on continue)',
           trailing: Switch.adaptive(
             value: flags.showMorningBrief,
             activeThumbColor: brand.onAccent,
+            activeTrackColor: brand.accent,
             onChanged: notifier.setShowMorningBrief,
           ),
         ),
@@ -994,7 +775,7 @@ class _GroupedDivider extends StatelessWidget {
   Widget build(BuildContext context) {
     final brand = context.brand;
     return Padding(
-      padding: const EdgeInsets.only(left: 64),
+      padding: const EdgeInsets.only(left: 68),
       child: Divider(height: 1, color: brand.bg),
     );
   }
