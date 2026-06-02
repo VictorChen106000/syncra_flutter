@@ -271,7 +271,7 @@ class _StatusControls extends StatelessWidget {
           trailing: Switch.adaptive(
             value: app.gotReply,
             onChanged: onToggleReply,
-            activeThumbColor: brand.ink,
+            activeThumbColor: brand.onAccent,
           ),
         ),
       ],

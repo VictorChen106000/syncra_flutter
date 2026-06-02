@@ -101,15 +101,16 @@ class _JobsPageState extends ConsumerState<JobsPage> {
 }
 
 // ---------------------------------------------------------------------------
-// Agent Timeline — the unified single-feed pipeline view.
+// Agent Timeline — the pipeline split into two swipeable pages.
 //
-// The agent leads: ready drafts are presented as already-sent (with Undo),
-// only items that genuinely need user input or a strategic decision surface
-// as actionable cards. No filter tabs, no search — this is a timeline, not
-// a search interface.
+// The agent leads: ready drafts land in "Sent today" (already actioned, with
+// Undo); only items that genuinely need user input or a strategic decision
+// surface in "Needs you". A segmented control in the header switches between
+// the two, and the pages are swipeable. No search — this is a timeline, not a
+// search interface.
 // ---------------------------------------------------------------------------
 
-class _AgentTimeline extends StatelessWidget {
+class _AgentTimeline extends StatefulWidget {
   const _AgentTimeline({
     required this.cards,
     required this.hasAnyPipeline,
@@ -127,91 +128,110 @@ class _AgentTimeline extends StatelessWidget {
   final ValueChanged<Job> onMore;
 
   @override
+  State<_AgentTimeline> createState() => _AgentTimelineState();
+}
+
+class _AgentTimelineState extends State<_AgentTimeline>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tab;
+
+  // We default to "Needs you", but the first time real cards arrive we jump to
+  // whichever page actually has something — landing on an empty page while the
+  // other is full feels broken. Done exactly once.
+  bool _syncedInitialTab = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _tab = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tab.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final needs = cards
+    final needs = widget.cards
         .where((c) =>
             c.job.category == JobCategory.inputNeeded ||
             c.job.category == JobCategory.exploration)
         .toList();
-    final sent = cards
+    final sent = widget.cards
         .where((c) => c.job.category == JobCategory.ready)
         .toList();
+
+    // Whole pipeline empty → the three-flavor onboarding/empty surface, with
+    // no segmented control (there's nothing to switch between).
+    if (widget.cards.isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AppHeader.tab(
+            title: AppStrings.agentPipeline,
+            subtitle: 'Quiet — no agent activity yet',
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(
+                AppConstants.screenHorizontalPadding,
+                8,
+                AppConstants.screenHorizontalPadding,
+                140,
+              ),
+              children: [_buildEmptyState(context)],
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (!_syncedInitialTab) {
+      _syncedInitialTab = true;
+      final wantIndex = needs.isNotEmpty ? 0 : 1;
+      if (_tab.index != wantIndex) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _tab.index = wantIndex;
+        });
+      }
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AppHeader.tab(
           title: AppStrings.agentPipeline,
-          subtitle: _stats(needs.length, sent.length),
+          bottom: _SegmentedControl(
+            controller: _tab,
+            segments: [
+              _SegmentData(
+                label: 'Needs you',
+                count: needs.length,
+                accent: context.brand.ink,
+              ),
+              _SegmentData(
+                label: 'Sent today',
+                count: sent.length,
+                accent: context.brand.accentBright,
+              ),
+            ],
+          ),
         ),
         Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(
-              AppConstants.screenHorizontalPadding,
-              8,
-              AppConstants.screenHorizontalPadding,
-              140,
-            ),
+          child: TabBarView(
+            controller: _tab,
             children: [
-              if (cards.isEmpty) _buildEmptyState(context),
-              if (needs.isNotEmpty) ...[
-                _SectionHeader(
-                  label: 'Needs you',
-                  count: needs.length,
-                  accent: context.brand.ink,
-                ),
-                const SizedBox(height: 12),
-                for (var i = 0; i < needs.length; i++)
-                  _SwipeDismissible(
-                    key: ValueKey('need-${needs[i].job.id}'),
-                    onDismissed: () => onDismiss(needs[i].job),
-                    child: _JobCard(
-                      job: needs[i].job,
-                      onDismiss: () => onDismiss(needs[i].job),
-                      onMore: () => onMore(needs[i].job),
-                    ),
-                  )
-                      .animate(delay: (i * 60).ms)
-                      .fadeIn()
-                      .moveY(begin: 16, end: 0),
-              ],
-              if (sent.isNotEmpty) ...[
-                if (needs.isNotEmpty) const SizedBox(height: 8),
-                _SectionHeader(
-                  label: 'Sent today',
-                  count: sent.length,
-                  accent: context.brand.accentBright,
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  decoration: BoxDecoration(
-                    color: context.brand.surface,
-                    borderRadius:
-                        BorderRadius.circular(AppConstants.cardRadius),
-                    border: Border.all(
-                      color: context.brand.border.withValues(alpha: 0.60),
-                    ),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: Column(
-                    children: [
-                      for (var i = 0; i < sent.length; i++) ...[
-                        _SentRow(
-                          card: sent[i],
-                          onUndo: () => onUndoSend(sent[i].job),
-                        ),
-                        if (i < sent.length - 1)
-                          Divider(
-                            height: 1,
-                            thickness: 1,
-                            color: context.brand.border
-                                .withValues(alpha: 0.55),
-                          ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
+              _NeedsPage(
+                needs: needs,
+                onDismiss: widget.onDismiss,
+                onMore: widget.onMore,
+              ),
+              _SentPage(
+                sent: sent,
+                onUndoSend: widget.onUndoSend,
+              ),
             ],
           ),
         ),
@@ -224,7 +244,7 @@ class _AgentTimeline extends StatelessWidget {
     //   1. Agent has never run → onboard the user to kick off the brief.
     //   2. Agent ran, found nothing → reassure, suggest broadening criteria.
     //   3. Agent ran, all surfaced cards dismissed → "inbox zero" praise.
-    if (!agentHasRun) {
+    if (!widget.agentHasRun) {
       return EmptyStateCard(
         icon: Icons.bolt_rounded,
         title: 'Your agent is idle',
@@ -235,7 +255,7 @@ class _AgentTimeline extends StatelessWidget {
         onAction: () => context.go(RouteNames.dashboard),
       );
     }
-    if (!hasAnyPipeline) {
+    if (!widget.hasAnyPipeline) {
       return EmptyStateCard(
         icon: Icons.search_rounded,
         title: 'No new roles right now',
@@ -255,77 +275,377 @@ class _AgentTimeline extends StatelessWidget {
       onAction: () => context.go(RouteNames.dashboard),
     );
   }
+}
 
-  String _stats(int needs, int sent) {
-    final parts = <String>[];
-    if (sent > 0) parts.add('$sent sent today');
-    if (needs > 0) parts.add('$needs needs you');
-    if (parts.isEmpty) return 'Quiet — no agent activity yet';
-    return parts.join(' · ');
+// ---------------------------------------------------------------------------
+// Pages — each tab is its own independently-scrolling list.
+// ---------------------------------------------------------------------------
+
+/// "Needs you" page — input-needed and strategic-exploration items rendered as
+/// borderless notification rows. Tap a row to open the agent thread, swipe to
+/// dismiss, or use the trailing overflow for the rest.
+class _NeedsPage extends ConsumerWidget {
+  const _NeedsPage({
+    required this.needs,
+    required this.onDismiss,
+    required this.onMore,
+  });
+
+  final List<PipelineCard> needs;
+  final ValueChanged<Job> onDismiss;
+  final ValueChanged<Job> onMore;
+
+  static IconData _icon(JobCategory c) => switch (c) {
+        JobCategory.inputNeeded => Icons.error_outline_rounded,
+        JobCategory.exploration => Icons.auto_awesome_rounded,
+        JobCategory.ready => Icons.check_circle_rounded,
+      };
+
+  static Color _iconColor(BrandTheme brand, JobCategory c) => switch (c) {
+        JobCategory.inputNeeded => brand.warning,
+        JobCategory.exploration => brand.ink,
+        JobCategory.ready => brand.success,
+      };
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppConstants.screenHorizontalPadding,
+        4,
+        AppConstants.screenHorizontalPadding,
+        140,
+      ),
+      children: [
+        if (needs.isEmpty)
+          const _PageHint(
+            icon: Icons.check_circle_outline_rounded,
+            title: 'Nothing needs you',
+            body: 'The agent has everything it needs right now. '
+                'Check "Sent today" or wait for the next brief.',
+          )
+        else
+          for (var i = 0; i < needs.length; i++)
+            _SwipeDismissible(
+              key: ValueKey('need-${needs[i].job.id}'),
+              onDismissed: () => onDismiss(needs[i].job),
+              child: _row(context, ref, needs[i].job, i < needs.length - 1),
+            )
+                .animate(delay: (i * 60).ms)
+                .fadeIn()
+                .moveY(begin: 12, end: 0),
+      ],
+    );
+  }
+
+  Widget _row(
+    BuildContext context,
+    WidgetRef ref,
+    Job job,
+    bool showDivider,
+  ) {
+    final brand = context.brand;
+    final isInputNeeded = job.category == JobCategory.inputNeeded;
+    return _NotificationRow(
+      leadingIcon: _icon(job.category),
+      leadingColor: _iconColor(brand, job.category),
+      kicker: job.agentAction.toUpperCase(),
+      tag: job.matchLabel,
+      tagColor: isInputNeeded ? brand.ink : brand.textMuted,
+      title: job.title,
+      subtitle: '${job.company} · ${isInputNeeded ? job.location : job.salary}',
+      message: _message(brand, job),
+      showDivider: showDivider,
+      trailing: _IconActionButton(
+        icon: Icons.more_horiz_rounded,
+        semanticLabel: 'More actions',
+        onTap: () => onMore(job),
+      ),
+      onTap: () {
+        ref.read(agentChatProvider.notifier).openJobThread(job);
+        context.go(RouteNames.agentChat);
+      },
+    );
+  }
+
+  Widget _message(BrandTheme brand, Job job) {
+    final base = TextStyle(fontSize: 13, color: brand.textMuted, height: 1.45);
+    if (job.missingSkills.isEmpty) {
+      return Text(
+        job.agentJustification,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: base,
+      );
+    }
+    return RichText(
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      text: TextSpan(
+        style: base.copyWith(fontFamily: 'Inter'),
+        children: [
+          TextSpan(
+            text: 'Missing: ${job.missingSkills.join(', ')}. ',
+            style: TextStyle(color: brand.ink, fontWeight: FontWeight.w800),
+          ),
+          TextSpan(text: job.agentJustification),
+        ],
+      ),
+    );
   }
 }
 
-/// Lightweight section header used to delineate the timeline groups.
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.label, required this.accent, this.count});
+/// "Sent today" page — the grouped list of ready applications the agent
+/// queued, each with a one-tap Undo.
+class _SentPage extends StatelessWidget {
+  const _SentPage({required this.sent, required this.onUndoSend});
 
-  final String label;
-  final Color accent;
-  final int? count;
+  final List<PipelineCard> sent;
+  final ValueChanged<Job> onUndoSend;
 
   @override
   Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Row(
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppConstants.screenHorizontalPadding,
+        4,
+        AppConstants.screenHorizontalPadding,
+        140,
+      ),
       children: [
-        Container(
-          width: 6,
-          height: 6,
-          decoration: BoxDecoration(
-            color: accent,
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          label.toUpperCase(),
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1.5,
-            color: brand.textMuted,
-          ),
-        ),
-        if (count != null) ...[
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-            decoration: BoxDecoration(
-              color: brand.surfaceMuted,
-              borderRadius: BorderRadius.circular(99),
+        if (sent.isEmpty)
+          const _PageHint(
+            icon: Icons.outbox_rounded,
+            title: 'Nothing sent yet',
+            body: 'When the agent queues applications, they\'ll appear '
+                'here as already sent — with an Undo.',
+          )
+        else
+          for (var i = 0; i < sent.length; i++)
+            _SentRow(
+              card: sent[i],
+              onUndo: () => onUndoSend(sent[i].job),
+              showDivider: i < sent.length - 1,
             ),
-            child: Text(
-              '$count',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w900,
-                color: brand.ink,
-              ),
-            ),
-          ),
-        ],
       ],
     );
   }
 }
 
-/// Compact row representing a ready application the agent already queued
-/// for sending. Shows when it went out and offers a one-tap Undo.
+// ---------------------------------------------------------------------------
+// Segmented control — premium pill toggle wired to the [TabController]. The
+// active "thumb" tracks the page swipe continuously (driven by the
+// controller's animation), so dragging between pages drags the indicator too.
+// ---------------------------------------------------------------------------
+
+class _SegmentData {
+  const _SegmentData({
+    required this.label,
+    required this.count,
+    required this.accent,
+  });
+
+  final String label;
+  final int count;
+  final Color accent;
+}
+
+class _SegmentedControl extends StatelessWidget {
+  const _SegmentedControl({required this.controller, required this.segments});
+
+  final TabController controller;
+  final List<_SegmentData> segments;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final anim =
+        controller.animation ?? const AlwaysStoppedAnimation<double>(0);
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: brand.surfaceMuted,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: AnimatedBuilder(
+        animation: anim,
+        builder: (context, _) {
+          final n = segments.length;
+          final pos = anim.value.clamp(0.0, (n - 1).toDouble());
+          final active = pos.round();
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final segW = constraints.maxWidth / n;
+              return Stack(
+                children: [
+                  // Sliding thumb — positioned by the (possibly fractional)
+                  // page offset so it tracks swipes between pages.
+                  Positioned(
+                    left: segW * pos,
+                    top: 0,
+                    bottom: 0,
+                    width: segW,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: brand.surface,
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: [
+                          BoxShadow(
+                            color: brand.shadow,
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      for (var i = 0; i < n; i++)
+                        Expanded(
+                          child: _SegmentButton(
+                            data: segments[i],
+                            active: i == active,
+                            onTap: () => controller.animateTo(i),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SegmentButton extends StatelessWidget {
+  const _SegmentButton({
+    required this.data,
+    required this.active,
+    required this.onTap,
+  });
+
+  final _SegmentData data;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration:
+                BoxDecoration(color: data.accent, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 7),
+          Flexible(
+            child: Text(
+              data.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.1,
+                color: active ? brand.ink : brand.textMuted,
+              ),
+            ),
+          ),
+          if (data.count > 0) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                color: active ? brand.ink : brand.border,
+                borderRadius: BorderRadius.circular(99),
+              ),
+              child: Text(
+                '${data.count}',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                  color: active ? brand.inkInverse : brand.textMuted,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Lightweight per-page empty hint — distinct from the heavier
+/// [EmptyStateCard] used when the whole pipeline is empty.
+class _PageHint extends StatelessWidget {
+  const _PageHint({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 56, 20, 0),
+      child: Column(
+        children: [
+          Icon(icon, size: 30, color: brand.textSoft),
+          const SizedBox(height: 14),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              color: brand.ink,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            body,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              height: 1.5,
+              color: brand.textMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A ready application the agent already queued, as a notification row.
+/// Shows when it went out and offers a one-tap Undo.
 class _SentRow extends StatelessWidget {
-  const _SentRow({required this.card, required this.onUndo});
+  const _SentRow({
+    required this.card,
+    required this.onUndo,
+    this.showDivider = true,
+  });
 
   final PipelineCard card;
   final VoidCallback onUndo;
+  final bool showDivider;
 
   String _timeLabel() {
     final now = DateTime.now();
@@ -342,111 +662,50 @@ class _SentRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final brand = context.brand;
     final job = card.job;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: brand.ink,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              job.company[0],
-              style: TextStyle(
-                color: brand.accent,
-                fontWeight: FontWeight.w900,
-                fontSize: 14,
-              ),
-            ),
+    return _NotificationRow(
+      leadingIcon: Icons.check_circle_rounded,
+      leadingColor: brand.success,
+      kicker: 'SENT · ${_timeLabel()}',
+      title: job.title,
+      subtitle: job.company,
+      showDivider: showDivider,
+      trailing: Material(
+        color: brand.surfaceMuted,
+        borderRadius: BorderRadius.circular(99),
+        child: InkWell(
+          onTap: onUndo,
+          borderRadius: BorderRadius.circular(99),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: _UndoLabel(),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.check_circle_rounded,
-                      size: 13,
-                      color: brand.accentBright,
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      'SENT · ${_timeLabel()}',
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.1,
-                        color: brand.textMuted,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  job.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    color: brand.ink,
-                    letterSpacing: -0.1,
-                    height: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  job.company,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: brand.textMuted,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Material(
-            color: brand.surfaceMuted,
-            borderRadius: BorderRadius.circular(99),
-            child: InkWell(
-              onTap: onUndo,
-              borderRadius: BorderRadius.circular(99),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.undo_rounded, size: 13, color: brand.ink),
-                    const SizedBox(width: 5),
-                    Text(
-                      'Undo',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        color: brand.ink,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
+    );
+  }
+}
+
+/// The icon + text content of the Undo button, split out so it can be `const`.
+class _UndoLabel extends StatelessWidget {
+  const _UndoLabel();
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.undo_rounded, size: 13, color: brand.ink),
+        const SizedBox(width: 5),
+        Text(
+          'Undo',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            color: brand.ink,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -476,18 +735,14 @@ class _SwipeDismissible extends StatelessWidget {
       onDismissed: (_) => onDismissed(),
       background: const SizedBox.shrink(),
       secondaryBackground: Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.only(right: 28),
+        padding: const EdgeInsets.only(right: 24),
         alignment: Alignment.centerRight,
-        decoration: BoxDecoration(
-          color: brand.danger.withValues(alpha: 0.92),
-          borderRadius: BorderRadius.circular(AppConstants.cardRadius),
-        ),
+        color: brand.danger,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: const [
-            Icon(Icons.archive_rounded, color: Colors.white, size: 22),
-            SizedBox(width: 10),
+            Icon(Icons.archive_rounded, color: Colors.white, size: 20),
+            SizedBox(width: 8),
             Text(
               'Dismiss',
               style: TextStyle(
@@ -505,329 +760,142 @@ class _SwipeDismissible extends StatelessWidget {
   }
 }
 
-/// Categorical match pill that replaced the old numeric ring. Reads its
-/// label off [Job.matchLabel] — "Strong match" / "Partial match" / "Stretch"
-/// — so the user never sees a percent.
-class _MatchPill extends StatelessWidget {
-  const _MatchPill({required this.label});
+/// A borderless, text-led notification row — the shared visual unit for both
+/// pipeline feeds. Leads with a small status icon, then a kicker, title,
+/// subtitle and (optionally) the agent's message; a hairline divider closes
+/// the row so the feed reads like a notification list, not a stack of cards.
+class _NotificationRow extends StatelessWidget {
+  const _NotificationRow({
+    required this.leadingIcon,
+    required this.leadingColor,
+    required this.kicker,
+    required this.title,
+    required this.subtitle,
+    this.tag,
+    this.tagColor,
+    this.message,
+    this.trailing,
+    this.onTap,
+    this.showDivider = true,
+  });
 
-  final String label;
+  final IconData leadingIcon;
+  final Color leadingColor;
+  final String kicker;
+  final String title;
+  final String subtitle;
+  final String? tag;
+  final Color? tagColor;
+  final Widget? message;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+  final bool showDivider;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: brand.surfaceMuted,
-        borderRadius: BorderRadius.circular(99),
-      ),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: brand.textMuted,
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-          letterSpacing: -0.1,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          decoration: showDivider
+              ? BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: brand.border.withValues(alpha: 0.55),
+                    ),
+                  ),
+                )
+              : null,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 1),
+                child: Icon(leadingIcon, size: 18, color: leadingColor),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            kicker,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.2,
+                              color: brand.textMuted,
+                            ),
+                          ),
+                        ),
+                        if (tag != null) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            tag!,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.1,
+                              color: tagColor ?? brand.textMuted,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: brand.ink,
+                        letterSpacing: -0.2,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: brand.textMuted,
+                      ),
+                    ),
+                    if (message != null) ...[
+                      const SizedBox(height: 6),
+                      message!,
+                    ],
+                  ],
+                ),
+              ),
+              if (trailing != null) ...[
+                const SizedBox(width: 8),
+                trailing!,
+              ],
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _JobCard extends ConsumerStatefulWidget {
-  const _JobCard({
-    required this.job,
-    required this.onDismiss,
-    required this.onMore,
-  });
-
-  final Job job;
-  final VoidCallback onDismiss;
-  final VoidCallback onMore;
-
-  @override
-  ConsumerState<_JobCard> createState() => _JobCardState();
-}
-
-class _JobCardState extends ConsumerState<_JobCard> {
-  IconData get _justificationIcon => switch (widget.job.category) {
-        JobCategory.ready => Icons.auto_awesome_rounded,
-        JobCategory.inputNeeded => Icons.error_outline_rounded,
-        JobCategory.exploration => Icons.star_rounded,
-      };
-
-  String get _primaryLabel => switch (widget.job.category) {
-        JobCategory.ready => 'Send',
-        JobCategory.inputNeeded => 'Open chat',
-        JobCategory.exploration => 'Draft',
-      };
-
-  IconData get _primaryIcon => switch (widget.job.category) {
-        JobCategory.ready => Icons.arrow_forward_rounded,
-        JobCategory.inputNeeded => Icons.chat_bubble_outline_rounded,
-        JobCategory.exploration => Icons.auto_awesome_rounded,
-      };
-
-  // Agentic flow: every pipeline interaction routes to the chatbot — no
-  // secondary review/tailor/data-viz pages. The agent owns the thread.
-  VoidCallback _onPrimaryTap(BuildContext context) => () {
-        ref.read(agentChatProvider.notifier).openJobThread(widget.job);
-        context.go(RouteNames.agentChat);
-      };
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final job = widget.job;
-    final isInputNeeded = job.category == JobCategory.inputNeeded;
-    final isStrategic = job.category == JobCategory.exploration;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: brand.surface,
-        borderRadius: BorderRadius.circular(AppConstants.cardRadius),
-        border: Border.all(color: brand.border.withValues(alpha: 0.70)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-              // Tap anywhere on the card body to open the agent thread.
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: _onPrimaryTap(context),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 18, 18, 14),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  width: 44,
-                                  height: 44,
-                                  decoration: BoxDecoration(
-                                    color: brand.ink,
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  alignment: Alignment.center,
-                                  child: Text(
-                                    job.company[0],
-                                    style: TextStyle(
-                                      color: brand.accent,
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: 17,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        job.title,
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 16,
-                                          color: brand.ink,
-                                          letterSpacing: -0.2,
-                                          height: 1.2,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '${job.company} · ${isInputNeeded ? job.location : job.salary}',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w500,
-                                          color: brand.textMuted,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                _MatchPill(label: job.matchLabel),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 18, 14),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(_justificationIcon,
-                                    size: 13, color: brand.textMuted),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    job.agentAction.toUpperCase(),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: 1.4,
-                                      color: brand.textMuted,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            job.missingSkills.isNotEmpty
-                                ? RichText(
-                                    text: TextSpan(
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: brand.textMuted,
-                                        height: 1.5,
-                                        fontFamily: 'Inter',
-                                      ),
-                                      children: [
-                                        TextSpan(
-                                          text:
-                                              'Missing: ${job.missingSkills.join(', ')}. ',
-                                          style: TextStyle(
-                                            color: brand.ink,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                        TextSpan(
-                                          text: job.agentJustification,
-                                        ),
-                                      ],
-                                    ),
-                                  )
-                                : Text(
-                                    job.agentJustification,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: brand.textMuted,
-                                      height: 1.5,
-                                    ),
-                                  ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 18, 18),
-                child: isStrategic
-                    ? Row(
-                        children: [
-                          Expanded(
-                            child: FilledButton.icon(
-                              onPressed: _onPrimaryTap(context),
-                              icon: const Icon(
-                                Icons.trending_up_rounded,
-                                size: 16,
-                              ),
-                              label: const Text(
-                                'Pursue',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: brand.ink,
-                                foregroundColor: brand.inkInverse,
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: widget.onDismiss,
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: brand.textMuted,
-                                side: BorderSide(color: brand.border),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              child: const Text(
-                                'Pass',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      )
-                    : Row(
-                        children: [
-                          Expanded(
-                            child: FilledButton.icon(
-                              onPressed: _onPrimaryTap(context),
-                              icon: Icon(_primaryIcon, size: 16),
-                              label: Text(
-                                _primaryLabel,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: brand.ink,
-                                foregroundColor: brand.inkInverse,
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          _IconActionButton(
-                            icon: Icons.more_horiz_rounded,
-                            semanticLabel: 'More actions',
-                            onTap: widget.onMore,
-                          ),
-                        ],
-                      ),
-              ),
-            ],
-          ),
-    );
-  }
-}
-
-/// Minimalist square icon-only button — pairs alongside the primary CTA.
+/// Borderless icon-only button used as a row's trailing overflow affordance.
+/// 44×44 keeps it a comfortable touch target despite the light visual weight.
 class _IconActionButton extends StatelessWidget {
   const _IconActionButton({
     required this.icon,
@@ -846,15 +914,15 @@ class _IconActionButton extends StatelessWidget {
       label: semanticLabel,
       button: true,
       child: Material(
-        color: brand.surfaceMuted,
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.transparent,
+        shape: const CircleBorder(),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
+          customBorder: const CircleBorder(),
           excludeFromSemantics: true,
           child: SizedBox(
-            width: 48,
-            height: 48,
+            width: 44,
+            height: 44,
             child: Icon(icon, size: 20, color: brand.textMuted),
           ),
         ),

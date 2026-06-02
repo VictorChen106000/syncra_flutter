@@ -416,7 +416,7 @@ class _TrackerCard extends StatelessWidget {
                     Switch.adaptive(
                       value: app.gotReply,
                       onChanged: onToggleReply,
-                      activeThumbColor: brand.ink,
+                      activeThumbColor: brand.onAccent,
                     ),
                   ],
                 ),

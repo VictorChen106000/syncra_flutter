@@ -13,9 +13,8 @@ import '../../../../core/utils/motion.dart';
 import '../../../../data/models/job.dart';
 import '../../models/agent_block.dart';
 import '../../state/agent_chat_notifier.dart';
-import '../../../resumes/models/proposed_edit.dart';
 import '../../../resumes/presentation/resume_draft_preview_page.dart';
-import '../../../resumes/presentation/tailored_preview_page.dart';
+import '../../../resumes/presentation/tailored_changes_page.dart';
 import '../../../resumes/state/resume_notifier.dart';
 import '../../../email/presentation/email_review_page.dart';
 import '../../../email/services/gmail_service.dart';
@@ -58,8 +57,9 @@ class AgentBlockView extends StatelessWidget {
 /// A horizontally-swipeable rail of job matches the agent surfaced — the chat's
 /// "generative UI" answer to a [JobsBlock]. Each role is a compact card in the
 /// same visual language as the dashboard prompt cards (surface, radius-24, ink
-/// icon chip). Tapping a card opens the shared [JobActionSheet] so the user can
-/// save it, draft an application email, share, or dismiss — without leaving the
+/// icon chip). Tapping a card flips it to a "why this fits" face (the agent's
+/// reasoning); a "See options" pill there opens the shared [JobActionSheet]
+/// (save, draft an application email, share, dismiss) — all without leaving the
 /// conversation.
 class JobsBlockView extends StatelessWidget {
   const JobsBlockView({super.key, required this.block});
@@ -88,7 +88,7 @@ class JobsBlockView extends StatelessWidget {
           ),
         ),
         SizedBox(
-          height: 164,
+          height: 176,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
@@ -156,28 +156,32 @@ class _SeeAllJobsButton extends StatelessWidget {
 /// One job in the [JobsBlockView] rail — a near-clone of the dashboard's prompt
 /// suggestion card, adapted to carry a match-quality kicker, the role title,
 /// and a company · salary subtitle.
-class _JobMatchCard extends StatelessWidget {
+/// Tapping the card flips it between its front (title + match) and a "why this
+/// fits" face carrying the agent's one-line justification and any missing
+/// skills — the chat's answer to "why did you surface this for me?". A small
+/// "See options" pill on the back opens the shared [JobActionSheet] (save,
+/// draft, share, dismiss). The flip stays inside the same card box so the
+/// horizontal rail's height never shifts.
+class _JobMatchCard extends StatefulWidget {
   const _JobMatchCard({required this.job});
 
   final Job job;
 
   @override
+  State<_JobMatchCard> createState() => _JobMatchCardState();
+}
+
+class _JobMatchCardState extends State<_JobMatchCard> {
+  bool _why = false;
+
+  @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final (matchColor, matchLabel) = switch (job.category) {
-      JobCategory.ready => (brand.success, 'STRONG MATCH'),
-      JobCategory.inputNeeded => (brand.textMuted, 'PARTIAL MATCH'),
-      JobCategory.exploration => (brand.textSoft, 'STRETCH'),
-    };
-    final subtitle = [
-      if (job.company.isNotEmpty) job.company,
-      if (job.salary.isNotEmpty) job.salary,
-    ].join(' · ');
-
+    final job = widget.job;
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => JobActionSheet.show(context, job),
+        onTap: () => setState(() => _why = !_why),
         borderRadius: BorderRadius.circular(24),
         child: Container(
           width: 232,
@@ -194,96 +198,198 @@ class _JobMatchCard extends StatelessWidget {
               ),
             ],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: brand.ink,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(
-                      Icons.work_outline_rounded,
-                      color: brand.accent,
-                      size: 18,
-                    ),
-                  ),
-                  const Spacer(),
-                  Container(
-                    width: 26,
-                    height: 26,
-                    decoration: BoxDecoration(
-                      color: brand.surfaceMuted,
-                      shape: BoxShape.circle,
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(
-                      Icons.north_east_rounded,
-                      size: 14,
-                      color: brand.ink,
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              Row(
-                children: [
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: matchColor,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    matchLabel,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.2,
-                      color: brand.textMuted,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                job.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: brand.ink,
-                  letterSpacing: -0.2,
-                  height: 1.25,
-                ),
-              ),
-              if (subtitle.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                    color: brand.textMuted,
-                    letterSpacing: -0.1,
-                  ),
-                ),
-              ],
-            ],
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: _why ? _buildWhy(brand, job) : _buildFront(brand, job),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildFront(BrandTheme brand, Job job) {
+    final (matchColor, matchLabel) = switch (job.category) {
+      JobCategory.ready => (brand.success, 'STRONG MATCH'),
+      JobCategory.inputNeeded => (brand.textMuted, 'PARTIAL MATCH'),
+      JobCategory.exploration => (brand.textSoft, 'STRETCH'),
+    };
+    final subtitle = [
+      if (job.company.isNotEmpty) job.company,
+      if (job.salary.isNotEmpty) job.salary,
+    ].join(' · ');
+
+    return Column(
+      key: const ValueKey('front'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: brand.accent,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                Icons.work_outline_rounded,
+                color: brand.onAccent,
+                size: 18,
+              ),
+            ),
+            const Spacer(),
+            // A lightbulb hints there's reasoning behind this card — tap to see.
+            Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: brand.surfaceMuted,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                Icons.lightbulb_outline_rounded,
+                size: 14,
+                color: brand.ink,
+              ),
+            ),
+          ],
+        ),
+        const Spacer(),
+        Row(
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: matchColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              matchLabel,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.2,
+                color: brand.textMuted,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          job.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+            color: brand.ink,
+            letterSpacing: -0.2,
+            height: 1.25,
+          ),
+        ),
+        if (subtitle.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: brand.textMuted,
+              letterSpacing: -0.1,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildWhy(BrandTheme brand, Job job) {
+    final justification = job.agentJustification.trim().isNotEmpty
+        ? job.agentJustification.trim()
+        : 'A solid fit for your background.';
+
+    return Column(
+      key: const ValueKey('why'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.auto_awesome_rounded, size: 15, color: brand.ink),
+            const SizedBox(width: 6),
+            Text(
+              'WHY THIS FITS',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.2,
+                color: brand.textMuted,
+              ),
+            ),
+            const Spacer(),
+            Icon(Icons.close_rounded, size: 15, color: brand.textSoft),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Text(
+          justification,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 12.5,
+            height: 1.35,
+            fontWeight: FontWeight.w500,
+            color: brand.ink,
+          ),
+        ),
+        if (job.missingSkills.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Missing: ${job.missingSkills.join(', ')}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              color: brand.textMuted,
+            ),
+          ),
+        ],
+        const Spacer(),
+        Material(
+          color: brand.surfaceMuted,
+          borderRadius: BorderRadius.circular(99),
+          child: InkWell(
+            onTap: () => JobActionSheet.show(context, job),
+            borderRadius: BorderRadius.circular(99),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'See options',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: brand.ink,
+                      letterSpacing: -0.1,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Icon(Icons.arrow_forward_rounded, size: 13, color: brand.ink),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -379,13 +485,13 @@ class EmailDraftBlockView extends ConsumerWidget {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: brand.ink,
+                  color: brand.accent,
                   borderRadius: BorderRadius.circular(11),
                 ),
                 alignment: Alignment.center,
                 child: Icon(
                   Icons.drafts_rounded,
-                  color: brand.accent,
+                  color: brand.onAccent,
                   size: 17,
                 ),
               ),
@@ -578,13 +684,13 @@ class _ResumeDraftBlockView extends ConsumerWidget {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: brand.ink,
+                  color: brand.accent,
                   borderRadius: BorderRadius.circular(11),
                 ),
                 alignment: Alignment.center,
                 child: Icon(
                   Icons.note_add_rounded,
-                  color: brand.accent,
+                  color: brand.onAccent,
                   size: 17,
                 ),
               ),
@@ -692,12 +798,11 @@ class _ProposedEditsBlockView extends StatelessWidget {
     final brand = context.brand;
     final count = block.edits.length;
     final plural = count == 1 ? 'edit' : 'edits';
-    final reviewing = block.state == ProposedEditsState.reviewing;
     final headline = switch (block.state) {
-      ProposedEditsState.applying => 'Applying $count resume $plural…',
-      ProposedEditsState.applied => '$count resume $plural applied',
-      ProposedEditsState.dismissed => '$count resume $plural dismissed',
-      ProposedEditsState.reviewing => '$count proposed resume $plural',
+      ProposedEditsState.applying => 'Tuning your resume…',
+      ProposedEditsState.applied => 'Resume tuned for this role',
+      ProposedEditsState.dismissed => 'Changes dismissed',
+      ProposedEditsState.reviewing => '$count suggested $plural',
     };
 
     return Container(
@@ -723,13 +828,13 @@ class _ProposedEditsBlockView extends StatelessWidget {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: brand.ink,
+                  color: brand.accent,
                   borderRadius: BorderRadius.circular(11),
                 ),
                 alignment: Alignment.center,
                 child: Icon(
                   Icons.difference_rounded,
-                  color: brand.accent,
+                  color: brand.onAccent,
                   size: 17,
                 ),
               ),
@@ -749,29 +854,6 @@ class _ProposedEditsBlockView extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          if (reviewing)
-            Text(
-              'Accept or reject each change below.',
-              style: TextStyle(
-                color: brand.textMuted,
-                fontSize: 12.5,
-                height: 1.4,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          if (reviewing) const SizedBox(height: 12),
-          for (var i = 0; i < block.edits.length; i++) ...[
-            _ProposedEditPreviewCard(
-              blockId: block.id,
-              index: i + 1,
-              editIndex: i,
-              edit: block.edits[i],
-              decision: block.decisions[i],
-              interactive: reviewing,
-            ),
-            if (i < block.edits.length - 1) const SizedBox(height: 10),
-          ],
-          const SizedBox(height: 14),
           _EditsFooter(block: block),
         ],
       ),
@@ -791,7 +873,7 @@ class _EditsFooter extends ConsumerWidget {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         fullscreenDialog: true,
-        builder: (_) => TailoredPreviewPage(blockId: block.id),
+        builder: (_) => TailoredChangesPage(blockId: block.id),
       ),
     );
   }
@@ -831,35 +913,56 @@ class _EditsFooter extends ConsumerWidget {
         );
 
       case ProposedEditsState.applied:
-        // Preview is ready (and maybe saved). The magnifying glass opens the
-        // full-screen preview where the user saves or keeps editing.
+        // Preview is ready (and maybe saved). The applied edits live in the
+        // resume already — the button opens the full-screen live resume where
+        // the changed lines glow and the user saves or keeps editing.
         final saved = block.isSaved;
+        final applied = block.appliedCount;
         final skipped = block.skippedCount > 0
             ? ' · ${block.skippedCount} skipped'
             : '';
-        return Row(
+        final status = saved
+            ? 'Saved to your resumes'
+            : applied > 0
+                ? '$applied improvement${applied == 1 ? '' : 's'}'
+                    ' woven in$skipped'
+                : 'Already a strong fit — no changes needed';
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              saved ? Icons.check_circle_rounded : Icons.auto_awesome_rounded,
-              size: 15,
-              color: saved ? brand.success : brand.ink,
-            ),
-            const SizedBox(width: 7),
-            Expanded(
-              child: Text(
-                saved
-                    ? 'Saved to your resumes'
-                    : 'Preview ready — tap to review$skipped',
-                style: TextStyle(
-                  color: brand.ink,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.1,
+            Row(
+              children: [
+                Icon(
+                  saved
+                      ? Icons.check_circle_rounded
+                      : Icons.auto_awesome_rounded,
+                  size: 15,
+                  color: saved ? brand.success : brand.ink,
                 ),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    status,
+                    style: TextStyle(
+                      color: brand.ink,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.1,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: _FooterButton(
+                label: saved ? 'View resume' : 'See what changed',
+                filled: !saved,
+                enabled: true,
+                onTap: () => _openPreview(context),
               ),
             ),
-            const SizedBox(width: 8),
-            _PreviewIconButton(onTap: () => _openPreview(context)),
           ],
         );
 
@@ -973,7 +1076,7 @@ class _PreviewIconButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final brand = context.brand;
     return Material(
-      color: brand.ink,
+      color: brand.accent,
       borderRadius: BorderRadius.circular(11),
       child: InkWell(
         onTap: onTap,
@@ -985,7 +1088,7 @@ class _PreviewIconButton extends StatelessWidget {
           child: Icon(
             Icons.zoom_in_rounded,
             size: 19,
-            color: brand.accent,
+            color: brand.onAccent,
           ),
         ),
       ),
@@ -1009,8 +1112,8 @@ class _FooterButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final bg = filled ? brand.ink : Colors.transparent;
-    final fg = filled ? brand.inkInverse : brand.ink;
+    final bg = filled ? brand.accent : Colors.transparent;
+    final fg = filled ? brand.onAccent : brand.ink;
     return Opacity(
       opacity: enabled ? 1 : 0.4,
       child: Material(
@@ -1024,7 +1127,7 @@ class _FooterButton extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 18),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: filled ? brand.ink : brand.border),
+              border: Border.all(color: filled ? brand.accent : brand.border),
             ),
             alignment: Alignment.center,
             child: Text(
@@ -1087,273 +1190,6 @@ class _StatusPill extends StatelessWidget {
           fontSize: 11,
           fontWeight: FontWeight.w800,
         ),
-      ),
-    );
-  }
-}
-
-class _ProposedEditPreviewCard extends ConsumerWidget {
-  const _ProposedEditPreviewCard({
-    required this.blockId,
-    required this.index,
-    required this.editIndex,
-    required this.edit,
-    required this.decision,
-    required this.interactive,
-  });
-
-  final String blockId;
-
-  /// 1-based label shown to the user.
-  final int index;
-
-  /// 0-based position in the block's edit list — what the notifier keys on.
-  final int editIndex;
-
-  final ProposedEdit edit;
-  final EditDecision decision;
-
-  /// False once the card has settled; controls render but no longer respond.
-  final bool interactive;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final brand = context.brand;
-    final accepted = decision == EditDecision.accepted;
-    final rejected = decision == EditDecision.rejected;
-
-    final borderColor = accepted
-        ? brand.success
-        : rejected
-            ? brand.danger.withValues(alpha: 0.5)
-            : brand.border.withValues(alpha: 0.7);
-
-    void decide(EditDecision next) =>
-        ref.read(agentChatProvider.notifier).setEditDecision(
-              blockId,
-              editIndex,
-              next,
-            );
-
-    return AnimatedOpacity(
-      duration: const Duration(milliseconds: 180),
-      // Rejected edits dim back so the eye lands on what's being kept.
-      opacity: rejected ? 0.55 : 1,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: brand.surfaceMuted,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: borderColor,
-            width: accepted || rejected ? 1.4 : 1,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '${edit.isAdd ? 'ADD' : 'EDIT'} $index · ${edit.targetPath}',
-              style: TextStyle(
-                color: brand.textMuted,
-                fontSize: 10.5,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.0,
-              ),
-            ),
-            const SizedBox(height: 10),
-            // An `add` has nothing to remove — show only the inserted line.
-            if (!edit.isAdd) ...[
-              _DiffTextRow(
-                text: edit.originalText,
-                isRemoval: true,
-              ),
-              const SizedBox(height: 6),
-            ],
-            _DiffTextRow(
-              text: edit.proposedText,
-              isRemoval: false,
-            ),
-            const SizedBox(height: 10),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.lightbulb_outline_rounded,
-                  size: 15,
-                  color: brand.textMuted,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    edit.reason,
-                    style: TextStyle(
-                      color: brand.textMuted,
-                      fontSize: 12.5,
-                      height: 1.4,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            // Once the card settles the per-edit controls disappear — the
-            // green/red borders already record each edit's outcome.
-            if (interactive) ...[
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _DecisionButton(
-                      label: 'Reject',
-                      icon: Icons.close_rounded,
-                      selected: rejected,
-                      selectedColor: brand.danger,
-                      enabled: interactive,
-                      onTap: () => decide(EditDecision.rejected),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _DecisionButton(
-                      label: 'Accept',
-                      icon: Icons.check_rounded,
-                      selected: accepted,
-                      selectedColor: brand.success,
-                      enabled: interactive,
-                      onTap: () => decide(EditDecision.accepted),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DecisionButton extends StatelessWidget {
-  const _DecisionButton({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.selectedColor,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final Color selectedColor;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final bg = selected ? selectedColor : Colors.transparent;
-    final fg = selected
-        ? Colors.white
-        : (enabled ? brand.ink : brand.textSoft);
-    final borderColor = selected ? selectedColor : brand.border;
-
-    return Opacity(
-      opacity: enabled || selected ? 1 : 0.6,
-      child: Material(
-        color: bg,
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
-          onTap: enabled ? onTap : null,
-          borderRadius: BorderRadius.circular(10),
-          child: Container(
-            height: 36,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: borderColor),
-            ),
-            alignment: Alignment.center,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 14, color: fg),
-                const SizedBox(width: 6),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: fg,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 12.5,
-                    letterSpacing: -0.1,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// One side of a PR-style diff. Removals render on a red wash with a `−`
-/// gutter and strikethrough; additions render on a green wash with a `+`
-/// gutter. Colours come from the brand [BrandTheme.danger]/[BrandTheme.success]
-/// tokens so the diff reads the same in light and dark mode.
-class _DiffTextRow extends StatelessWidget {
-  const _DiffTextRow({
-    required this.text,
-    required this.isRemoval,
-  });
-
-  final String text;
-  final bool isRemoval;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final tint = isRemoval ? brand.danger : brand.success;
-    final marker = isRemoval ? '−' : '+';
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: tint.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(8),
-        border: Border(
-          left: BorderSide(color: tint, width: 3),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            marker,
-            style: TextStyle(
-              color: tint,
-              fontSize: 13,
-              height: 1.4,
-              fontWeight: FontWeight.w900,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(
-                color: isRemoval ? brand.textMuted : brand.ink,
-                fontSize: 13,
-                height: 1.4,
-                fontWeight: isRemoval ? FontWeight.w500 : FontWeight.w600,
-                decoration: isRemoval ? TextDecoration.lineThrough : null,
-                decorationColor: brand.danger.withValues(alpha: 0.7),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -2065,8 +1901,8 @@ class _ProposalButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final bg = filled ? brand.ink : Colors.transparent;
-    final fg = filled ? brand.inkInverse : brand.ink;
+    final bg = filled ? brand.accent : Colors.transparent;
+    final fg = filled ? brand.onAccent : brand.ink;
     return Material(
       color: bg,
       borderRadius: BorderRadius.circular(12),
@@ -2078,7 +1914,7 @@ class _ProposalButton extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: filled ? brand.ink : brand.border,
+              color: filled ? brand.accent : brand.border,
             ),
           ),
           alignment: Alignment.center,

@@ -158,7 +158,7 @@ class _PreferenceRow extends StatelessWidget {
 }
 
 /// Tiny icon-only segmented selector — three choices in a single pill.
-/// Active option flips to ink background with accent-colored icon.
+/// Active option flips to a lime background with a near-black icon.
 class _MiniSegmented<T> extends StatelessWidget {
   const _MiniSegmented({
     required this.options,
@@ -193,14 +193,14 @@ class _MiniSegmented<T> extends StatelessWidget {
                 height: 28,
                 margin: const EdgeInsets.symmetric(horizontal: 1),
                 decoration: BoxDecoration(
-                  color: value == selected ? brand.ink : Colors.transparent,
+                  color: value == selected ? brand.accent : Colors.transparent,
                   borderRadius: BorderRadius.circular(99),
                 ),
                 alignment: Alignment.center,
                 child: Icon(
                   icon,
                   size: 14,
-                  color: value == selected ? brand.accent : brand.textMuted,
+                  color: value == selected ? brand.onAccent : brand.textMuted,
                 ),
               ),
             ),
@@ -377,7 +377,7 @@ class _ProfileAvatar extends StatelessWidget {
       width: 56,
       height: 56,
       decoration: BoxDecoration(
-        color: brand.ink,
+        color: brand.accent,
         shape: BoxShape.circle,
       ),
       child: ClipOval(
@@ -388,7 +388,7 @@ class _ProfileAvatar extends StatelessWidget {
               child: Text(
                 initial,
                 style: TextStyle(
-                  color: brand.accent,
+                  color: brand.onAccent,
                   fontWeight: FontWeight.w900,
                   fontSize: 22,
                 ),
@@ -703,7 +703,7 @@ class _AgentActiveTile extends ConsumerWidget {
           : 'Paused — Syncra waits for you',
       trailing: Switch.adaptive(
         value: active,
-        activeThumbColor: brand.ink,
+        activeThumbColor: brand.onAccent,
         onChanged: profile == null
             ? null
             : (v) =>
@@ -771,7 +771,7 @@ class _MorningBriefTile extends ConsumerWidget {
           : 'Off',
       trailing: Switch.adaptive(
         value: enabled,
-        activeThumbColor: brand.ink,
+        activeThumbColor: brand.onAccent,
         // Flipping the toggle only stores the preference — it never fires the
         // brief itself (no surprise token spend). The brief runs when the
         // user taps "Run today's brief" or sees it after sign-in.
@@ -940,7 +940,7 @@ class _DevFlagsSection extends ConsumerWidget {
           subtitle: 'Open the onboarding page (auto-clears on submit)',
           trailing: Switch.adaptive(
             value: flags.showOnboarding,
-            activeThumbColor: brand.ink,
+            activeThumbColor: brand.onAccent,
             onChanged: notifier.setShowOnboarding,
           ),
         ),
@@ -951,7 +951,7 @@ class _DevFlagsSection extends ConsumerWidget {
           subtitle: 'Open the morning brief (auto-clears on continue)',
           trailing: Switch.adaptive(
             value: flags.showMorningBrief,
-            activeThumbColor: brand.ink,
+            activeThumbColor: brand.onAccent,
             onChanged: notifier.setShowMorningBrief,
           ),
         ),

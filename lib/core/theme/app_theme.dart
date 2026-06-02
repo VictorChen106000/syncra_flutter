@@ -83,12 +83,12 @@ class AppTheme {
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.selected)
-              ? brand.accent
+              ? brand.onAccent
               : brand.surface,
         ),
         trackColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.selected)
-              ? brand.ink
+              ? brand.accent
               : brand.border,
         ),
         trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
