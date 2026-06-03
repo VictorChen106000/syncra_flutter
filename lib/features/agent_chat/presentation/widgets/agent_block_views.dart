@@ -519,7 +519,7 @@ class EmailDraftBlockView extends ConsumerWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Draft email',
+                  'Draft recruiter outreach',
                   style: TextStyle(
                     color: brand.ink,
                     fontSize: 14.5,
@@ -585,7 +585,7 @@ class EmailDraftBlockView extends ConsumerWidget {
                 const SizedBox(width: 7),
                 Expanded(
                   child: Text(
-                    'Saved to your Gmail Drafts — open Gmail to send it.',
+                    'Saved to Gmail Drafts — review and send it from Gmail.',
                     style: TextStyle(
                       color: brand.ink,
                       fontSize: 12.5,

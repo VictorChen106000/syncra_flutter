@@ -1067,23 +1067,10 @@ Use the user's answer to continue:
 
     block.status = EmailDraftStatus.saved;
     block.savedDraftId = draftId;
+
     state = state.copyWith(items: [...state.items]);
 
-    if (!_isSelfDeliveryDraft(block)) {
-      _markThreadPipelineProcessed();
-    }
-  }
-
-  bool _isSelfDeliveryDraft(EmailDraftBlock block) {
-    final userEmail = (ref.read(authProvider).appUser?.email ?? '')
-        .trim()
-        .toLowerCase();
-    final recipient = block.recipient.trim().toLowerCase();
-    final subject = block.subject.trim().toLowerCase();
-
-    return userEmail.isNotEmpty &&
-        recipient == userEmail &&
-        subject.contains('tailored resume');
+    _markThreadPipelineProcessed();
   }
 
   void _markThreadPipelineProcessed() {
