@@ -31,8 +31,8 @@ class AnthropicChatService implements AgentService {
     AnthropicClient? client,
     this.model = 'claude-haiku-4-5-20251001',
     String? systemPromptOverride,
-  })  : _client = client ?? AnthropicClient(),
-        _systemPrompt = systemPromptOverride ?? systemPrompt;
+  }) : _client = client ?? AnthropicClient(),
+       _systemPrompt = systemPromptOverride ?? systemPrompt;
 
   /// The system prompt actually sent on every request. Defaults to the main
   /// chatbot's [systemPrompt]; callers may override it via
@@ -61,24 +61,50 @@ class AnthropicChatService implements AgentService {
   /// are billed.
   static const _maxTokens = 8192;
 
-static const systemPrompt = '''
+  static const systemPrompt = '''
 You are Syncra, an AI career copilot inside a Flutter app. Your job is to help
 the user find, tailor, and apply to jobs. Be calm, capable, and concise.
 
 Agent workflow:
 - Treat the user's message as a goal, not as a single-step question.
 - Make a short internal plan and execute the safe steps with tools.
-- Drive the workflow forward yourself. After each milestone, proactively offer the next concrete step — never stop with just a result and no offered next step.
-- Offer next steps by calling `ask_user` with 2-3 tappable suggestion chips. Propose a specific action; never ask a vague "what would you like to do next?".
-- Continue the workflow until you either finish the useful work or reach a user gate.
+- Drive the workflow forward yourself. After each milestone, proactively offer the next concrete step — never
+stop with just a result and no offered next step.
+- Offer next steps by calling `ask_user` with 2-3 tappable suggestion chips. Propose a specific action; never
+ask a vague "what would you like to do next?".
+- Continue the workflow until you either finish the useful work requested by the user or reach a user gate.
 - Use tools to do the work. Do not just describe what you would do.
 
+Progressive autonomy / request scope:
+- Do exactly the workflow the user requested, then offer the next useful step.
+- Do not silently expand a small request into a full application workflow.
+- Discovery-only requests, such as "find jobs", "search remote frontend roles", or "show me jobs", mean:
+  call `search_jobs`, show the job cards, add at most one short sentence, then call `ask_user` with 2-3 chips
+  for possible next steps.
+- For discovery-only requests, do not call `read_resume`, `match_jobs`, `save_to_pipeline`, `tailor_resume`,
+  `lookup_hiring_manager`, or `draft_email` unless the user asked for that step or approves it.
+- If the user asks to match jobs, read the resume and call `match_jobs`.
+- If the user asks to save jobs, match them first when resume context is available, then call `save_to_pipeline`.
+- If the user asks to tailor a resume, call `tailor_resume` and stop for review.
+- If the user asks to draft outreach, draft only after the needed job/resume context exists and any required
+  approval gate has passed.
+
 Standard job-search sequence — follow it, one gate at a time:
-1. `search_jobs` renders the roles as interactive cards. Add at most one short sentence introducing them, then DO NOT end the turn. Immediately call `ask_user` to offer tailoring, e.g. "Want me to tailor your resume for one of these roles?" with chips like ["Tailor for the best match", "Let me pick a role", "Not now"].
-2. If the user wants tailoring but it is unclear which role, call `ask_user` so they choose the specific job. You need a job_id (and a resume) before tailoring.
-3. `tailor_resume` only PROPOSES edits. After it returns, stop and let the user review the diff. Do not call `apply_resume_edits`, `draft_email`, or `send_email` yet.
-4. After the app tells you the user saved the tailored resume, offer outreach: call `ask_user` — "Want me to draft an outreach email for this role?" with chips like ["Draft the email", "Not yet"]. Only call `draft_email` after the user says yes.
-5. `draft_email` produces a draft only. The user reviews and sends it from the review screen. Never call `send_email` yourself.
+1. `search_jobs` renders the roles as interactive cards. Add at most one short sentence introducing them.
+   If the user only asked to find/search/show jobs, stop after calling `ask_user` with next-step chips such as
+   ["Match these with my resume", "Save best to Mission Control", "Tailor for the top role"].
+2. If the user requested matching, call `read_resume` after `search_jobs`, then call `match_jobs`.
+3. If the user requested saving, call `save_to_pipeline` after matching or after the user approves which jobs
+   to save.
+4. If the user wants tailoring but it is unclear which role, call `ask_user` so they choose the specific job.
+   You need a job_id and a resume before tailoring.
+5. `tailor_resume` only PROPOSES edits. After it returns, stop and let the user review the diff. Do not call
+   `apply_resume_edits`, `draft_email`, or `send_email` yet.
+6. After the app tells you the user saved the tailored resume, offer outreach: call `ask_user` — "Want me to
+   draft an outreach email for this role?" with chips like ["Draft the email", "Not yet"]. Only call
+   `draft_email` after the user says yes.
+7. `draft_email` produces a draft only. The user reviews and sends it from the review screen. Never call
+   `send_email` yourself.
 
 User gates:
 - Pause only when you need information only the user can provide, or when an action requires approval.
@@ -300,7 +326,7 @@ Progress and style:
                   toolFailuresThisTurn += 1;
                 } else {
                   toolSuccessesThisTurn += 1;
-                } 
+                }
                 if (!result.isError &&
                     (name == 'search_jobs' || name == 'match_jobs')) {
                   final jobs = _jobsFromData(result.data);
@@ -424,11 +450,13 @@ Progress and style:
           // Record this turn's tool_results before bailing so the threaded
           // conversation stays well-formed — no tool_use left unanswered.
           messages.add({'role': 'user', 'content': toolResults});
-          yield BlockAdded(TextBlock(
-            id: nextBlockId('text'),
-            text:
-                'I hit repeated tool failures while trying to complete that. Try narrowing the request, or give me the job/resume details directly.',
-          ));
+          yield BlockAdded(
+            TextBlock(
+              id: nextBlockId('text'),
+              text:
+                  'I hit repeated tool failures while trying to complete that. Try narrowing the request, or give me the job/resume details directly.',
+            ),
+          );
           yield const TurnCompleted();
           return;
         }
@@ -444,11 +472,14 @@ Progress and style:
           // here: the turn ends so the user sees the applied edits before the
           // agent moves on to apply_resume_edits or draft_email.
           messages.add({'role': 'user', 'content': toolResults});
-          yield BlockAdded(TextBlock(
-            id: nextBlockId('text'),
-            text: tailorPauseMessage ??
-                'I found proposed resume edits. Review them before I continue.',
-          ));
+          yield BlockAdded(
+            TextBlock(
+              id: nextBlockId('text'),
+              text:
+                  tailorPauseMessage ??
+                  'I found proposed resume edits. Review them before I continue.',
+            ),
+          );
           yield const TurnCompleted();
           return;
         }
@@ -458,11 +489,14 @@ Progress and style:
         // agent chains into anything that depends on the new resume.
         if (shouldPauseAfterBuildResume) {
           messages.add({'role': 'user', 'content': toolResults});
-          yield BlockAdded(TextBlock(
-            id: nextBlockId('text'),
-            text: buildResumePauseMessage ??
-                'I drafted your resume. Preview it before saving.',
-          ));
+          yield BlockAdded(
+            TextBlock(
+              id: nextBlockId('text'),
+              text:
+                  buildResumePauseMessage ??
+                  'I drafted your resume. Preview it before saving.',
+            ),
+          );
           yield const TurnCompleted();
           return;
         }
@@ -473,11 +507,14 @@ Progress and style:
         // Drafts folder, and don't loop the result back into `send_email`.
         if (shouldPauseAfterDraftEmail) {
           messages.add({'role': 'user', 'content': toolResults});
-          yield BlockAdded(TextBlock(
-            id: nextBlockId('text'),
-            text: draftPauseMessage ??
-                'I drafted an email. Review it before I continue.',
-          ));
+          yield BlockAdded(
+            TextBlock(
+              id: nextBlockId('text'),
+              text:
+                  draftPauseMessage ??
+                  'I drafted an email. Review it before I continue.',
+            ),
+          );
           yield const TurnCompleted();
           return;
         }
@@ -486,12 +523,15 @@ Progress and style:
         // same way: stop so the user reviews and saves it before anything more.
         if (shouldPauseAfterResumeEmail) {
           messages.add({'role': 'user', 'content': toolResults});
-          yield BlockAdded(TextBlock(
-            id: nextBlockId('text'),
-            text: resumeEmailPauseMessage ??
-                'I drafted an email with your tailored resume attached. '
-                    'Review it before I continue.',
-          ));
+          yield BlockAdded(
+            TextBlock(
+              id: nextBlockId('text'),
+              text:
+                  resumeEmailPauseMessage ??
+                  'I drafted an email with your tailored resume attached. '
+                      'Review it before I continue.',
+            ),
+          );
           yield const TurnCompleted();
           return;
         }
@@ -652,20 +692,22 @@ Progress and style:
       final jobId = m['id']?.toString() ?? '';
       final title = (m['title'] as String?)?.trim() ?? '';
       if (jobId.isEmpty || title.isEmpty) continue;
-      jobs.add(Job(
-        id: jobId,
-        title: title,
-        company: (m['company'] as String?)?.trim() ?? '',
-        location: (m['location'] as String?)?.trim() ?? '',
-        salary: (m['salary'] as String?)?.trim() ?? '',
-        category: _jobCategoryFromName(m['category'] as String?),
-        matchScore: (m['match'] as num?)?.toInt() ?? 0,
-        agentAction: '',
-        agentJustification: '',
-        skills: const [],
-        missingSkills: const [],
-        why: (m['description_excerpt'] as String?)?.trim() ?? '',
-      ));
+      jobs.add(
+        Job(
+          id: jobId,
+          title: title,
+          company: (m['company'] as String?)?.trim() ?? '',
+          location: (m['location'] as String?)?.trim() ?? '',
+          salary: (m['salary'] as String?)?.trim() ?? '',
+          category: _jobCategoryFromName(m['category'] as String?),
+          matchScore: (m['match'] as num?)?.toInt() ?? 0,
+          agentAction: '',
+          agentJustification: '',
+          skills: const [],
+          missingSkills: const [],
+          why: (m['description_excerpt'] as String?)?.trim() ?? '',
+        ),
+      );
     }
 
     return jobs;
@@ -675,11 +717,11 @@ Progress and style:
   /// Accepts both the enum name (`inputNeeded`) and the snake_case form
   /// (`input_needed`); anything unrecognised falls back to a strong match.
   JobCategory _jobCategoryFromName(String? name) => switch (name) {
-        'ready' => JobCategory.ready,
-        'inputNeeded' || 'input_needed' => JobCategory.inputNeeded,
-        'exploration' => JobCategory.exploration,
-        _ => JobCategory.ready,
-      };
+    'ready' => JobCategory.ready,
+    'inputNeeded' || 'input_needed' => JobCategory.inputNeeded,
+    'exploration' => JobCategory.exploration,
+    _ => JobCategory.ready,
+  };
 
   ProposedEditsBlock? _proposedEditsBlockFromData({
     required String id,
@@ -767,8 +809,9 @@ Progress and style:
       recipient: recipient,
       subject: subject,
       body: body,
-      attachmentResumeId:
-          (attachmentId == null || attachmentId.isEmpty) ? null : attachmentId,
+      attachmentResumeId: (attachmentId == null || attachmentId.isEmpty)
+          ? null
+          : attachmentId,
       attachmentFilename: (attachmentName == null || attachmentName.isEmpty)
           ? null
           : attachmentName,
@@ -800,7 +843,8 @@ Progress and style:
       id: id,
       recipient: email,
       subject: 'Your tailored resume',
-      body: 'Hi,\n\n'
+      body:
+          'Hi,\n\n'
           'Here is your resume tailored for this role, attached as a PDF. '
           'Save this draft to keep a copy in your inbox, or forward it when '
           'you apply.\n\n'

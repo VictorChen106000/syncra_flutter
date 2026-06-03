@@ -11,7 +11,9 @@ import 'package:syncra/features/agent_chat/services/anthropic_chat_service.dart'
 /// experience. If someone loosens the prompt, these break loudly.
 void main() {
   group('tailor_resume system prompt', () {
-    final prompt = AnthropicParaphraseService.tailorSystemPrompt.toLowerCase();
+    final prompt = AnthropicParaphraseService.tailorSystemPrompt
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), ' ');
 
     test('forbids whole-resume / full-section rewrites', () {
       expect(prompt, contains('not to rewrite the whole resume'));
@@ -37,43 +39,61 @@ void main() {
   });
 
   group('main agent system prompt', () {
-  final prompt = AnthropicChatService.systemPrompt.toLowerCase();
+    final prompt = AnthropicChatService.systemPrompt.toLowerCase().replaceAll(
+      RegExp(r'\s+'),
+      ' ',
+    );
 
-  test('treats user messages as workflow goals', () {
-    expect(prompt, contains('goal'));
-    expect(prompt, contains('drive the workflow forward yourself'));
-    expect(prompt, contains('proactively offer the next concrete step'));
-    expect(prompt, contains('continue the workflow'));
-  });
+    test('treats user messages as workflow goals', () {
+      expect(prompt, contains('goal'));
+      expect(prompt, contains('drive the workflow forward yourself'));
+      expect(prompt, contains('proactively offer the next concrete step'));
+      expect(prompt, contains('continue the workflow'));
+    });
 
-  test('pauses only at user gates', () {
-    expect(prompt, contains('pause only'));
-    expect(prompt, contains('user gate'));
-    expect(prompt, contains('ask_user'));
-  });
+    test('pauses only at user gates', () {
+      expect(prompt, contains('pause only'));
+      expect(prompt, contains('user gate'));
+      expect(prompt, contains('ask_user'));
+    });
 
-  test('drives the search → tailor → email sequence via ask_user offers', () {
-    expect(prompt, contains('standard job-search sequence'));
-    // After search, it must offer tailoring instead of stopping on a job list.
-    expect(prompt, contains('never stop with just a result'));
-    expect(prompt, contains('tailor your resume'));
-    // After the tailored resume is saved, it must offer outreach.
-    expect(prompt, contains('draft an outreach email'));
-    expect(prompt, contains('only call `draft_email` after the user says yes'));
-  });
+    test('drives the search → tailor → email sequence via ask_user offers', () {
+      expect(prompt, contains('standard job-search sequence'));
+      // After search, it must offer tailoring instead of stopping on a job list.
+      expect(prompt, contains('never stop with just a result'));
+      expect(prompt, contains('tailor for the top role'));
+      // After the tailored resume is saved, it must offer outreach.
+      expect(prompt, contains('draft an outreach email'));
+      expect(
+        prompt,
+        contains('only call `draft_email` after the user says yes'),
+      );
+    });
 
-  test('continues after saved tailored resume approval', () {
-    expect(prompt, contains('approved and saved a tailored resume'));
-    expect(prompt, contains('continue the original workflow'));
-    expect(prompt, contains('without asking the user to repeat the task'));
-  });
+    test('continues after saved tailored resume approval', () {
+      expect(prompt, contains('approved and saved a tailored resume'));
+      expect(prompt, contains('continue the original workflow'));
+      expect(prompt, contains('without asking the user to repeat the task'));
+    });
 
-  test('keeps send_email behind explicit approval', () {
-    expect(prompt, contains('never call `send_email`'));
-    expect(prompt, contains('explicit user-confirmation token'));
-    expect(prompt, contains('user tapped send'));
+    test('keeps send_email behind explicit approval', () {
+      expect(prompt, contains('never call `send_email`'));
+      expect(prompt, contains('explicit user-confirmation token'));
+      expect(prompt, contains('user tapped send'));
+    });
+
+    test('guards discovery-only job searches from overreach', () {
+      expect(prompt, contains('progressive autonomy'));
+      expect(prompt, contains('discovery-only requests'));
+      expect(prompt, contains('do not silently expand'));
+      expect(prompt, contains('do exactly the workflow the user requested'));
+      expect(prompt, contains('do not call `read_resume`'));
+      expect(prompt, contains('match_jobs'));
+      expect(prompt, contains('save_to_pipeline'));
+      expect(prompt, contains('tailor_resume'));
+      expect(prompt, contains('draft_email'));
+    });
   });
-});
 
   // The prompt asks for verbatim original_text; the diff engine is the
   // backstop that enforces it. A full-section rewrite whose original_text
@@ -107,8 +127,10 @@ void main() {
       ]);
       expect(outcome.applied, isEmpty);
       expect(outcome.skipped, hasLength(1));
-      expect(outcome.resume.experience[0].bullets[0],
-          'Wrote the first compiler.');
+      expect(
+        outcome.resume.experience[0].bullets[0],
+        'Wrote the first compiler.',
+      );
     });
 
     test('accepts a single verbatim-anchored bullet edit', () {
@@ -121,8 +143,10 @@ void main() {
         ),
       ]);
       expect(outcome.applied, hasLength(1));
-      expect(outcome.resume.experience[0].bullets[0],
-          'Designed and built the first compiler (A-0).');
+      expect(
+        outcome.resume.experience[0].bullets[0],
+        'Designed and built the first compiler (A-0).',
+      );
     });
   });
 }
