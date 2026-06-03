@@ -33,13 +33,16 @@ class MatcherResult {
   final bool needsReview;
 
   /// The only match signal ever shown to the user — purely qualitative, never
-  /// a number. [matchScore] stays internal for sort/legacy only.
+  /// a number. Exactly three buckets the UI filters on: "All Match",
+  /// "Several Match", "No Match". A needs-review fallback rides in the middle
+  /// bucket so the user never sees an error-flavoured label. [matchScore]
+  /// stays internal for sort/legacy only.
   String get matchLabel {
-    if (needsReview) return 'Needs review';
+    if (needsReview) return 'Several Match';
     return switch (category) {
-      JobCategory.ready => 'Strong match',
-      JobCategory.inputNeeded => 'Partial match',
-      JobCategory.exploration => 'Possible match',
+      JobCategory.ready => 'All Match',
+      JobCategory.inputNeeded => 'Several Match',
+      JobCategory.exploration => 'No Match',
     };
   }
 }
