@@ -373,6 +373,46 @@ class _PipelineRow extends StatelessWidget {
     return 'none';
   }
 
+  String _compactListLabel(List<String> values, {required String fallback}) {
+    final cleaned = values
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+
+    if (cleaned.isEmpty) return fallback;
+
+    final visible = cleaned.take(2).join(', ');
+    final extra = cleaned.length - 2;
+
+    return extra > 0 ? '$visible +$extra more' : visible;
+  }
+
+  String _fitLabel() {
+    return _compactListLabel(
+      card.job.skills,
+      fallback: card.job.matchLabel.toLowerCase(),
+    );
+  }
+
+  String _gapLabel() {
+    if (card.job.missingSkills.isNotEmpty) {
+      return _compactListLabel(
+        card.job.missingSkills,
+        fallback: 'missing context',
+      );
+    }
+
+    if (card.stage == PipelineStage.drafted) {
+      return 'draft review';
+    }
+
+    if (card.needsYou) {
+      return 'approval needed';
+    }
+
+    return 'none flagged';
+  }
+
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
@@ -470,6 +510,8 @@ class _PipelineRow extends StatelessWidget {
                 prepared: _preparedLabel(),
                 needs: _needsLabel(),
                 next: _nextLabel(),
+                fit: _fitLabel(),
+                gap: _gapLabel(),
                 highlighted: actionable,
               ),
             ],
@@ -485,12 +527,16 @@ class _MissionInsightLine extends StatelessWidget {
     required this.prepared,
     required this.needs,
     required this.next,
+    required this.fit,
+    required this.gap,
     required this.highlighted,
   });
 
   final String prepared;
   final String needs;
   final String next;
+  final String fit;
+  final String gap;
   final bool highlighted;
 
   @override
@@ -522,18 +568,30 @@ class _MissionInsightLine extends StatelessWidget {
                   style: TextStyle(fontWeight: FontWeight.w900),
                 ),
                 TextSpan(text: prepared),
-                const TextSpan(text: '  ·  '),
+                const TextSpan(text: ' · '),
                 const TextSpan(
                   text: 'Needs: ',
                   style: TextStyle(fontWeight: FontWeight.w900),
                 ),
                 TextSpan(text: needs),
-                const TextSpan(text: '  ·  '),
+                const TextSpan(text: ' · '),
                 const TextSpan(
                   text: 'Next: ',
                   style: TextStyle(fontWeight: FontWeight.w900),
                 ),
                 TextSpan(text: next),
+                const TextSpan(text: '\n'),
+                const TextSpan(
+                  text: 'Why it fits: ',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+                TextSpan(text: fit),
+                const TextSpan(text: ' · '),
+                const TextSpan(
+                  text: 'Gap: ',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+                TextSpan(text: gap),
               ],
             ),
             maxLines: 2,
