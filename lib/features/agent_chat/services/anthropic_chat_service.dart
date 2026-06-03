@@ -692,6 +692,19 @@ Progress and style:
       final jobId = m['id']?.toString() ?? '';
       final title = (m['title'] as String?)?.trim() ?? '';
       if (jobId.isEmpty || title.isEmpty) continue;
+
+      final justification =
+          ((m['justification'] as String?) ??
+                  (m['agent_justification'] as String?) ??
+                  '')
+              .trim();
+      final description =
+          ((m['description_excerpt'] as String?) ??
+                  (m['description'] as String?) ??
+                  (m['why'] as String?) ??
+                  '')
+              .trim();
+
       jobs.add(
         Job(
           id: jobId,
@@ -701,16 +714,24 @@ Progress and style:
           salary: (m['salary'] as String?)?.trim() ?? '',
           category: _jobCategoryFromName(m['category'] as String?),
           matchScore: (m['match'] as num?)?.toInt() ?? 0,
-          agentAction: '',
-          agentJustification: '',
-          skills: const [],
-          missingSkills: const [],
-          why: (m['description_excerpt'] as String?)?.trim() ?? '',
+          agentAction: (m['agent_action'] as String?)?.trim() ?? '',
+          agentJustification: justification,
+          skills: _stringList(m['matched_skills'] ?? m['skills']),
+          missingSkills: _stringList(m['missing_skills'] ?? m['missing']),
+          why: description,
         ),
       );
     }
 
     return jobs;
+  }
+
+  List<String> _stringList(Object? value) {
+    if (value is! List) return const [];
+    return value
+        .map((item) => item.toString().trim())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
   }
 
   /// Lenient enum mapping for the `category` string a job descriptor carries.

@@ -15,6 +15,7 @@ class MatcherResult {
     required this.category,
     required this.matchScore,
     required this.justification,
+    required this.matchedSkills,
     required this.missingSkills,
     this.needsReview = false,
   });
@@ -23,6 +24,7 @@ class MatcherResult {
   final JobCategory category;
   final int matchScore;
   final String justification;
+  final List<String> matchedSkills;
   final List<String> missingSkills;
 
   /// True when scoring fell back (the model's reply couldn't be parsed or the
@@ -66,8 +68,8 @@ class AnthropicService {
     String? apiKey,
     http.Client? client,
     this.model = 'claude-haiku-4-5-20251001',
-  })  : _apiKey = apiKey ?? const String.fromEnvironment('ANTHROPIC_API_KEY'),
-        _client = client ?? http.Client();
+  }) : _apiKey = apiKey ?? const String.fromEnvironment('ANTHROPIC_API_KEY'),
+       _client = client ?? http.Client();
 
   static const _endpoint = 'https://api.anthropic.com/v1/messages';
   static const _version = '2023-06-01';
@@ -123,9 +125,10 @@ class AnthropicService {
         return _needsReviewFallback(jobs);
       }
 
-      final textBlock = content
-          .whereType<Map<String, dynamic>>()
-          .firstWhere((b) => b['type'] == 'text', orElse: () => const {});
+      final textBlock = content.whereType<Map<String, dynamic>>().firstWhere(
+        (b) => b['type'] == 'text',
+        orElse: () => const {},
+      );
       final text = textBlock['text'] as String? ?? '';
       return _parseMatcherJson(text, jobs);
     } catch (e) {
@@ -203,11 +206,12 @@ You are Syncra's job matcher. Score each candidate job against the user's resume
 For every job, respond with:
 - category: one of "ready" (90%+ fit, no major gaps), "input_needed" (strong but missing a specific skill or signal), or "exploration" (interesting stretch / strategic pivot worth exploring).
 - match_score: integer 0-100. Used only for sort order, never shown to the user.
-- justification: ONE short sentence in second person, written like a teammate explaining the call.
+- justification: ONE short sentence in second person, written like a teammate explaining the call. Mention the strongest resume/job overlap, not generic praise.
+- matched_skills: 1-4 concrete skills, experiences, tools, or domain signals from the resume that connect to this job. Use an empty array only when there is no clear overlap.
 - missing_skills: array of strings if category is "input_needed" or there are clear gaps, else empty.
 
 Reply with ONLY a single JSON object of the shape:
-{"results": [{"job_id": "...", "category": "...", "match_score": 0, "justification": "...", "missing_skills": []}, ...]}
+{"results": [{"job_id": "...", "category": "...", "match_score": 0, "justification": "...", "matched_skills": [], "missing_skills": []}, ...]}
 
 No prose, no markdown fences, no extra keys.
 ''';
@@ -217,24 +221,39 @@ No prose, no markdown fences, no extra keys.
     required List<Job> jobs,
   }) {
     final resumeJson = const JsonEncoder.withIndent('  ').convert(resume);
-    final jobLines = jobs.map((j) {
-      return '- id: ${j.id}\n  title: ${j.title}\n  company: ${j.company}\n  location: ${j.location}\n  salary: ${j.salary}\n  required_skills: ${j.skills.join(', ')}';
-    }).join('\n');
+    final jobLines = jobs
+        .map((j) {
+          final requiredSkills = j.skills
+              .map((skill) => skill.trim())
+              .where((skill) => skill.isNotEmpty)
+              .join(', ');
+          final description = j.why.trim();
+          return '- id: ${j.id}\n'
+              '  title: ${j.title}\n'
+              '  company: ${j.company}\n'
+              '  location: ${j.location}\n'
+              '  salary: ${j.salary}\n'
+              '  required_skills: ${requiredSkills.isEmpty ? 'Not specified' : requiredSkills}\n'
+              '  description: ${description.isEmpty ? 'Not provided' : description}';
+        })
+        .join('\n');
 
     return '''
-Resume (JSON):
-$resumeJson
+  Resume (JSON):
+  $resumeJson
 
-Candidate jobs:
-$jobLines
+  Candidate jobs:
+  $jobLines
 
-Score every job. Return the JSON object described in the system prompt.''';
+  Score every job. Return the JSON object described in the system prompt.''';
   }
 
   List<MatcherResult> _parseMatcherJson(String text, List<Job> jobs) {
     final parsed = _extractJsonObject(text);
     if (parsed == null) {
-      debugPrint('matcher: unparseable reply → needs-review fallback\nRaw: $text');
+      debugPrint(
+        'matcher: unparseable reply → needs-review fallback\nRaw: $text',
+      );
       return _needsReviewFallback(jobs);
     }
 
@@ -253,9 +272,8 @@ Score every job. Return the JSON object described in the system prompt.''';
           category: _categoryFrom(item['category']?.toString()),
           matchScore: (item['match_score'] as num?)?.toInt() ?? 0,
           justification: (item['justification'] as String?)?.trim() ?? '',
-          missingSkills: (item['missing_skills'] as List? ?? [])
-              .map((e) => e.toString())
-              .toList(),
+          matchedSkills: _stringList(item['matched_skills']),
+          missingSkills: _stringList(item['missing_skills']),
         ),
       );
     }
@@ -270,6 +288,14 @@ Score every job. Return the JSON object described in the system prompt.''';
     return results;
   }
 
+  List<String> _stringList(Object? value) {
+    if (value is! List) return const [];
+    return value
+        .map((item) => item.toString().trim())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+  }
+
   /// Every job, labelled "Needs review" — the graceful degrade when scoring
   /// can't run or the reply can't be parsed. Keeps the jobs visible instead
   /// of replacing the whole result with a system error.
@@ -277,14 +303,15 @@ Score every job. Return the JSON object described in the system prompt.''';
       jobs.map(_needsReviewResult).toList();
 
   MatcherResult _needsReviewResult(Job job) => MatcherResult(
-        jobId: job.id,
-        category: JobCategory.inputNeeded,
-        matchScore: 0,
-        justification:
-            "Couldn't score this one automatically — worth a quick review.",
-        missingSkills: const [],
-        needsReview: true,
-      );
+    jobId: job.id,
+    category: JobCategory.inputNeeded,
+    matchScore: 0,
+    justification:
+        "Couldn't score this one automatically — worth a quick review.",
+    matchedSkills: const [],
+    missingSkills: const [],
+    needsReview: true,
+  );
 
   /// Best-effort decode of the matcher's reply into a JSON object. Strips
   /// markdown fences first; if a straight decode fails (stray prose or a

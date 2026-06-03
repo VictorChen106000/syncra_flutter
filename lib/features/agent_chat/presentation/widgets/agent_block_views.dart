@@ -38,17 +38,23 @@ class AgentBlockView extends StatelessWidget {
     return switch (block) {
       ThinkingBlock(:final content) => ThinkingBlockView(content: content),
       ToolCallBlock() => ToolCallBlockView(block: block as ToolCallBlock),
-      TextBlock(:final text) => _TextBlockView(text: text, animate: animateText),
-      ProposedEditsBlock() =>
-        _ProposedEditsBlockView(block: block as ProposedEditsBlock),
-      ResumeDraftBlock() =>
-        _ResumeDraftBlockView(block: block as ResumeDraftBlock),
-      InputRequestBlock() =>
-        InputRequestView(block: block as InputRequestBlock),
-      ActionProposalBlock() =>
-        ActionProposalView(block: block as ActionProposalBlock),
-      EmailDraftBlock() =>
-        EmailDraftBlockView(block: block as EmailDraftBlock),
+      TextBlock(:final text) => _TextBlockView(
+        text: text,
+        animate: animateText,
+      ),
+      ProposedEditsBlock() => _ProposedEditsBlockView(
+        block: block as ProposedEditsBlock,
+      ),
+      ResumeDraftBlock() => _ResumeDraftBlockView(
+        block: block as ResumeDraftBlock,
+      ),
+      InputRequestBlock() => InputRequestView(
+        block: block as InputRequestBlock,
+      ),
+      ActionProposalBlock() => ActionProposalView(
+        block: block as ActionProposalBlock,
+      ),
+      EmailDraftBlock() => EmailDraftBlockView(block: block as EmailDraftBlock),
       JobsBlock() => JobsBlockView(block: block as JobsBlock),
     };
   }
@@ -313,7 +319,9 @@ class _JobMatchCardState extends State<_JobMatchCard> {
   Widget _buildWhy(BrandTheme brand, Job job) {
     final justification = job.agentJustification.trim().isNotEmpty
         ? job.agentJustification.trim()
-        : 'A solid fit for your background.';
+        : 'Syncra needs a quick review to confirm the strongest overlap.';
+    final matched = job.skills.take(3).join(', ');
+    final gaps = job.missingSkills.take(3).join(', ');
 
     return Column(
       key: const ValueKey('why'),
@@ -339,7 +347,7 @@ class _JobMatchCardState extends State<_JobMatchCard> {
         const SizedBox(height: 10),
         Text(
           justification,
-          maxLines: 3,
+          maxLines: matched.isEmpty && gaps.isEmpty ? 3 : 2,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: 12.5,
@@ -348,15 +356,28 @@ class _JobMatchCardState extends State<_JobMatchCard> {
             color: brand.ink,
           ),
         ),
-        if (job.missingSkills.isNotEmpty) ...[
+        if (matched.isNotEmpty) ...[
           const SizedBox(height: 6),
           Text(
-            'Missing: ${job.missingSkills.join(', ')}',
+            'Matched: $matched',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontSize: 11.5,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w800,
+              color: brand.textMuted,
+            ),
+          ),
+        ],
+        if (gaps.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            'Gap: $gaps',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
               color: brand.textMuted,
             ),
           ),
@@ -509,8 +530,10 @@ class EmailDraftBlockView extends ConsumerWidget {
               ),
               if (saved)
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: brand.accent,
                     borderRadius: BorderRadius.circular(99),
@@ -554,8 +577,11 @@ class EmailDraftBlockView extends ConsumerWidget {
           if (saved)
             Row(
               children: [
-                Icon(Icons.check_circle_rounded,
-                    size: 15, color: brand.success),
+                Icon(
+                  Icons.check_circle_rounded,
+                  size: 15,
+                  color: brand.success,
+                ),
                 const SizedBox(width: 7),
                 Expanded(
                   child: Text(
@@ -727,11 +753,7 @@ class _ResumeDraftBlockView extends ConsumerWidget {
     );
   }
 
-  Widget _footer(
-    BuildContext context,
-    BrandTheme brand,
-    bool saved,
-  ) {
+  Widget _footer(BuildContext context, BrandTheme brand, bool saved) {
     if (block.state == ResumeDraftState.rendering) {
       return Row(
         children: [
@@ -924,9 +946,9 @@ class _EditsFooter extends ConsumerWidget {
         final status = saved
             ? 'Saved to your resumes'
             : applied > 0
-                ? '$applied improvement${applied == 1 ? '' : 's'}'
-                    ' woven in$skipped'
-                : 'Already a strong fit — no changes needed';
+            ? '$applied improvement${applied == 1 ? '' : 's'}'
+                  ' woven in$skipped'
+            : 'Already a strong fit — no changes needed';
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1085,11 +1107,7 @@ class _PreviewIconButton extends StatelessWidget {
           width: 36,
           height: 36,
           alignment: Alignment.center,
-          child: Icon(
-            Icons.zoom_in_rounded,
-            size: 19,
-            color: brand.onAccent,
-          ),
+          child: Icon(Icons.zoom_in_rounded, size: 19, color: brand.onAccent),
         ),
       ),
     );
@@ -1157,24 +1175,25 @@ class _StatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final brand = context.brand;
     final (label, fg, bg) = switch (block.state) {
-      ProposedEditsState.applied => block.isSaved
-          ? ('Saved', brand.onAccent, brand.accent)
-          : ('Preview ready', brand.onAccent, brand.accent),
+      ProposedEditsState.applied =>
+        block.isSaved
+            ? ('Saved', brand.onAccent, brand.accent)
+            : ('Preview ready', brand.onAccent, brand.accent),
       ProposedEditsState.applying => (
-          'Rendering…',
-          brand.textMuted,
-          brand.surfaceMuted,
-        ),
+        'Rendering…',
+        brand.textMuted,
+        brand.surfaceMuted,
+      ),
       ProposedEditsState.dismissed => (
-          'Dismissed',
-          brand.textMuted,
-          brand.surfaceMuted,
-        ),
+        'Dismissed',
+        brand.textMuted,
+        brand.surfaceMuted,
+      ),
       ProposedEditsState.reviewing => (
-          '${block.acceptedCount}/${block.edits.length} accepted',
-          brand.textMuted,
-          brand.surfaceMuted,
-        ),
+        '${block.acceptedCount}/${block.edits.length} accepted',
+        brand.textMuted,
+        brand.surfaceMuted,
+      ),
     };
 
     return Container(
@@ -1185,11 +1204,7 @@ class _StatusPill extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(
-          color: fg,
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-        ),
+        style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w800),
       ),
     );
   }
@@ -1205,8 +1220,9 @@ class InputRequestView extends ConsumerStatefulWidget {
 }
 
 class _InputRequestViewState extends ConsumerState<InputRequestView> {
-  late final TextEditingController _controller =
-      TextEditingController(text: widget.block.answer ?? '');
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.block.answer ?? '',
+  );
   final FocusNode _focusNode = FocusNode();
 
   @override
@@ -1446,8 +1462,7 @@ class _TextBlockViewState extends State<_TextBlockView> {
     final brand = context.brand;
     final typing = _shown < widget.text.length;
     // Trailing block caret while typing — reads as a live cursor.
-    final data =
-        typing ? '${widget.text.substring(0, _shown)}▌' : widget.text;
+    final data = typing ? '${widget.text.substring(0, _shown)}▌' : widget.text;
     // Agent prose renders in a serif (Source Serif 4) to set the AI's
     // "voice" apart from the all-Inter UI chrome — the same chrome/serif
     // split Claude's mobile app uses.
@@ -1516,9 +1531,7 @@ class _TextBlockViewState extends State<_TextBlockView> {
         blockquoteDecoration: BoxDecoration(
           color: brand.surfaceMuted,
           borderRadius: BorderRadius.circular(8),
-          border: Border(
-            left: BorderSide(color: brand.border, width: 3),
-          ),
+          border: Border(left: BorderSide(color: brand.border, width: 3)),
         ),
         blockquotePadding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
         blockSpacing: 10,
@@ -1640,10 +1653,7 @@ class _ShimmerText extends StatelessWidget {
     if (!active) return base;
     return base
         .animate(onPlay: repeatIfMotion(context))
-        .shimmer(
-          duration: 1600.ms,
-          color: brand.ink.withValues(alpha: 0.55),
-        );
+        .shimmer(duration: 1600.ms, color: brand.ink.withValues(alpha: 0.55));
   }
 }
 
@@ -1720,10 +1730,10 @@ class _Spinner extends StatelessWidget {
   Widget build(BuildContext context) {
     final brand = context.brand;
     return Icon(
-      Icons.refresh_rounded,
-      size: 14,
-      color: brand.textMuted.withValues(alpha: 0.85),
-    )
+          Icons.refresh_rounded,
+          size: 14,
+          color: brand.textMuted.withValues(alpha: 0.85),
+        )
         .animate(onPlay: repeatIfMotion(context))
         .rotate(duration: 900.ms, curve: Curves.linear);
   }
@@ -1747,9 +1757,7 @@ class ActionProposalView extends StatelessWidget {
       decoration: BoxDecoration(
         color: accepted ? brand.ink : brand.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: accepted ? brand.ink : brand.border,
-        ),
+        border: Border.all(color: accepted ? brand.ink : brand.border),
         boxShadow: accepted
             ? [
                 BoxShadow(
@@ -1870,7 +1878,9 @@ class _SettledFooter extends StatelessWidget {
         ),
         const SizedBox(width: 6),
         Text(
-          accepted ? 'Accepted · running now' : 'Reverted — tell me how to adjust',
+          accepted
+              ? 'Accepted · running now'
+              : 'Reverted — tell me how to adjust',
           style: TextStyle(
             color: accepted
                 ? brand.inkInverse.withValues(alpha: 0.88)
@@ -1913,9 +1923,7 @@ class _ProposalButton extends StatelessWidget {
           height: 40,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: filled ? brand.accent : brand.border,
-            ),
+            border: Border.all(color: filled ? brand.accent : brand.border),
           ),
           alignment: Alignment.center,
           child: Row(
@@ -1939,5 +1947,3 @@ class _ProposalButton extends StatelessWidget {
     );
   }
 }
-
-

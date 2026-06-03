@@ -43,7 +43,8 @@ void registerBuiltinTools(ToolRegistry registry) {
   _registerSearchJobs(registry, jsearch, jobs);
   _registerReadResume(registry, orchestrator);
   _registerRememberFact(registry);
-  _registerMatchJobs(registry, jobs, anthropic, orchestrator);  _registerSaveToPipeline(registry, jobs, pipeline);
+  _registerMatchJobs(registry, jobs, anthropic, orchestrator);
+  _registerSaveToPipeline(registry, jobs, pipeline);
   _registerTailorResume(registry, jobs, paraphrase, orchestrator);
   _registerApplyResumeEdits(registry, orchestrator);
   _registerBuildResume(registry);
@@ -75,17 +76,15 @@ void _registerSearchJobs(
         'properties': {
           'query': {
             'type': 'string',
-            'description': 'Keywords, role, skills (e.g. "senior UX designer").',
+            'description':
+                'Keywords, role, skills (e.g. "senior UX designer").',
           },
           'location': {
             'type': 'string',
             'description':
                 'Optional location filter (e.g. "Remote", "Singapore").',
           },
-          'limit': {
-            'type': 'integer',
-            'description': 'Default 10, max 25.',
-          },
+          'limit': {'type': 'integer', 'description': 'Default 10, max 25.'},
         },
         'required': ['query'],
       },
@@ -141,7 +140,10 @@ void _registerSearchJobs(
         }
 
         scored.sort((a, b) => b.score.compareTo(a.score));
-        return scored.map((item) => item.job).take(limit).toList(growable: false);
+        return scored
+            .map((item) => item.job)
+            .take(limit)
+            .toList(growable: false);
       }
 
       var filtered = filterCatalogue(includeLocation: true);
@@ -169,17 +171,19 @@ ToolResult _searchJobsResult(List<Job> jobs) {
     summary: '${jobs.length} matches',
     data: {
       'jobs': jobs
-          .map((j) => {
-                'id': j.id,
-                'title': j.title,
-                'company': j.company,
-                'location': j.location,
-                'salary': j.salary,
-                'category': j.category.name,
-                'description_excerpt': j.why.length > 240
-                    ? '${j.why.substring(0, 240)}…'
-                    : j.why,
-              })
+          .map(
+            (j) => {
+              'id': j.id,
+              'title': j.title,
+              'company': j.company,
+              'location': j.location,
+              'salary': j.salary,
+              'category': j.category.name,
+              'description_excerpt': j.why.length > 240
+                  ? '${j.why.substring(0, 240)}…'
+                  : j.why,
+            },
+          )
           .toList(),
     },
   );
@@ -295,11 +299,11 @@ void _registerReadResume(
           data: _resumeWithLearnedFacts(json.toJson(), learnedFacts),
         );
       } catch (e) {
-          debugPrint('read_resume parse failed for resumeId=$resumeId: $e');
-          return ToolResult.error(
-            'Could not read your resume: ${_shortToolError(e)}',
-          );
-        }
+        debugPrint('read_resume parse failed for resumeId=$resumeId: $e');
+        return ToolResult.error(
+          'Could not read your resume: ${_shortToolError(e)}',
+        );
+      }
     },
   );
 }
@@ -370,11 +374,7 @@ void _registerRememberFact(ToolRegistry registry) {
 
       return ToolResult(
         summary: 'Remembered $topic',
-        data: {
-          'fact_id': ref.id,
-          'topic': topic,
-          'detail': detail,
-        },
+        data: {'fact_id': ref.id, 'topic': topic, 'detail': detail},
       );
     },
   );
@@ -394,12 +394,12 @@ void _registerMatchJobs(
     tool: const Tool(
       name: 'match_jobs',
       description:
-        'Assess how well a list of jobs fits the user\'s resume. Use '
-        'resume_id when the user attached a resume. Returns each job with a '
-        'category (ready / input_needed / exploration), a qualitative `match` '
-        'label (e.g. "Strong match"), a one-sentence justification, and any '
-        'missing skills. There is NO numeric score. Call AFTER search_jobs '
-        'and read_resume.',
+          'Assess how well a list of jobs fits the user\'s resume. Use '
+          'resume_id when the user attached a resume. Returns each job with a '
+          'category (ready / input_needed / exploration), a qualitative `match` '
+          'label (e.g. "Strong match"), a one-sentence justification, and any '
+          'missing skills. There is NO numeric score. Call AFTER search_jobs '
+          'and read_resume.',
       inputSchema: {
         'type': 'object',
         'properties': {
@@ -456,10 +456,7 @@ void _registerMatchJobs(
         return ToolResult.error(_shortToolError(e));
       }
 
-      final results = await anthropic.scoreJobs(
-        resume: resumeJson,
-        jobs: jobs,
-      );
+      final results = await anthropic.scoreJobs(resume: resumeJson, jobs: jobs);
       if (results == null) {
         return ToolResult.error('Scoring returned no data.');
       }
@@ -478,9 +475,11 @@ void _registerMatchJobs(
                 'company': jobsById[r.jobId]?.company ?? '',
                 'location': jobsById[r.jobId]?.location ?? '',
                 'salary': jobsById[r.jobId]?.salary ?? '',
+                'description_excerpt': jobsById[r.jobId]?.why ?? '',
                 'category': r.category.name,
                 'match': r.matchScore,
                 'justification': r.justification,
+                'matched_skills': r.matchedSkills,
                 'missing_skills': r.missingSkills,
               },
           ],
@@ -517,8 +516,7 @@ void _registerSaveToPipeline(
           'category': {
             'type': 'string',
             'enum': ['ready', 'input_needed', 'exploration'],
-            'description':
-                'Match category from match_jobs. Defaults to ready.',
+            'description': 'Match category from match_jobs. Defaults to ready.',
           },
           'agent_action': {
             'type': 'string',
@@ -569,12 +567,11 @@ void _registerSaveToPipeline(
       // (0 here) purely for legacy persistence.
       final matchScore = job.matchScore;
 
-      final agentAction =
-          ((args['agent_action'] as String?) ?? job.agentAction).trim();
+      final agentAction = ((args['agent_action'] as String?) ?? job.agentAction)
+          .trim();
 
       final agentJustification =
-          ((args['agent_justification'] as String?) ??
-                  job.agentJustification)
+          ((args['agent_justification'] as String?) ?? job.agentJustification)
               .trim();
 
       final matchedSkills = List<String>.from(
@@ -600,11 +597,7 @@ void _registerSaveToPipeline(
 
       return ToolResult(
         summary: 'Saved ${job.company} to pipeline',
-        data: {
-          'saved': true,
-          'job_id': job.id,
-          'category': category.name,
-        },
+        data: {'saved': true, 'job_id': job.id, 'category': category.name},
       );
     },
   );
@@ -625,11 +618,11 @@ void _registerTailorResume(
     tool: const Tool(
       name: 'tailor_resume',
       description:
-        'Proposes targeted PR-style edits to the user\'s resume for a '
-        'specific job. Does not modify the resume, render a PDF, save a file, '
-        'or overwrite anything. The user reviews each proposed edit in a diff '
-        'viewer before accepted edits are applied. Returns '
-        '{ proposed_edits: [...] }. NEVER invents experience.',
+          'Proposes targeted PR-style edits to the user\'s resume for a '
+          'specific job. Does not modify the resume, render a PDF, save a file, '
+          'or overwrite anything. The user reviews each proposed edit in a diff '
+          'viewer before accepted edits are applied. Returns '
+          '{ proposed_edits: [...] }. NEVER invents experience.',
       inputSchema: {
         'type': 'object',
         'properties': {
@@ -684,8 +677,9 @@ void _registerTailorResume(
           job: job,
         );
 
-        final proposedEdits =
-            List<Map<String, dynamic>>.from(result['proposed_edits'] as List);
+        final proposedEdits = List<Map<String, dynamic>>.from(
+          result['proposed_edits'] as List,
+        );
 
         return ToolResult(
           summary: '${proposedEdits.length} proposed edits',
@@ -729,7 +723,10 @@ void _registerBuildResume(ToolRegistry registry) {
             'type': 'object',
             'description': 'Candidate contact block.',
             'properties': {
-              'name': {'type': 'string', 'description': 'Full name (required).'},
+              'name': {
+                'type': 'string',
+                'description': 'Full name (required).',
+              },
               'email': {'type': 'string'},
               'phone': {'type': 'string'},
               'location': {'type': 'string', 'description': 'City, region.'},
@@ -754,7 +751,8 @@ void _registerBuildResume(ToolRegistry registry) {
                 'role': {'type': 'string', 'description': 'Job title.'},
                 'start': {
                   'type': 'string',
-                  'description': 'Start date as the user gave it (e.g. "2021").',
+                  'description':
+                      'Start date as the user gave it (e.g. "2021").',
                 },
                 'end': {
                   'type': 'string',
@@ -829,7 +827,8 @@ void _registerBuildResume(ToolRegistry registry) {
       }
 
       final resume = ResumeJson.fromJson(args);
-      final hasContent = resume.experience.isNotEmpty ||
+      final hasContent =
+          resume.experience.isNotEmpty ||
           resume.education.isNotEmpty ||
           resume.skills.isNotEmpty ||
           resume.projects.isNotEmpty;
@@ -844,10 +843,7 @@ void _registerBuildResume(ToolRegistry registry) {
       // PDF and the user saves it from the draft card. Nothing is persisted.
       return ToolResult(
         summary: 'Drafted a resume for $name',
-        data: {
-          'resume_json': resume.toJson(),
-          'name': name,
-        },
+        data: {'resume_json': resume.toJson(), 'name': name},
       );
     },
   );
@@ -1025,8 +1021,8 @@ void _registerDraftEmail(
       final providedResumeId = (args['resume_id'] as String?)?.trim();
       final sourceResumeId =
           (providedResumeId == null || providedResumeId.isEmpty)
-              ? await orchestrator.latestManualResumeId(uid)
-              : providedResumeId;
+          ? await orchestrator.latestManualResumeId(uid)
+          : providedResumeId;
       if (sourceResumeId == null || sourceResumeId.isEmpty) {
         return ToolResult.error(
           'No resume uploaded yet. Upload a resume so I can attach it.',
@@ -1443,9 +1439,11 @@ Future<List<Map<String, dynamic>>> _readLearnedFacts(
             'detail': (data['detail'] as String?) ?? '',
           };
         })
-        .where((fact) =>
-            (fact['topic'] as String).isNotEmpty &&
-            (fact['detail'] as String).isNotEmpty)
+        .where(
+          (fact) =>
+              (fact['topic'] as String).isNotEmpty &&
+              (fact['detail'] as String).isNotEmpty,
+        )
         .toList(growable: false);
   } catch (e) {
     debugPrint('read learned facts failed: $e');
@@ -1459,10 +1457,7 @@ Map<String, dynamic> _resumeWithLearnedFacts(
 ) {
   if (learnedFacts.isEmpty) return resume;
 
-  return {
-    ...resume,
-    'learned_facts': learnedFacts,
-  };
+  return {...resume, 'learned_facts': learnedFacts};
 }
 
 Future<String?> _latestManualResumeId(String uid) async {
@@ -1488,10 +1483,9 @@ Future<Map<String, dynamic>> _loadResumeContextForAgent({
   required ResumeTailorOrchestrator orchestrator,
   String? resumeId,
 }) async {
-  final resolvedResumeId =
-      (resumeId == null || resumeId.trim().isEmpty)
-          ? await _latestManualResumeId(uid)
-          : resumeId.trim();
+  final resolvedResumeId = (resumeId == null || resumeId.trim().isEmpty)
+      ? await _latestManualResumeId(uid)
+      : resumeId.trim();
 
   if (resolvedResumeId == null || resolvedResumeId.isEmpty) {
     throw Exception(
@@ -1516,7 +1510,8 @@ Future<Map<String, dynamic>> _loadResumeContextForAgent({
 }
 
 String _shortToolError(Object e) {
-  final raw = e.toString()
+  final raw = e
+      .toString()
       .replaceFirst('Exception: ', '')
       .replaceFirst('TailorOrchestratorException: ', '')
       .replaceFirst('ResumeParseException: ', '')
