@@ -12,6 +12,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../core/theme/theme_mode_notifier.dart';
 import '../../../data/firestore/firestore_paths.dart';
+import '../../../data/firestore/user_repository.dart';
 import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
@@ -445,6 +446,63 @@ class _ProfileAvatar extends StatelessWidget {
 class _CareerMemorySection extends ConsumerWidget {
   const _CareerMemorySection();
 
+  Future<void> _confirmAndClearMemory(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final brand = dialogContext.brand;
+
+        return AlertDialog(
+          backgroundColor: brand.surface,
+          title: Text(
+            'Clear Career Memory?',
+            style: TextStyle(color: brand.ink, fontWeight: FontWeight.w800),
+          ),
+          content: Text(
+            'This removes the facts Syncra learned from your answers. '
+            'Your resumes, jobs, and applications will stay.',
+            style: TextStyle(color: brand.textMuted, height: 1.45),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Clear memory'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    final user = ref.read(authProvider).appUser;
+    if (user == null || user.isGuest) return;
+
+    try {
+      await UserRepository().clearLearnedFacts(user.uid);
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Career Memory cleared.')));
+    } catch (_) {
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not clear Career Memory. Try again.'),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final factsAsync = ref.watch(_careerMemoryProvider);
@@ -459,7 +517,10 @@ class _CareerMemorySection extends ConsumerWidget {
 
         return _GroupedCard(
           children: [
-            _CareerMemorySummaryRow(count: facts.length),
+            _CareerMemorySummaryRow(
+              count: facts.length,
+              onClear: () => _confirmAndClearMemory(context, ref),
+            ),
             for (var i = 0; i < visibleFacts.length; i++) ...[
               const _GroupedDivider(),
               _CareerMemoryFactRow(fact: visibleFacts[i]),
@@ -474,9 +535,10 @@ class _CareerMemorySection extends ConsumerWidget {
 }
 
 class _CareerMemorySummaryRow extends StatelessWidget {
-  const _CareerMemorySummaryRow({required this.count});
+  const _CareerMemorySummaryRow({required this.count, required this.onClear});
 
   final int count;
+  final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) {
@@ -517,21 +579,47 @@ class _CareerMemorySummaryRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-            decoration: BoxDecoration(
-              color: brand.surfaceMuted,
-              borderRadius: BorderRadius.circular(99),
-            ),
-            child: Text(
-              label,
-              style: TextStyle(
-                color: brand.ink,
-                fontSize: 11.5,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.1,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: brand.surfaceMuted,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: brand.ink,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.1,
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(height: 6),
+              TextButton(
+                onPressed: onClear,
+                style: TextButton.styleFrom(
+                  foregroundColor: brand.danger,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text(
+                  'Clear',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

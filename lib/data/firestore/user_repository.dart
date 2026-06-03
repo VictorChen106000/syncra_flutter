@@ -8,8 +8,8 @@ import 'firestore_paths.dart';
 
 class UserRepository {
   UserRepository({FirebaseFirestore? db, FirebaseStorage? storage})
-      : _paths = FirestorePaths(db ?? FirebaseFirestore.instance),
-        _storage = storage ?? FirebaseStorage.instance;
+    : _paths = FirestorePaths(db ?? FirebaseFirestore.instance),
+      _storage = storage ?? FirebaseStorage.instance;
 
   final FirestorePaths _paths;
   final FirebaseStorage _storage;
@@ -20,7 +20,8 @@ class UserRepository {
     if (snap.exists) return;
 
     await ref.set({
-      'name': firebaseUser.displayName ??
+      'name':
+          firebaseUser.displayName ??
           (firebaseUser.email?.split('@').first ?? 'User'),
       'email': firebaseUser.email ?? '',
       'avatar_url': firebaseUser.photoURL,
@@ -38,9 +39,10 @@ class UserRepository {
   }
 
   Stream<UserProfile?> watchProfile(String uid) {
-    return _paths.user(uid).snapshots().map(
-          (s) => s.data() == null ? null : UserProfile.fromMap(s.data()!),
-        );
+    return _paths
+        .user(uid)
+        .snapshots()
+        .map((s) => s.data() == null ? null : UserProfile.fromMap(s.data()!));
   }
 
   /// Partial update of `users/{uid}`. Pass only the fields you want to
@@ -75,6 +77,12 @@ class UserRepository {
   /// and will be orphaned until manually cleaned; that's acceptable for v1.
   Future<void> deleteUserDoc(String uid) async {
     await _paths.user(uid).delete();
+  }
+
+  /// Deletes only the agent's learned Career Memory facts. Resumes, pipeline
+  /// cards, applications, briefs, and conversations are left untouched.
+  Future<void> clearLearnedFacts(String uid) {
+    return _deleteCollection(_paths.learnedFacts(uid));
   }
 
   /// Wipes every user-owned subcollection (applications, resumes, pipeline,
