@@ -168,7 +168,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
       final saved = await _history.load(uid, mostRecent.id);
       if (saved.isEmpty) return;
       state = AgentChatState(
-        items: [_buildOpener(null), ...saved],
+        items: _restoreHistoryItems(saved),
         conversationId: mostRecent.id,
       );
       // Make sure subsequent IDs don't collide with hydrated ones.
@@ -185,26 +185,49 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     if (_hydrating) return;
     final uid = _uid;
     if (uid == null) return;
-    // Drop the opener turn from the persisted payload — it's reconstructed
-    // locally on every cold start and writing it would just bloat the doc.
-    final items = state.items.length > 1
-        ? state.items.sublist(1)
-        : const <ChatItem>[];
+
+    final items = _itemsForHistory(state.items);
     if (items.isEmpty) return;
+
     // Fire-and-forget; UI doesn't wait on persistence.
     unawaited(
       _history.save(
         uid,
         state.conversationId,
         items: items,
-        title: _deriveTitle(items),
+        title: _deriveTitle(items, fallbackJob: state.threadJob),
       ),
     );
   }
 
+  List<ChatItem> _itemsForHistory(List<ChatItem> items) {
+    if (items.isEmpty) return const <ChatItem>[];
+
+    final start = items.indexWhere((item) {
+      if (item is! AgentTurn) return true;
+      return !item.id.startsWith('turn-opener') &&
+          item.id != 'turn-history-notice';
+    });
+
+    if (start < 0) return const <ChatItem>[];
+    return items.sublist(start);
+  }
+
   /// A short conversation label drawn from the first user message — what the
   /// history drawer shows for the row.
-  String _deriveTitle(List<ChatItem> items) {
+  /// A short conversation label for the history drawer.
+  String _deriveTitle(List<ChatItem> items, {Job? fallbackJob}) {
+    if (fallbackJob != null) {
+      final title = fallbackJob.title.trim();
+      final company = fallbackJob.company.trim();
+
+      if (title.isNotEmpty && company.isNotEmpty) {
+        return '$title · $company';
+      }
+      if (title.isNotEmpty) return title;
+      if (company.isNotEmpty) return company;
+    }
+
     for (final item in items) {
       if (item is UserMessage) {
         final text = item.text.trim();
@@ -212,7 +235,19 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
         return text.length <= 60 ? text : '${text.substring(0, 60).trim()}…';
       }
     }
-    return 'New chat';
+
+    for (final item in items) {
+      if (item is! AgentTurn) continue;
+      for (final block in item.blocks) {
+        if (block is TextBlock) {
+          final text = block.text.trim();
+          if (text.isEmpty) continue;
+          return text.length <= 60 ? text : '${text.substring(0, 60).trim()}…';
+        }
+      }
+    }
+
+    return 'Saved transcript';
   }
 
   /// Builds the first agent turn shown when the chat opens. Adapts to the
@@ -359,6 +394,25 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     );
   }
 
+  AgentTurn _buildHistoryNotice() {
+    return AgentTurn(
+      id: 'turn-history-notice',
+      blocks: [
+        TextBlock(
+          id: 'history-notice-text',
+          text:
+              'Restored transcript. Tool cards, resume diffs, and email review buttons are saved as text summaries in history. Continue below or start a new chat for a live workflow.',
+        ),
+      ],
+      isStreaming: false,
+    );
+  }
+
+  List<ChatItem> _restoreHistoryItems(List<ChatItem> saved) {
+    if (saved.isEmpty) return [_buildOpener(null)];
+    return [_buildHistoryNotice(), ...saved];
+  }
+
   /// Scopes the chat to [job] and replaces the opener with a contextual
   /// turn. Called by the pipeline when a card is tapped — the chatbot is
   /// the single thread for every agentic interaction.
@@ -400,7 +454,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     _threadPipelineMarkedComplete = false;
     final saved = await _history.load(uid, conversationId);
     state = AgentChatState(
-      items: [_buildOpener(null), ...saved],
+      items: _restoreHistoryItems(saved),
       conversationId: conversationId,
     );
     // Make sure subsequent IDs don't collide with loaded ones.

@@ -6,11 +6,13 @@ import '../models/chat_message.dart';
 import '../models/conversation_summary.dart';
 
 /// Persists *text-only* snapshots of chat transcripts — one Firestore document
-/// per conversation — so the history drawer can list and reopen past chats.
+/// per conversation — so the history drawer can list and reopen past chats as
+/// readable transcripts.
 ///
-/// The full reasoning timeline (thinking, tool calls, action proposals) is
-/// deliberately *not* round-tripped — it's transient by design and rebuilding
-/// the exact UI state from JSON is more failure surface than this demo needs.
+/// The full reasoning timeline (thinking, tool calls, action proposals, resume
+/// diffs, and email draft buttons) is deliberately *not* round-tripped — it's
+/// transient by design and rebuilding the exact UI state from JSON is more
+/// failure surface than this demo needs.
 ///
 /// Schema: `users/{uid}/conversations/{conversationId}` — each doc holds:
 ///   - `title`: short label derived from the first user message
@@ -18,7 +20,7 @@ import '../models/conversation_summary.dart';
 ///   - `items`: [{ kind: 'user'|'agent', id, text, attachments? }]
 class ChatHistoryRepository {
   ChatHistoryRepository({FirebaseFirestore? db})
-      : _paths = FirestorePaths(db ?? FirebaseFirestore.instance);
+    : _paths = FirestorePaths(db ?? FirebaseFirestore.instance);
 
   final FirestorePaths _paths;
 
@@ -32,8 +34,12 @@ class ChatHistoryRepository {
         .conversations(uid)
         .orderBy('updatedAt', descending: true)
         .snapshots()
-        .map((snap) =>
-            snap.docs.map(_summaryOf).whereType<ConversationSummary>().toList());
+        .map(
+          (snap) => snap.docs
+              .map(_summaryOf)
+              .whereType<ConversationSummary>()
+              .toList(),
+        );
   }
 
   /// One-shot read of the conversation headers — used to resume the most
@@ -123,11 +129,13 @@ class ChatHistoryRepository {
           ];
           items.add(UserMessage(id: id, text: text, attachments: attachments));
         case 'agent':
-          items.add(AgentTurn(
-            id: id,
-            blocks: [TextBlock(id: '$id-text', text: text)],
-            status: AgentTurnStatus.done,
-          ));
+          items.add(
+            AgentTurn(
+              id: id,
+              blocks: [TextBlock(id: '$id-text', text: text)],
+              status: AgentTurnStatus.done,
+            ),
+          );
       }
     }
     return items;
@@ -144,8 +152,7 @@ class ChatHistoryRepository {
             'text': item.text,
             if (item.attachments.isNotEmpty)
               'attachments': [
-                for (final a in item.attachments)
-                  {'id': a.id, 'name': a.name},
+                for (final a in item.attachments) {'id': a.id, 'name': a.name},
               ],
           });
         case AgentTurn():
