@@ -241,33 +241,53 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
+
     return Padding(
-      padding: const EdgeInsets.only(top: 22, bottom: 2),
+      padding: const EdgeInsets.only(top: 24, bottom: 8),
       child: Row(
         children: [
           Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: accent,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: accent.withValues(alpha: 0.45),
+                  blurRadius: 10,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 9),
           Text(
             label.toUpperCase(),
             style: TextStyle(
-              fontSize: 11,
+              fontSize: 11.5,
               fontWeight: FontWeight.w900,
-              letterSpacing: 1.3,
-              color: brand.textMuted,
+              letterSpacing: 1.35,
+              color: accent,
             ),
           ),
-          const SizedBox(width: 7),
-          Text(
-            '$count',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.2,
-              color: brand.textSoft,
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: accent.withValues(alpha: 0.34)),
+            ),
+            child: Text(
+              '$count',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.2,
+                color: brand.ink,
+                height: 1,
+              ),
             ),
           ),
         ],
@@ -505,7 +525,7 @@ class _PipelineRow extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 7),
+              const SizedBox(height: 9),
               _MissionInsightLine(
                 prepared: _preparedLabel(),
                 needs: _needsLabel(),
@@ -542,63 +562,81 @@ class _MissionInsightLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final color = highlighted ? brand.ink : brand.textMuted;
+    final accent = highlighted ? brand.warning : brand.accent;
+    final labelColor = highlighted ? brand.ink : brand.textSoft;
+    final valueColor = highlighted ? brand.ink : brand.textMuted;
 
-    return Row(
-      children: [
-        Icon(
-          Icons.auto_awesome_rounded,
-          size: 12,
-          color: color.withValues(alpha: highlighted ? 0.95 : 0.70),
+    final labelStyle = TextStyle(
+      color: labelColor,
+      fontWeight: FontWeight.w900,
+    );
+
+    final valueStyle = TextStyle(
+      color: valueColor.withValues(alpha: highlighted ? 0.98 : 0.86),
+      fontWeight: FontWeight.w700,
+    );
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        color: highlighted
+            ? accent.withValues(alpha: 0.11)
+            : brand.surfaceMuted.withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: highlighted
+              ? accent.withValues(alpha: 0.30)
+              : brand.border.withValues(alpha: 0.45),
         ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text.rich(
-            TextSpan(
-              style: TextStyle(
-                color: color.withValues(alpha: highlighted ? 0.95 : 0.78),
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-                letterSpacing: -0.1,
-                height: 1.25,
-              ),
-              children: [
-                const TextSpan(
-                  text: 'Prepared: ',
-                  style: TextStyle(fontWeight: FontWeight.w900),
-                ),
-                TextSpan(text: prepared),
-                const TextSpan(text: ' · '),
-                const TextSpan(
-                  text: 'Needs: ',
-                  style: TextStyle(fontWeight: FontWeight.w900),
-                ),
-                TextSpan(text: needs),
-                const TextSpan(text: ' · '),
-                const TextSpan(
-                  text: 'Next: ',
-                  style: TextStyle(fontWeight: FontWeight.w900),
-                ),
-                TextSpan(text: next),
-                const TextSpan(text: '\n'),
-                const TextSpan(
-                  text: 'Why it fits: ',
-                  style: TextStyle(fontWeight: FontWeight.w900),
-                ),
-                TextSpan(text: fit),
-                const TextSpan(text: ' · '),
-                const TextSpan(
-                  text: 'Gap: ',
-                  style: TextStyle(fontWeight: FontWeight.w900),
-                ),
-                TextSpan(text: gap),
-              ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: highlighted ? 0.18 : 0.12),
+              borderRadius: BorderRadius.circular(8),
             ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+            child: Icon(Icons.auto_awesome_rounded, size: 12, color: accent),
           ),
-        ),
-      ],
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                style: TextStyle(
+                  color: valueColor,
+                  fontSize: 11.7,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.1,
+                  height: 1.32,
+                ),
+                children: [
+                  TextSpan(text: 'Prepared: ', style: labelStyle),
+                  TextSpan(text: prepared, style: valueStyle),
+                  const TextSpan(text: ' · '),
+                  TextSpan(text: 'Needs: ', style: labelStyle),
+                  TextSpan(text: needs, style: valueStyle),
+                  const TextSpan(text: ' · '),
+                  TextSpan(text: 'Next: ', style: labelStyle),
+                  TextSpan(text: next, style: valueStyle),
+                  const TextSpan(text: '\n'),
+                  TextSpan(text: 'Why it fits: ', style: labelStyle),
+                  TextSpan(text: fit, style: valueStyle),
+                  const TextSpan(text: ' · '),
+                  TextSpan(text: 'Gap: ', style: labelStyle),
+                  TextSpan(text: gap, style: valueStyle),
+                ],
+              ),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
