@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/brand_theme.dart';
@@ -105,12 +106,15 @@ class EmailReviewPage extends StatefulWidget {
 }
 
 class _EmailReviewPageState extends State<EmailReviewPage> {
-  late final TextEditingController _recipientCtrl =
-      TextEditingController(text: widget.initialRecipient);
-  late final TextEditingController _subjectCtrl =
-      TextEditingController(text: widget.initialSubject);
-  late final TextEditingController _bodyCtrl =
-      TextEditingController(text: widget.initialBody);
+  late final TextEditingController _recipientCtrl = TextEditingController(
+    text: widget.initialRecipient,
+  );
+  late final TextEditingController _subjectCtrl = TextEditingController(
+    text: widget.initialSubject,
+  );
+  late final TextEditingController _bodyCtrl = TextEditingController(
+    text: widget.initialBody,
+  );
 
   bool _busy = false;
   String? _error;
@@ -118,8 +122,36 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
   /// Set once a draft has been created so the button can't be tapped twice
   /// into a second duplicate draft.
   String? _draftId;
-
   bool get _isDraftMode => widget.mode == EmailReviewMode.draft;
+  bool get _isWebDraftFallback => kIsWeb && _isDraftMode;
+
+  String get _reviewTitle {
+    if (_draftId != null) {
+      return _isWebDraftFallback ? 'Draft reviewed' : 'Draft saved';
+    }
+    return _isDraftMode ? 'Review draft' : 'Review email';
+  }
+
+  String get _reviewDescription {
+    if (_draftId != null) {
+      return _isWebDraftFallback
+          ? 'Marked reviewed for this web demo. Nothing was delivered — finish from Gmail/mobile later if needed.'
+          : 'Saved to your Gmail Drafts. Open Gmail to review and send it yourself — nothing was delivered.';
+    }
+
+    if (_isWebDraftFallback) {
+      return 'Web can review this draft, but Gmail draft saving is only supported on mobile in this build. Mark it reviewed to complete this mission — nothing is sent.';
+    }
+
+    return _isDraftMode
+        ? 'This saves a draft to your Gmail. Nothing is sent — you finish and send it from Gmail.'
+        : 'Nothing is sent until you tap Send — the agent never sends on its own.';
+  }
+
+  String get _primaryActionLabel {
+    if (!_isDraftMode) return 'Send email';
+    return _isWebDraftFallback ? 'Mark draft reviewed' : 'Save to Gmail drafts';
+  }
 
   @override
   void dispose() {
@@ -168,13 +200,25 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
     required String subject,
     required String body,
   }) async {
+    if (_isWebDraftFallback) {
+      if (!mounted) return;
+
+      setState(() {
+        _busy = false;
+        _draftId = 'web-reviewed-${DateTime.now().millisecondsSinceEpoch}';
+      });
+      return;
+    }
+
     final draftId = await EmailSendService.instance.createDraft(
       to: recipient,
       subject: subject,
       body: body,
       attachments: widget.attachments,
     );
+
     if (!mounted) return;
+
     // Show a settled "Draft created" state rather than popping instantly, so
     // the user gets confirmation and can't re-tap into a duplicate draft.
     setState(() {
@@ -202,9 +246,9 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
       attachments: widget.attachments,
     );
     if (!mounted) return;
-    Navigator.of(context).pop(
-      EmailReviewResult(sent: true, messageId: result.messageId),
-    );
+    Navigator.of(
+      context,
+    ).pop(EmailReviewResult(sent: true, messageId: result.messageId));
   }
 
   /// Turns a raw exception into one line a user can act on.
@@ -251,9 +295,7 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
               ),
               const SizedBox(height: 16),
               Text(
-                _draftId != null
-                    ? 'Draft saved'
-                    : (_isDraftMode ? 'Review draft' : 'Review email'),
+                _reviewTitle,
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
@@ -263,14 +305,7 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
               ),
               const SizedBox(height: 4),
               Text(
-                _draftId != null
-                    ? 'Saved to your Gmail Drafts. Open Gmail to review and '
-                        'send it yourself — nothing was delivered.'
-                    : (_isDraftMode
-                        ? 'This saves a draft to your Gmail. Nothing is sent — '
-                            'you finish and send it from Gmail.'
-                        : 'Nothing is sent until you tap Send — the agent '
-                            'never sends on its own.'),
+                _reviewDescription,
                 style: TextStyle(
                   fontSize: 12.5,
                   color: brand.textMuted,
@@ -337,18 +372,14 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
                   children: [
                     Expanded(
                       child: _CancelButton(
-                        onTap: _busy
-                            ? null
-                            : () => Navigator.of(context).pop(),
+                        onTap: _busy ? null : () => Navigator.of(context).pop(),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       flex: 2,
                       child: _PrimaryButton(
-                        label: _isDraftMode
-                            ? 'Save to Gmail drafts'
-                            : 'Send email',
+                        label: _primaryActionLabel,
                         icon: _isDraftMode
                             ? Icons.drafts_rounded
                             : Icons.send_rounded,
@@ -418,7 +449,8 @@ class _EditableField extends StatelessWidget {
         enabled: enabled,
         minLines: minLines,
         maxLines: maxLines,
-        keyboardType: keyboardType ??
+        keyboardType:
+            keyboardType ??
             (maxLines > 1 ? TextInputType.multiline : TextInputType.text),
         style: TextStyle(
           fontSize: 13.5,
@@ -593,8 +625,7 @@ class _PrimaryButton extends StatelessWidget {
                   height: 18,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(brand.inkInverse),
+                    valueColor: AlwaysStoppedAnimation<Color>(brand.inkInverse),
                   ),
                 )
               : Row(
