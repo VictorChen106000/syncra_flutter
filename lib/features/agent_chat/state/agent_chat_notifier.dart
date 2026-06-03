@@ -566,7 +566,8 @@ Approval result:
 
 Continue the original application workflow from here without asking the user to repeat the task.
 Use tailored_resume_id as the resume_id for the next steps.
-Now offer outreach: call ask_user to ask whether they want you to draft an outreach email for this role, with chips like ["Draft the email", "Not yet"]. Only call draft_email after the user confirms.
+Now offer outreach: call ask_user to ask whether they want you to draft recruiter outreach for this role, with
+chips like ["Draft recruiter outreach", "Not yet", "Save for later"]. Only call draft_email after the user confirms.
 If they confirm and recipient information is missing, call lookup_hiring_manager or ask_user.
 Do not call send_email. Sending still requires explicit user approval.
 ''');
@@ -1341,9 +1342,6 @@ Use the user's answer to continue:
       ref
           .read(resumeProvider.notifier)
           .primeBytes(saved.id, block.previewBytes!);
-      // Surface a self-delivery email card with the tailored PDF attached so
-      // the user can keep a copy in their own inbox in one tap.
-      _appendTailoredResumeEmailDraft(saved.id, saved.name);
       state = state.copyWith(items: [...state.items]);
 
       _continueAfterSavedResume(block);
@@ -1351,49 +1349,6 @@ Use the user's answer to continue:
       block.applyError = _shortError(e);
       state = state.copyWith(items: [...state.items]);
     }
-  }
-
-  /// Appends an inline email-draft card addressed to the signed-in user with
-  /// the freshly tailored resume attached, fired right after the tailored PDF
-  /// is saved (see [savePreviewedResume]). The card opens the review sheet in
-  /// draft mode — nothing is sent. No-op for guests or when no email is known.
-  void _appendTailoredResumeEmailDraft(String resumeId, String resumeName) {
-    final email = ref.read(authProvider).appUser?.email.trim() ?? '';
-    if (email.isEmpty) return;
-
-    final name = resumeName.trim();
-    final filename = name.isEmpty
-        ? 'tailored_resume.pdf'
-        : (name.toLowerCase().endsWith('.pdf') ? name : '$name.pdf');
-
-    final turn = AgentTurn(
-      id: _nextId('turn'),
-      status: AgentTurnStatus.done,
-      blocks: [
-        TextBlock(
-          id: _nextId('text'),
-          text:
-              'I saved your tailored resume and drafted an email to you '
-              'with it attached. Open it to review and save it to your Gmail '
-              "Drafts — I won't send anything myself.",
-        ),
-        EmailDraftBlock(
-          id: _nextId('email'),
-          recipient: email,
-          subject: 'Your tailored resume',
-          body:
-              'Hi,\n\n'
-              'Here is your resume tailored for this role, attached as a PDF. '
-              'Save this draft to keep a copy in your inbox, or forward it '
-              'when you apply.\n\n'
-              'Best,\nSyncra',
-          attachmentResumeId: resumeId,
-          attachmentFilename: filename,
-        ),
-      ],
-    );
-
-    state = state.copyWith(items: [...state.items, turn]);
   }
 
   String _shortError(Object e) {

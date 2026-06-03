@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -101,8 +100,8 @@ Standard job-search sequence — follow it, one gate at a time:
 5. `tailor_resume` only PROPOSES edits. After it returns, stop and let the user review the diff. Do not call
    `apply_resume_edits`, `draft_email`, or `send_email` yet.
 6. After the app tells you the user saved the tailored resume, offer outreach: call `ask_user` — "Want me to
-   draft an outreach email for this role?" with chips like ["Draft the email", "Not yet"]. Only call
-   `draft_email` after the user says yes.
+   draft recruiter outreach for this role?" with chips like ["Draft recruiter outreach", "Not yet", "Save for later"].
+   Only call `draft_email` after the user says yes.
 7. `draft_email` produces a draft only. The user reviews and sends it from the review screen. Never call
    `send_email` yourself.
 
@@ -235,8 +234,6 @@ Progress and style:
         String? buildResumePauseMessage;
         bool shouldPauseAfterDraftEmail = false;
         String? draftPauseMessage;
-        bool shouldPauseAfterResumeEmail = false;
-        String? resumeEmailPauseMessage;
         for (final raw in content) {
           if (raw is! Map<String, dynamic>) continue;
           final type = raw['type'] as String?;
@@ -391,24 +388,6 @@ Progress and style:
                   }
                 }
 
-                // After the tailored PDF is rendered, automatically draft a
-                // self-delivery email with the resume attached so the user can
-                // save a copy to their own inbox in one tap.
-                if (!result.isError && name == 'apply_resume_edits') {
-                  final resumeEmailBlock = _resumeEmailBlockFromData(
-                    id: nextBlockId('email'),
-                    data: result.data,
-                  );
-                  if (resumeEmailBlock != null) {
-                    yield BlockAdded(resumeEmailBlock);
-                    shouldPauseAfterResumeEmail = true;
-                    resumeEmailPauseMessage =
-                        'Your tailored resume is ready. I drafted an email to '
-                        'you with it attached — review it and save it to your '
-                        "Gmail Drafts. I won't send anything myself.";
-                  }
-                }
-
                 toolResults.add({
                   'type': 'tool_result',
                   'tool_use_id': toolUseId,
@@ -518,24 +497,6 @@ Progress and style:
           yield const TurnCompleted();
           return;
         }
-
-        // The auto-drafted "here's your tailored resume" email is gated the
-        // same way: stop so the user reviews and saves it before anything more.
-        if (shouldPauseAfterResumeEmail) {
-          messages.add({'role': 'user', 'content': toolResults});
-          yield BlockAdded(
-            TextBlock(
-              id: nextBlockId('text'),
-              text:
-                  resumeEmailPauseMessage ??
-                  'I drafted an email with your tailored resume attached. '
-                      'Review it before I continue.',
-            ),
-          );
-          yield const TurnCompleted();
-          return;
-        }
-
         messages.add({'role': 'user', 'content': toolResults});
       }
 
@@ -836,42 +797,6 @@ Progress and style:
       attachmentFilename: (attachmentName == null || attachmentName.isEmpty)
           ? null
           : attachmentName,
-    );
-  }
-
-  /// Builds the self-delivery email card from an `apply_resume_edits` result.
-  /// Addresses it to the signed-in user's own Gmail and flags the tailored PDF
-  /// for attachment (the view downloads the bytes by id). Returns null when
-  /// there is no signed-in email or no tailored resume id — in that case the
-  /// turn just loops the result back to the agent as before.
-  EmailDraftBlock? _resumeEmailBlockFromData({
-    required String id,
-    required Object? data,
-  }) {
-    if (data is! Map) return null;
-    final resumeId = (data['tailored_resume_id'] as String?)?.trim() ?? '';
-    if (resumeId.isEmpty) return null;
-
-    final email = FirebaseAuth.instance.currentUser?.email?.trim() ?? '';
-    if (email.isEmpty) return null;
-
-    final rawName = (data['name'] as String?)?.trim();
-    final filename = (rawName == null || rawName.isEmpty)
-        ? 'tailored_resume.pdf'
-        : (rawName.toLowerCase().endsWith('.pdf') ? rawName : '$rawName.pdf');
-
-    return EmailDraftBlock(
-      id: id,
-      recipient: email,
-      subject: 'Your tailored resume',
-      body:
-          'Hi,\n\n'
-          'Here is your resume tailored for this role, attached as a PDF. '
-          'Save this draft to keep a copy in your inbox, or forward it when '
-          'you apply.\n\n'
-          'Best,\nSyncra',
-      attachmentResumeId: resumeId,
-      attachmentFilename: filename,
     );
   }
 

@@ -113,8 +113,7 @@ class ProposedEditsBlock extends AgentBlock {
       edits: edits,
       jobId: jobId,
       resumeId: resumeId,
-      decisions:
-          List<EditDecision>.filled(edits.length, EditDecision.accepted),
+      decisions: List<EditDecision>.filled(edits.length, EditDecision.accepted),
       state: ProposedEditsState.applied,
     );
   }
@@ -277,12 +276,10 @@ class ActionProposalBlock extends AgentBlock {
 /// the user finishes and sends from Gmail themselves.
 enum EmailDraftStatus { reviewing, saved }
 
-/// An email the agent drafted — either a cold outreach via `draft_email`, or a
-/// self-delivery of a freshly tailored resume fired automatically after
-/// `apply_resume_edits`. Surfaced inline so the user can open the review sheet,
-/// edit the recipient/subject/body, and save it to their Gmail Drafts. Nothing
-/// is ever sent from here — the review sheet runs in draft mode (see
-/// `EmailReviewPage`/`EmailReviewMode.draft`).
+/// An outreach email the agent drafted via `draft_email`. Surfaced inline so
+/// the user can open the review sheet, edit the recipient/subject/body, and
+/// save it to their Gmail Drafts. Nothing is ever sent from here — the review
+/// sheet runs in draft mode (see `EmailReviewPage`/`EmailReviewMode.draft`).
 ///
 /// Like [ProposedEditsBlock], the agent pauses after emitting this so it can't
 /// barrel on into `send_email`; the user gates the next step.
