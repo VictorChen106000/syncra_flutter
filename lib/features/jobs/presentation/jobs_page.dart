@@ -316,6 +316,63 @@ class _PipelineRow extends StatelessWidget {
     };
   }
 
+  String _preparedLabel() {
+    if (card.isSent) return 'application record';
+    return switch (card.stage) {
+      PipelineStage.matched => 'match scan',
+      PipelineStage.tailored => 'tailored resume',
+      PipelineStage.drafted => 'draft email',
+      PipelineStage.sent => 'sent application',
+      PipelineStage.replied => 'reply tracking',
+    };
+  }
+
+  String _nextLabel() {
+    if (card.isSent) {
+      return card.stage == PipelineStage.replied
+          ? 'review reply'
+          : 'wait for response';
+    }
+
+    if (card.stage == PipelineStage.drafted) {
+      return 'review draft';
+    }
+
+    if (card.job.category == JobCategory.inputNeeded) {
+      return 'answer missing context';
+    }
+
+    if (card.needsYou) {
+      return 'approve next step';
+    }
+
+    return switch (card.stage) {
+      PipelineStage.matched => 'Syncra prepares resume path',
+      PipelineStage.tailored => 'Syncra drafts outreach',
+      PipelineStage.drafted => 'review draft',
+      PipelineStage.sent => 'wait for response',
+      PipelineStage.replied => 'review reply',
+    };
+  }
+
+  String _needsLabel() {
+    if (card.isSent) return 'none';
+
+    if (card.stage == PipelineStage.drafted) {
+      return 'review';
+    }
+
+    if (card.job.missingSkills.isNotEmpty) {
+      return card.job.missingSkills.first;
+    }
+
+    if (card.needsYou) {
+      return 'approval';
+    }
+
+    return 'none';
+  }
+
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
@@ -408,10 +465,82 @@ class _PipelineRow extends StatelessWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 7),
+              _MissionInsightLine(
+                prepared: _preparedLabel(),
+                needs: _needsLabel(),
+                next: _nextLabel(),
+                highlighted: actionable,
+              ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _MissionInsightLine extends StatelessWidget {
+  const _MissionInsightLine({
+    required this.prepared,
+    required this.needs,
+    required this.next,
+    required this.highlighted,
+  });
+
+  final String prepared;
+  final String needs;
+  final String next;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final color = highlighted ? brand.ink : brand.textMuted;
+
+    return Row(
+      children: [
+        Icon(
+          Icons.auto_awesome_rounded,
+          size: 12,
+          color: color.withValues(alpha: highlighted ? 0.95 : 0.70),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text.rich(
+            TextSpan(
+              style: TextStyle(
+                color: color.withValues(alpha: highlighted ? 0.95 : 0.78),
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.1,
+                height: 1.25,
+              ),
+              children: [
+                const TextSpan(
+                  text: 'Prepared: ',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+                TextSpan(text: prepared),
+                const TextSpan(text: '  ·  '),
+                const TextSpan(
+                  text: 'Needs: ',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+                TextSpan(text: needs),
+                const TextSpan(text: '  ·  '),
+                const TextSpan(
+                  text: 'Next: ',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+                TextSpan(text: next),
+              ],
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 }
