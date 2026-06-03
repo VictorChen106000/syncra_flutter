@@ -681,9 +681,138 @@ Do not call send_email. Sending still requires explicit user approval.
     }
   }
 
+  void _ensureNextStepChoiceAfterJobResults(AgentTurn turn) {
+    if (_turnAlreadyNeedsUserChoice(turn)) return;
+
+    JobsBlock? latestJobsBlock;
+    for (final block in turn.blocks.reversed) {
+      if (block is JobsBlock && block.jobs.isNotEmpty) {
+        latestJobsBlock = block;
+        break;
+      }
+    }
+
+    final jobsBlock = latestJobsBlock;
+    if (jobsBlock == null) return;
+
+    final rankedJobs = _rankJobsForNextStep(jobsBlock.jobs);
+    if (rankedJobs.isEmpty) return;
+
+    final input = InputRequestBlock(
+      id: _nextId('input'),
+      question: 'What should I do with these matches next?',
+      suggestions: const [
+        'Save top 3 to Mission Control',
+        'Tailor for the top role',
+        'Explore one role',
+      ],
+      continuationPrompt: _jobResultsNextStepPrompt(rankedJobs),
+    );
+
+    turn.blocks.add(input);
+    _mirrorToInbox(BlockAdded(input), turn);
+  }
+
+  bool _turnAlreadyNeedsUserChoice(AgentTurn turn) {
+    for (final block in turn.blocks) {
+      if (block is InputRequestBlock &&
+          block.state == InputRequestState.pending) {
+        return true;
+      }
+      if (block is ActionProposalBlock && block.state == ActionState.pending) {
+        return true;
+      }
+      if (block is ProposedEditsBlock &&
+          block.state != ProposedEditsState.dismissed) {
+        return true;
+      }
+      if (block is EmailDraftBlock &&
+          block.status == EmailDraftStatus.reviewing) {
+        return true;
+      }
+      if (block is ResumeDraftBlock && !block.isSaved) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  List<Job> _rankJobsForNextStep(List<Job> jobs) {
+    final ranked = [...jobs];
+    ranked.sort((a, b) {
+      final categoryCompare = _jobCategoryPriority(
+        a.category,
+      ).compareTo(_jobCategoryPriority(b.category));
+      if (categoryCompare != 0) return categoryCompare;
+
+      // Internal-only sort signal. The UI still shows qualitative labels only.
+      return b.matchScore.compareTo(a.matchScore);
+    });
+    return ranked;
+  }
+
+  int _jobCategoryPriority(JobCategory category) {
+    return switch (category) {
+      JobCategory.ready => 0,
+      JobCategory.inputNeeded => 1,
+      JobCategory.exploration => 2,
+    };
+  }
+
+  String _jobResultsNextStepPrompt(List<Job> rankedJobs) {
+    final topJobs = rankedJobs.take(5).toList(growable: false);
+    final topThreeIds = topJobs.take(3).map((job) => job.id).join(', ');
+    final topRole = topJobs.first;
+    final jobContext = topJobs.map(_jobContextLine).join('\n');
+
+    return '''
+The user reviewed the matched job results and chose a next step.
+
+Available matched jobs, already sorted strongest-first:
+$jobContext
+
+Recommended top role:
+- job_id: ${topRole.id}
+- title: ${topRole.title}
+- company: ${topRole.company}
+
+Top 3 job_ids:
+$topThreeIds
+
+Use the user's answer to continue:
+- If they choose "Save top 3 to Mission Control", call save_to_pipeline for the top 3 job_ids.
+- If they choose "Tailor for the top role", call tailor_resume for the recommended top role.
+- If they choose "Explore one role", compare the strongest roles briefly and ask which one they want to continue with if needed.
+- Do not show numeric match scores in user-visible text.
+- Do not call send_email.
+- If the next action needs approval or missing information, call ask_user with 2-3 clear suggestion chips.
+''';
+  }
+
+  String _jobContextLine(Job job) {
+    final reason = job.agentJustification.trim().isNotEmpty
+        ? job.agentJustification.trim()
+        : job.why.trim();
+    final matched = job.skills.isEmpty ? 'none listed' : job.skills.join(', ');
+    final gaps = job.missingSkills.isEmpty
+        ? 'none listed'
+        : job.missingSkills.join(', ');
+
+    return '''
+- job_id: ${job.id}
+  title: ${job.title}
+  company: ${job.company}
+  location: ${job.location}
+  match_label: ${job.matchLabel}
+  reason: ${reason.isEmpty ? 'Not provided' : reason}
+  matched_signals: $matched
+  gaps: $gaps''';
+  }
+
   void _finishTurn() {
     final turn = _activeTurn;
     if (turn != null && turn.status == AgentTurnStatus.streaming) {
+      _ensureNextStepChoiceAfterJobResults(turn);
       turn.status = AgentTurnStatus.done;
     }
     _activeTurn = null;
