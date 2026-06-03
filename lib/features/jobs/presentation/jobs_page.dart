@@ -63,8 +63,9 @@ class _JobsPageState extends ConsumerState<JobsPage> {
     final visible = state.pendingCards
         .where((c) => !state.isDismissed(c.job.id))
         .toList();
-    final agentHasRun =
-        ref.watch(passiveAgentProvider.select((s) => s.lastBriefAt != null));
+    final agentHasRun = ref.watch(
+      passiveAgentProvider.select((s) => s.lastBriefAt != null),
+    );
 
     return AppScreen(
       showBottomNav: false,
@@ -83,12 +84,13 @@ class _JobsPageState extends ConsumerState<JobsPage> {
 }
 
 // ---------------------------------------------------------------------------
-// Pipeline feed — one vertical scroll, grouped into three priority sections.
+// Mission Control feed — one vertical scroll, grouped into three priority
+// sections.
 //
-//   • Needs you    — anything waiting on the user (missing info, or a finished
-//                    draft to review & send), regardless of stage.
-//   • In progress  — the agent is working or has it queued; nothing for you yet.
-//   • Sent         — terminal; already out the door (+ awaiting reply).
+//  • Needs approval — anything waiting on the user: missing info, review, or
+//                     a finished draft to approve.
+//  • Syncra working — the agent is preparing the next step; nothing for you yet.
+//  • Handled        — terminal; already sent, handled, or awaiting reply.
 //
 // Each card carries a [_StageStepper] so you can watch a job crawl from
 // Matched → Tailored → Drafted → Sent. Stage is the per-card progress axis;
@@ -119,8 +121,7 @@ class _PipelineFeed extends ConsumerWidget {
         return byStage != 0 ? byStage : b.createdAt.compareTo(a.createdAt);
       });
     final sent = cards.where((c) => c.isSent).toList();
-    final inProgress =
-        cards.where((c) => !c.needsYou && !c.isSent).toList();
+    final inProgress = cards.where((c) => !c.needsYou && !c.isSent).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -142,12 +143,19 @@ class _PipelineFeed extends ConsumerWidget {
   }
 
   String? _subtitle(int active, int sent) {
-    if (cards.isEmpty) return 'Quiet — no agent activity yet';
-    final parts = <String>[
-      if (active > 0) '$active active',
-      if (sent > 0) '$sent sent',
-    ];
-    return parts.isEmpty ? 'All caught up' : parts.join(' · ');
+    if (cards.isEmpty) return 'Mission board is quiet';
+
+    final parts = <String>[];
+
+    if (active > 0) {
+      parts.add(active == 1 ? '1 active mission' : '$active active missions');
+    }
+
+    if (sent > 0) {
+      parts.add(sent == 1 ? '1 handled' : '$sent handled');
+    }
+
+    return parts.isEmpty ? 'All missions handled' : parts.join(' · ');
   }
 
   Widget _list(
@@ -160,27 +168,25 @@ class _PipelineFeed extends ConsumerWidget {
     final brand = context.brand;
     var animIndex = 0;
 
-    List<Widget> section(
-      String label,
-      Color accent,
-      List<PipelineCard> items,
-    ) {
+    List<Widget> section(String label, Color accent, List<PipelineCard> items) {
       if (items.isEmpty) return const [];
       return [
         _SectionHeader(label: label, count: items.length, accent: accent),
         for (var i = 0; i < items.length; i++)
           _SwipeDismissible(
-            key: ValueKey('pipe-${items[i].id}'),
-            onDismissed: () => onDismiss(items[i].job),
-            child: _PipelineRow(
-              card: items[i],
-              showDivider: i < items.length - 1,
-              onTap: () {
-                ref.read(agentChatProvider.notifier).openJobThread(items[i].job);
-                context.go(RouteNames.agentChat);
-              },
-            ),
-          )
+                key: ValueKey('pipe-${items[i].id}'),
+                onDismissed: () => onDismiss(items[i].job),
+                child: _PipelineRow(
+                  card: items[i],
+                  showDivider: i < items.length - 1,
+                  onTap: () {
+                    ref
+                        .read(agentChatProvider.notifier)
+                        .openJobThread(items[i].job);
+                    context.go(RouteNames.agentChat);
+                  },
+                ),
+              )
               .animate(delay: (animIndex++ * 55).ms)
               .fadeIn(duration: 320.ms)
               .moveY(begin: 12, end: 0, curve: Curves.easeOutCubic),
@@ -195,9 +201,9 @@ class _PipelineFeed extends ConsumerWidget {
         140,
       ),
       children: [
-        ...section('Needs you', brand.warning, needs),
-        ...section('In progress', brand.ink, inProgress),
-        ...section('Sent', brand.success, sent),
+        ...section('Needs approval', brand.warning, needs),
+        ...section('Syncra working', brand.ink, inProgress),
+        ...section('Handled', brand.success, sent),
       ],
     );
   }
@@ -205,8 +211,7 @@ class _PipelineFeed extends ConsumerWidget {
 
 /// Sort key inside "Needs you": drafts awaiting send (0) before missing-info
 /// matches (1). Lower sorts first.
-int _needsRank(PipelineCard c) =>
-    c.stage == PipelineStage.drafted ? 0 : 1;
+int _needsRank(PipelineCard c) => c.stage == PipelineStage.drafted ? 0 : 1;
 
 /// Compact relative time for the "Sent" kicker, e.g. "just now", "12m ago".
 String _timeAgo(DateTime t) {
@@ -293,21 +298,21 @@ class _PipelineRow extends StatelessWidget {
   String _phrase() {
     if (card.isSent) {
       return card.stage == PipelineStage.replied
-          ? 'Replied'
-          : 'Sent ${_timeAgo(card.createdAt)}';
+          ? 'Reply received'
+          : 'Handled ${_timeAgo(card.createdAt)}';
     }
-    if (card.stage == PipelineStage.drafted) return 'Review & send';
+    if (card.stage == PipelineStage.drafted) return 'Draft ready for review';
     if (card.job.missingSkills.isNotEmpty) {
       return 'Missing ${card.job.missingSkills.take(2).join(', ')}';
     }
     if (card.needsYou) {
       return card.job.category == JobCategory.inputNeeded
-          ? 'Needs input'
-          : 'Worth a look';
+          ? 'Needs your input'
+          : 'Needs your approval';
     }
     return switch (card.stage) {
-      PipelineStage.tailored => 'Resume tailored',
-      _ => 'Queued',
+      PipelineStage.tailored => 'Tailored resume ready',
+      _ => 'Syncra queued this mission',
     };
   }
 
@@ -319,9 +324,10 @@ class _PipelineRow extends StatelessWidget {
     final actionable = card.needsYou;
     // Salary · work mode/location — only the parts we actually have, so a card
     // missing one never renders a dangling separator.
-    final meta = [job.salary, job.location]
-        .where((s) => s.trim().isNotEmpty)
-        .join('   ·   ');
+    final meta = [
+      job.salary,
+      job.location,
+    ].where((s) => s.trim().isNotEmpty).join('   ·   ');
 
     return Material(
       color: Colors.transparent,
@@ -331,8 +337,9 @@ class _PipelineRow extends StatelessWidget {
           decoration: showDivider
               ? BoxDecoration(
                   border: Border(
-                    bottom:
-                        BorderSide(color: brand.border.withValues(alpha: 0.5)),
+                    bottom: BorderSide(
+                      color: brand.border.withValues(alpha: 0.5),
+                    ),
                   ),
                 )
               : null,
@@ -424,12 +431,12 @@ class _StageStepper extends StatelessWidget {
   // Matched · Tailored · Drafted · Sent. No label drawn here — the row's status
   // line carries the words, so the stepper stays pure progress.
   int get _activeIndex => switch (stage) {
-        PipelineStage.matched => 0,
-        PipelineStage.tailored => 1,
-        PipelineStage.drafted => 2,
-        PipelineStage.sent => 3,
-        PipelineStage.replied => 3,
-      };
+    PipelineStage.matched => 0,
+    PipelineStage.tailored => 1,
+    PipelineStage.drafted => 2,
+    PipelineStage.sent => 3,
+    PipelineStage.replied => 3,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -459,8 +466,8 @@ class _Dot extends StatelessWidget {
     final color = current
         ? brand.accentBright
         : done
-            ? brand.ink
-            : brand.border;
+        ? brand.ink
+        : brand.border;
     final size = current ? 7.0 : 6.0;
     return Container(
       width: size,
@@ -514,21 +521,24 @@ class _GooeyEmptyState extends StatelessWidget {
     final String route;
 
     if (!agentHasRun) {
-      title = 'Your agent is idle';
-      body = 'Enable "Today\'s brief" in Settings, then run it from the '
-          'dashboard. New roles land here as the agent finds them.';
+      title = 'Mission Control is idle';
+      body =
+          'Enable "Today\'s brief" in Settings, then run it from the '
+          'dashboard. Syncra will place new job missions here.';
       actionLabel = 'Open dashboard';
       route = RouteNames.dashboard;
     } else if (!hadAnyPipeline) {
-      title = 'No new roles right now';
-      body = 'The agent scanned but found no strong matches. Broaden your '
+      title = 'No missions queued right now';
+      body =
+          'Syncra scanned but found no strong missions. Broaden your '
           'criteria, or ask the agent to explore a new direction.';
       actionLabel = 'Ask the agent';
       route = RouteNames.agentChat;
     } else {
-      title = 'You\'re all caught up';
-      body = 'Every role the agent surfaced has been handled. The next '
-          'brief will refill your pipeline.';
+      title = 'Mission Control cleared';
+      body =
+          'Every job mission Syncra surfaced has been handled. The next '
+          'brief will refill Mission Control.';
       actionLabel = 'Back to dashboard';
       route = RouteNames.dashboard;
     }
@@ -549,16 +559,16 @@ class _GooeyEmptyState extends StatelessWidget {
                 ),
             const SizedBox(height: 28),
             Text(
-              title,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                color: brand.ink,
-                letterSpacing: -0.4,
-                height: 1.2,
-              ),
-            )
+                  title,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: brand.ink,
+                    letterSpacing: -0.4,
+                    height: 1.2,
+                  ),
+                )
                 .animate(delay: 120.ms)
                 .fadeIn(duration: 420.ms)
                 .moveY(begin: 8, end: 0, curve: Curves.easeOutCubic),
@@ -667,4 +677,3 @@ class _SwipeDismissible extends StatelessWidget {
     );
   }
 }
-

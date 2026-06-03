@@ -57,13 +57,13 @@ class AppStrings {
   static const String chatTypingTitle = 'Syncra is drafting...';
 
   // Jobs
-  static const String agentPipeline = 'Pipeline';
+  static const String agentPipeline = 'Mission Control';
   static const String reviewQueue = 'Review Queue';
   static const String history = 'History';
   static const String agentPipelineQueueSubtitle =
-      'I processed 142 roles. Here are the ones that need you.';
+      'Syncra prepared your active job missions. Review what needs you next.';
   static const String agentPipelineHistorySubtitle =
-      'Completed actions and timeline history.';
+      'Handled applications, drafts, and agent progress history.';
   static const String searchJobsHint = 'Search roles, companies…';
 
   // Applications (was Tracker — merged tracker + history into one page)
