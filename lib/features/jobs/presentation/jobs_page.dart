@@ -96,7 +96,7 @@ class _JobsPageState extends ConsumerState<JobsPage> {
 // control — the whole pipeline state reads at a glance.
 // ---------------------------------------------------------------------------
 
-class _PipelineFeed extends ConsumerWidget {
+class _PipelineFeed extends ConsumerStatefulWidget {
   const _PipelineFeed({
     required this.cards,
     required this.hadAnyPipeline,
@@ -110,38 +110,66 @@ class _PipelineFeed extends ConsumerWidget {
   final ValueChanged<Job> onDismiss;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final needs = cards.where((c) => c.needsYou).toList()
+  ConsumerState<_PipelineFeed> createState() => _PipelineFeedState();
+}
+
+class _PipelineFeedState extends ConsumerState<_PipelineFeed> {
+  /// Which match-category tab is selected. Orthogonal to the workflow sections
+  /// below — this only narrows *which* cards are shown.
+  _PipelineFilter _filter = _PipelineFilter.all;
+
+  @override
+  Widget build(BuildContext context) {
+    final cards = widget.cards;
+    final filtered =
+        cards.where((c) => _filter.matches(c)).toList(growable: false);
+
+    final needs = filtered.where((c) => c.needsYou).toList()
       // Drafts ready to send float above missing-info matches — they're the
       // most actionable thing on the page.
       ..sort((a, b) {
         final byStage = _needsRank(a).compareTo(_needsRank(b));
         return byStage != 0 ? byStage : b.createdAt.compareTo(a.createdAt);
       });
-    final sent = cards.where((c) => c.isSent).toList();
+    final sent = filtered.where((c) => c.isSent).toList();
     final inProgress =
-        cards.where((c) => !c.needsYou && !c.isSent).toList();
+        filtered.where((c) => !c.needsYou && !c.isSent).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AppHeader.tab(
           title: AppStrings.agentPipeline,
-          subtitle: _subtitle(needs.length + inProgress.length, sent.length),
+          subtitle: _subtitle(
+            cards,
+            needs.length + inProgress.length,
+            sent.length,
+          ),
+          // Match-category filter tabs. Only worth showing once there's a
+          // pipeline to filter.
+          bottom: cards.isEmpty
+              ? null
+              : _FilterTabs(
+                  cards: cards,
+                  selected: _filter,
+                  onSelected: (f) => setState(() => _filter = f),
+                ),
         ),
         Expanded(
           child: cards.isEmpty
               ? _GooeyEmptyState(
-                  agentHasRun: agentHasRun,
-                  hadAnyPipeline: hadAnyPipeline,
+                  agentHasRun: widget.agentHasRun,
+                  hadAnyPipeline: widget.hadAnyPipeline,
                 )
-              : _list(context, ref, needs, inProgress, sent),
+              : filtered.isEmpty
+                  ? _EmptyFilter(filter: _filter)
+                  : _list(context, ref, needs, inProgress, sent),
         ),
       ],
     );
   }
 
-  String? _subtitle(int active, int sent) {
+  String? _subtitle(List<PipelineCard> cards, int active, int sent) {
     if (cards.isEmpty) return 'Quiet — no agent activity yet';
     final parts = <String>[
       if (active > 0) '$active active',
@@ -171,7 +199,7 @@ class _PipelineFeed extends ConsumerWidget {
         for (var i = 0; i < items.length; i++)
           _SwipeDismissible(
             key: ValueKey('pipe-${items[i].id}'),
-            onDismissed: () => onDismiss(items[i].job),
+            onDismissed: () => widget.onDismiss(items[i].job),
             child: _PipelineRow(
               card: items[i],
               showDivider: i < items.length - 1,
@@ -199,6 +227,178 @@ class _PipelineFeed extends ConsumerWidget {
         ...section('In progress', brand.ink, inProgress),
         ...section('Sent', brand.success, sent),
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Match-category filter — the header tabs (All / All match / Several match /
+// No match). Maps 1:1 onto [JobCategory]; "All" is the no-op pass-through.
+// ---------------------------------------------------------------------------
+
+enum _PipelineFilter { all, allMatch, severalMatch, noMatch }
+
+extension _PipelineFilterX on _PipelineFilter {
+  String get label => switch (this) {
+        _PipelineFilter.all => 'All',
+        _PipelineFilter.allMatch => 'All match',
+        _PipelineFilter.severalMatch => 'Several match',
+        _PipelineFilter.noMatch => 'No match',
+      };
+
+  /// True when [card] belongs under this tab. "All" admits everything.
+  bool matches(PipelineCard card) => switch (this) {
+        _PipelineFilter.all => true,
+        _PipelineFilter.allMatch => card.job.category == JobCategory.ready,
+        _PipelineFilter.severalMatch =>
+          card.job.category == JobCategory.inputNeeded,
+        _PipelineFilter.noMatch =>
+          card.job.category == JobCategory.exploration,
+      };
+}
+
+/// The horizontal row of filter pills under the page title. Each pill carries a
+/// live count so the user can see at a glance how the pipeline splits.
+class _FilterTabs extends StatelessWidget {
+  const _FilterTabs({
+    required this.cards,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final List<PipelineCard> cards;
+  final _PipelineFilter selected;
+  final ValueChanged<_PipelineFilter> onSelected;
+
+  int _countFor(_PipelineFilter f) =>
+      cards.where((c) => f.matches(c)).length;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: [
+          for (final f in _PipelineFilter.values) ...[
+            _FilterChip(
+              label: f.label,
+              count: _countFor(f),
+              selected: f == selected,
+              onTap: () => onSelected(f),
+            ),
+            if (f != _PipelineFilter.values.last) const SizedBox(width: 8),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final fg = selected ? brand.onAccent : brand.ink;
+    return Material(
+      color: selected ? brand.accent : brand.surface,
+      borderRadius: BorderRadius.circular(99),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(99),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(99),
+            border: Border.all(
+              color: selected ? brand.accent : brand.border,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.1,
+                  color: fg,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '$count',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: selected
+                      ? brand.onAccent.withValues(alpha: 0.7)
+                      : brand.textSoft,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown when a filter is active but no card falls under it — distinct from the
+/// page-wide gooey empty state (which means "no pipeline at all").
+class _EmptyFilter extends StatelessWidget {
+  const _EmptyFilter({required this.filter});
+
+  final _PipelineFilter filter;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(36, 0, 36, 120),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.filter_list_off_rounded, size: 34, color: brand.textSoft),
+            const SizedBox(height: 14),
+            Text(
+              'No "${filter.label}" roles right now',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: brand.ink,
+                letterSpacing: -0.2,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Try another tab to see the rest of your pipeline.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: brand.textMuted,
+                height: 1.45,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
