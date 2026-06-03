@@ -681,6 +681,100 @@ Do not call send_email. Sending still requires explicit user approval.
     }
   }
 
+  void _ensureNextStepChoiceAfterPipelineSave(AgentTurn turn) {
+    if (_turnAlreadyNeedsUserChoice(turn)) return;
+    if (!_turnSavedToPipeline(turn)) return;
+
+    final rankedJobs = _latestRankedJobsForNextStep(turn);
+    final input = InputRequestBlock(
+      id: _nextId('input'),
+      question: 'Saved to Mission Control. What should I do next?',
+      suggestions: const [
+        'Tailor for the strongest saved role',
+        'Open Mission Control',
+        'Search more roles',
+      ],
+      continuationPrompt: _pipelineSavedNextStepPrompt(rankedJobs),
+    );
+
+    turn.blocks.add(input);
+    _mirrorToInbox(BlockAdded(input), turn);
+  }
+
+  bool _turnSavedToPipeline(AgentTurn turn) {
+    for (final block in turn.blocks) {
+      if (block is ToolCallBlock &&
+          block.name == 'save_to_pipeline' &&
+          block.status == ToolCallStatus.done) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  List<Job> _latestRankedJobsForNextStep(AgentTurn activeTurn) {
+    for (final block in activeTurn.blocks.reversed) {
+      if (block is JobsBlock && block.jobs.isNotEmpty) {
+        return _rankJobsForNextStep(block.jobs);
+      }
+    }
+
+    for (var i = state.items.length - 1; i >= 0; i--) {
+      final item = state.items[i];
+      if (item is! AgentTurn) continue;
+
+      for (final block in item.blocks.reversed) {
+        if (block is JobsBlock && block.jobs.isNotEmpty) {
+          return _rankJobsForNextStep(block.jobs);
+        }
+      }
+    }
+
+    return const [];
+  }
+
+  String _pipelineSavedNextStepPrompt(List<Job> rankedJobs) {
+    final topJobs = rankedJobs.take(5).toList(growable: false);
+
+    if (topJobs.isEmpty) {
+      return '''
+The user just saved roles to Mission Control.
+
+Use the user's answer to continue:
+- If they choose "Tailor for the strongest saved role", ask which saved role they want to tailor for with 2-3 short suggestion chips.
+- If they choose "Open Mission Control", briefly tell them Mission Control now contains the saved roles and they can open it from the Jobs tab.
+- If they choose "Search more roles", call search_jobs and then continue the standard job-search sequence.
+- Do not show numeric match scores in user-visible text.
+- Do not call send_email.
+- If the next action needs approval or missing information, call ask_user with 2-3 clear suggestion chips.
+''';
+    }
+
+    final topRole = topJobs.first;
+    final jobContext = topJobs.map(_jobContextLine).join('\n');
+
+    return '''
+The user just saved roles to Mission Control.
+
+Saved/matched job context, sorted strongest-first:
+$jobContext
+
+Recommended strongest saved role:
+- job_id: ${topRole.id}
+- title: ${topRole.title}
+- company: ${topRole.company}
+
+Use the user's answer to continue:
+- If they choose "Tailor for the strongest saved role", call read_resume if needed, then call tailor_resume for the recommended strongest saved role.
+- If they choose "Open Mission Control", briefly tell them Mission Control now contains these saved roles and they can open it from the Jobs tab. Do not call tools for this.
+- If they choose "Search more roles", call search_jobs with a related query based on the saved roles, then continue the standard job-search sequence.
+- Do not show numeric match scores in user-visible text.
+- Do not call draft_email until after a tailored resume is saved or the user directly asks for outreach.
+- Do not call send_email.
+- If the next action needs approval or missing information, call ask_user with 2-3 clear suggestion chips.
+''';
+  }
+
   void _ensureNextStepChoiceAfterJobResults(AgentTurn turn) {
     if (_turnAlreadyNeedsUserChoice(turn)) return;
 
@@ -812,6 +906,7 @@ Use the user's answer to continue:
   void _finishTurn() {
     final turn = _activeTurn;
     if (turn != null && turn.status == AgentTurnStatus.streaming) {
+      _ensureNextStepChoiceAfterPipelineSave(turn);
       _ensureNextStepChoiceAfterJobResults(turn);
       turn.status = AgentTurnStatus.done;
     }
