@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +11,7 @@ import '../../../core/dev/dev_flags_notifier.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../core/theme/theme_mode_notifier.dart';
+import '../../../data/firestore/firestore_paths.dart';
 import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
@@ -17,6 +19,58 @@ import '../../../shared/widgets/section_title.dart';
 import '../../auth/state/auth_notifier.dart';
 import '../../auth/state/user_profile_notifier.dart';
 import '../../resumes/state/resume_notifier.dart';
+
+class _CareerMemoryFact {
+  const _CareerMemoryFact({required this.topic, required this.detail});
+
+  final String topic;
+  final String detail;
+}
+
+final _careerMemoryProvider =
+    StreamProvider.autoDispose<List<_CareerMemoryFact>>((ref) {
+      final user = ref.watch(authProvider.select((state) => state.appUser));
+
+      if (user == null || user.isGuest) {
+        return Stream.value(const <_CareerMemoryFact>[]);
+      }
+
+      final paths = FirestorePaths(FirebaseFirestore.instance);
+
+      return paths
+          .learnedFacts(user.uid)
+          .orderBy('created_at', descending: true)
+          .limit(6)
+          .snapshots()
+          .map(
+            (snapshot) => snapshot.docs
+                .map((doc) {
+                  final data = doc.data();
+                  return _CareerMemoryFact(
+                    topic: (data['topic'] as String?)?.trim() ?? '',
+                    detail: (data['detail'] as String?)?.trim() ?? '',
+                  );
+                })
+                .where(
+                  (fact) => fact.topic.isNotEmpty && fact.detail.isNotEmpty,
+                )
+                .toList(growable: false),
+          );
+    });
+
+String _formatMemoryTopic(String topic) {
+  final words = topic
+      .split('_')
+      .map((word) => word.trim())
+      .where((word) => word.isNotEmpty)
+      .toList();
+
+  if (words.isEmpty) return 'Career detail';
+
+  return words
+      .map((word) => '${word[0].toUpperCase()}${word.substring(1)}')
+      .join(' ');
+}
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -40,6 +94,9 @@ class ProfilePage extends StatelessWidget {
               ),
               children: [
                 const _ProfileHeaderCard(),
+                const SizedBox(height: 24),
+                const SectionTitle(title: 'Career Memory'),
+                const _CareerMemorySection(),
                 const SizedBox(height: 24),
                 const SectionTitle(title: 'Resumes'),
                 const _ResumesSection(),
@@ -111,10 +168,7 @@ class _PreferenceRow extends StatelessWidget {
               ),
             ),
           ),
-          if (trailing != null) ...[
-            const SizedBox(width: 12),
-            trailing!,
-          ],
+          if (trailing != null) ...[const SizedBox(width: 12), trailing!],
         ],
       ),
     );
@@ -147,11 +201,7 @@ class _IconChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(11),
       ),
       alignment: Alignment.center,
-      child: Icon(
-        icon,
-        size: 19,
-        color: tinted ? tint! : brand.onAccent,
-      ),
+      child: Icon(icon, size: 19, color: tinted ? tint! : brand.onAccent),
     );
   }
 }
@@ -359,10 +409,7 @@ class _ProfileAvatar extends StatelessWidget {
     return Container(
       width: 56,
       height: 56,
-      decoration: BoxDecoration(
-        color: brand.accent,
-        shape: BoxShape.circle,
-      ),
+      decoration: BoxDecoration(color: brand.accent, shape: BoxShape.circle),
       child: ClipOval(
         child: Stack(
           fit: StackFit.expand,
@@ -384,6 +431,255 @@ class _ProfileAvatar extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Career Memory — reusable facts the agent learned from user answers.
+// Read-only for now: the agent writes facts through `remember_fact`, and the
+// user can reset them from Reset account.
+// ---------------------------------------------------------------------------
+
+class _CareerMemorySection extends ConsumerWidget {
+  const _CareerMemorySection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final factsAsync = ref.watch(_careerMemoryProvider);
+
+    return factsAsync.when(
+      data: (facts) {
+        if (facts.isEmpty) {
+          return const _GroupedCard(children: [_CareerMemoryEmptyRow()]);
+        }
+
+        final visibleFacts = facts.take(3).toList(growable: false);
+
+        return _GroupedCard(
+          children: [
+            _CareerMemorySummaryRow(count: facts.length),
+            for (var i = 0; i < visibleFacts.length; i++) ...[
+              const _GroupedDivider(),
+              _CareerMemoryFactRow(fact: visibleFacts[i]),
+            ],
+          ],
+        );
+      },
+      loading: () => const _GroupedCard(children: [_CareerMemoryLoadingRow()]),
+      error: (_, _) => const _GroupedCard(children: [_CareerMemoryErrorRow()]),
+    );
+  }
+}
+
+class _CareerMemorySummaryRow extends StatelessWidget {
+  const _CareerMemorySummaryRow({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final label = count == 1 ? '1 learned fact' : '$count learned facts';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          const _IconChip(icon: Icons.psychology_alt_rounded),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Syncra memory',
+                  style: TextStyle(
+                    color: brand.ink,
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Used to improve matching, tailoring, and outreach.',
+                  style: TextStyle(
+                    color: brand.textMuted,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+            decoration: BoxDecoration(
+              color: brand.surfaceMuted,
+              borderRadius: BorderRadius.circular(99),
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: brand.ink,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.1,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CareerMemoryFactRow extends StatelessWidget {
+  const _CareerMemoryFactRow({required this.fact});
+
+  final _CareerMemoryFact fact;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 13),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _IconChip(icon: Icons.auto_awesome_rounded, tint: brand.textSoft),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _formatMemoryTopic(fact.topic),
+                  style: TextStyle(
+                    color: brand.ink,
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.1,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  fact.detail,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: brand.textMuted,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CareerMemoryEmptyRow extends StatelessWidget {
+  const _CareerMemoryEmptyRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _CareerMemoryStatusRow(
+      icon: Icons.psychology_alt_rounded,
+      title: 'No career memory yet',
+      body:
+          'When you answer follow-up questions, reusable skills and preferences will appear here.',
+    );
+  }
+}
+
+class _CareerMemoryLoadingRow extends StatelessWidget {
+  const _CareerMemoryLoadingRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _CareerMemoryStatusRow(
+      icon: Icons.hourglass_empty_rounded,
+      title: 'Loading career memory…',
+      body: 'Checking what Syncra has learned from your previous answers.',
+    );
+  }
+}
+
+class _CareerMemoryErrorRow extends StatelessWidget {
+  const _CareerMemoryErrorRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _CareerMemoryStatusRow(
+      icon: Icons.error_outline_rounded,
+      title: 'Could not load career memory',
+      body: 'Your saved facts are still protected. Try again later.',
+    );
+  }
+}
+
+class _CareerMemoryStatusRow extends StatelessWidget {
+  const _CareerMemoryStatusRow({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _IconChip(icon: icon),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: brand.ink,
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  body,
+                  style: TextStyle(
+                    color: brand.textMuted,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -442,11 +738,7 @@ class _CountChip extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 4),
-        Icon(
-          Icons.chevron_right_rounded,
-          color: brand.border,
-          size: 18,
-        ),
+        Icon(Icons.chevron_right_rounded, color: brand.border, size: 18),
       ],
     );
   }
@@ -475,8 +767,8 @@ class _IntegrationSection extends ConsumerWidget {
           onToggle: profile == null
               ? null
               : () => ref
-                  .read(userProfileProvider.notifier)
-                  .setGmailConnected(!connected),
+                    .read(userProfileProvider.notifier)
+                    .setGmailConnected(!connected),
         ),
       ],
     );
@@ -583,11 +875,7 @@ class _AppearanceSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const _GroupedCard(
-      children: [
-        _ThemeModeTile(),
-      ],
-    );
+    return const _GroupedCard(children: [_ThemeModeTile()]);
   }
 }
 
@@ -602,8 +890,7 @@ class _ThemeModeTile extends ConsumerWidget {
       title: 'Theme',
       trailing: _MiniSegmented<ThemeMode>(
         selected: selected,
-        onChanged: (m) =>
-            ref.read(themeModeProvider.notifier).setMode(m),
+        onChanged: (m) => ref.read(themeModeProvider.notifier).setMode(m),
         options: const [
           (ThemeMode.light, Icons.wb_sunny_outlined),
           (ThemeMode.dark, Icons.dark_mode_outlined),
@@ -656,9 +943,9 @@ class _AccountSection extends ConsumerWidget {
 
     if (!context.mounted) return;
     final error = ref.read(authProvider).error;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(error ?? 'Account data reset.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(error ?? 'Account data reset.')));
   }
 
   @override
