@@ -24,6 +24,7 @@ import '../../../shared/widgets/gooey_orb.dart';
 import '../../agent/state/passive_agent_notifier.dart';
 import '../../agent_chat/state/agent_chat_notifier.dart';
 import '../../applications/state/applications_notifier.dart';
+import '../../jobs/state/jobs_notifier.dart';
 import '../../auth/state/auth_notifier.dart';
 import '../../auth/state/user_profile_notifier.dart';
 import '../../notifications/presentation/notifications_drawer.dart';
@@ -64,10 +65,11 @@ class DashboardPage extends ConsumerWidget {
                     // _AgentSection would collapse to the chart's intrinsic
                     // height and hug the profile header instead of sitting
                     // optically between header and floating input area.
-                    final minBodyHeight = (constraints.maxHeight
-                            - 12
-                            - _kFloatingAreaReservedHeight)
-                        .clamp(0.0, double.infinity);
+                    final minBodyHeight =
+                        (constraints.maxHeight -
+                                12 -
+                                _kFloatingAreaReservedHeight)
+                            .clamp(0.0, double.infinity);
                     return SingleChildScrollView(
                       physics: const BouncingScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(
@@ -225,10 +227,11 @@ class _AgentSectionState extends ConsumerState<_AgentSection> {
 
   @override
   Widget build(BuildContext context) {
-    final hasPipeline =
-        ref.watch(passiveAgentProvider.select((s) => s.hasPipeline));
-    final resumeFit =
-        ref.watch(userProfileProvider.select((p) => p?.resumeFit));
+    final pipelineCards = ref.watch(jobsProvider.select((s) => s.cards));
+    final hasPipeline = pipelineCards.isNotEmpty;
+    final resumeFit = ref.watch(
+      userProfileProvider.select((p) => p?.resumeFit),
+    );
 
     final view = _resolveView(
       hasPipeline: hasPipeline,
@@ -265,9 +268,7 @@ class _AgentSectionState extends ConsumerState<_AgentSection> {
           child: _AgentViewSwap(
             view: view,
             onTap: () => _setView(
-              view == _AgentView.cards
-                  ? _AgentView.chart
-                  : _AgentView.cards,
+              view == _AgentView.cards ? _AgentView.chart : _AgentView.cards,
             ),
           ),
         ),
@@ -280,10 +281,8 @@ class _AgentSectionState extends ConsumerState<_AgentSection> {
             duration: const Duration(milliseconds: 220),
             switchInCurve: Curves.easeOutCubic,
             switchOutCurve: Curves.easeInCubic,
-            transitionBuilder: (child, anim) => FadeTransition(
-              opacity: anim,
-              child: child,
-            ),
+            transitionBuilder: (child, anim) =>
+                FadeTransition(opacity: anim, child: child),
             child: KeyedSubtree(key: ValueKey(view), child: body),
           ),
         ),
@@ -307,8 +306,9 @@ class _AgentViewSwap extends StatelessWidget {
   Widget build(BuildContext context) {
     final brand = context.brand;
     final showingCards = view == _AgentView.cards;
-    final nextIcon =
-        showingCards ? Icons.donut_small_rounded : Icons.style_rounded;
+    final nextIcon = showingCards
+        ? Icons.donut_small_rounded
+        : Icons.style_rounded;
     final nextLabel = showingCards ? 'Show chart' : 'Show cards';
     return Tooltip(
       message: nextLabel,
@@ -355,19 +355,20 @@ class _DashboardAgentEmptyState extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final brand = context.brand;
-    final fullName =
-        (ref.watch(authProvider).appUser?.displayName ?? '').trim();
-    final firstName =
-        fullName.isEmpty ? '' : fullName.split(RegExp(r'\s+')).first;
+    final fullName = (ref.watch(authProvider).appUser?.displayName ?? '')
+        .trim();
+    final firstName = fullName.isEmpty
+        ? ''
+        : fullName.split(RegExp(r'\s+')).first;
     // When the passive agent is mid-brief (most likely the first one auto-
     // fired by onboarding), swap the generic greeting for a live status that
     // names the target role. This is the UX bridge between onboarding's
     // "I'll find roles for you" promise and the dashboard's empty state —
     // the user lands on visible activity, not stillness.
-    final isRunning =
-        ref.watch(passiveAgentProvider.select((s) => s.isRunning));
-    final role =
-        (ref.watch(userProfileProvider)?.role ?? '').trim();
+    final isRunning = ref.watch(
+      passiveAgentProvider.select((s) => s.isRunning),
+    );
+    final role = (ref.watch(userProfileProvider)?.role ?? '').trim();
 
     final String headline;
     final String? subline;
@@ -399,16 +400,16 @@ class _DashboardAgentEmptyState extends ConsumerWidget {
               ),
           const SizedBox(height: 26),
           Text(
-            headline,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w800,
-              color: brand.ink,
-              letterSpacing: -0.5,
-              height: 1.2,
-            ),
-          )
+                headline,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  color: brand.ink,
+                  letterSpacing: -0.5,
+                  height: 1.2,
+                ),
+              )
               .animate(delay: 120.ms)
               .fadeIn(duration: 420.ms)
               .moveY(begin: 8, end: 0, curve: Curves.easeOutCubic),
@@ -424,9 +425,7 @@ class _DashboardAgentEmptyState extends ConsumerWidget {
                 height: 1.4,
                 letterSpacing: -0.1,
               ),
-            )
-                .animate(delay: 220.ms)
-                .fadeIn(duration: 420.ms),
+            ).animate(delay: 220.ms).fadeIn(duration: 420.ms),
           ],
         ],
       ),
@@ -507,9 +506,23 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final passive = ref.watch(passiveAgentProvider);
+    final missionCards = ref.watch(jobsProvider.select((s) => s.cards));
     final resumeState = ref.watch(resumeProvider);
     final appState = ref.watch(applicationsProvider);
+
+    final activeMissionCount = missionCards
+        .where((card) => !card.isSent)
+        .length;
+    final approvalMissionCount = missionCards
+        .where((card) => card.needsYou)
+        .length;
+
+    final missionSubtitle = approvalMissionCount > 0
+        ? '$activeMissionCount active · '
+              '${approvalMissionCount == 1 ? '1 needs approval' : '$approvalMissionCount need approval'}'
+        : activeMissionCount == 1
+        ? '1 active mission'
+        : '$activeMissionCount active missions';
     final draftCount = appState.countOf(ApplicationPhase.draft);
     final sentCount = appState.countOf(ApplicationPhase.sent);
 
@@ -526,11 +539,10 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
     final cards = <_StackCardData>[
       // 1 — jobs the agent surfaced, awaiting the user's review.
       _StackCardData(
-        title: 'Approval Pipeline',
-        kicker: 'Needs Review',
-        subtitle:
-            '${passive.readyCount} ready · ${passive.inputNeededCount} need input',
-        count: passive.pipeline.length,
+        title: 'Mission Control',
+        kicker: approvalMissionCount > 0 ? 'Needs Approval' : 'Active Missions',
+        subtitle: missionSubtitle,
+        count: activeMissionCount,
         foreground: cardFg,
         icon: Icons.work_outline_rounded,
         route: RouteNames.jobs,
@@ -558,9 +570,7 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
     ];
 
     // Audit item #9: fade the instruction hint after first interaction.
-    final hint = _everInteracted
-        ? ''
-        : 'TAP THE STACK TO POP OUT';
+    final hint = _everInteracted ? '' : 'TAP THE STACK TO POP OUT';
     final showHint = hint.isNotEmpty;
 
     return Column(
@@ -590,16 +600,15 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
         GestureDetector(
           behavior: HitTestBehavior.translucent,
           onTap: _expanded ? _onOutsideTap : null,
-          child: SizedBox(
+          child:
+              SizedBox(
                 height: _stackHeight,
                 width: double.infinity,
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final cardWidth = math.min(
                       _maxCardWidth,
-                      constraints.maxWidth -
-                          _cardLeftInset -
-                          _fanRightMargin,
+                      constraints.maxWidth - _cardLeftInset - _fanRightMargin,
                     );
                     return TweenAnimationBuilder<double>(
                       key: ValueKey(_version),
@@ -619,9 +628,7 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
                     );
                   },
                 ),
-              )
-              .animate()
-              .shake(
+              ).animate().shake(
                 delay: 900.ms,
                 duration: 650.ms,
                 hz: 3,
@@ -634,7 +641,12 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
 
   double _lerp(double a, double b, double t) => a + (b - a) * t;
 
-  Widget _buildCard(_StackCardData data, int cardIdx, double t, double cardWidth) {
+  Widget _buildCard(
+    _StackCardData data,
+    int cardIdx,
+    double t,
+    double cardWidth,
+  ) {
     final prevSlotI = _prevOrder.indexOf(cardIdx);
     final newSlotI = _order.indexOf(cardIdx);
     final prevSlot = prevSlotI.toDouble();
@@ -664,8 +676,11 @@ class _AgentCardStackState extends ConsumerState<_AgentCardStack> {
       _slotBackgrounds[newSlotI],
       t,
     )!;
-    final mutedAlpha =
-        _lerp(_slotMutedAlpha[prevSlotI], _slotMutedAlpha[newSlotI], t);
+    final mutedAlpha = _lerp(
+      _slotMutedAlpha[prevSlotI],
+      _slotMutedAlpha[newSlotI],
+      t,
+    );
     final foregroundMuted = data.foreground.withValues(alpha: mutedAlpha);
 
     return Positioned(
@@ -1020,11 +1035,7 @@ class _PromptSuggestionCard extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     alignment: Alignment.center,
-                    child: Icon(
-                      data.icon,
-                      color: brand.onAccent,
-                      size: 18,
-                    ),
+                    child: Icon(data.icon, color: brand.onAccent, size: 18),
                   ),
                   const Spacer(),
                   Container(
@@ -1055,31 +1066,26 @@ class _PromptSuggestionCard extends ConsumerWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                data.prompt,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w700,
-                  color: brand.ink,
-                  letterSpacing: 0.1,
-                  height: 1.4,
-                ),
-              )
+                    data.prompt,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                      color: brand.ink,
+                      letterSpacing: 0.1,
+                      height: 1.4,
+                    ),
+                  )
                   // A periodic on-brand glint sweeping across the prompt — a
                   // subtle premium "shine". Plays once, waits, repeats; gated
                   // on the OS reduce-motion setting like the app's other loops.
                   .animate(
                     onPlay: shouldAnimate(context)
-                        ? (controller) =>
-                            controller.repeat(period: 3200.ms)
+                        ? (controller) => controller.repeat(period: 3200.ms)
                         : null,
                   )
-                  .shimmer(
-                    duration: 1500.ms,
-                    color: brand.accent,
-                    angle: 0.5,
-                  ),
+                  .shimmer(duration: 1500.ms, color: brand.accent, angle: 0.5),
             ],
           ),
         ),
