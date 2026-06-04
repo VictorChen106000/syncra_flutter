@@ -82,10 +82,12 @@ class UserRepository {
     String factId, {
     required String topic,
     required String detail,
+    required String category,
   }) {
     final cleanId = factId.trim();
     final cleanTopic = topic.trim();
     final cleanDetail = detail.trim();
+    final cleanCategory = category.trim().isEmpty ? 'other' : category.trim();
 
     if (cleanId.isEmpty || cleanTopic.isEmpty || cleanDetail.isEmpty) {
       return Future.value();
@@ -94,6 +96,7 @@ class UserRepository {
     return _paths.learnedFacts(uid).doc(cleanId).update({
       'topic': cleanTopic,
       'detail': cleanDetail,
+      'category': cleanCategory,
       'source': 'user',
       'updated_at': FieldValue.serverTimestamp(),
     });
