@@ -63,10 +63,9 @@ class AgentBlockView extends StatelessWidget {
 /// A horizontally-swipeable rail of job matches the agent surfaced — the chat's
 /// "generative UI" answer to a [JobsBlock]. Each role is a compact card in the
 /// same visual language as the dashboard prompt cards (surface, radius-24, ink
-/// icon chip). Tapping a card flips it to a "why this fits" face (the agent's
-/// reasoning); a "See options" pill there opens the shared [JobActionSheet]
-/// (save, draft an application email, share, dismiss) — all without leaving the
-/// conversation.
+/// icon chip) showing the match tier, title, company · salary, and the agent's
+/// one-line reasoning. Tapping a card opens the shared [JobActionSheet] (save,
+/// draft an application email, share, dismiss) without leaving the conversation.
 class JobsBlockView extends StatelessWidget {
   const JobsBlockView({super.key, required this.block});
 
@@ -94,7 +93,7 @@ class JobsBlockView extends StatelessWidget {
           ),
         ),
         SizedBox(
-          height: 188,
+          height: 210,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
@@ -159,35 +158,39 @@ class _SeeAllJobsButton extends StatelessWidget {
   }
 }
 
-/// One job in the [JobsBlockView] rail — a near-clone of the dashboard's prompt
-/// suggestion card, adapted to carry a match-quality kicker, the role title,
-/// and a company · salary subtitle.
-/// Tapping the card flips it between its front (title + match) and a "why this
-/// fits" face carrying the agent's one-line justification and any missing
-/// skills — the chat's answer to "why did you surface this for me?". A small
-/// "See options" pill on the back opens the shared [JobActionSheet] (save,
-/// draft, share, dismiss). The flip stays inside the same card box so the
-/// horizontal rail's height never shifts.
-class _JobMatchCard extends StatefulWidget {
+/// One job in the [JobsBlockView] rail — a compact card in the dashboard's
+/// prompt-suggestion language (surface, radius-24, accent icon chip). It shows
+/// the match tier, the role title, a company · salary subtitle, and a one-line
+/// "why this fits" from the agent — everything visible at once, no hidden face.
+/// A single tap opens the shared [JobActionSheet] (save, draft an application
+/// email, share, hide, dismiss) without leaving the conversation.
+class _JobMatchCard extends StatelessWidget {
   const _JobMatchCard({required this.job});
 
   final Job job;
 
   @override
-  State<_JobMatchCard> createState() => _JobMatchCardState();
-}
-
-class _JobMatchCardState extends State<_JobMatchCard> {
-  bool _why = false;
-
-  @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final job = widget.job;
+    // The match label itself comes from the model ([Job.matchLabel]); only the
+    // dot colour is presentational and lives here.
+    final matchColor = switch (job.category) {
+      JobCategory.ready => brand.success,
+      JobCategory.inputNeeded => brand.textMuted,
+      JobCategory.exploration => brand.textSoft,
+    };
+    final subtitle = [
+      if (job.company.isNotEmpty) job.company,
+      if (job.salary.isNotEmpty) job.salary,
+    ].join(' · ');
+    final why = job.agentJustification.trim().isNotEmpty
+        ? job.agentJustification.trim()
+        : job.why.trim();
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => setState(() => _why = !_why),
+        onTap: () => JobActionSheet.show(context, job),
         borderRadius: BorderRadius.circular(24),
         child: Container(
           width: 232,
@@ -204,74 +207,26 @@ class _JobMatchCardState extends State<_JobMatchCard> {
               ),
             ],
           ),
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
-            child: _why ? _buildWhy(brand, job) : _buildFront(brand, job),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFront(BrandTheme brand, Job job) {
-    final (matchColor, matchLabel) = switch (job.category) {
-      JobCategory.ready => (brand.success, 'ALL MATCH'),
-      JobCategory.inputNeeded => (brand.textMuted, 'SEVERAL MATCH'),
-      JobCategory.exploration => (brand.textSoft, 'NO MATCH'),
-    };
-    final subtitle = [
-      if (job.company.isNotEmpty) job.company,
-      if (job.salary.isNotEmpty) job.salary,
-    ].join(' · ');
-
-    return Column(
-      key: const ValueKey('front'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: brand.accent,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              alignment: Alignment.center,
-              child: Icon(
-                Icons.work_outline_rounded,
-                color: brand.onAccent,
-                size: 18,
-              ),
-            ),
-            const Spacer(),
-            // A lightbulb hints there's reasoning behind this card — tap to see.
-            Container(
-              width: 26,
-              height: 26,
-              decoration: BoxDecoration(
-                color: brand.surfaceMuted,
-                shape: BoxShape.circle,
-              ),
-              alignment: Alignment.center,
-              child: Icon(
-                Icons.lightbulb_outline_rounded,
-                size: 14,
-                color: brand.ink,
-              ),
-            ),
-          ],
-        ),
-        // Fills the slack between the icon row and the info block, and clamps
-        // the title/subtitle so a long role name ellipsizes instead of
-        // overflowing the fixed-height card.
-        Expanded(
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.end,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: brand.accent,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      Icons.work_outline_rounded,
+                      color: brand.onAccent,
+                      size: 18,
+                    ),
+                  ),
+                  const Spacer(),
                   Container(
                     width: 6,
                     height: 6,
@@ -282,7 +237,7 @@ class _JobMatchCardState extends State<_JobMatchCard> {
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    matchLabel,
+                    job.matchLabel.toUpperCase(),
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
@@ -292,19 +247,17 @@ class _JobMatchCardState extends State<_JobMatchCard> {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Flexible(
-                child: Text(
-                  job.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: brand.ink,
-                    letterSpacing: -0.2,
-                    height: 1.25,
-                  ),
+              const SizedBox(height: 12),
+              Text(
+                job.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: brand.ink,
+                  letterSpacing: -0.2,
+                  height: 1.25,
                 ),
               ),
               if (subtitle.isNotEmpty) ...[
@@ -321,119 +274,50 @@ class _JobMatchCardState extends State<_JobMatchCard> {
                   ),
                 ),
               ],
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildWhy(BrandTheme brand, Job job) {
-    final justification = job.agentJustification.trim().isNotEmpty
-        ? job.agentJustification.trim()
-        : 'Syncra needs a quick review to confirm the strongest overlap.';
-    final matched = job.skills.take(3).join(', ');
-    final gaps = job.missingSkills.take(3).join(', ');
-
-    return Column(
-      key: const ValueKey('why'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.auto_awesome_rounded, size: 15, color: brand.ink),
-            const SizedBox(width: 6),
-            Text(
-              'WHY THIS FITS',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.2,
-                color: brand.textMuted,
-              ),
-            ),
-            const Spacer(),
-            Icon(Icons.close_rounded, size: 15, color: brand.textSoft),
-          ],
-        ),
-        const SizedBox(height: 10),
-        // Reasoning fills the slack above the pinned pill; the justification
-        // flexes so matched/gap lines never push the pill out of the card.
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Flexible(
-                child: Text(
-                  justification,
-                  maxLines: matched.isEmpty && gaps.isEmpty ? 3 : 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    height: 1.35,
-                    fontWeight: FontWeight.w500,
-                    color: brand.ink,
-                  ),
-                ),
-              ),
-              if (matched.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(
-                  'Matched: $matched',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w800,
-                    color: brand.textMuted,
-                  ),
-                ),
-              ],
-              if (gaps.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  'Gap: $gaps',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w800,
-                    color: brand.textMuted,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: 10),
-        Material(
-          color: brand.surfaceMuted,
-          borderRadius: BorderRadius.circular(99),
-          child: InkWell(
-            onTap: () => JobActionSheet.show(context, job),
-            borderRadius: BorderRadius.circular(99),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'See options',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: brand.ink,
-                      letterSpacing: -0.1,
+              // The agent's one-line reasoning, pinned to the bottom of the
+              // card. Expanded soaks up the slack so the row never overflows
+              // the fixed rail height, and the text ellipsizes within it.
+              if (why.isNotEmpty)
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.bottomLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 1),
+                            child: Icon(
+                              Icons.auto_awesome_rounded,
+                              size: 13,
+                              color: brand.accent,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              why,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                height: 1.35,
+                                fontWeight: FontWeight.w500,
+                                color: brand.textMuted,
+                                letterSpacing: -0.05,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 5),
-                  Icon(Icons.arrow_forward_rounded, size: 13, color: brand.ink),
-                ],
-              ),
-            ),
+                ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 }

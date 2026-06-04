@@ -436,9 +436,19 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     final chips = <String>[];
     final name = r.header.name.trim();
     if (name.isNotEmpty) chips.add(name.split(RegExp(r'\s+')).first);
+    // Lead with the most recent role — a concrete "I actually read your file"
+    // signal, not just a count. Pair it with the company when both are present.
     if (r.experience.isNotEmpty) {
-      final n = r.experience.length;
-      chips.add('$n ${n == 1 ? 'role' : 'roles'}');
+      final latest = r.experience.first;
+      final role = latest.role.trim();
+      final company = latest.company.trim();
+      if (role.isNotEmpty && company.isNotEmpty) {
+        chips.add('$role · $company');
+      } else if (role.isNotEmpty) {
+        chips.add(role);
+      } else if (company.isNotEmpty) {
+        chips.add(company);
+      }
     }
     if (r.education.isNotEmpty) chips.add(r.education.first.degree.trim());
     chips.addAll(r.skills.where((s) => s.trim().isNotEmpty).take(4));
@@ -447,12 +457,13 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     setState(() => _found = cleaned);
   }
 
-  /// Starts cycling [_detail] through [lines] every ~1.4s. Caller stops it the
-  /// moment the underlying async work resolves.
-  void _startThinking(List<String> lines) {
+  /// Starts cycling [_detail] through [lines] every ~1.4s while [step]'s async
+  /// work is in flight, so an opaque wait reads as live reasoning instead of a
+  /// frozen caption. Caller stops it the moment the underlying work resolves.
+  void _startThinking(int step, List<String> lines) {
     if (lines.isEmpty) return;
     var i = 0;
-    _set(1, _StepStatus.active, detail: lines.first);
+    _set(step, _StepStatus.active, detail: lines.first);
     _thinking?.cancel();
     _thinking = Timer.periodic(const Duration(milliseconds: 1400), (t) {
       if (!mounted) {
@@ -476,8 +487,16 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
       return;
     }
 
-    // Step 1 — read + parse the resume.
-    _set(0, _StepStatus.active, detail: 'Reading your resume…');
+    // Step 1 — read + parse the resume. The download + Sonnet parse is a few
+    // opaque seconds, so narrate it with rotating "reading" captions rather
+    // than a single frozen line; the real extracted facts surface as chips the
+    // moment the parse resolves.
+    _startThinking(0, const [
+      'Reading your resume…',
+      'Scanning your experience…',
+      'Pulling out your skills…',
+      'Noting your education…',
+    ]);
     final ResumeJson parsed;
     try {
       final resumeId = await _orchestrator.latestManualResumeId(uid);
@@ -485,12 +504,14 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
         throw Exception('No resume found.');
       }
       parsed = await _orchestrator.readResumeJson(uid: uid, resumeId: resumeId);
+      _stopThinking();
       _set(0, _StepStatus.done);
       _revealFindings(parsed);
     } catch (e) {
       // Scanned PDF / parse failure / missing key — don't trap the user. Mark
       // them past setup and let them into the app; the agent can read the
       // resume later from chat.
+      _stopThinking();
       _set(0, _StepStatus.failed,
           detail: "Couldn't read that file — you can still continue.");
       await _finish(roleSet: false);
@@ -500,7 +521,7 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     // Step 2 — infer role + role-fit in one headless agent call. This is the
     // longest, most opaque step, so narrate it with rotating captions drawn
     // from the user's own resume rather than a single frozen line.
-    _startThinking([
+    _startThinking(1, [
       'Mapping your strengths…',
       if (parsed.experience.isNotEmpty)
         'Weighing ${parsed.experience.length} '
