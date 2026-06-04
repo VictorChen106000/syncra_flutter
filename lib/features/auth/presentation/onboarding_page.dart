@@ -4,8 +4,10 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/constants/app_assets.dart';
 import '../../../core/dev/dev_flags_notifier.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/app_theme.dart';
@@ -55,11 +57,6 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
 
   _Phase _phase = _Phase.upload;
 
-  /// True once the user explicitly tapped to upload. Gates the auto-advance so
-  /// a returning user who already has a resume isn't yanked forward before they
-  /// choose to continue.
-  bool _armed = false;
-
   /// The user's free-text instruction captured on the prompt phase, threaded
   /// into the agent brief.
   String _instruction = '';
@@ -88,7 +85,6 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   }
 
   Future<void> _pickResume() async {
-    _armed = true;
     await ref.read(resumeProvider.notifier).pickAndUploadResumes();
   }
 
@@ -135,20 +131,6 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
 
   @override
   Widget build(BuildContext context) {
-    // The moment a resume the user just uploaded lands, let the water-fill
-    // visibly top out, then reveal the prompt. Selecting on the count keeps
-    // this from firing on unrelated resume-list churn.
-    ref.listen<int>(resumeProvider.select((s) => s.resumes.length), (
-      prev,
-      next,
-    ) {
-      if (_armed && _phase == _Phase.upload && next > (prev ?? 0)) {
-        Future<void>.delayed(const Duration(milliseconds: 950), () {
-          if (mounted && _phase == _Phase.upload) _goToPrompt();
-        });
-      }
-    });
-
     return Theme(
       data: _darkTheme,
       child: Builder(
@@ -161,13 +143,14 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                 padding: const EdgeInsets.fromLTRB(24, 8, 24, 18),
                 child: Column(
                   children: [
-                    // Header: a single quiet text link — back to sign-in on
-                    // the upload beat, one phase back thereafter. No progress
-                    // tracker; the flow reveals itself as you move.
+                    // Header: a single bare back arrow — no circle, no chip.
+                    // It signs out to the sign-in screen on the upload beat and
+                    // steps one phase back thereafter. No progress tracker; the
+                    // flow reveals itself as you move.
                     Align(
                       alignment: Alignment.centerLeft,
-                      child: _BackLink(
-                        label: _phase == _Phase.upload
+                      child: _BackButton(
+                        semanticLabel: _phase == _Phase.upload
                             ? 'Back to sign in'
                             : 'Back',
                         onTap: _phase == _Phase.upload
@@ -235,20 +218,32 @@ class _UploadPhase extends ConsumerWidget {
     final hasResume = state.resumes.isNotEmpty;
     final busy = uploading.isNotEmpty;
 
-    final progress = busy ? uploading.first.progress / 100.0 : 0.0;
+    final percent = busy ? uploading.first.progress : 0;
+    final progress = percent / 100.0;
     // Show a sliver of water the instant upload starts; hold full once the file
     // has landed.
     final fill = busy ? math.max(progress, 0.06) : (hasResume ? 1.0 : 0.0);
     final filled = !busy && hasResume;
 
-    // One adaptive line under the vessel — the only words on this beat.
+    // One adaptive line under the vessel — the only words on this beat. While
+    // uploading it's the live percentage, ticking up with the water.
     final label = hasError
         ? "That file didn't work — try again"
         : busy
-        ? 'Uploading…'
+        ? '$percent%'
         : filled
         ? 'Tap to continue'
         : 'Upload Your Resume';
+
+    // Key the line on its *state*, not its text, so the percentage can tick up
+    // in place without the AnimatedSwitcher cross-fading on every increment.
+    final labelKey = hasError
+        ? 'error'
+        : busy
+        ? 'busy'
+        : filled
+        ? 'filled'
+        : 'empty';
 
     final onTap = busy ? null : (hasResume ? onContinue : onPick);
 
@@ -283,7 +278,7 @@ class _UploadPhase extends ConsumerWidget {
           duration: const Duration(milliseconds: 240),
           child: Text(
             label,
-            key: ValueKey(label),
+            key: ValueKey(labelKey),
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 22,
@@ -294,11 +289,13 @@ class _UploadPhase extends ConsumerWidget {
             ),
           ),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 20),
         if (hasResume && !busy)
-          _FileChip(
+          _UploadedResume(
             resume: state.resumes.first,
-            ready: true,
+            onDelete: () => ref
+                .read(resumeProvider.notifier)
+                .deleteResume(state.resumes.first.id),
           ).animate().fadeIn(duration: 320.ms).moveY(begin: 6, end: 0),
         const Spacer(flex: 7),
         if (hasResume && !busy)
@@ -436,9 +433,8 @@ class _PromptPhaseState extends ConsumerState<_PromptPhase> {
               children: [
                 const SizedBox(height: 20),
                 if (resume != null)
-                  _FileChip(
+                  _UploadedResume(
                     resume: resume,
-                    ready: true,
                   ).animate().fadeIn(duration: 380.ms).moveY(begin: 6, end: 0),
                 const SizedBox(height: 30),
                 Text.rich(
@@ -599,42 +595,34 @@ class _SendButton extends StatelessWidget {
   }
 }
 
-/// Compact pill showing the uploaded file — a PDF glyph, name, size, and a lime
-/// "ready" check. Shared by the upload and prompt phases.
-class _FileChip extends StatelessWidget {
-  const _FileChip({required this.resume, this.ready = false});
+/// The just-uploaded file, shown stripped right back — a cute PDF glyph, the
+/// file name + size, and (when [onDelete] is given) a quiet trash affordance to
+/// remove it. No card, no border: just the file, in keeping with the minimalist
+/// flow. Shared by the upload and prompt phases.
+class _UploadedResume extends StatelessWidget {
+  const _UploadedResume({required this.resume, this.onDelete});
 
   final ResumeFile resume;
-  final bool ready;
+
+  /// When non-null, a trash icon sits beside the file and calls this to remove
+  /// it. Omitted on the prompt phase, where the file is just being confirmed.
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 320),
-      padding: const EdgeInsets.fromLTRB(10, 8, 14, 8),
-      decoration: BoxDecoration(
-        color: brand.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: brand.border),
-      ),
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 340),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: brand.accentMuted,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              Icons.description_rounded,
-              size: 18,
-              color: brand.accent,
-            ),
+          SvgPicture.asset(
+            AppAssets.pdfSvg,
+            width: 30,
+            height: 36,
+            semanticsLabel: 'PDF',
           ),
-          const SizedBox(width: 11),
+          const SizedBox(width: 12),
           Flexible(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -645,17 +633,17 @@ class _FileChip extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 13.5,
+                    fontSize: 14.5,
                     fontWeight: FontWeight.w700,
-                    color: brand.ink,
-                    letterSpacing: -0.1,
+                    color: _softInk,
+                    letterSpacing: -0.2,
                   ),
                 ),
-                const SizedBox(height: 1),
+                const SizedBox(height: 2),
                 Text(
                   _formatBytes(resume.size),
                   style: TextStyle(
-                    fontSize: 11.5,
+                    fontSize: 12,
                     fontWeight: FontWeight.w500,
                     color: brand.textMuted,
                   ),
@@ -663,16 +651,22 @@ class _FileChip extends StatelessWidget {
               ],
             ),
           ),
-          if (ready) ...[
-            const SizedBox(width: 12),
-            Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                color: brand.accent,
-                shape: BoxShape.circle,
+          if (onDelete != null) ...[
+            const SizedBox(width: 6),
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onDelete,
+                borderRadius: BorderRadius.circular(10),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Icon(
+                    Icons.delete_outline_rounded,
+                    size: 20,
+                    color: brand.textMuted,
+                  ),
+                ),
               ),
-              child: Icon(Icons.check_rounded, size: 14, color: brand.onAccent),
             ),
           ],
         ],
@@ -733,13 +727,6 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
   /// Concrete facts pulled from the parsed resume, revealed as chips under the
   /// reading step so the user sees the agent *actually read their file*.
   List<String> _found = const [];
-
-  /// Free-text context the user adds mid-setup; folded into the live brief.
-  final List<String> _addedContext = [];
-
-  /// True once the first brief has kicked off — gates whether added context
-  /// re-steers an already-running search.
-  bool _briefStarted = false;
 
   /// Cycles the active step's subtitle through human-readable lines while an
   /// opaque async call is in flight, so a wait reads as live reasoning instead
@@ -825,47 +812,25 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     _thinking = null;
   }
 
-  /// The context the agent is working from — the goal typed on the prompt
-  /// phase plus anything added on this screen. Drives the chips shown under the
-  /// "Reading your context" step.
+  /// The context the agent is working from — the goal the user typed on the
+  /// prompt phase. Drives the chip shown under the "Reading your context" step.
   List<String> get _contextItems {
     final goal = widget.instruction.trim();
-    return [if (goal.isNotEmpty) goal, ..._addedContext];
+    return [if (goal.isNotEmpty) goal];
   }
 
   bool get _hasContext => _contextItems.isNotEmpty;
 
-  /// Folds the typed goal, any added context, and the inferred role into one
-  /// brief query. Returns null when there's nothing to search on.
+  /// Folds the typed goal and the inferred role into one brief query. Returns
+  /// null when there's nothing to search on.
   String? _query() {
     final instruction = widget.instruction.trim();
     final parts = <String>[
       if (instruction.isNotEmpty) instruction,
-      ..._addedContext,
       if (instruction.isEmpty && (_inferredRole?.isNotEmpty ?? false))
         _inferredRole!,
     ];
     return parts.isEmpty ? null : parts.join('. ');
-  }
-
-  /// Captures context the user adds while setup runs: it surfaces under the
-  /// "Reading your context" step and, if the search already kicked off,
-  /// re-steers it with the fuller picture.
-  void _addContext(String text) {
-    final t = text.trim();
-    if (t.isEmpty || !mounted) return;
-    setState(() {
-      _addedContext.add(t);
-      // Reflect the new context on its step, even if that step already settled.
-      if (_statuses[_contextStep] != _StepStatus.pending) {
-        _subtitles[_contextStep] = "Got your context — I'll factor it in.";
-      }
-    });
-    if (_briefStarted) {
-      unawaited(
-        ref.read(passiveAgentProvider.notifier).runBrief(query: _query()),
-      );
-    }
   }
 
   Future<void> _runSetup() async {
@@ -909,9 +874,9 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
       return;
     }
 
-    // Step 2 — read the user's own context (the goal they typed, plus anything
-    // added on this screen). It's already in hand, so this beat is short; the
-    // payload is rendered as chips under the step so the read is *visible*.
+    // Step 2 — read the user's own context (the goal they typed on the prompt
+    // beat). It's already in hand, so this step is short; the goal is rendered
+    // as a chip under the step so the read is *visible*.
     _set(_contextStep, _StepStatus.active, detail: 'Taking in what you told me…');
     await Future<void>.delayed(const Duration(milliseconds: 750));
     _set(
@@ -919,7 +884,7 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
       _StepStatus.done,
       detail: _hasContext
           ? "Got your context — I'll factor it in."
-          : 'No goal yet — add context below to steer me.',
+          : "No goal set — I'll plan from your resume.",
     );
 
     // Step 3 — infer role + role-fit in one headless agent call. This is the
@@ -974,7 +939,6 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
           ? 'On it — searching live roles…'
           : 'Searching live roles for you…',
     );
-    _briefStarted = true;
     unawaited(
       ref.read(passiveAgentProvider.notifier).runBrief(query: _query()),
     );
@@ -1066,29 +1030,31 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
                 ),
                 const SizedBox(height: 34),
                 // The process timeline — a node per step joined by a connector
-                // that flows lime as work passes through it.
+                // that flows lime as work passes through it. Each row reveals in
+                // a gentle top-down stagger as the page enters; flutter_animate
+                // plays this once per State, so live status updates that rebuild
+                // these rows don't replay the entrance.
                 for (var i = 0; i < _labels.length; i++)
                   _ProcessStep(
-                    label:
-                        i == 3 &&
-                            _statuses[3] == _StepStatus.done &&
-                            _inferredRole != null
-                        ? 'Target role · $_inferredRole'
-                        : _labels[i],
-                    status: _statuses[i],
-                    subtitle: _subtitles[i],
-                    isLast: i == _labels.length - 1,
-                    child: _stepChild(i),
-                  ),
+                        label:
+                            i == 3 &&
+                                _statuses[3] == _StepStatus.done &&
+                                _inferredRole != null
+                            ? 'Target role · $_inferredRole'
+                            : _labels[i],
+                        status: _statuses[i],
+                        subtitle: _subtitles[i],
+                        isLast: i == _labels.length - 1,
+                        child: _stepChild(i),
+                      )
+                      .animate(delay: (i * 80).ms)
+                      .fadeIn(duration: 360.ms)
+                      .moveY(begin: 8, end: 0, curve: Curves.easeOutCubic),
+                const SizedBox(height: 8),
               ],
             ),
           ),
         ),
-        const SizedBox(height: 8),
-        // Let the user feed the agent more to go on while it works; what they
-        // add surfaces under the "Reading your context" step above.
-        _AddContext(onSubmit: _addContext),
-        const SizedBox(height: 4),
       ],
     );
   }
@@ -1538,149 +1504,8 @@ class _ConnectorState extends State<_Connector>
   }
 }
 
-// ---------------------------------------------------------------------------
-// Add-context affordance (setup phase)
-// ---------------------------------------------------------------------------
-
-/// A collapsed "Add context" pill that expands into a composer, letting the
-/// user feed the agent more to go on while setup runs. What's submitted surfaces
-/// up in the timeline under the "Reading your context" step, so this control is
-/// input-only.
-class _AddContext extends StatefulWidget {
-  const _AddContext({required this.onSubmit});
-
-  final ValueChanged<String> onSubmit;
-
-  @override
-  State<_AddContext> createState() => _AddContextState();
-}
-
-class _AddContextState extends State<_AddContext> {
-  final TextEditingController _controller = TextEditingController();
-  final FocusNode _focus = FocusNode();
-  bool _open = false;
-
-  void _toggle() {
-    setState(() => _open = !_open);
-    if (_open) {
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _focus.requestFocus(),
-      );
-    }
-  }
-
-  void _submit() {
-    final t = _controller.text.trim();
-    if (t.isEmpty) return;
-    widget.onSubmit(t);
-    _controller.clear();
-    _focus.unfocus();
-    setState(() => _open = false);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    _focus.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 220),
-      child: _open ? _composer(brand) : _addButton(brand),
-    );
-  }
-
-  Widget _addButton(BrandTheme brand) {
-    return Align(
-      key: const ValueKey('add-btn'),
-      alignment: Alignment.centerLeft,
-      child: Material(
-        color: brand.surface,
-        shape: StadiumBorder(side: BorderSide(color: brand.border)),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: _toggle,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.add_rounded, size: 18, color: brand.accent),
-                const SizedBox(width: 8),
-                Text(
-                  'Add context',
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                    color: brand.ink,
-                    letterSpacing: -0.1,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _composer(BrandTheme brand) {
-    return Container(
-      key: const ValueKey('add-composer'),
-      padding: const EdgeInsets.fromLTRB(16, 4, 6, 4),
-      decoration: BoxDecoration(
-        color: brand.surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: brand.accent.withValues(alpha: 0.6),
-          width: 1.4,
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _controller,
-              focusNode: _focus,
-              minLines: 1,
-              maxLines: 3,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _submit(),
-              cursorColor: brand.accent,
-              style: TextStyle(
-                fontSize: 14.5,
-                height: 1.4,
-                fontWeight: FontWeight.w500,
-                color: brand.ink,
-              ),
-              decoration: InputDecoration(
-                isDense: true,
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(vertical: 11),
-                hintText: 'e.g. prefer remote, \$120k+, no agencies',
-                hintStyle: TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w500,
-                  color: brand.textSoft,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 6),
-          _SendButton(onTap: _submit),
-        ],
-      ),
-    );
-  }
-}
-
-/// A user-added context line — lime-tinted to distinguish it from the read
-/// facts surfaced by the agent.
+/// The user's typed goal — lime-tinted to distinguish it from the read facts
+/// the agent surfaced from the resume.
 class _ContextChip extends StatelessWidget {
   const _ContextChip({required this.label});
 
@@ -1722,35 +1547,33 @@ class _ContextChip extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Header back link
+// Header back button
 // ---------------------------------------------------------------------------
 
-/// The header's lone affordance: a quiet text link — "Back to sign in" on the
-/// upload beat, "Back" thereafter. Replaces the old frosted icon button; no
-/// glyph, just words, in keeping with the stripped-back flow.
-class _BackLink extends StatelessWidget {
-  const _BackLink({required this.label, required this.onTap});
+/// The header's lone affordance: a bare back arrow — no circle, no frosted
+/// chip. The caller wires the action per phase (sign out on the upload beat,
+/// one phase back thereafter); [semanticLabel] keeps that meaning for screen
+/// readers even though the glyph stays the same.
+class _BackButton extends StatelessWidget {
+  const _BackButton({required this.semanticLabel, required this.onTap});
 
-  final String label;
+  final String semanticLabel;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final brand = context.brand;
-    return TextButton(
-      onPressed: onTap,
-      style: TextButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-        minimumSize: Size.zero,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w700,
-          color: brand.textMuted,
-          letterSpacing: -0.1,
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: const Padding(
+            padding: EdgeInsets.all(6),
+            child: Icon(Icons.arrow_back_rounded, size: 24, color: _softInk),
+          ),
         ),
       ),
     );
