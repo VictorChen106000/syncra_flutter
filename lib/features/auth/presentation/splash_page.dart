@@ -1,7 +1,6 @@
-import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_strings.dart';
@@ -18,187 +17,198 @@ class SplashPage extends StatefulWidget {
 }
 
 class _SplashPageState extends State<SplashPage>
-    with SingleTickerProviderStateMixin {
-  // Drives a continuous, looping rotation + breathing pulse for the mark —
-  // the signature Claude "thinking" motion. Paused when the user has asked
-  // the OS to reduce motion.
-  late final AnimationController _loop;
+    with TickerProviderStateMixin {
+  late final AnimationController _c; // assemble + exit reveal (forward once)
+  late final AnimationController _shimmer; // looping green shimmer sweep
 
   @override
   void initState() {
     super.initState();
-    _loop = AnimationController(
+    // `disableAnimations` isn't reliably available until didChangeDependencies,
+    // so the durations are set there once we can read it.
+    _c = AnimationController(vsync: this);
+    _shimmer = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 8),
+      duration: const Duration(milliseconds: 1500),
     );
-
-    Future.delayed(const Duration(milliseconds: 2450), () {
-      if (mounted) context.go(widget.target);
+    _c.addStatusListener((status) {
+      // Navigate the instant the zoom-through reveal finishes, so the next page
+      // fades up out of the void underneath it.
+      if (status == AnimationStatus.completed && mounted) {
+        context.go(widget.target);
+      }
     });
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Honour the OS "reduce motion" accessibility setting: hold the mark in a
-    // calm static pose instead of looping. (HIGH-severity a11y rule.)
-    final reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    if (reduceMotion) {
-      _loop
-        ..stop()
-        ..value = 0;
-    } else if (!_loop.isAnimating) {
-      _loop.repeat();
-    }
+    if (_c.duration != null) return; // already started
+    final reduce = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    _c
+      ..duration = reduce
+          ? const Duration(milliseconds: 700)
+          : const Duration(milliseconds: 1900)
+      ..forward();
+    if (!reduce) _shimmer.repeat();
   }
 
   @override
   void dispose() {
-    _loop.dispose();
+    _c.dispose();
+    _shimmer.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-
-    Widget mark = RepaintBoundary(
-      child: SizedBox(
-        width: 168,
-        height: 168,
-        child: AnimatedBuilder(
-          animation: _loop,
-          builder: (context, _) {
-            final t = _loop.value;
-            // Slow, calm rotation across the whole loop.
-            final rotation = t * 2 * math.pi;
-            // ~3 gentle breaths per loop (period ~2.6s).
-            final breath = math.sin(t * 2 * math.pi * 3);
-            final scale = 1 + 0.045 * breath;
-            final glow = 0.55 + 0.45 * (0.5 + 0.5 * breath);
-
-            return Stack(
-              alignment: Alignment.center,
-              children: [
-                // Soft radial glow that pulses with the breath.
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [
-                        brand.accent.withValues(alpha: 0.32 * glow),
-                        brand.accent.withValues(alpha: 0.0),
-                      ],
-                      stops: const [0.0, 0.72],
-                    ),
-                  ),
-                  child: const SizedBox(width: 168, height: 168),
-                ),
-                // The rotating, breathing Claude-style sunburst.
-                Transform.rotate(
-                  angle: rotation,
-                  child: Transform.scale(
-                    scale: scale,
-                    child: CustomPaint(
-                      size: const Size(108, 108),
-                      painter: _SunburstPainter(color: brand.accent),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-
-    Widget wordmark = Text(
-      AppStrings.appName,
-      style: TextStyle(
-        color: brand.ink,
-        fontSize: 22,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 4,
-      ),
-    );
-
-    // Entrance flourishes only when motion is allowed; otherwise a plain fade
-    // keeps the screen accessible without jarring transforms.
-    if (!reduceMotion) {
-      mark = mark
-          .animate()
-          .fadeIn(duration: 700.ms, curve: Curves.easeOut)
-          .scale(
-            begin: const Offset(0.6, 0.6),
-            end: const Offset(1, 1),
-            duration: 800.ms,
-            curve: Curves.easeOutBack,
-          );
-      wordmark = wordmark
-          .animate(delay: 350.ms)
-          .fadeIn(duration: 700.ms, curve: Curves.easeOut)
-          .slideY(begin: 0.4, end: 0, curve: Curves.easeOut);
-    } else {
-      mark = mark.animate().fadeIn(duration: 400.ms);
-      wordmark = wordmark.animate(delay: 150.ms).fadeIn(duration: 400.ms);
-    }
+    final reduce = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
 
     return Scaffold(
       backgroundColor: brand.bg,
-      body: Center(
-        child: Semantics(
-          label: '${AppStrings.appName}, loading',
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              mark,
-              const SizedBox(height: 28),
-              wordmark,
-            ],
-          ),
+      body: Semantics(
+        label: '${AppStrings.appName}, loading',
+        child: AnimatedBuilder(
+          animation: Listenable.merge([_c, _shimmer]),
+          builder: (context, _) {
+            final t = _c.value;
+
+            // The wordmark gently scales up and fades on the last beat,
+            // revealing the next screen underneath it.
+            final reveal = reduce
+                ? 0.0
+                : Curves.easeIn.transform(((t - 0.82) / 0.18).clamp(0.0, 1.0));
+
+            return Opacity(
+              opacity: 1.0 - reveal,
+              child: Center(
+                child: Transform.scale(
+                  scale: 1.0 + reveal * 0.14,
+                  child: _Wordmark(
+                    t: t,
+                    shimmer: _shimmer.value,
+                    brand: brand,
+                    reduceMotion: reduce,
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
   }
 }
 
-/// Draws the Claude/Anthropic-style radiating burst: rounded "ray" spokes of
-/// gently varying length fanning out from a common center.
-class _SunburstPainter extends CustomPainter {
-  _SunburstPainter({required this.color});
+/// The "Syncra" wordmark: letters fly up from a blur in a left-to-right
+/// stagger, while a green shimmer keeps sweeping across the type.
+class _Wordmark extends StatelessWidget {
+  const _Wordmark({
+    required this.t,
+    required this.shimmer,
+    required this.brand,
+    required this.reduceMotion,
+  });
 
-  final Color color;
-
-  // Relative spoke lengths (0–1) — the slight irregularity gives the mark its
-  // organic, hand-drawn burst quality rather than a uniform asterisk.
-  static const List<double> _lengths = [
-    1.0, 0.74, 0.92, 0.68, 0.86, 0.74,
-    1.0, 0.74, 0.86, 0.68, 0.92, 0.74,
-  ];
+  final double t;
+  final double shimmer;
+  final BrandTheme brand;
+  final bool reduceMotion;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final center = size.center(Offset.zero);
-    final maxR = size.width / 2;
-    final innerR = maxR * 0.16;
+  Widget build(BuildContext context) {
+    final letters = AppStrings.appName.split('');
+    final style = TextStyle(
+      color: brand.ink,
+      fontSize: 72,
+      fontWeight: FontWeight.w800,
+      letterSpacing: -2,
+      height: 1,
+    );
 
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeWidth = maxR * 0.155;
-
-    final count = _lengths.length;
-    for (var i = 0; i < count; i++) {
-      final angle = (i / count) * 2 * math.pi - math.pi / 2;
-      final dir = Offset(math.cos(angle), math.sin(angle));
-      final outerR = innerR + (maxR - innerR) * _lengths[i];
-      canvas.drawLine(center + dir * innerR, center + dir * outerR, paint);
+    if (reduceMotion) {
+      final p = Curves.easeOut.transform((t / 0.7).clamp(0.0, 1.0));
+      return Opacity(opacity: p, child: Text(AppStrings.appName, style: style));
     }
+
+    Widget row = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < letters.length; i++)
+          _Letter(
+            char: letters[i],
+            style: style,
+            progress: _letterProgress(i, letters.length),
+          ),
+      ],
+    );
+
+    // A band of green light continuously sweeping across the wordmark.
+    return ShaderMask(
+      blendMode: BlendMode.srcATop,
+      shaderCallback: (bounds) =>
+          _shimmerShader(bounds, shimmer, brand.ink, brand.accentBright),
+      child: row,
+    );
   }
 
+  double _letterProgress(int i, int n) {
+    final start = 0.12 + (i / (n - 1)) * 0.30;
+    final raw = ((t - start) / 0.26).clamp(0.0, 1.0);
+    return Curves.easeOutCubic.transform(raw);
+  }
+}
+
+/// A single glyph that fades and slides up out of a blur.
+class _Letter extends StatelessWidget {
+  const _Letter({
+    required this.char,
+    required this.style,
+    required this.progress,
+  });
+
+  final String char;
+  final TextStyle style;
+  final double progress;
+
   @override
-  bool shouldRepaint(_SunburstPainter oldDelegate) =>
-      oldDelegate.color != color;
+  Widget build(BuildContext context) {
+    final blur = (1 - progress) * 7;
+    Widget glyph = Text(char, style: style);
+    if (blur > 0.05) {
+      glyph = ImageFiltered(
+        imageFilter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        child: glyph,
+      );
+    }
+    return Opacity(
+      opacity: progress,
+      child: Transform.translate(
+        offset: Offset(0, (1 - progress) * 18),
+        child: glyph,
+      ),
+    );
+  }
+}
+
+/// The moving green highlight band that brightens the wordmark as it passes.
+Shader _shimmerShader(Rect bounds, double p, Color base, Color glint) {
+  final pos = -0.3 + 1.6 * p; // band centre travels left → right, then loops
+  const half = 0.14;
+  final raw = <double>[0.0, pos - half, pos, pos + half, 1.0];
+  final stops = <double>[];
+  var prev = double.negativeInfinity;
+  for (final s in raw) {
+    var v = s;
+    if (v <= prev) v = prev + 1e-3; // keep stops strictly ascending
+    stops.add(v);
+    prev = v;
+  }
+  return LinearGradient(
+    begin: Alignment.centerLeft,
+    end: Alignment.centerRight,
+    colors: [base, base, glint, base, base],
+    stops: stops,
+  ).createShader(bounds);
 }

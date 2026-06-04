@@ -10,9 +10,9 @@ import '../../../core/dev/dev_flags_notifier.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/brand_theme.dart';
+import '../../../core/utils/motion.dart';
 import '../../../data/firestore/jobs_repository.dart';
 import '../../../data/firestore/resumes_repository.dart';
-import '../../../core/utils/motion.dart';
 import '../../../shared/widgets/water_fill_circle.dart';
 import '../../agent/state/passive_agent_notifier.dart';
 import '../../agent_chat/tools/anthropic_tool_calls.dart';
@@ -82,13 +82,6 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     });
   }
 
-  /// Jump back to an already-visited phase from the top progress bar. Only
-  /// backward moves are allowed — you can't skip ahead of the live flow.
-  void _goToPhase(int index) {
-    if (index >= _phase.index) return;
-    setState(() => _phase = _Phase.values[index]);
-  }
-
   void _send(String instruction) {
     _instruction = instruction.trim();
     setState(() => _phase = _Phase.setup);
@@ -119,9 +112,9 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: brand.surface,
-        title: const Text('Back to login?'),
+        title: const Text('Back to sign in?'),
         content: const Text(
-          "You'll be signed out and returned to the login screen. "
+          "You'll be signed out and returned to the sign-in screen. "
           "Your account stays — you can sign back in any time.",
         ),
         actions: [
@@ -168,31 +161,21 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                 padding: const EdgeInsets.fromLTRB(24, 8, 24, 18),
                 child: Column(
                   children: [
-                    // Header: a back/sign-out hatch beside the animated
-                    // three-phase onboarding tracker.
-                    Row(
-                      children: [
-                        _FrostedIconBtn(
-                          icon: _phase == _Phase.upload
-                              ? Icons.logout_rounded
-                              : Icons.arrow_back_rounded,
-                          tooltip: _phase == _Phase.upload
-                              ? 'Back to login'
-                              : 'Back',
-                          onTap: _phase == _Phase.upload
-                              ? _confirmBackToLogin
-                              : _goBack,
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: _OnboardingProgress(
-                            phaseIndex: _phase.index,
-                            onTapIndex: _goToPhase,
-                          ),
-                        ),
-                      ],
+                    // Header: a single quiet text link — back to sign-in on
+                    // the upload beat, one phase back thereafter. No progress
+                    // tracker; the flow reveals itself as you move.
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: _BackLink(
+                        label: _phase == _Phase.upload
+                            ? 'Back to sign in'
+                            : 'Back',
+                        onTap: _phase == _Phase.upload
+                            ? _confirmBackToLogin
+                            : _goBack,
+                      ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 12),
                     Expanded(
                       child: AnimatedSwitcher(
                         duration: const Duration(milliseconds: 360),
@@ -204,7 +187,6 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                             key: const ValueKey('upload'),
                             onPick: _pickResume,
                             onContinue: _goToPrompt,
-                            onSkip: _skip,
                           ),
                           _Phase.prompt => _PromptPhase(
                             key: const ValueKey('prompt'),
@@ -239,12 +221,10 @@ class _UploadPhase extends ConsumerWidget {
     super.key,
     required this.onPick,
     required this.onContinue,
-    required this.onSkip,
   });
 
   final VoidCallback onPick;
   final VoidCallback onContinue;
-  final VoidCallback onSkip;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -261,47 +241,20 @@ class _UploadPhase extends ConsumerWidget {
     final fill = busy ? math.max(progress, 0.06) : (hasResume ? 1.0 : 0.0);
     final filled = !busy && hasResume;
 
-    final caption = hasError
-        ? 'That file didn\'t work — try another.'
+    // One adaptive line under the vessel — the only words on this beat.
+    final label = hasError
+        ? "That file didn't work — try again"
         : busy
-        ? 'Uploading your resume…'
-        : hasResume
-        ? 'Got it. Tap to continue.'
-        : 'Drop in a PDF, DOC or DOCX — up to 5MB.';
+        ? 'Uploading…'
+        : filled
+        ? 'Tap to continue'
+        : 'Upload Your Resume';
 
     final onTap = busy ? null : (hasResume ? onContinue : onPick);
 
     return Column(
       children: [
-        const SizedBox(height: 18),
-        Text(
-          'Upload Your Resume',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 32,
-            fontWeight: FontWeight.w800,
-            color: _softInk,
-            letterSpacing: -0.9,
-            height: 1.1,
-          ),
-        ).animate().fadeIn(duration: 460.ms).moveY(begin: 8, end: 0),
-        const SizedBox(height: 10),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 240),
-          child: Text(
-            caption,
-            key: ValueKey(caption),
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 14.5,
-              fontWeight: FontWeight.w500,
-              color: hasError ? brand.warning : brand.textMuted,
-              height: 1.5,
-              letterSpacing: -0.1,
-            ),
-          ),
-        ).animate(delay: 120.ms).fadeIn(),
-        const Spacer(flex: 5),
+        const Spacer(flex: 6),
         GestureDetector(
               onTap: onTap,
               behavior: HitTestBehavior.opaque,
@@ -322,10 +275,26 @@ class _UploadPhase extends ConsumerWidget {
                 ),
               ),
             )
-            .animate(delay: 160.ms)
+            .animate()
             .fadeIn(duration: 460.ms)
             .scale(begin: const Offset(0.9, 0.9), end: const Offset(1, 1)),
-        const SizedBox(height: 22),
+        const SizedBox(height: 28),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 240),
+          child: Text(
+            label,
+            key: ValueKey(label),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: hasError ? brand.warning : _softInk,
+              letterSpacing: -0.5,
+              height: 1.15,
+            ),
+          ),
+        ),
+        const SizedBox(height: 18),
         if (hasResume && !busy)
           _FileChip(
             resume: state.resumes.first,
@@ -344,25 +313,15 @@ class _UploadPhase extends ConsumerWidget {
               ),
             ),
           ),
-        TextButton(
-          onPressed: onSkip,
-          child: Text(
-            'Skip for now',
-            style: TextStyle(
-              color: brand.textSoft,
-              fontWeight: FontWeight.w700,
-              fontSize: 13.5,
-            ),
-          ),
-        ),
         const SizedBox(height: 2),
       ],
     );
   }
 }
 
-/// The content layered over the water vessel: an invitation when empty, the
-/// upload glyph fading out as it fills, and a check once it's full.
+/// The content layered over the water vessel: a big up arrow when empty,
+/// fading out as the water fills, and a check once it's full. No words — the
+/// arrow alone says "tap to upload".
 class _CircleContent extends StatelessWidget {
   const _CircleContent({
     required this.empty,
@@ -397,30 +356,19 @@ class _CircleContent extends StatelessWidget {
         'filled' => Icon(
           Icons.check_rounded,
           key: const ValueKey('filled'),
-          size: 56,
+          size: 78,
           color: brand.onAccent,
         ),
         'busy' => Opacity(
           key: const ValueKey('busy'),
           opacity: (1 - fill).clamp(0.0, 1.0),
-          child: Icon(Icons.arrow_upward_rounded, size: 46, color: _softInk),
+          child: Icon(Icons.arrow_upward_rounded, size: 96, color: _softInk),
         ),
-        _ => Column(
+        _ => Icon(
+          Icons.arrow_upward_rounded,
           key: const ValueKey('empty'),
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.file_upload_outlined, size: 46, color: brand.accent),
-            const SizedBox(height: 10),
-            Text(
-              'Tap to upload',
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: brand.textMuted,
-                letterSpacing: 0.1,
-              ),
-            ),
-          ],
+          size: 96,
+          color: brand.accent,
         ),
       },
     );
@@ -760,20 +708,25 @@ class _SetupPhase extends ConsumerStatefulWidget {
 class _SetupPhaseState extends ConsumerState<_SetupPhase> {
   static const _labels = [
     'Reading your resume',
+    'Reading your context',
     'Mapping your strengths',
     'Setting your target role',
     'Finding roles for you',
   ];
 
+  /// Index of the "Reading your context" step — kept named so the timeline and
+  /// the run sequence stay in lockstep when steps are reordered.
+  static const _contextStep = 1;
+
   final List<_StepStatus> _statuses = List<_StepStatus>.filled(
-    4,
+    5,
     _StepStatus.pending,
   );
 
   /// Live caption per step. The active step narrates what the agent is doing
   /// right now; finished steps keep a short result line. Drives the per-row
   /// subtitle in the process timeline.
-  final List<String?> _subtitles = List<String?>.filled(4, null);
+  final List<String?> _subtitles = List<String?>.filled(5, null);
 
   String? _inferredRole;
 
@@ -872,6 +825,16 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     _thinking = null;
   }
 
+  /// The context the agent is working from — the goal typed on the prompt
+  /// phase plus anything added on this screen. Drives the chips shown under the
+  /// "Reading your context" step.
+  List<String> get _contextItems {
+    final goal = widget.instruction.trim();
+    return [if (goal.isNotEmpty) goal, ..._addedContext];
+  }
+
+  bool get _hasContext => _contextItems.isNotEmpty;
+
   /// Folds the typed goal, any added context, and the inferred role into one
   /// brief query. Returns null when there's nothing to search on.
   String? _query() {
@@ -885,12 +848,19 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     return parts.isEmpty ? null : parts.join('. ');
   }
 
-  /// Captures context the user adds while setup runs. If the search already
-  /// kicked off, re-steer it with the fuller picture.
+  /// Captures context the user adds while setup runs: it surfaces under the
+  /// "Reading your context" step and, if the search already kicked off,
+  /// re-steers it with the fuller picture.
   void _addContext(String text) {
     final t = text.trim();
     if (t.isEmpty || !mounted) return;
-    setState(() => _addedContext.add(t));
+    setState(() {
+      _addedContext.add(t);
+      // Reflect the new context on its step, even if that step already settled.
+      if (_statuses[_contextStep] != _StepStatus.pending) {
+        _subtitles[_contextStep] = "Got your context — I'll factor it in.";
+      }
+    });
     if (_briefStarted) {
       unawaited(
         ref.read(passiveAgentProvider.notifier).runBrief(query: _query()),
@@ -939,10 +909,23 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
       return;
     }
 
-    // Step 2 — infer role + role-fit in one headless agent call. This is the
+    // Step 2 — read the user's own context (the goal they typed, plus anything
+    // added on this screen). It's already in hand, so this beat is short; the
+    // payload is rendered as chips under the step so the read is *visible*.
+    _set(_contextStep, _StepStatus.active, detail: 'Taking in what you told me…');
+    await Future<void>.delayed(const Duration(milliseconds: 750));
+    _set(
+      _contextStep,
+      _StepStatus.done,
+      detail: _hasContext
+          ? "Got your context — I'll factor it in."
+          : 'No goal yet — add context below to steer me.',
+    );
+
+    // Step 3 — infer role + role-fit in one headless agent call. This is the
     // longest, most opaque step, so narrate it with rotating captions drawn
     // from the user's own resume rather than a single frozen line.
-    _startThinking(1, [
+    _startThinking(2, [
       'Mapping your strengths…',
       if (parsed.experience.isNotEmpty)
         'Weighing ${parsed.experience.length} '
@@ -963,29 +946,29 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
       if (fit != null) {
         await ref.read(userProfileProvider.notifier).setResumeFit(fit);
       }
-      _set(1, _StepStatus.done);
+      _set(2, _StepStatus.done);
     } catch (e) {
       _stopThinking();
-      _set(1, _StepStatus.failed);
+      _set(2, _StepStatus.failed);
     }
 
-    // Step 3 — persist the target role (without flipping the onboarding gate
+    // Step 4 — persist the target role (without flipping the onboarding gate
     // yet, so the router keeps us on this screen while the work finishes).
-    _set(2, _StepStatus.active, detail: 'Setting your target role…');
+    _set(3, _StepStatus.active, detail: 'Setting your target role…');
     if (role.isNotEmpty) {
       _inferredRole = role;
       await ref.read(userProfileProvider.notifier).setRole(role);
-      _set(2, _StepStatus.done, detail: 'Target role: $role');
+      _set(3, _StepStatus.done, detail: 'Target role: $role');
     } else {
-      _set(2, _StepStatus.done, detail: 'You can set a target role anytime.');
+      _set(3, _StepStatus.done, detail: 'You can set a target role anytime.');
     }
 
-    // Step 4 — kick off the first brief. The user's typed instruction steers
+    // Step 5 — kick off the first brief. The user's typed instruction steers
     // the search when given; otherwise we fall back to the inferred role. It
     // runs in the background; the dashboard picks up the live state from here.
     final instruction = widget.instruction.trim();
     _set(
-      3,
+      4,
       _StepStatus.active,
       detail: instruction.isNotEmpty
           ? 'On it — searching live roles…'
@@ -998,7 +981,7 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     // Brief stays running in the background — give it a beat so the handoff to
     // the dashboard reads as continuous motion, not a hard cut.
     await Future<void>.delayed(const Duration(milliseconds: 900));
-    _set(3, _StepStatus.done, detail: 'Your first brief is on the way.');
+    _set(4, _StepStatus.done, detail: 'Your first brief is on the way.');
     await _finish(roleSet: role.isNotEmpty);
   }
 
@@ -1087,48 +1070,65 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
                 for (var i = 0; i < _labels.length; i++)
                   _ProcessStep(
                     label:
-                        i == 2 &&
-                            _statuses[2] == _StepStatus.done &&
+                        i == 3 &&
+                            _statuses[3] == _StepStatus.done &&
                             _inferredRole != null
                         ? 'Target role · $_inferredRole'
                         : _labels[i],
                     status: _statuses[i],
                     subtitle: _subtitles[i],
                     isLast: i == _labels.length - 1,
-                    child: i == 0 && _found.isNotEmpty ? _foundWrap() : null,
+                    child: _stepChild(i),
                   ),
               ],
             ),
           ),
         ),
         const SizedBox(height: 8),
-        // Let the user feed the agent more to go on while it works.
-        _AddContext(onSubmit: _addContext, added: _addedContext),
+        // Let the user feed the agent more to go on while it works; what they
+        // add surfaces under the "Reading your context" step above.
+        _AddContext(onSubmit: _addContext),
         const SizedBox(height: 4),
       ],
     );
   }
 
-  /// The facts pulled from the parse, shown inline under the reading step.
-  Widget _foundWrap() {
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          for (var i = 0; i < _found.length; i++)
-            _FoundChip(label: _found[i])
-                .animate(delay: (i * 80).ms)
-                .fadeIn(duration: 240.ms)
-                .moveY(begin: 6, end: 0)
-                .scale(
-                  begin: const Offset(0.92, 0.92),
-                  end: const Offset(1, 1),
-                ),
-        ],
-      ),
-    );
+  /// The inline payload under a step: the facts pulled from the resume under
+  /// the reading step, and the context the agent is working from under the
+  /// "Reading your context" step.
+  Widget? _stepChild(int i) {
+    if (i == 0 && _found.isNotEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (var j = 0; j < _found.length; j++)
+              _FoundChip(label: _found[j])
+                  .animate(delay: (j * 80).ms)
+                  .fadeIn(duration: 240.ms)
+                  .moveY(begin: 6, end: 0)
+                  .scale(
+                    begin: const Offset(0.92, 0.92),
+                    end: const Offset(1, 1),
+                  ),
+          ],
+        ),
+      );
+    }
+    if (i == _contextStep && _contextItems.isNotEmpty) {
+      final items = _contextItems;
+      return Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [for (final c in items) _ContextChip(label: c)],
+        ),
+      );
+    }
+    return null;
   }
 }
 
@@ -1200,6 +1200,9 @@ class _ProcessStep extends StatelessWidget {
   final bool isLast;
   final Widget? child;
 
+  static const double _railWidth = 30;
+  static const double _nodeSize = 26;
+
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
@@ -1208,67 +1211,80 @@ class _ProcessStep extends StatelessWidget {
     final pending = status == _StepStatus.pending;
     final hasSubtitle = subtitle != null && subtitle!.isNotEmpty;
 
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Left rail: node + the connector that drops to the next node.
-          SizedBox(
-            width: 30,
-            child: Column(
-              children: [
-                _Node(status: status),
-                if (!isLast)
-                  Expanded(
-                    child: _Connector(done: done, active: active),
-                  ),
-              ],
-            ),
+    // The content (node + text) defines the row height; the connector is drawn
+    // behind it as a Positioned line spanning from the bottom of this node to
+    // the bottom of the row (which reaches the next node). Positioning gives the
+    // connector a *bounded* height, so it never needs intrinsic sizing — a
+    // fill-style connector reports an infinite intrinsic height, which is what
+    // crashed the old IntrinsicHeight + Expanded layout.
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        if (!isLast)
+          Positioned(
+            top: _nodeSize,
+            bottom: 0,
+            left: 0,
+            width: _railWidth,
+            child: Center(child: _Connector(done: done, active: active)),
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(top: 2, bottom: isLast ? 2 : 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  AnimatedDefaultTextStyle(
-                    duration: const Duration(milliseconds: 240),
-                    style: TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: active || done
-                          ? FontWeight.w800
-                          : FontWeight.w600,
-                      color: pending ? brand.textMuted : _softInk,
-                      letterSpacing: -0.2,
-                      height: 1.2,
-                    ),
-                    child: Text(label),
-                  ),
-                  if (hasSubtitle) ...[
-                    const SizedBox(height: 4),
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 260),
-                      child: Text(
-                        subtitle!,
-                        key: ValueKey(subtitle),
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: active ? brand.accentBright : brand.textMuted,
-                          height: 1.35,
-                          letterSpacing: -0.1,
-                        ),
-                      ),
-                    ),
-                  ],
-                  ?child,
-                ],
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: _railWidth,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: _Node(status: status),
               ),
             ),
-          ),
-        ],
-      ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(top: 2, bottom: isLast ? 2 : 26),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 240),
+                      style: TextStyle(
+                        fontSize: 15.5,
+                        fontWeight: active || done
+                            ? FontWeight.w800
+                            : FontWeight.w600,
+                        color: pending ? brand.textMuted : _softInk,
+                        letterSpacing: -0.2,
+                        height: 1.2,
+                      ),
+                      child: Text(label),
+                    ),
+                    if (hasSubtitle) ...[
+                      const SizedBox(height: 4),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 260),
+                        child: Text(
+                          subtitle!,
+                          key: ValueKey(subtitle),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: active
+                                ? brand.accentBright
+                                : brand.textMuted,
+                            height: 1.35,
+                            letterSpacing: -0.1,
+                          ),
+                        ),
+                      ),
+                    ],
+                    ?child,
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -1433,19 +1449,20 @@ class _ConnectorState extends State<_Connector>
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
+    // height: infinity fills the bounded box handed down by the parent's
+    // Positioned(top/bottom) — no intrinsic sizing involved.
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Center(
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(2),
-          child: SizedBox(
-            width: 2.5,
-            child: widget.done
-                ? _doneFill(brand)
-                : widget.active
-                ? _activeFlow(brand)
-                : Container(color: brand.border),
-          ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(2),
+        child: SizedBox(
+          width: 2.5,
+          height: double.infinity,
+          child: widget.done
+              ? _doneFill(brand)
+              : widget.active
+              ? _activeFlow(brand)
+              : Container(color: brand.border),
         ),
       ),
     );
@@ -1526,13 +1543,13 @@ class _ConnectorState extends State<_Connector>
 // ---------------------------------------------------------------------------
 
 /// A collapsed "Add context" pill that expands into a composer, letting the
-/// user feed the agent more to go on while setup runs. Added lines show as lime
-/// chips above the control.
+/// user feed the agent more to go on while setup runs. What's submitted surfaces
+/// up in the timeline under the "Reading your context" step, so this control is
+/// input-only.
 class _AddContext extends StatefulWidget {
-  const _AddContext({required this.onSubmit, required this.added});
+  const _AddContext({required this.onSubmit});
 
   final ValueChanged<String> onSubmit;
-  final List<String> added;
 
   @override
   State<_AddContext> createState() => _AddContextState();
@@ -1571,23 +1588,9 @@ class _AddContextState extends State<_AddContext> {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (widget.added.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [for (final c in widget.added) _ContextChip(label: c)],
-            ),
-          ),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 220),
-          child: _open ? _composer(brand) : _addButton(brand),
-        ),
-      ],
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      child: _open ? _composer(brand) : _addButton(brand),
     );
   }
 
@@ -1719,154 +1722,37 @@ class _ContextChip extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Top onboarding tracker
+// Header back link
 // ---------------------------------------------------------------------------
 
-/// Slim three-segment tracker pinned above the flow. Each segment fills with
-/// lime as its phase is reached; the live segment carries a soft glow. Visited
-/// segments are tappable to step back.
-class _OnboardingProgress extends StatelessWidget {
-  const _OnboardingProgress({
-    required this.phaseIndex,
-    required this.onTapIndex,
-  });
+/// The header's lone affordance: a quiet text link — "Back to sign in" on the
+/// upload beat, "Back" thereafter. Replaces the old frosted icon button; no
+/// glyph, just words, in keeping with the stripped-back flow.
+class _BackLink extends StatelessWidget {
+  const _BackLink({required this.label, required this.onTap});
 
-  final int phaseIndex;
-  final ValueChanged<int> onTapIndex;
-
-  static const _labels = ['Upload', 'Goal', 'Setup'];
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            for (var i = 0; i < _labels.length; i++) ...[
-              if (i > 0) const SizedBox(width: 6),
-              Expanded(
-                child: _ProgressSegment(
-                  filled: i <= phaseIndex,
-                  current: i == phaseIndex,
-                  onTap: i < phaseIndex ? () => onTapIndex(i) : null,
-                ),
-              ),
-            ],
-          ],
-        ),
-        const SizedBox(height: 7),
-        Row(
-          children: [
-            for (var i = 0; i < _labels.length; i++) ...[
-              if (i > 0) const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  _labels[i],
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: i == phaseIndex
-                        ? FontWeight.w800
-                        : FontWeight.w600,
-                    color: i <= phaseIndex ? brand.ink : brand.textSoft,
-                    letterSpacing: -0.1,
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _ProgressSegment extends StatelessWidget {
-  const _ProgressSegment({
-    required this.filled,
-    required this.current,
-    this.onTap,
-  });
-
-  final bool filled;
-  final bool current;
+  final String label;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        // Enlarge the tap target around the slim 5px bar.
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Container(
-          height: 5,
-          decoration: BoxDecoration(
-            color: brand.surfaceMuted,
-            borderRadius: BorderRadius.circular(3),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: AnimatedFractionallySizedBox(
-              duration: const Duration(milliseconds: 480),
-              curve: Curves.easeOutCubic,
-              widthFactor: filled ? 1.0 : 0.0,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: brand.accent,
-                  borderRadius: BorderRadius.circular(3),
-                  boxShadow: current
-                      ? [
-                          BoxShadow(
-                            color: brand.accent.withValues(alpha: 0.45),
-                            blurRadius: 9,
-                          ),
-                        ]
-                      : null,
-                ),
-              ),
-            ),
-          ),
+    return TextButton(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
+          color: brand.textMuted,
+          letterSpacing: -0.1,
         ),
       ),
     );
-  }
-}
-
-/// Frosted circular icon button — the sign-out / back-to-login escape hatch.
-class _FrostedIconBtn extends StatelessWidget {
-  const _FrostedIconBtn({
-    required this.icon,
-    required this.onTap,
-    this.tooltip,
-  });
-
-  final IconData icon;
-  final VoidCallback? onTap;
-  final String? tooltip;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final button = Material(
-      color: brand.surfaceMuted,
-      shape: CircleBorder(side: BorderSide(color: brand.border)),
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: SizedBox(
-          width: 42,
-          height: 42,
-          child: Icon(icon, size: 18, color: brand.ink),
-        ),
-      ),
-    );
-    if (tooltip == null) return button;
-    return Tooltip(message: tooltip!, child: button);
   }
 }
