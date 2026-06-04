@@ -365,18 +365,55 @@ void _registerRememberFact(ToolRegistry registry) {
       }
 
       final paths = FirestorePaths(FirebaseFirestore.instance);
-      final ref = paths.learnedFacts(uid).doc();
+      final facts = paths.learnedFacts(uid);
+
+      final existing = await facts
+          .where('topic', isEqualTo: topic)
+          .limit(1)
+          .get();
+
+      if (existing.docs.isNotEmpty) {
+        final doc = existing.docs.first;
+        final data = doc.data();
+        final observedCount = (data['observed_count'] as num?)?.toInt() ?? 1;
+
+        await doc.reference.update({
+          'detail': detail,
+          'source': 'agent',
+          'updated_at': FieldValue.serverTimestamp(),
+          'observed_count': observedCount + 1,
+        });
+
+        return ToolResult(
+          summary: 'Updated memory: $topic',
+          data: {
+            'fact_id': doc.id,
+            'topic': topic,
+            'detail': detail,
+            'updated': true,
+          },
+        );
+      }
+
+      final ref = facts.doc();
 
       await ref.set({
         'topic': topic,
         'detail': detail,
         'source': 'agent',
         'created_at': FieldValue.serverTimestamp(),
+        'updated_at': FieldValue.serverTimestamp(),
+        'observed_count': 1,
       });
 
       return ToolResult(
         summary: 'Remembered $topic',
-        data: {'fact_id': ref.id, 'topic': topic, 'detail': detail},
+        data: {
+          'fact_id': ref.id,
+          'topic': topic,
+          'detail': detail,
+          'updated': false,
+        },
       );
     },
   );
