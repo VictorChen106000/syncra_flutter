@@ -547,8 +547,8 @@ class _PipelineCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final brand = context.brand;
     final job = card.job;
-    // Cards that need you weight their status line in ink; the rest stay muted.
-    final actionable = card.needsYou;
+    // Cards that need you or need trust review weight their status line in ink.
+    final actionable = card.needsYou || card.needsTrustReview;
     // Warm, per-match-quality accent — tints both the card's soft drop shadow
     // and its lead pill so the feed spreads with the same variety as a stack of
     // real listings.
@@ -657,6 +657,7 @@ class _PipelineCard extends StatelessWidget {
                 runSpacing: 8,
                 children: [
                   _Tag(label: job.matchLabel, color: tint),
+                  _TrustGuardTag(card: card),
                   if (job.location.trim().isNotEmpty) _Tag(label: job.location),
                   for (final skill in skillTags) _Tag(label: skill),
                 ],
@@ -703,6 +704,29 @@ Color _categoryTint(JobCategory category) => switch (category) {
   JobCategory.inputNeeded => const Color(0xFFD97706), // amber
   JobCategory.exploration => const Color(0xFF7C3AED), // violet
 };
+
+Color _trustRiskColor(String level, BrandTheme brand) => switch (level) {
+  'high' => brand.danger,
+  'medium' => brand.warning,
+  'low' => brand.success,
+  _ => brand.textSoft,
+};
+
+IconData _trustRiskIcon(String level) => switch (level) {
+  'high' => Icons.warning_amber_rounded,
+  'medium' => Icons.verified_user_outlined,
+  'low' => Icons.shield_outlined,
+  _ => Icons.shield_outlined,
+};
+
+String _trustRiskLabel(PipelineCard card) {
+  final label = card.trustRiskLabel.trim().isEmpty
+      ? 'Not checked'
+      : card.trustRiskLabel.trim();
+
+  if (card.trustSignalsCount <= 0) return 'Trust: $label';
+  return 'Trust: $label · ${card.trustSignalsCount}';
+}
 
 /// A company "logo" stand-in — the first initial on a stable, per-company
 /// tinted tile. Gives every card a distinct colored mark without needing real
@@ -758,6 +782,48 @@ class _LogoMark extends StatelessWidget {
           color: color,
           letterSpacing: -0.5,
         ),
+      ),
+    );
+  }
+}
+
+class _TrustGuardTag extends StatelessWidget {
+  const _TrustGuardTag({required this.card});
+
+  final PipelineCard card;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final level = card.trustRiskLevel;
+    final color = _trustRiskColor(level, brand);
+    final icon = _trustRiskIcon(level);
+    final label = _trustRiskLabel(card);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: brand.isDark ? 0.18 : 0.12),
+        borderRadius: BorderRadius.circular(AppConstants.pillRadius),
+        border: Border.all(color: color.withValues(alpha: 0.34)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12.5, color: color),
+          const SizedBox(width: 5),
+          Text(
+            label.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.45,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }
