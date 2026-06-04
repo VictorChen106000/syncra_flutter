@@ -119,17 +119,22 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
     1. Call search_jobs with query "$query" and location "Remote".
     2. Call read_resume.
     3. Call match_jobs for the best jobs returned by search_jobs.
-    4. Call save_to_pipeline once for each of the top 5 matched jobs.
+    4. Call check_job_risk for each job you intend to save.
+    5. Call save_to_pipeline once for each low-risk top matched job.
 
     Rules:
     - Save at most 5 jobs.
+    - Run check_job_risk before every save_to_pipeline call when a job_id is available.
+    - If check_job_risk returns "Needs verification" or "High risk", do not save that job during the brief; move to another candidate.
+    - If there are fewer than 5 low-risk jobs, save fewer than 5.
+    - Trust Guard is a quick red-flag screen only; never describe a job as safe, certified, or guaranteed.
     - Do not call tailor_resume.
     - Do not call draft_email.
     - Do not call send_email.
-    - Do not ask the user questions during this brief. If information is missing, classify the job as input_needed and save it to the pipeline.
+    - Do not ask the user questions during this brief. If information is missing, classify the job as input_needed and save it to the pipeline only after Trust Guard returns low risk.
     - If read_resume returns no resume (the user has not uploaded one yet),
-      skip match_jobs and instead save the top 5 search results directly with
-      category "exploration" — do not fabricate scores.
+      skip match_jobs and instead consider the top search results directly with
+      category "exploration" — do not fabricate scores, and still run Trust Guard before saving.
     - End with one short sentence summarizing what you saved.
     ''';
   PassiveAgentNotifier({
@@ -198,8 +203,9 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
     if (state.isRunning) return;
 
     final service = _ensureBriefService();
-    final effectiveQuery =
-        (query == null || query.trim().isEmpty) ? _defaultBriefQuery : query.trim();
+    final effectiveQuery = (query == null || query.trim().isEmpty)
+        ? _defaultBriefQuery
+        : query.trim();
 
     // No mock path anymore: the brief always runs through the real Anthropic
     // agent + live job search. Without a key there's nothing to fake, so we
@@ -218,7 +224,10 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
     await _runAgentBrief(service, query: effectiveQuery);
   }
 
-  Future<void> _runAgentBrief(AgentService service, {required String query}) async {
+  Future<void> _runAgentBrief(
+    AgentService service, {
+    required String query,
+  }) async {
     state = state.copyWith(
       briefId: 'brief_${DateTime.now().millisecondsSinceEpoch}',
       status: AgentBriefStatus.scanning,
@@ -349,7 +358,9 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
   void _handleBriefBlock(AgentBlock block) {
     if (block is ToolCallBlock) {
       final nextStatus = switch (block.name) {
-        'match_jobs' || 'save_to_pipeline' => AgentBriefStatus.matching,
+        'match_jobs' ||
+        'check_job_risk' ||
+        'save_to_pipeline' => AgentBriefStatus.matching,
         _ => AgentBriefStatus.scanning,
       };
 
@@ -400,6 +411,7 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
       'search_jobs' => 'Job Search',
       'read_resume' => 'Resume Context',
       'match_jobs' => 'Match Scoring',
+      'check_job_risk' => 'Trust Guard',
       'save_to_pipeline' => 'Pipeline Save',
       _ => toolName,
     };
