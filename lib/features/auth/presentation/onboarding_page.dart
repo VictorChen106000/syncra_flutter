@@ -15,9 +15,12 @@ import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/motion.dart';
 import '../../../data/firestore/jobs_repository.dart';
 import '../../../data/firestore/resumes_repository.dart';
+import '../../../shared/widgets/app_back_button.dart';
 import '../../../shared/widgets/water_fill_circle.dart';
 import '../../agent/state/passive_agent_notifier.dart';
 import '../../agent_chat/tools/anthropic_tool_calls.dart';
+import '../../email/presentation/widgets/gmail_link_view.dart';
+import '../../email/services/gmail_service.dart';
 import '../../resumes/models/resume_file.dart';
 import '../../resumes/models/resume_fit.dart';
 import '../../resumes/models/resume_json.dart';
@@ -49,7 +52,7 @@ class OnboardingPage extends ConsumerStatefulWidget {
   ConsumerState<OnboardingPage> createState() => _OnboardingPageState();
 }
 
-enum _Phase { upload, prompt, setup }
+enum _Phase { upload, prompt, gmail, setup }
 
 class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   // Built once so the forced-dark theme isn't rebuilt every frame.
@@ -66,21 +69,30 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     setState(() => _phase = _Phase.prompt);
   }
 
-  /// Steps one phase back (setup → prompt → upload). Leaving the setup phase
-  /// tears down its [_SetupPhase] via the [AnimatedSwitcher], cancelling the
-  /// in-flight timers; re-entering re-runs the (idempotent) read.
+  /// Steps one phase back (setup → gmail → prompt → upload). Leaving the setup
+  /// phase tears down its [_SetupPhase] via the [AnimatedSwitcher], cancelling
+  /// the in-flight timers; re-entering re-runs the (idempotent) read.
   void _goBack() {
     setState(() {
       _phase = switch (_phase) {
-        _Phase.setup => _Phase.prompt,
+        _Phase.setup => _Phase.gmail,
+        _Phase.gmail => _Phase.prompt,
         _Phase.prompt => _Phase.upload,
         _Phase.upload => _Phase.upload,
       };
     });
   }
 
+  /// Context captured → arm the copilot with Gmail before it goes to work.
   void _send(String instruction) {
     _instruction = instruction.trim();
+    setState(() => _phase = _Phase.gmail);
+  }
+
+  /// Leaves the Gmail beat — whether the user linked or skipped it — and starts
+  /// the live agent setup, the final beat before the dashboard.
+  void _advanceToSetup() {
+    if (_phase != _Phase.gmail) return;
     setState(() => _phase = _Phase.setup);
   }
 
@@ -88,8 +100,10 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     await ref.read(resumeProvider.notifier).pickAndUploadResumes();
   }
 
-  /// Skips the whole flow — marks the user past first-run setup with no role
-  /// captured. Mirrors the previous escape hatch.
+  /// Skips the whole guided flow — marks the user past first-run setup with no
+  /// role captured and drops them straight on the dashboard, bypassing the
+  /// Gmail beat and the agent setup. They can connect Gmail later from the
+  /// profile, and the agent can read the resume later from chat.
   Future<void> _skip() async {
     await ref
         .read(userProfileProvider.notifier)
@@ -99,7 +113,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
       await ref.read(devFlagsProvider.notifier).setShowOnboarding(false);
     }
     if (!mounted) return;
-    context.go(RouteNames.linkGmail);
+    context.go(RouteNames.dashboard);
   }
 
   Future<void> _confirmBackToLogin() async {
@@ -143,20 +157,43 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                 padding: const EdgeInsets.fromLTRB(24, 8, 24, 18),
                 child: Column(
                   children: [
-                    // Header: a single bare back arrow — no circle, no chip.
-                    // It signs out to the sign-in screen on the upload beat and
+                    // Header: the app's standard back chevron (no circle). It
+                    // signs out to the sign-in screen on the upload beat and
                     // steps one phase back thereafter. No progress tracker; the
-                    // flow reveals itself as you move.
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: _BackButton(
-                        semanticLabel: _phase == _Phase.upload
-                            ? 'Back to sign in'
-                            : 'Back',
-                        onTap: _phase == _Phase.upload
-                            ? _confirmBackToLogin
-                            : _goBack,
-                      ),
+                    // flow reveals itself as you move. On the Gmail beat a quiet
+                    // "Not now" sits opposite — Gmail is optional, and skipping
+                    // it still continues into setup.
+                    Row(
+                      children: [
+                        AppBackButton(
+                          color: _softInk,
+                          onPressed: _phase == _Phase.upload
+                              ? _confirmBackToLogin
+                              : _goBack,
+                        ),
+                        const Spacer(),
+                        if (_phase == _Phase.gmail)
+                          TextButton(
+                            onPressed: _advanceToSetup,
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: Text(
+                              'Not now',
+                              style: TextStyle(
+                                color: _softInk.withValues(alpha: 0.62),
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                                letterSpacing: 0.1,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 12),
                     Expanded(
@@ -176,6 +213,10 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                             onSend: _send,
                             onSkip: _skip,
                             initialText: _instruction,
+                          ),
+                          _Phase.gmail => _GmailPhase(
+                            key: const ValueKey('gmail'),
+                            onDone: _advanceToSetup,
                           ),
                           _Phase.setup => _SetupPhase(
                             key: const ValueKey('setup'),
@@ -225,18 +266,19 @@ class _UploadPhase extends ConsumerWidget {
     final fill = busy ? math.max(progress, 0.06) : (hasResume ? 1.0 : 0.0);
     final filled = !busy && hasResume;
 
-    // One adaptive line under the vessel — the only words on this beat. While
-    // uploading it's the live percentage, ticking up with the water.
+    // One adaptive line, sitting *above* the vessel — the only words on this
+    // beat. The live percentage lives inside the circle, so this just names the
+    // state.
     final label = hasError
         ? "That file didn't work — try again"
         : busy
-        ? '$percent%'
+        ? 'Uploading…'
         : filled
         ? 'Tap to continue'
         : 'Upload Your Resume';
 
-    // Key the line on its *state*, not its text, so the percentage can tick up
-    // in place without the AnimatedSwitcher cross-fading on every increment.
+    // Key the line on its *state*, not its text, so cross-state changes fade
+    // cleanly without re-firing on unrelated rebuilds.
     final labelKey = hasError
         ? 'error'
         : busy
@@ -249,31 +291,9 @@ class _UploadPhase extends ConsumerWidget {
 
     return Column(
       children: [
-        const Spacer(flex: 6),
-        GestureDetector(
-              onTap: onTap,
-              behavior: HitTestBehavior.opaque,
-              child: SizedBox(
-                width: 224,
-                height: 224,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    WaterFillCircle(fill: fill, active: busy, size: 224),
-                    _CircleContent(
-                      empty: !busy && !hasResume,
-                      filled: filled,
-                      fill: fill,
-                      brand: brand,
-                    ),
-                  ],
-                ),
-              ),
-            )
-            .animate()
-            .fadeIn(duration: 460.ms)
-            .scale(begin: const Offset(0.9, 0.9), end: const Offset(1, 1)),
-        const SizedBox(height: 28),
+        const Spacer(flex: 5),
+        // Headline — sits above the vessel so "Tap to continue" reads as a
+        // prompt for the circle right beneath it.
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 240),
           child: Text(
@@ -289,7 +309,33 @@ class _UploadPhase extends ConsumerWidget {
             ),
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 26),
+        GestureDetector(
+              onTap: onTap,
+              behavior: HitTestBehavior.opaque,
+              child: SizedBox(
+                width: 224,
+                height: 224,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    WaterFillCircle(fill: fill, active: busy, size: 224),
+                    _CircleContent(
+                      filled: filled,
+                      busy: busy,
+                      percent: percent,
+                      fill: fill,
+                      brand: brand,
+                    ),
+                  ],
+                ),
+              ),
+            )
+            .animate()
+            .fadeIn(duration: 460.ms)
+            .scale(begin: const Offset(0.9, 0.9), end: const Offset(1, 1)),
+        const SizedBox(height: 26),
+        // The uploaded file, below the vessel.
         if (hasResume && !busy)
           _UploadedResume(
             resume: state.resumes.first,
@@ -297,7 +343,7 @@ class _UploadPhase extends ConsumerWidget {
                 .read(resumeProvider.notifier)
                 .deleteResume(state.resumes.first.id),
           ).animate().fadeIn(duration: 320.ms).moveY(begin: 6, end: 0),
-        const Spacer(flex: 7),
+        const Spacer(flex: 6),
         if (hasResume && !busy)
           TextButton(
             onPressed: onPick,
@@ -316,29 +362,31 @@ class _UploadPhase extends ConsumerWidget {
   }
 }
 
-/// The content layered over the water vessel: a big up arrow when empty,
-/// fading out as the water fills, and a check once it's full. No words — the
-/// arrow alone says "tap to upload".
+/// The content layered over the water vessel: a big up arrow when empty, the
+/// live upload percentage (big, centred) while a file is in flight, and a check
+/// once it's full.
 class _CircleContent extends StatelessWidget {
   const _CircleContent({
-    required this.empty,
     required this.filled,
+    required this.busy,
+    required this.percent,
     required this.fill,
     required this.brand,
   });
 
-  final bool empty;
   final bool filled;
+  final bool busy;
+  final int percent;
   final double fill;
   final BrandTheme brand;
 
   @override
   Widget build(BuildContext context) {
-    final String stateKey = empty
-        ? 'empty'
-        : filled
+    final String stateKey = filled
         ? 'filled'
-        : 'busy';
+        : busy
+        ? 'busy'
+        : 'empty';
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 280),
@@ -356,10 +404,11 @@ class _CircleContent extends StatelessWidget {
           size: 78,
           color: brand.onAccent,
         ),
-        'busy' => Opacity(
+        'busy' => _PercentReveal(
           key: const ValueKey('busy'),
-          opacity: (1 - fill).clamp(0.0, 1.0),
-          child: Icon(Icons.arrow_upward_rounded, size: 96, color: _softInk),
+          percent: percent,
+          fill: fill,
+          brand: brand,
         ),
         _ => Icon(
           Icons.arrow_upward_rounded,
@@ -370,6 +419,79 @@ class _CircleContent extends StatelessWidget {
       },
     );
   }
+}
+
+/// The upload percentage, big and centred in the vessel. The number is light so
+/// it reads over the dark, un-filled part of the circle; a dark copy — clipped
+/// to the water level — overlays the submerged part so it stays legible as the
+/// lime rises. The clip rides its own 700ms ease, matching [WaterFillCircle]'s,
+/// so the light/dark split tracks the waterline rather than snapping ahead of it.
+class _PercentReveal extends StatelessWidget {
+  const _PercentReveal({
+    super.key,
+    required this.percent,
+    required this.fill,
+    required this.brand,
+  });
+
+  final int percent;
+  final double fill;
+  final BrandTheme brand;
+
+  static const double _size = 224;
+  static const TextStyle _style = TextStyle(
+    fontSize: 66,
+    fontWeight: FontWeight.w800,
+    letterSpacing: -2,
+    height: 1.0,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final text = '$percent%';
+    return SizedBox(
+      width: _size,
+      height: _size,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: 0, end: fill.clamp(0.0, 1.0)),
+        duration: const Duration(milliseconds: 700),
+        curve: Curves.easeOutCubic,
+        builder: (context, level, _) => Stack(
+          alignment: Alignment.center,
+          children: [
+            Text(text, style: _style.copyWith(color: _softInk)),
+            // Dark copy, revealed only below the waterline (over the lime).
+            Positioned.fill(
+              child: ClipRect(
+                clipper: _WaterlineClipper(level),
+                child: Center(
+                  child: Text(
+                    text,
+                    style: _style.copyWith(color: brand.onAccent),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Clips to everything below the waterline — the bottom [fill] fraction of the
+/// box — so the dark percentage copy shows only where the lime water has risen.
+class _WaterlineClipper extends CustomClipper<Rect> {
+  const _WaterlineClipper(this.fill);
+
+  final double fill;
+
+  @override
+  Rect getClip(Size size) =>
+      Rect.fromLTRB(0, size.height * (1 - fill), size.width, size.height);
+
+  @override
+  bool shouldReclip(_WaterlineClipper old) => old.fill != fill;
 }
 
 // ---------------------------------------------------------------------------
@@ -683,7 +805,65 @@ String _formatBytes(int bytes) {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 3 — setup (live agent work)
+// Phase 3 — link Gmail (arm the copilot before it runs)
+// ---------------------------------------------------------------------------
+
+/// The Gmail permission beat, sat between the user's context and the live agent
+/// setup so the copilot is "armed" before it goes to work. Wraps the shared
+/// [GmailLinkView] used by the standalone link screen, so the two stay
+/// identical. Completing the slide pre-authorizes the Gmail scopes and records
+/// the connection on the profile; [onDone] then advances to setup. Skipping
+/// (the header "Not now") also calls [onDone] — Gmail is optional, and the
+/// agent authorizes on demand at first send if it was skipped here.
+class _GmailPhase extends ConsumerStatefulWidget {
+  const _GmailPhase({super.key, required this.onDone});
+
+  final VoidCallback onDone;
+
+  @override
+  ConsumerState<_GmailPhase> createState() => _GmailPhaseState();
+}
+
+class _GmailPhaseState extends ConsumerState<_GmailPhase> {
+  final GmailService _gmail = GmailService();
+  bool _linking = false;
+
+  @override
+  void dispose() {
+    _gmail.dispose();
+    super.dispose();
+  }
+
+  Future<void> _connect() async {
+    if (_linking) return;
+    setState(() => _linking = true);
+
+    final linked = await _gmail.link();
+    if (!mounted) return;
+
+    if (linked) {
+      // Persist the connection so it sticks past onboarding — the dashboard and
+      // the Profile › Connections toggle read this flag. Fire-and-forget: the
+      // notifier flips its in-memory state synchronously.
+      unawaited(
+        ref.read(userProfileProvider.notifier).setGmailConnected(true),
+      );
+    }
+    widget.onDone();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Small top breathing room: the hero icons shouldn't crowd the header row.
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: GmailLinkView(linking: _linking, onConnect: _connect),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 — setup (live agent work)
 // ---------------------------------------------------------------------------
 
 enum _StepStatus { pending, active, done, failed }
@@ -968,9 +1148,11 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     return ResumeFit(segments: segments, generatedAt: DateTime.now());
   }
 
-  /// Flips the onboarding gate and routes onward. Setting the flag last (rather
-  /// than during step 3) keeps the router from redirecting away mid-setup, so
-  /// the user actually sees the checklist complete.
+  /// Flips the onboarding gate and routes onward to the dashboard — the final
+  /// beat. Gmail was already handled before setup, so this is the last step.
+  /// Setting the flag last (rather than during step 3) keeps the router from
+  /// redirecting away mid-setup, so the user actually sees the checklist
+  /// complete.
   Future<void> _finish({required bool roleSet}) async {
     await ref
         .read(userProfileProvider.notifier)
@@ -980,7 +1162,7 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
       await ref.read(devFlagsProvider.notifier).setShowOnboarding(false);
     }
     if (!mounted) return;
-    context.go(RouteNames.linkGmail);
+    context.go(RouteNames.dashboard);
   }
 
   @override
@@ -1543,39 +1725,5 @@ class _ContextChip extends StatelessWidget {
         ],
       ),
     ).animate().fadeIn(duration: 220.ms).moveY(begin: 6, end: 0);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Header back button
-// ---------------------------------------------------------------------------
-
-/// The header's lone affordance: a bare back arrow — no circle, no frosted
-/// chip. The caller wires the action per phase (sign out on the upload beat,
-/// one phase back thereafter); [semanticLabel] keeps that meaning for screen
-/// readers even though the glyph stays the same.
-class _BackButton extends StatelessWidget {
-  const _BackButton({required this.semanticLabel, required this.onTap});
-
-  final String semanticLabel;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: semanticLabel,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
-          child: const Padding(
-            padding: EdgeInsets.all(6),
-            child: Icon(Icons.arrow_back_rounded, size: 24, color: _softInk),
-          ),
-        ),
-      ),
-    );
   }
 }
