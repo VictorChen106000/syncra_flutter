@@ -42,10 +42,11 @@ There is **one** agent. "Passive" vs "active" is just two triggers for the same
   fires a canned prompt (*"Find 5 fresh jobs matching my profile, score them,
   save each as a pipeline card"*). Same loop, same tools.
 
-`users/{uid}.last_brief_at` is written for a "Last brief: 2h ago" label but
-**never read to auto-fire**. Nothing runs on app open. `morning_brief_enabled`
-(off by default) gates both the dashboard CTA and whether the brief greets the
-user after sign-in — when off, sign-in lands straight on the dashboard.
+The brief is not a background daemon. Returning signed-in users may be routed to
+`MorningBriefPage` once per app session when `PassiveAgentState.morningBriefShown`
+is still false; devs can force-preview it with `DevFlags.showMorningBrief`.
+The actual brief only runs after an explicit page/CTA action calls
+`PassiveAgentNotifier.runBrief()`.
 
 ```ff
 trigger: user prompt  OR  canned brief prompt
