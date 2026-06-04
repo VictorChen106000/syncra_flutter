@@ -51,6 +51,12 @@ class GmailService {
   static const String composeScope =
       'https://www.googleapis.com/auth/gmail.compose';
 
+  /// The grants Syncra asks for up front on the "Link Gmail" screen: drafting
+  /// ([composeScope]) and sending ([sendScope]). Bundling both into one prompt
+  /// means the agent can later draft *and* send outreach without ever stopping
+  /// to ask again.
+  static const List<String> _linkScopes = [composeScope, sendScope];
+
   static const String _sendEndpoint =
       'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
 
@@ -134,6 +140,37 @@ class GmailService {
       throw GmailException('Gmail accepted the draft but returned no id.');
     }
     return id;
+  }
+
+  /// Pre-authorizes the Gmail scopes Syncra needs ([_linkScopes]) so the agent
+  /// can later draft and send outreach without interrupting the user with an
+  /// OAuth prompt mid-task. Surfaced as the "Link Gmail" onboarding step.
+  ///
+  /// Returns `true` once the grant is in place (or was already approved), and
+  /// `false` — never throwing — when the user declines, isn't signed in with
+  /// Google, or is on web (where the `authorizationClient` path isn't wired).
+  /// The caller treats linking as optional and proceeds regardless.
+  Future<bool> link() async {
+    if (kIsWeb) return false;
+
+    GoogleSignInAccount? account;
+    try {
+      account = await GoogleSignIn.instance.attemptLightweightAuthentication();
+    } catch (_) {
+      account = null;
+    }
+    if (account == null) return false;
+
+    final auth = account.authorizationClient;
+    try {
+      // Honour an existing grant; otherwise prompt for both scopes at once.
+      final authorization =
+          await auth.authorizationForScopes(_linkScopes) ??
+              await auth.authorizeScopes(_linkScopes);
+      return authorization.accessToken.isNotEmpty;
+    } on GoogleSignInException {
+      return false;
+    }
   }
 
   /// POSTs [payload] as JSON to a Gmail endpoint and returns the decoded body,

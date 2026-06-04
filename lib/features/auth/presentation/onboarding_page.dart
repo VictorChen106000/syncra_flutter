@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -7,31 +8,38 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/dev/dev_flags_notifier.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../data/firestore/jobs_repository.dart';
 import '../../../data/firestore/resumes_repository.dart';
-import '../../../shared/widgets/gooey_orb.dart';
+import '../../../core/utils/motion.dart';
+import '../../../shared/widgets/water_fill_circle.dart';
 import '../../agent/state/passive_agent_notifier.dart';
 import '../../agent_chat/tools/anthropic_tool_calls.dart';
+import '../../resumes/models/resume_file.dart';
 import '../../resumes/models/resume_fit.dart';
 import '../../resumes/models/resume_json.dart';
-import '../../resumes/presentation/widgets/resume_upload_card.dart';
 import '../../resumes/services/resume_parser_service.dart';
 import '../../resumes/services/resume_tailor_orchestrator.dart';
 import '../../resumes/state/resume_notifier.dart';
 import '../state/auth_notifier.dart';
 import '../state/user_profile_notifier.dart';
 
-/// First-run setup, reimagined as a dedicated **resume upload** moment.
+/// Slightly off-white ink — pure #FFFFFF on true black reads as harsh, so back
+/// off ~6%. Matches the morning brief / link-Gmail dark surfaces.
+const Color _softInk = Color(0xFFF1F1F3);
+
+/// First-run setup, reimagined as a dark, three-beat **resume upload** moment:
 ///
-/// The user drops a resume and Syncra takes it from there: it parses the file,
-/// infers the user's target role + role-fit breakdown in one headless agent
-/// call, persists both to the profile, kicks off the first job brief, and
-/// routes straight to the dashboard. The middle phase shows a live checklist
-/// of what the agent is doing so the user is never staring at a frozen
-/// "loading" screen.
+///   1. **Upload** — a big circular vessel the user taps to drop a resume; it
+///      fills bottom-up with lime "water" as the file uploads.
+///   2. **Prompt** — the parsed file surfaces and Syncra asks "What do you want
+///      me to do?", with a context composer for the user's goal.
+///   3. **Setup** — a headless agent reads the resume, infers the target role,
+///      and kicks off the first brief while a live checklist narrates the work.
 ///
-/// No chat, no Q&A, no "Enter Syncra" tap — upload, watch, land.
+/// The whole flow is locked to [BrandTheme.dark] so it reads as one continuous,
+/// premium hand-off into the (also dark) link-Gmail screen.
 class OnboardingPage extends ConsumerStatefulWidget {
   const OnboardingPage({super.key});
 
@@ -39,18 +47,50 @@ class OnboardingPage extends ConsumerStatefulWidget {
   ConsumerState<OnboardingPage> createState() => _OnboardingPageState();
 }
 
-enum _Phase { upload, setup }
+enum _Phase { upload, prompt, setup }
 
 class _OnboardingPageState extends ConsumerState<OnboardingPage> {
+  // Built once so the forced-dark theme isn't rebuilt every frame.
+  late final ThemeData _darkTheme = AppTheme.darkTheme;
+
   _Phase _phase = _Phase.upload;
 
-  /// True once the user explicitly tapped "Upload". Gates the auto-advance so
-  /// a returning user who already has a resume isn't yanked into setup before
-  /// they tap Continue.
+  /// True once the user explicitly tapped to upload. Gates the auto-advance so
+  /// a returning user who already has a resume isn't yanked forward before they
+  /// choose to continue.
   bool _armed = false;
 
-  void _goToSetup() {
-    if (_phase == _Phase.setup) return;
+  /// The user's free-text instruction captured on the prompt phase, threaded
+  /// into the agent brief.
+  String _instruction = '';
+
+  void _goToPrompt() {
+    if (_phase != _Phase.upload) return;
+    setState(() => _phase = _Phase.prompt);
+  }
+
+  /// Steps one phase back (setup → prompt → upload). Leaving the setup phase
+  /// tears down its [_SetupPhase] via the [AnimatedSwitcher], cancelling the
+  /// in-flight timers; re-entering re-runs the (idempotent) read.
+  void _goBack() {
+    setState(() {
+      _phase = switch (_phase) {
+        _Phase.setup => _Phase.prompt,
+        _Phase.prompt => _Phase.upload,
+        _Phase.upload => _Phase.upload,
+      };
+    });
+  }
+
+  /// Jump back to an already-visited phase from the top progress bar. Only
+  /// backward moves are allowed — you can't skip ahead of the live flow.
+  void _goToPhase(int index) {
+    if (index >= _phase.index) return;
+    setState(() => _phase = _Phase.values[index]);
+  }
+
+  void _send(String instruction) {
+    _instruction = instruction.trim();
     setState(() => _phase = _Phase.setup);
   }
 
@@ -59,9 +99,8 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     await ref.read(resumeProvider.notifier).pickAndUploadResumes();
   }
 
-  /// Skips upload entirely — marks the user past first-run setup with no role
-  /// captured (they can set one later by chatting). Mirrors the previous
-  /// flow's escape hatch.
+  /// Skips the whole flow — marks the user past first-run setup with no role
+  /// captured. Mirrors the previous escape hatch.
   Future<void> _skip() async {
     await ref.read(userProfileProvider.notifier).setHasCompletedOnboarding(true);
     final dev = ref.read(devFlagsProvider);
@@ -69,7 +108,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
       await ref.read(devFlagsProvider.notifier).setShowOnboarding(false);
     }
     if (!mounted) return;
-    context.go(RouteNames.dashboard);
+    context.go(RouteNames.linkGmail);
   }
 
   Future<void> _confirmBackToLogin() async {
@@ -101,77 +140,96 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
 
   @override
   Widget build(BuildContext context) {
-    final brand = context.brand;
-
-    // The moment a resume the user just uploaded lands in their library,
-    // advance into the setup phase. Selecting on the count keeps this from
-    // firing on unrelated resume-list churn.
+    // The moment a resume the user just uploaded lands, let the water-fill
+    // visibly top out, then reveal the prompt. Selecting on the count keeps
+    // this from firing on unrelated resume-list churn.
     ref.listen<int>(
       resumeProvider.select((s) => s.resumes.length),
       (prev, next) {
         if (_armed && _phase == _Phase.upload && next > (prev ?? 0)) {
-          _goToSetup();
+          Future<void>.delayed(const Duration(milliseconds: 950), () {
+            if (mounted && _phase == _Phase.upload) _goToPrompt();
+          });
         }
       },
     );
 
-    return Scaffold(
-      backgroundColor: brand.surface,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-          child: Column(
-            children: [
-              // Top chrome: sign-out escape hatch + a quiet "Setup" label.
-              Row(
-                children: [
-                  _FrostedIconBtn(
-                    icon: Icons.logout_rounded,
-                    tooltip: 'Back to login',
-                    onTap: _confirmBackToLogin,
-                  ),
-                  const Spacer(),
-                  Text(
-                    'Setup',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: brand.textMuted,
-                      letterSpacing: 0.2,
+    return Theme(
+      data: _darkTheme,
+      child: Builder(
+        builder: (context) {
+          final brand = context.brand;
+          return Scaffold(
+            backgroundColor: brand.bg,
+            body: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 18),
+                child: Column(
+                  children: [
+                    // Header: a back/sign-out hatch beside the animated
+                    // three-phase onboarding tracker.
+                    Row(
+                      children: [
+                        _FrostedIconBtn(
+                          icon: _phase == _Phase.upload
+                              ? Icons.logout_rounded
+                              : Icons.arrow_back_rounded,
+                          tooltip: _phase == _Phase.upload
+                              ? 'Back to login'
+                              : 'Back',
+                          onTap: _phase == _Phase.upload
+                              ? _confirmBackToLogin
+                              : _goBack,
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: _OnboardingProgress(
+                            phaseIndex: _phase.index,
+                            onTapIndex: _goToPhase,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  const Spacer(),
-                  const SizedBox(width: 42),
-                ],
-              ),
-              Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 320),
-                  switchInCurve: Curves.easeOutCubic,
-                  transitionBuilder: (child, anim) => FadeTransition(
-                    opacity: anim,
-                    child: child,
-                  ),
-                  child: _phase == _Phase.upload
-                      ? _UploadPhase(
-                          key: const ValueKey('upload'),
-                          onPick: _pickResume,
-                          onContinue: _goToSetup,
-                          onSkip: _skip,
-                        )
-                      : const _SetupPhase(key: ValueKey('setup')),
+                    const SizedBox(height: 20),
+                    Expanded(
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 360),
+                        switchInCurve: Curves.easeOutCubic,
+                        transitionBuilder: (child, anim) =>
+                            FadeTransition(opacity: anim, child: child),
+                        child: switch (_phase) {
+                          _Phase.upload => _UploadPhase(
+                              key: const ValueKey('upload'),
+                              onPick: _pickResume,
+                              onContinue: _goToPrompt,
+                              onSkip: _skip,
+                            ),
+                          _Phase.prompt => _PromptPhase(
+                              key: const ValueKey('prompt'),
+                              onSend: _send,
+                              onSkip: _skip,
+                              initialText: _instruction,
+                            ),
+                          _Phase.setup => _SetupPhase(
+                              key: const ValueKey('setup'),
+                              instruction: _instruction,
+                            ),
+                        },
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// Phase 1 — upload
+// Phase 1 — upload (the water-fill vessel)
 // ---------------------------------------------------------------------------
 
 class _UploadPhase extends ConsumerWidget {
@@ -189,102 +247,94 @@ class _UploadPhase extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final brand = context.brand;
-    final resumeState = ref.watch(resumeProvider);
-    final resumes = resumeState.resumes;
-    final uploading = resumeState.uploadQueue.where((i) => !i.hasError).toList();
-    final hasResume = resumes.isNotEmpty;
-
+    final state = ref.watch(resumeProvider);
+    final uploading = state.uploadQueue.where((i) => !i.hasError).toList();
+    final hasError = state.uploadQueue.any((i) => i.hasError);
+    final hasResume = state.resumes.isNotEmpty;
     final busy = uploading.isNotEmpty;
 
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      child: Column(
-        children: [
-          const SizedBox(height: 32),
-          GooeyOrb(size: 132)
-              .animate()
-              .fadeIn(duration: 480.ms)
-              .scale(begin: const Offset(0.85, 0.85), end: const Offset(1, 1)),
-          const SizedBox(height: 30),
-          Text(
-            "Let's set you up",
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 27,
-              fontWeight: FontWeight.w900,
-              color: brand.ink,
-              letterSpacing: -0.6,
-              height: 1.1,
-            ),
-          ).animate(delay: 100.ms).fadeIn().moveY(begin: 8, end: 0),
-          const SizedBox(height: 10),
-          Text(
-            'Drop in your resume and Syncra tailors everything to you.',
+    final progress = busy ? uploading.first.progress / 100.0 : 0.0;
+    // Show a sliver of water the instant upload starts; hold full once the file
+    // has landed.
+    final fill = busy ? math.max(progress, 0.06) : (hasResume ? 1.0 : 0.0);
+    final filled = !busy && hasResume;
+
+    final caption = hasError
+        ? 'That file didn\'t work — try another.'
+        : busy
+            ? 'Uploading your resume…'
+            : hasResume
+                ? 'Got it. Tap to continue.'
+                : 'Drop in a PDF, DOC or DOCX — up to 5MB.';
+
+    final onTap = busy ? null : (hasResume ? onContinue : onPick);
+
+    return Column(
+      children: [
+        const SizedBox(height: 18),
+        Text(
+          'Upload Your Resume',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 32,
+            fontWeight: FontWeight.w800,
+            color: _softInk,
+            letterSpacing: -0.9,
+            height: 1.1,
+          ),
+        ).animate().fadeIn(duration: 460.ms).moveY(begin: 8, end: 0),
+        const SizedBox(height: 10),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 240),
+          child: Text(
+            caption,
+            key: ValueKey(caption),
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 14.5,
               fontWeight: FontWeight.w500,
-              color: brand.textMuted,
+              color: hasError ? brand.warning : brand.textMuted,
               height: 1.5,
               letterSpacing: -0.1,
             ),
-          ).animate(delay: 180.ms).fadeIn(),
-          const SizedBox(height: 36),
-
-          // Live upload progress for any in-flight file.
-          for (final item in uploading)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: ResumeUploadCard(uploadingItem: item),
-            ),
-
-          if (!busy) ...[
-            if (hasResume) ...[
-              // Returning user — show what they have, then a clear Continue
-              // with a quiet way to swap the file.
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: ResumeUploadCard(resume: resumes.first),
-              ),
-              _BigButton(
-                label: 'Continue',
-                icon: Icons.arrow_forward_rounded,
-                filled: true,
-                onTap: onContinue,
-              ),
-              const SizedBox(height: 10),
-              _BigButton(
-                label: 'Upload a different resume',
-                icon: Icons.upload_file_rounded,
-                filled: false,
-                onTap: onPick,
-              ),
-            ] else ...[
-              _BigButton(
-                label: 'Upload resume',
-                icon: Icons.upload_file_rounded,
-                filled: true,
-                iconColor: brand.accent,
-                onTap: onPick,
-              ).animate(delay: 240.ms).fadeIn().moveY(begin: 10, end: 0),
-              const SizedBox(height: 12),
-              Text(
-                'PDF, DOC or DOCX · up to 5MB',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: brand.textSoft,
-                  letterSpacing: 0.1,
+          ),
+        ).animate(delay: 120.ms).fadeIn(),
+        const Spacer(flex: 5),
+        GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: SizedBox(
+            width: 224,
+            height: 224,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                WaterFillCircle(fill: fill, active: busy, size: 224),
+                _CircleContent(
+                  empty: !busy && !hasResume,
+                  filled: filled,
+                  fill: fill,
+                  brand: brand,
                 ),
-              ),
-            ],
-          ],
-
-          const SizedBox(height: 16),
+              ],
+            ),
+          ),
+        )
+            .animate(delay: 160.ms)
+            .fadeIn(duration: 460.ms)
+            .scale(begin: const Offset(0.9, 0.9), end: const Offset(1, 1)),
+        const SizedBox(height: 22),
+        if (hasResume && !busy)
+          _FileChip(resume: state.resumes.first, ready: true)
+              .animate()
+              .fadeIn(duration: 320.ms)
+              .moveY(begin: 6, end: 0),
+        const Spacer(flex: 7),
+        if (hasResume && !busy)
           TextButton(
-            onPressed: onSkip,
+            onPressed: onPick,
             child: Text(
-              'Skip for now',
+              'Upload a different resume',
               style: TextStyle(
                 color: brand.textMuted,
                 fontWeight: FontWeight.w700,
@@ -292,67 +342,314 @@ class _UploadPhase extends ConsumerWidget {
               ),
             ),
           ),
+        TextButton(
+          onPressed: onSkip,
+          child: Text(
+            'Skip for now',
+            style: TextStyle(
+              color: brand.textSoft,
+              fontWeight: FontWeight.w700,
+              fontSize: 13.5,
+            ),
+          ),
+        ),
+        const SizedBox(height: 2),
+      ],
+    );
+  }
+}
+
+/// The content layered over the water vessel: an invitation when empty, the
+/// upload glyph fading out as it fills, and a check once it's full.
+class _CircleContent extends StatelessWidget {
+  const _CircleContent({
+    required this.empty,
+    required this.filled,
+    required this.fill,
+    required this.brand,
+  });
+
+  final bool empty;
+  final bool filled;
+  final double fill;
+  final BrandTheme brand;
+
+  @override
+  Widget build(BuildContext context) {
+    final String stateKey = empty
+        ? 'empty'
+        : filled
+            ? 'filled'
+            : 'busy';
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 280),
+      transitionBuilder: (child, anim) => FadeTransition(
+        opacity: anim,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.8, end: 1).animate(anim),
+          child: child,
+        ),
+      ),
+      child: switch (stateKey) {
+        'filled' => Icon(
+            Icons.check_rounded,
+            key: const ValueKey('filled'),
+            size: 56,
+            color: brand.onAccent,
+          ),
+        'busy' => Opacity(
+            key: const ValueKey('busy'),
+            opacity: (1 - fill).clamp(0.0, 1.0),
+            child: Icon(
+              Icons.arrow_upward_rounded,
+              size: 46,
+              color: _softInk,
+            ),
+          ),
+        _ => Column(
+            key: const ValueKey('empty'),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.file_upload_outlined,
+                size: 46,
+                color: brand.accent,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Tap to upload',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: brand.textMuted,
+                  letterSpacing: 0.1,
+                ),
+              ),
+            ],
+          ),
+      },
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — prompt ("What do you want me to do?")
+// ---------------------------------------------------------------------------
+
+class _PromptPhase extends ConsumerStatefulWidget {
+  const _PromptPhase({
+    super.key,
+    required this.onSend,
+    required this.onSkip,
+    this.initialText = '',
+  });
+
+  final ValueChanged<String> onSend;
+  final VoidCallback onSkip;
+
+  /// Pre-fills the composer — so stepping back from setup restores whatever the
+  /// user already typed instead of a blank field.
+  final String initialText;
+
+  @override
+  ConsumerState<_PromptPhase> createState() => _PromptPhaseState();
+}
+
+class _PromptPhaseState extends ConsumerState<_PromptPhase> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initialText);
+  final FocusNode _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _submit() => widget.onSend(_controller.text);
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final resumes = ref.watch(resumeProvider).resumes;
+    final resume = resumes.isNotEmpty ? resumes.first : null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 20),
+                if (resume != null)
+                  _FileChip(resume: resume, ready: true)
+                      .animate()
+                      .fadeIn(duration: 380.ms)
+                      .moveY(begin: 6, end: 0),
+                const SizedBox(height: 30),
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      const TextSpan(text: 'What do you want\nme to '),
+                      TextSpan(
+                        text: 'do?',
+                        style: TextStyle(color: brand.accent),
+                      ),
+                    ],
+                  ),
+                  style: TextStyle(
+                    fontSize: 34,
+                    fontWeight: FontWeight.w800,
+                    color: _softInk,
+                    height: 1.1,
+                    letterSpacing: -1.0,
+                  ),
+                )
+                    .animate(delay: 120.ms)
+                    .fadeIn(duration: 460.ms)
+                    .moveY(begin: 10, end: 0, curve: Curves.easeOutCubic),
+                const SizedBox(height: 14),
+                Text(
+                  "Tell me your goal and I'll get to work. Leave it blank and "
+                  "I'll plan from your resume.",
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: brand.textMuted,
+                    height: 1.5,
+                    letterSpacing: -0.1,
+                  ),
+                ).animate(delay: 200.ms).fadeIn(duration: 460.ms),
+              ],
+            ),
+          ),
+        ),
+        _Composer(
+          controller: _controller,
+          focus: _focus,
+          onSend: _submit,
+        ).animate(delay: 280.ms).fadeIn(duration: 380.ms).moveY(begin: 12, end: 0),
+        const SizedBox(height: 6),
+        Center(
+          child: TextButton(
+            onPressed: widget.onSkip,
+            child: Text(
+              'Skip',
+              style: TextStyle(
+                color: brand.textSoft,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The docked instruction composer — a rounded field that brightens to the
+/// accent on focus, with a circular send button.
+class _Composer extends StatelessWidget {
+  const _Composer({
+    required this.controller,
+    required this.focus,
+    required this.onSend,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focus;
+  final VoidCallback onSend;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final focused = focus.hasFocus;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      padding: const EdgeInsets.fromLTRB(18, 6, 6, 6),
+      decoration: BoxDecoration(
+        color: brand.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: focused ? brand.accent : brand.border,
+          width: 1.4,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: TextField(
+              controller: controller,
+              focusNode: focus,
+              minLines: 1,
+              maxLines: 4,
+              textInputAction: TextInputAction.newline,
+              cursorColor: brand.accent,
+              style: TextStyle(
+                fontSize: 15,
+                height: 1.45,
+                fontWeight: FontWeight.w500,
+                color: brand.ink,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                hintText: 'e.g. Find me remote product roles at startups',
+                hintStyle: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: brand.textSoft,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          _SendButton(onTap: onSend),
         ],
       ),
     );
   }
 }
 
-/// Full-width pill action shared by the upload phase. Filled = solid ink hero;
-/// otherwise an outlined surface. Mirrors the resume-list button language so
-/// onboarding and the library feel like one product.
-class _BigButton extends StatelessWidget {
-  const _BigButton({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-    required this.filled,
-    this.iconColor,
-  });
+class _SendButton extends StatelessWidget {
+  const _SendButton({required this.onTap});
 
-  final String label;
-  final IconData icon;
   final VoidCallback onTap;
-  final bool filled;
-  final Color? iconColor;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final fg = filled ? brand.inkInverse : brand.ink;
-    return Material(
-      color: filled ? brand.ink : brand.surface,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Container(
-          width: double.infinity,
-          height: 56,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: filled ? null : Border.all(color: brand.border, width: 1.4),
-          ),
-          alignment: Alignment.center,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 20,
-                color: iconColor ?? (filled ? fg : brand.accent),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                label,
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 15,
-                  letterSpacing: -0.2,
-                  color: fg,
-                ),
-              ),
-            ],
+    return Semantics(
+      button: true,
+      label: 'Send',
+      child: Material(
+        color: brand.accent,
+        shape: const CircleBorder(),
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: SizedBox(
+            width: 46,
+            height: 46,
+            child: Icon(
+              Icons.arrow_upward_rounded,
+              color: brand.onAccent,
+              size: 22,
+            ),
           ),
         ),
       ),
@@ -360,14 +657,107 @@ class _BigButton extends StatelessWidget {
   }
 }
 
+/// Compact pill showing the uploaded file — a PDF glyph, name, size, and a lime
+/// "ready" check. Shared by the upload and prompt phases.
+class _FileChip extends StatelessWidget {
+  const _FileChip({required this.resume, this.ready = false});
+
+  final ResumeFile resume;
+  final bool ready;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 320),
+      padding: const EdgeInsets.fromLTRB(10, 8, 14, 8),
+      decoration: BoxDecoration(
+        color: brand.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: brand.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: brand.accentMuted,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              Icons.description_rounded,
+              size: 18,
+              color: brand.accent,
+            ),
+          ),
+          const SizedBox(width: 11),
+          Flexible(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  resume.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: brand.ink,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  _formatBytes(resume.size),
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w500,
+                    color: brand.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (ready) ...[
+            const SizedBox(width: 12),
+            Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                color: brand.accent,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.check_rounded, size: 14, color: brand.onAccent),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+String _formatBytes(int bytes) {
+  if (bytes <= 0) return '—';
+  if (bytes < 1024) return '$bytes B';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
+  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+}
+
 // ---------------------------------------------------------------------------
-// Phase 2 — setup (live agent work)
+// Phase 3 — setup (live agent work)
 // ---------------------------------------------------------------------------
 
 enum _StepStatus { pending, active, done, failed }
 
 class _SetupPhase extends ConsumerStatefulWidget {
-  const _SetupPhase({super.key});
+  const _SetupPhase({super.key, this.instruction = ''});
+
+  /// The user's free-text instruction from the prompt phase. When present it
+  /// steers the first brief; otherwise the inferred role does.
+  final String instruction;
 
   @override
   ConsumerState<_SetupPhase> createState() => _SetupPhaseState();
@@ -380,25 +770,31 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     'Setting your target role',
     'Finding roles for you',
   ];
-  static const _icons = [
-    Icons.description_rounded,
-    Icons.insights_rounded,
-    Icons.flag_rounded,
-    Icons.travel_explore_rounded,
-  ];
 
   final List<_StepStatus> _statuses =
       List<_StepStatus>.filled(4, _StepStatus.pending);
-  String _detail = 'Getting started…';
+
+  /// Live caption per step. The active step narrates what the agent is doing
+  /// right now; finished steps keep a short result line. Drives the per-row
+  /// subtitle in the process timeline.
+  final List<String?> _subtitles = List<String?>.filled(4, null);
+
   String? _inferredRole;
 
-  /// Concrete facts pulled from the parsed resume, revealed as chips so the
-  /// user sees the agent *actually read their file* — not just a spinner.
+  /// Concrete facts pulled from the parsed resume, revealed as chips under the
+  /// reading step so the user sees the agent *actually read their file*.
   List<String> _found = const [];
 
-  /// Cycles the [_detail] caption through a few human-readable lines while the
-  /// inference call is in flight, so the longest (opaque) step reads as live
-  /// reasoning instead of a frozen "Mapping your strengths…".
+  /// Free-text context the user adds mid-setup; folded into the live brief.
+  final List<String> _addedContext = [];
+
+  /// True once the first brief has kicked off — gates whether added context
+  /// re-steers an already-running search.
+  bool _briefStarted = false;
+
+  /// Cycles the active step's subtitle through human-readable lines while an
+  /// opaque async call is in flight, so a wait reads as live reasoning instead
+  /// of a frozen caption.
   Timer? _thinking;
 
   /// Built locally (not via the agent tool layer) so onboarding owns its own
@@ -426,7 +822,7 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     if (!mounted) return;
     setState(() {
       _statuses[i] = status;
-      if (detail != null) _detail = detail;
+      if (detail != null) _subtitles[i] = detail;
     });
   }
 
@@ -465,19 +861,45 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     var i = 0;
     _set(step, _StepStatus.active, detail: lines.first);
     _thinking?.cancel();
-    _thinking = Timer.periodic(const Duration(milliseconds: 1400), (t) {
+    _thinking = Timer.periodic(const Duration(milliseconds: 1500), (t) {
       if (!mounted) {
         t.cancel();
         return;
       }
       i = (i + 1) % lines.length;
-      setState(() => _detail = lines[i]);
+      setState(() => _subtitles[step] = lines[i]);
     });
   }
 
   void _stopThinking() {
     _thinking?.cancel();
     _thinking = null;
+  }
+
+  /// Folds the typed goal, any added context, and the inferred role into one
+  /// brief query. Returns null when there's nothing to search on.
+  String? _query() {
+    final instruction = widget.instruction.trim();
+    final parts = <String>[
+      if (instruction.isNotEmpty) instruction,
+      ..._addedContext,
+      if (instruction.isEmpty && (_inferredRole?.isNotEmpty ?? false))
+        _inferredRole!,
+    ];
+    return parts.isEmpty ? null : parts.join('. ');
+  }
+
+  /// Captures context the user adds while setup runs. If the search already
+  /// kicked off, re-steer it with the fuller picture.
+  void _addContext(String text) {
+    final t = text.trim();
+    if (t.isEmpty || !mounted) return;
+    setState(() => _addedContext.add(t));
+    if (_briefStarted) {
+      unawaited(
+        ref.read(passiveAgentProvider.notifier).runBrief(query: _query()),
+      );
+    }
   }
 
   Future<void> _runSetup() async {
@@ -559,18 +981,22 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
       _set(2, _StepStatus.done, detail: 'You can set a target role anytime.');
     }
 
-    // Step 4 — kick off the first brief. It runs in the background; the
-    // dashboard picks up the live "Looking for X roles…" state from here.
-    _set(3, _StepStatus.active, detail: 'Finding roles for you…');
+    // Step 4 — kick off the first brief. The user's typed instruction steers
+    // the search when given; otherwise we fall back to the inferred role. It
+    // runs in the background; the dashboard picks up the live state from here.
+    final instruction = widget.instruction.trim();
+    _set(3, _StepStatus.active,
+        detail: instruction.isNotEmpty
+            ? 'On it — searching live roles…'
+            : 'Searching live roles for you…');
+    _briefStarted = true;
     unawaited(
-      ref.read(passiveAgentProvider.notifier).runBrief(
-            query: role.isEmpty ? null : role,
-          ),
+      ref.read(passiveAgentProvider.notifier).runBrief(query: _query()),
     );
     // Brief stays running in the background — give it a beat so the handoff to
     // the dashboard reads as continuous motion, not a hard cut.
     await Future<void>.delayed(const Duration(milliseconds: 900));
-    _set(3, _StepStatus.done);
+    _set(3, _StepStatus.done, detail: 'Your first brief is on the way.');
     await _finish(roleSet: role.isNotEmpty);
   }
 
@@ -591,9 +1017,9 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     return ResumeFit(segments: segments, generatedAt: DateTime.now());
   }
 
-  /// Flips the onboarding gate and routes to the dashboard. Setting the flag
-  /// last (rather than during step 3) keeps the router from redirecting away
-  /// mid-setup, so the user actually sees the checklist complete.
+  /// Flips the onboarding gate and routes onward. Setting the flag last (rather
+  /// than during step 3) keeps the router from redirecting away mid-setup, so
+  /// the user actually sees the checklist complete.
   Future<void> _finish({required bool roleSet}) async {
     await ref
         .read(userProfileProvider.notifier)
@@ -603,90 +1029,99 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
       await ref.read(devFlagsProvider.notifier).setShowOnboarding(false);
     }
     if (!mounted) return;
-    context.go(RouteNames.dashboard);
+    context.go(RouteNames.linkGmail);
   }
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
+    final allSettled = _statuses
+        .every((s) => s == _StepStatus.done || s == _StepStatus.failed);
+
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: 24),
-        GooeyOrb(size: 120)
-            .animate(onPlay: (c) => c.repeat())
-            .shimmer(duration: 1800.ms, color: brand.accent.withValues(alpha: 0.3)),
-        const SizedBox(height: 24),
-        Text(
-          'Setting up your copilot',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w900,
-            color: brand.ink,
-            letterSpacing: -0.5,
-          ),
-        ),
-        const SizedBox(height: 8),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 240),
-          child: Text(
-            _detail,
-            key: ValueKey(_detail),
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: brand.textMuted,
-              height: 1.4,
-            ),
-          ),
-        ),
-        if (_found.isNotEmpty) ...[
-          const SizedBox(height: 18),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Wrap(
-              alignment: WrapAlignment.center,
-              spacing: 8,
-              runSpacing: 8,
+        Expanded(
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (var i = 0; i < _found.length; i++)
-                  _FoundChip(label: _found[i])
-                      .animate(delay: (i * 90).ms)
-                      .fadeIn(duration: 260.ms)
-                      .moveY(begin: 6, end: 0)
-                      .scale(
-                        begin: const Offset(0.9, 0.9),
-                        end: const Offset(1, 1),
-                      ),
+                const SizedBox(height: 6),
+                Text(
+                  'Setting up your copilot',
+                  style: TextStyle(
+                    fontSize: 27,
+                    fontWeight: FontWeight.w800,
+                    color: _softInk,
+                    letterSpacing: -0.8,
+                    height: 1.1,
+                  ),
+                ).animate().fadeIn(duration: 420.ms).moveY(begin: 8, end: 0),
+                const SizedBox(height: 8),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 260),
+                  child: Text(
+                    allSettled
+                        ? 'All set — taking you in…'
+                        : 'Your copilot is getting to work. This only takes a '
+                            'few seconds.',
+                    key: ValueKey(allSettled),
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w500,
+                      color: brand.textMuted,
+                      height: 1.45,
+                      letterSpacing: -0.1,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 34),
+                // The process timeline — a node per step joined by a connector
+                // that flows lime as work passes through it.
+                for (var i = 0; i < _labels.length; i++)
+                  _ProcessStep(
+                    label: i == 2 &&
+                            _statuses[2] == _StepStatus.done &&
+                            _inferredRole != null
+                        ? 'Target role · $_inferredRole'
+                        : _labels[i],
+                    status: _statuses[i],
+                    subtitle: _subtitles[i],
+                    isLast: i == _labels.length - 1,
+                    child: i == 0 && _found.isNotEmpty ? _foundWrap() : null,
+                  ),
               ],
             ),
           ),
-        ],
-        const SizedBox(height: 36),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-          decoration: BoxDecoration(
-            color: brand.surface,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: brand.border),
-          ),
-          child: Column(
-            children: [
-              for (var i = 0; i < _labels.length; i++)
-                _StepRow(
-                  label: _statuses[i] == _StepStatus.done && i == 2 &&
-                          _inferredRole != null
-                      ? 'Target role · $_inferredRole'
-                      : _labels[i],
-                  icon: _icons[i],
-                  status: _statuses[i],
-                  isLast: i == _labels.length - 1,
-                ),
-            ],
-          ),
         ),
+        const SizedBox(height: 8),
+        // Let the user feed the agent more to go on while it works.
+        _AddContext(onSubmit: _addContext, added: _addedContext),
+        const SizedBox(height: 4),
       ],
+    );
+  }
+
+  /// The facts pulled from the parse, shown inline under the reading step.
+  Widget _foundWrap() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (var i = 0; i < _found.length; i++)
+            _FoundChip(label: _found[i])
+                .animate(delay: (i * 80).ms)
+                .fadeIn(duration: 240.ms)
+                .moveY(begin: 6, end: 0)
+                .scale(
+                  begin: const Offset(0.92, 0.92),
+                  end: const Offset(1, 1),
+                ),
+        ],
+      ),
     );
   }
 }
@@ -736,96 +1171,647 @@ class _FoundChip extends StatelessWidget {
   }
 }
 
-class _StepRow extends StatelessWidget {
-  const _StepRow({
+// ---------------------------------------------------------------------------
+// Process timeline — a vertical node-and-connector stepper
+// ---------------------------------------------------------------------------
+
+/// One row of the setup timeline: a status node on a left rail (joined to the
+/// next node by an animated [_Connector]) beside a title, a live subtitle that
+/// narrates what the agent is doing, and an optional [child] payload (the facts
+/// the parse pulled out).
+class _ProcessStep extends StatelessWidget {
+  const _ProcessStep({
     required this.label,
-    required this.icon,
     required this.status,
+    required this.subtitle,
     required this.isLast,
+    this.child,
   });
 
   final String label;
-  final IconData icon;
   final _StepStatus status;
+  final String? subtitle;
   final bool isLast;
+  final Widget? child;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final bool active = status == _StepStatus.active;
-    final bool done = status == _StepStatus.done;
-    final bool failed = status == _StepStatus.failed;
+    final active = status == _StepStatus.active;
+    final done = status == _StepStatus.done;
+    final pending = status == _StepStatus.pending;
+    final hasSubtitle = subtitle != null && subtitle!.isNotEmpty;
 
-    final Color tint = done
-        ? brand.accentBright
-        : failed
-            ? brand.warning
-            : active
-                ? brand.ink
-                : brand.textSoft;
-
-    return Padding(
-      padding: EdgeInsets.only(top: 12, bottom: isLast ? 12 : 12),
+    return IntrinsicHeight(
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Left rail: node + the connector that drops to the next node.
           SizedBox(
-            width: 26,
-            height: 26,
-            child: _leading(brand, active, done, failed),
+            width: 30,
+            child: Column(
+              children: [
+                _Node(status: status),
+                if (!isLast)
+                  Expanded(child: _Connector(done: done, active: active)),
+              ],
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 14.5,
-                fontWeight: active || done ? FontWeight.w800 : FontWeight.w600,
-                color: status == _StepStatus.pending ? brand.textMuted : brand.ink,
-                letterSpacing: -0.1,
+            child: Padding(
+              padding: EdgeInsets.only(top: 2, bottom: isLast ? 2 : 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 240),
+                    style: TextStyle(
+                      fontSize: 15.5,
+                      fontWeight:
+                          active || done ? FontWeight.w800 : FontWeight.w600,
+                      color: pending ? brand.textMuted : _softInk,
+                      letterSpacing: -0.2,
+                      height: 1.2,
+                    ),
+                    child: Text(label),
+                  ),
+                  if (hasSubtitle) ...[
+                    const SizedBox(height: 4),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 260),
+                      child: Text(
+                        subtitle!,
+                        key: ValueKey(subtitle),
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: active ? brand.accentBright : brand.textMuted,
+                          height: 1.35,
+                          letterSpacing: -0.1,
+                        ),
+                      ),
+                    ),
+                  ],
+                  if (child != null) child!,
+                ],
               ),
             ),
           ),
-          Icon(icon, size: 17, color: tint),
+        ],
+      ),
+    );
+  }
+}
+
+/// The status disc on the rail: a lime check when done, a pulsing lime ring
+/// while active, a warning glyph on failure, and a quiet hollow dot when
+/// pending.
+class _Node extends StatelessWidget {
+  const _Node({required this.status});
+
+  final _StepStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    switch (status) {
+      case _StepStatus.done:
+        return Container(
+          width: 26,
+          height: 26,
+          decoration: BoxDecoration(
+            color: brand.accentBright,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: brand.accent.withValues(alpha: 0.4),
+                blurRadius: 9,
+              ),
+            ],
+          ),
+          alignment: Alignment.center,
+          child: Icon(Icons.check_rounded, size: 16, color: brand.onAccent),
+        );
+      case _StepStatus.failed:
+        return Container(
+          width: 26,
+          height: 26,
+          decoration: BoxDecoration(
+            color: brand.warning.withValues(alpha: 0.16),
+            shape: BoxShape.circle,
+            border: Border.all(color: brand.warning, width: 1.6),
+          ),
+          alignment: Alignment.center,
+          child:
+              Icon(Icons.priority_high_rounded, size: 14, color: brand.warning),
+        );
+      case _StepStatus.active:
+        return const _ActiveNode();
+      case _StepStatus.pending:
+        return Container(
+          width: 26,
+          height: 26,
+          decoration: BoxDecoration(
+            color: brand.surfaceMuted,
+            shape: BoxShape.circle,
+            border: Border.all(color: brand.border, width: 1.4),
+          ),
+          alignment: Alignment.center,
+          child: Container(
+            width: 6,
+            height: 6,
+            decoration:
+                BoxDecoration(color: brand.textSoft, shape: BoxShape.circle),
+          ),
+        );
+    }
+  }
+}
+
+/// The in-progress node: a lime ring around a bright core that breathes (gated
+/// on reduced-motion).
+class _ActiveNode extends StatelessWidget {
+  const _ActiveNode();
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final core = Container(
+      width: 26,
+      height: 26,
+      decoration: BoxDecoration(
+        color: brand.surface,
+        shape: BoxShape.circle,
+        border: Border.all(color: brand.accent, width: 2),
+        boxShadow: [
+          BoxShadow(color: brand.accent.withValues(alpha: 0.5), blurRadius: 10),
+        ],
+      ),
+      alignment: Alignment.center,
+      child: Container(
+        width: 9,
+        height: 9,
+        decoration:
+            BoxDecoration(color: brand.accentBright, shape: BoxShape.circle),
+      ),
+    );
+    if (!shouldAnimate(context)) return core;
+    return core
+        .animate(onPlay: (c) => c.repeat(reverse: true))
+        .scaleXY(begin: 0.9, end: 1.1, duration: 900.ms, curve: Curves.easeInOut);
+  }
+}
+
+/// The vertical line joining two nodes. Pending: a faint track. Active: a lime
+/// pulse travelling top-to-bottom (the work "flowing" to the next step). Done:
+/// the track fills solid lime, top-down.
+class _Connector extends StatefulWidget {
+  const _Connector({required this.done, required this.active});
+
+  final bool done;
+  final bool active;
+
+  @override
+  State<_Connector> createState() => _ConnectorState();
+}
+
+class _ConnectorState extends State<_Connector>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _flow = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1300),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(covariant _Connector old) {
+    super.didUpdateWidget(old);
+    if (old.active != widget.active) _sync();
+  }
+
+  void _sync() {
+    if (widget.active && shouldAnimate(context)) {
+      if (!_flow.isAnimating) _flow.repeat();
+    } else {
+      _flow.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _flow.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Center(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(2),
+          child: SizedBox(
+            width: 2.5,
+            child: widget.done
+                ? _doneFill(brand)
+                : widget.active
+                    ? _activeFlow(brand)
+                    : Container(color: brand.border),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _doneFill(BrandTheme brand) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 520),
+      curve: Curves.easeOutCubic,
+      builder: (context, t, _) => Stack(
+        fit: StackFit.expand,
+        children: [
+          Container(color: brand.border),
+          Align(
+            alignment: Alignment.topCenter,
+            child: FractionallySizedBox(
+              heightFactor: t,
+              child: Container(color: brand.accent),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _leading(BrandTheme brand, bool active, bool done, bool failed) {
-    if (active) {
-      return Padding(
-        padding: const EdgeInsets.all(4),
-        child: CircularProgressIndicator(
-          strokeWidth: 2.4,
-          valueColor: AlwaysStoppedAnimation(brand.ink),
-        ),
+  Widget _activeFlow(BrandTheme brand) {
+    final base = brand.accent.withValues(alpha: 0.22);
+    if (!shouldAnimate(context)) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          Container(color: base),
+          Align(
+            alignment: Alignment.topCenter,
+            child: FractionallySizedBox(
+              heightFactor: 0.5,
+              child: Container(color: brand.accent),
+            ),
+          ),
+        ],
       );
     }
-    if (done) {
-      return Container(
-        decoration: BoxDecoration(
-          color: brand.accentBright,
-          shape: BoxShape.circle,
-        ),
-        alignment: Alignment.center,
-        child: Icon(Icons.check_rounded, size: 16, color: brand.onAccent),
-      );
+    return AnimatedBuilder(
+      animation: _flow,
+      builder: (context, _) => Stack(
+        fit: StackFit.expand,
+        children: [
+          Container(color: base),
+          Align(
+            // Drives a 40%-tall highlight from top (-1) to bottom (+1).
+            alignment: Alignment(0, -1 + 2 * _flow.value),
+            child: FractionallySizedBox(
+              heightFactor: 0.4,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      brand.accent.withValues(alpha: 0),
+                      brand.accentBright,
+                      brand.accent.withValues(alpha: 0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Add-context affordance (setup phase)
+// ---------------------------------------------------------------------------
+
+/// A collapsed "Add context" pill that expands into a composer, letting the
+/// user feed the agent more to go on while setup runs. Added lines show as lime
+/// chips above the control.
+class _AddContext extends StatefulWidget {
+  const _AddContext({required this.onSubmit, required this.added});
+
+  final ValueChanged<String> onSubmit;
+  final List<String> added;
+
+  @override
+  State<_AddContext> createState() => _AddContextState();
+}
+
+class _AddContextState extends State<_AddContext> {
+  final TextEditingController _controller = TextEditingController();
+  final FocusNode _focus = FocusNode();
+  bool _open = false;
+
+  void _toggle() {
+    setState(() => _open = !_open);
+    if (_open) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _focus.requestFocus());
     }
-    if (failed) {
-      return Container(
-        decoration: BoxDecoration(
-          color: brand.warning.withValues(alpha: 0.15),
-          shape: BoxShape.circle,
+  }
+
+  void _submit() {
+    final t = _controller.text.trim();
+    if (t.isEmpty) return;
+    widget.onSubmit(t);
+    _controller.clear();
+    _focus.unfocus();
+    setState(() => _open = false);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (widget.added.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final c in widget.added) _ContextChip(label: c),
+              ],
+            ),
+          ),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 220),
+          child: _open ? _composer(brand) : _addButton(brand),
         ),
-        alignment: Alignment.center,
-        child: Icon(Icons.priority_high_rounded, size: 15, color: brand.warning),
-      );
-    }
+      ],
+    );
+  }
+
+  Widget _addButton(BrandTheme brand) {
+    return Align(
+      key: const ValueKey('add-btn'),
+      alignment: Alignment.centerLeft,
+      child: Material(
+        color: brand.surface,
+        shape: StadiumBorder(side: BorderSide(color: brand.border)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: _toggle,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.add_rounded, size: 18, color: brand.accent),
+                const SizedBox(width: 8),
+                Text(
+                  'Add context',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: brand.ink,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _composer(BrandTheme brand) {
     return Container(
+      key: const ValueKey('add-composer'),
+      padding: const EdgeInsets.fromLTRB(16, 4, 6, 4),
       decoration: BoxDecoration(
-        color: brand.surfaceMuted,
-        shape: BoxShape.circle,
-        border: Border.all(color: brand.border),
+        color: brand.surface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: brand.accent.withValues(alpha: 0.6),
+          width: 1.4,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              focusNode: _focus,
+              minLines: 1,
+              maxLines: 3,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => _submit(),
+              cursorColor: brand.accent,
+              style: TextStyle(
+                fontSize: 14.5,
+                height: 1.4,
+                fontWeight: FontWeight.w500,
+                color: brand.ink,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 11),
+                hintText: 'e.g. prefer remote, \$120k+, no agencies',
+                hintStyle: TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w500,
+                  color: brand.textSoft,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          _SendButton(onTap: _submit),
+        ],
+      ),
+    );
+  }
+}
+
+/// A user-added context line — lime-tinted to distinguish it from the read
+/// facts surfaced by the agent.
+class _ContextChip extends StatelessWidget {
+  const _ContextChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 280),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: brand.accentMuted,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: brand.accent.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.auto_awesome_rounded, size: 13, color: brand.accentBright),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: brand.ink,
+                letterSpacing: -0.1,
+              ),
+            ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 220.ms).moveY(begin: 6, end: 0);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Top onboarding tracker
+// ---------------------------------------------------------------------------
+
+/// Slim three-segment tracker pinned above the flow. Each segment fills with
+/// lime as its phase is reached; the live segment carries a soft glow. Visited
+/// segments are tappable to step back.
+class _OnboardingProgress extends StatelessWidget {
+  const _OnboardingProgress({
+    required this.phaseIndex,
+    required this.onTapIndex,
+  });
+
+  final int phaseIndex;
+  final ValueChanged<int> onTapIndex;
+
+  static const _labels = ['Upload', 'Goal', 'Setup'];
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            for (var i = 0; i < _labels.length; i++) ...[
+              if (i > 0) const SizedBox(width: 6),
+              Expanded(
+                child: _ProgressSegment(
+                  filled: i <= phaseIndex,
+                  current: i == phaseIndex,
+                  onTap: i < phaseIndex ? () => onTapIndex(i) : null,
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 7),
+        Row(
+          children: [
+            for (var i = 0; i < _labels.length; i++) ...[
+              if (i > 0) const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  _labels[i],
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight:
+                        i == phaseIndex ? FontWeight.w800 : FontWeight.w600,
+                    color: i <= phaseIndex ? brand.ink : brand.textSoft,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _ProgressSegment extends StatelessWidget {
+  const _ProgressSegment({
+    required this.filled,
+    required this.current,
+    this.onTap,
+  });
+
+  final bool filled;
+  final bool current;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        // Enlarge the tap target around the slim 5px bar.
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Container(
+          height: 5,
+          decoration: BoxDecoration(
+            color: brand.surfaceMuted,
+            borderRadius: BorderRadius.circular(3),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: AnimatedFractionallySizedBox(
+              duration: const Duration(milliseconds: 480),
+              curve: Curves.easeOutCubic,
+              widthFactor: filled ? 1.0 : 0.0,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: brand.accent,
+                  borderRadius: BorderRadius.circular(3),
+                  boxShadow: current
+                      ? [
+                          BoxShadow(
+                            color: brand.accent.withValues(alpha: 0.45),
+                            blurRadius: 9,
+                          ),
+                        ]
+                      : null,
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

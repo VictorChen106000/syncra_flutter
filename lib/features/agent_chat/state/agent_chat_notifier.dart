@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
-import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
 import '../../../data/firestore/jobs_repository.dart';
 import '../../../data/firestore/resumes_repository.dart';
@@ -256,13 +255,11 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
   /// generic welcome.
   AgentTurn _buildOpener(Job? job) {
     if (job == null) {
-      return AgentTurn(
-        id: 'turn-opener',
-        blocks: [
-          TextBlock(id: 'opener-text', text: AppStrings.chatInitialMessage),
-        ],
-        isStreaming: false,
-      );
+      // No greeting bubble: the fresh-chat experience is the empty state
+      // ("How can I help today?"). The opener stays as an empty turn purely so
+      // the single-agent-item check that triggers the empty state keeps
+      // working; it's filtered out of the rendered transcript.
+      return AgentTurn(id: 'turn-opener', isStreaming: false);
     }
 
     final blocks = <AgentBlock>[];

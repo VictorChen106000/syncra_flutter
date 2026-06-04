@@ -13,6 +13,7 @@ import '../../features/agent/state/passive_agent_notifier.dart';
 import '../../features/auth/state/auth_notifier.dart';
 import '../../features/auth/state/user_profile_notifier.dart';
 import '../../features/dashboard/presentation/dashboard_page.dart';
+import '../../features/email/presentation/link_gmail_page.dart';
 import '../../features/jobs/presentation/jobs_page.dart';
 import '../../features/profile/presentation/profile_page.dart';
 import '../../features/resumes/models/resume_file.dart';
@@ -131,6 +132,11 @@ List<RouteBase> _routes(Page<void> Function(GoRouterState, Widget) fadePage) =>
         path: RouteNames.onboarding,
         pageBuilder: (context, state) =>
             fadePage(state, const OnboardingPage()),
+      ),
+      GoRoute(
+        path: RouteNames.linkGmail,
+        pageBuilder: (context, state) =>
+            fadePage(state, const LinkGmailPage()),
       ),
       GoRoute(
         path: RouteNames.morningBrief,

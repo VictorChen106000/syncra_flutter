@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_assets.dart';
@@ -204,6 +205,36 @@ class _IconChip extends StatelessWidget {
       ),
       alignment: Alignment.center,
       child: Icon(icon, size: 19, color: tinted ? tint! : brand.onAccent),
+    );
+  }
+}
+
+/// Sibling to [_IconChip] for true-colour brand marks: a white chip with a
+/// hairline border so a multicolour logo (Gmail) reads cleanly in either theme.
+class _BrandLogoChip extends StatelessWidget {
+  const _BrandLogoChip({required this.asset, required this.semanticsLabel});
+
+  final String asset;
+  final String semanticsLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: brand.ink.withValues(alpha: 0.08)),
+      ),
+      alignment: Alignment.center,
+      child: SvgPicture.asset(
+        asset,
+        width: 22,
+        height: 22,
+        semanticsLabel: semanticsLabel,
+      ),
     );
   }
 }
@@ -866,6 +897,7 @@ class _IntegrationSection extends ConsumerWidget {
       children: [
         _IntegrationTile(
           icon: Icons.mail_outline_rounded,
+          svgAsset: AppAssets.gmailSvg,
           title: 'Gmail',
           active: connected,
           onToggle: profile == null
@@ -885,12 +917,17 @@ class _IntegrationTile extends StatelessWidget {
     required this.title,
     required this.active,
     required this.onToggle,
+    this.svgAsset,
   });
 
   final IconData icon;
   final String title;
   final bool active;
   final VoidCallback? onToggle;
+
+  /// Optional brand logo (e.g. the multicolour Gmail mark) rendered on a white
+  /// chip in place of the lime accent icon, so the logo stays true to colour.
+  final String? svgAsset;
 
   @override
   Widget build(BuildContext context) {
@@ -899,7 +936,10 @@ class _IntegrationTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
         children: [
-          _IconChip(icon: icon),
+          if (svgAsset != null)
+            _BrandLogoChip(asset: svgAsset!, semanticsLabel: title)
+          else
+            _IconChip(icon: icon),
           const SizedBox(width: 14),
           Expanded(
             child: Text(

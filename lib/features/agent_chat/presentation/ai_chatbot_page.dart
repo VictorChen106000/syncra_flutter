@@ -113,8 +113,13 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
     final pendingProposal = _pendingProposal(state.items);
     final pendingInput = _pendingInputRequest(state.items);
     // The latest prompt and any attached resume now flow inline as right-side
-    // bubbles, so nothing is hoisted out of the transcript anymore.
-    final transcriptForList = state.items;
+    // bubbles, so nothing is hoisted out of the transcript anymore. The no-job
+    // opener is an empty turn (no greeting bubble) — drop it so the transcript
+    // doesn't lead with a blank gap. Streaming turns legitimately have no
+    // blocks yet, so those are kept.
+    final transcriptForList = state.items
+        .where((it) => it is! AgentTurn || it.isStreaming || it.blocks.isNotEmpty)
+        .toList();
 
     final media = MediaQuery.of(context);
     final topSafe = media.padding.top;

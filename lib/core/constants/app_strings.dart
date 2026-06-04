@@ -52,8 +52,6 @@ class AppStrings {
   static const String pending = 'Pending';
 
   // Chat
-  static const String chatInitialMessage =
-      'Hi, Syncra AI here. What career goals can I help you execute today?';
   static const String chatTitle = 'Syncra AI 2.5 Pro';
   static const String chatTypingTitle = 'Syncra is drafting...';
 
