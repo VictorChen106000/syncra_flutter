@@ -43,13 +43,13 @@ The propose path and accepted-edit preview/save path work. Remaining engine poli
 - [x] **`resume_diff_service.dart`** — pure accepted-edit application with target-path / verbatim-original backstop.
 - [x] Accepted edits can render a tailored PDF preview and save it as a tailored resume.
 - [x] Cascade-delete tailored children when a manual resume is deleted (`ResumeNotifier.deleteResume`).
-- [ ] Parser retry — one stricter-prompt retry on malformed JSON for `read_resume` / tailor edits.
+- [x] Parser retry — `ResumeParserService` retries once with a stricter prompt when Claude returns malformed resume JSON, then surfaces an actionable parse error if retry still fails.
 - [ ] Scanned-PDF: when text extraction returns empty, surface "upload a text PDF" instead of falling back to the sample resume.
 
 ### Resume Diff UI
 The inline proposed-edits card is now interactive.
 
-- [x] `ProposedEditsBlock` supports per-edit Accept/Reject decisions, accepted counter, Dismiss all, and Apply N edits.
+- [x] `ProposedEditsBlock` renders the current read-only proposed-edits card state with accepted counter, Dismiss all, Apply N edits, preview-ready state, and current widget tests.
 - [x] Applying accepted edits renders an in-memory tailored PDF preview.
 - [x] Saving the preview persists the tailored resume to Firebase Storage / Firestore and returns a saved resume id.
 - [x] After save, the agent loop resumes through the saved-resume continuation bridge.
@@ -107,8 +107,8 @@ flipped — the brief runs only from the dashboard CTA or the post-sign-in page.
 
 ## Critical path
 
-The headline demo moment — propose → review → apply → tailored PDF — is blocked
-end to end:
+The headline demo moment — propose → review → apply → tailored PDF — is now
+demoable end to end:
 
 ```
 Resume Engine: resume_diff_service + apply_resume_edits  ──┐
@@ -116,9 +116,9 @@ Resume Engine: resume_diff_service + apply_resume_edits  ──┐
 Agent Reasoning: feed apply result back into the loop   ──┘
 ```
 
-Build **Resume Engine first** — it has no UI dependency and unblocks both the
-diff UI and the agent loop. Integrations (JSearch, Gmail) is independent and can
-run in parallel.
+Resume Engine, Resume Diff UI, and Agent Reasoning are now integrated for the
+core tailored-resume loop. Remaining work should focus on demo polish, bug bash,
+and key configuration.
 
 ## Integration handshakes — agree these early
 
