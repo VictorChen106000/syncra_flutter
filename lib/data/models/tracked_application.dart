@@ -3,7 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'job.dart';
 
 /// What stage an application is at, derived from timestamps + the user's
-/// `gotReply` flag. See [docs/api-contract.md §3 applications].
+/// `gotReply` flag. The application data model is documented in
+/// `docs/ARCHITECTURE.md`.
 enum ApplicationPhase {
   /// Agent has prepared a draft. User hasn't sent it yet.
   draft,
