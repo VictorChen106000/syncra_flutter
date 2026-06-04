@@ -31,12 +31,12 @@ class Job {
 
   /// LinkedIn-style match label derived from [category]. The matching system
   /// is purely qualitative — the user never sees a numeric score or percent,
-  /// only one of these labels. [matchScore] is retained internally for legacy
-  /// persistence/sorting but is never surfaced.
+  /// only one of these three labels. [matchScore] is retained internally for
+  /// legacy persistence/sorting but is never surfaced.
   String get matchLabel => switch (category) {
-        JobCategory.ready => 'Strong match',
-        JobCategory.inputNeeded => 'Partial match',
-        JobCategory.exploration => 'Possible match',
+        JobCategory.ready => 'All Match',
+        JobCategory.inputNeeded => 'Several Match',
+        JobCategory.exploration => 'No Match',
       };
 
   factory Job.fromJson(Map<String, dynamic> json) => Job(

@@ -1,5 +1,7 @@
 import '../../../data/firestore/pipeline_repository.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+// cloud_firestore also exports a `PipelineStage` (query pipelines) — hide it so
+// our pipeline-card stage enum is the unambiguous one in this file.
+import 'package:cloud_firestore/cloud_firestore.dart' hide PipelineStage;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -46,9 +48,9 @@ void registerBuiltinTools(ToolRegistry registry) {
   _registerMatchJobs(registry, jobs, anthropic, orchestrator);
   _registerSaveToPipeline(registry, jobs, pipeline);
   _registerTailorResume(registry, jobs, paraphrase, orchestrator);
-  _registerApplyResumeEdits(registry, orchestrator);
+  _registerApplyResumeEdits(registry, orchestrator, pipeline);
   _registerBuildResume(registry);
-  _registerDraftEmail(registry, jobs, paraphrase, orchestrator);
+  _registerDraftEmail(registry, jobs, paraphrase, orchestrator, pipeline);
   _registerLookupHiringManager(registry);
   _registerSaveToTracker(registry, jobs, applications);
   _registerSendEmail(registry);
@@ -397,9 +399,9 @@ void _registerMatchJobs(
           'Assess how well a list of jobs fits the user\'s resume. Use '
           'resume_id when the user attached a resume. Returns each job with a '
           'category (ready / input_needed / exploration), a qualitative `match` '
-          'label (e.g. "Strong match"), a one-sentence justification, and any '
-          'missing skills. There is NO numeric score. Call AFTER search_jobs '
-          'and read_resume.',
+          'label (one of exactly: "All Match", "Several Match", "No Match"), a '
+          'one-sentence justification, and any missing skills. There is NO '
+          'numeric score. Call AFTER search_jobs and read_resume.',
       inputSchema: {
         'type': 'object',
         'properties': {
@@ -477,7 +479,11 @@ void _registerMatchJobs(
                 'salary': jobsById[r.jobId]?.salary ?? '',
                 'description_excerpt': jobsById[r.jobId]?.why ?? '',
                 'category': r.category.name,
-                'match': r.matchScore,
+                // Qualitative label ONLY — never the numeric score. The model
+                // parrots whatever it sees here, so handing it a number is what
+                // leaks "75 / 87" into chat. One of: All Match / Several Match /
+                // No Match.
+                'match': r.matchLabel,
                 'justification': r.justification,
                 'matched_skills': r.matchedSkills,
                 'missing_skills': r.missingSkills,
@@ -858,6 +864,7 @@ void _registerBuildResume(ToolRegistry registry) {
 void _registerApplyResumeEdits(
   ToolRegistry registry,
   ResumeTailorOrchestrator orchestrator,
+  PipelineRepository pipeline,
 ) {
   registry.register(
     tool: const Tool(
@@ -933,6 +940,12 @@ void _registerApplyResumeEdits(
           acceptedEdits: acceptedEdits,
           jobId: jobId == null || jobId.isEmpty ? null : jobId,
         );
+        // The resume is now genuinely tailored for this role — nudge the
+        // pipeline stepper to "Tailored" so the user sees the progress.
+        if (jobId != null && jobId.isNotEmpty) {
+          await _advancePipelineStage(
+            pipeline, uid, jobId, PipelineStage.tailored);
+        }
         final skippedNote = result.skippedCount > 0
             ? ' (${result.skippedCount} skipped — no verbatim match)'
             : '';
@@ -961,6 +974,7 @@ void _registerDraftEmail(
   JobsRepository jobsRepo,
   AnthropicParaphraseService paraphrase,
   ResumeTailorOrchestrator orchestrator,
+  PipelineRepository pipeline,
 ) {
   registry.register(
     tool: const Tool(
@@ -1071,6 +1085,10 @@ void _registerDraftEmail(
           recipientName: args['recipient_name'] as String?,
           tone: tone,
         );
+        // An outreach draft now exists for this role — advance the pipeline
+        // stepper to "Drafted" so the card flips to "Review & send".
+        await _advancePipelineStage(
+          pipeline, uid, job.id, PipelineStage.drafted);
         return ToolResult(
           summary: 'Draft ready for $recipient',
           data: {
@@ -1408,6 +1426,23 @@ void _registerSendEmail(ToolRegistry registry) {
       }
     },
   );
+}
+
+/// Best-effort: nudge the pipeline stepper for [jobId] forward to [stage].
+/// Never throws — a stage write failing must not break the tool that ran, and a
+/// job with no pipeline card simply has nothing to advance.
+Future<void> _advancePipelineStage(
+  PipelineRepository pipeline,
+  String? uid,
+  String jobId,
+  PipelineStage stage,
+) async {
+  if (uid == null || jobId.isEmpty) return;
+  try {
+    await pipeline.advanceStage(uid: uid, jobId: jobId, stage: stage);
+  } catch (e) {
+    debugPrint('advanceStage($stage) failed for job $jobId: $e');
+  }
 }
 
 String _normalizeFactTopic(String raw) {

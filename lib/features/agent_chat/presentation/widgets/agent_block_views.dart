@@ -215,9 +215,9 @@ class _JobMatchCardState extends State<_JobMatchCard> {
 
   Widget _buildFront(BrandTheme brand, Job job) {
     final (matchColor, matchLabel) = switch (job.category) {
-      JobCategory.ready => (brand.success, 'STRONG MATCH'),
-      JobCategory.inputNeeded => (brand.textMuted, 'PARTIAL MATCH'),
-      JobCategory.exploration => (brand.textSoft, 'STRETCH'),
+      JobCategory.ready => (brand.success, 'ALL MATCH'),
+      JobCategory.inputNeeded => (brand.textMuted, 'SEVERAL MATCH'),
+      JobCategory.exploration => (brand.textSoft, 'NO MATCH'),
     };
     final subtitle = [
       if (job.company.isNotEmpty) job.company,

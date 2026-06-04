@@ -82,6 +82,30 @@ class PipelineRepository {
     return _paths.pipeline(uid).doc(cardId).update({'status': 'approved'});
   }
 
+  /// Moves the pipeline card(s) for [jobId] forward to [stage] — this is what
+  /// makes the stepper on the Pipeline screen actually progress as the agent
+  /// (or user) tailors, drafts, and sends. Forward-only: a card already at or
+  /// past [stage] is left untouched, so re-running a tool never rewinds the
+  /// dots. No-op when the job has no pipeline card (e.g. a draft fired straight
+  /// from chat without saving the role first). Best-effort by design — callers
+  /// wrap it so a write hiccup never breaks the underlying tool.
+  Future<void> advanceStage({
+    required String uid,
+    required String jobId,
+    required PipelineStage stage,
+  }) async {
+    final snap =
+        await _paths.pipeline(uid).where('job.id', isEqualTo: jobId).get();
+    if (snap.docs.isEmpty) return;
+
+    final target = _stageRank(stage);
+    for (final doc in snap.docs) {
+      final current = _stageFromName(doc.data()['stage'] as String?);
+      if (_stageRank(current) >= target) continue;
+      await doc.reference.update({'stage': _stageToName(stage)});
+    }
+  }
+
   Future<void> createCard({
     required String uid,
     required Job job,
@@ -152,6 +176,24 @@ PipelineStage _stageFromName(String? name) => switch (name) {
   'sent' => PipelineStage.sent,
   'replied' => PipelineStage.replied,
   _ => PipelineStage.matched,
+};
+
+String _stageToName(PipelineStage stage) => switch (stage) {
+  PipelineStage.matched => 'matched',
+  PipelineStage.tailored => 'tailored',
+  PipelineStage.drafted => 'drafted',
+  PipelineStage.sent => 'sent',
+  PipelineStage.replied => 'replied',
+};
+
+/// Linear order of the stepper, so [PipelineRepository.advanceStage] only ever
+/// moves a card forward.
+int _stageRank(PipelineStage stage) => switch (stage) {
+  PipelineStage.matched => 0,
+  PipelineStage.tailored => 1,
+  PipelineStage.drafted => 2,
+  PipelineStage.sent => 3,
+  PipelineStage.replied => 4,
 };
 
 PipelineCardStatus _statusFromName(String? name) => switch (name) {
