@@ -11,7 +11,7 @@ this file, fix the code (or change this file by PR). Product context is in
 |---|---|
 | Platform | Flutter — iOS / Android / Web |
 | Server | None. No FastAPI, no Cloud Functions. |
-| Auth | Firebase Auth — Google Sign-In |
+| Auth | Firebase Auth — Google Sign-In + email/password |
 | Database | Cloud Firestore (Spark plan) |
 | File storage | Firebase Storage for resume bytes; Firestore holds metadata |
 | LLM | Anthropic Claude (Haiku 4.5), called directly from Flutter |
@@ -29,7 +29,8 @@ this file, fix the code (or change this file by PR). Product context is in
 **Decisions settled from earlier open questions:** PDF may overflow to page 2;
 tailoring feeds Claude the full job description; malformed parse JSON retries
 once then surfaces an error; deleting a manual resume cascade-deletes its
-tailored children; Gmail scope is `gmail.send` only.
+tailored children; Gmail scope is `gmail.send` only; email/password auth is
+wired through Firebase instead of guest fallback.
 
 ## 1. The agent loop
 

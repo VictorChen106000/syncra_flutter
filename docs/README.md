@@ -74,7 +74,7 @@ two explicit gates: the diff viewer and the email modal.
 ## Stack
 
 - **Flutter** (iOS / Android / Web) — entire app, including the agent loop and tool registry
-- **Firebase Auth** (Google Sign-In) · **Cloud Firestore** (Spark) · **Firebase Storage** (resume files)
+- **Firebase Auth** (Google Sign-In + email/password) · **Cloud Firestore** (Spark) · **Firebase Storage** (resume files)
 - **Anthropic Claude** (Haiku 4.5) — agent brain, called directly from Flutter
 - **JSearch / RapidAPI** — live job listings
 - **Gmail API** — send drafted emails from the user's own account
