@@ -1557,28 +1557,57 @@ Future<List<Map<String, dynamic>>> _readLearnedFacts(
         .limit(12)
         .get();
 
-    return snap.docs
-        .map((doc) {
-          final data = doc.data();
-          return {
-            'id': doc.id,
-            'topic': (data['topic'] as String?) ?? '',
-            'detail': (data['detail'] as String?) ?? '',
-            'category': _normalizeFactCategory(
-              data['category']?.toString() ?? '',
-            ),
-            'observed_count': (data['observed_count'] as num?)?.toInt() ?? 1,
-          };
-        })
-        .where(
-          (fact) =>
-              (fact['topic'] as String).isNotEmpty &&
-              (fact['detail'] as String).isNotEmpty,
-        )
-        .toList(growable: false);
+    final facts = <Map<String, dynamic>>[];
+    final referencedRefs = <DocumentReference<Map<String, dynamic>>>[];
+
+    for (final doc in snap.docs) {
+      final data = doc.data();
+      final topic = ((data['topic'] as String?) ?? '').trim();
+      final detail = ((data['detail'] as String?) ?? '').trim();
+
+      if (topic.isEmpty || detail.isEmpty) continue;
+
+      final referenceCount = (data['reference_count'] as num?)?.toInt() ?? 0;
+
+      facts.add({
+        'id': doc.id,
+        'topic': topic,
+        'detail': detail,
+        'category': _normalizeFactCategory(data['category']?.toString() ?? ''),
+        'observed_count': (data['observed_count'] as num?)?.toInt() ?? 1,
+        'reference_count': referenceCount + 1,
+      });
+
+      referencedRefs.add(doc.reference);
+    }
+
+    await _markLearnedFactsReferenced(referencedRefs);
+
+    return facts;
   } catch (e) {
     debugPrint('read learned facts failed: $e');
     return const [];
+  }
+}
+
+Future<void> _markLearnedFactsReferenced(
+  List<DocumentReference<Map<String, dynamic>>> refs,
+) async {
+  if (refs.isEmpty) return;
+
+  try {
+    final batch = FirebaseFirestore.instance.batch();
+
+    for (final ref in refs) {
+      batch.update(ref, {
+        'last_referenced_at': FieldValue.serverTimestamp(),
+        'reference_count': FieldValue.increment(1),
+      });
+    }
+
+    await batch.commit();
+  } catch (e) {
+    debugPrint('mark learned facts referenced failed: $e');
   }
 }
 

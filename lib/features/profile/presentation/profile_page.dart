@@ -30,6 +30,7 @@ class _CareerMemoryFact {
     required this.detail,
     required this.category,
     required this.observedCount,
+    required this.referenceCount,
   });
 
   final String id;
@@ -37,6 +38,7 @@ class _CareerMemoryFact {
   final String detail;
   final String category;
   final int observedCount;
+  final int referenceCount;
 }
 
 final _careerMemoryProvider =
@@ -67,6 +69,8 @@ final _careerMemoryProvider =
                     ),
                     observedCount:
                         (data['observed_count'] as num?)?.toInt() ?? 1,
+                    referenceCount:
+                        (data['reference_count'] as num?)?.toInt() ?? 0,
                   );
                 })
                 .where(
@@ -841,6 +845,11 @@ class _CareerMemoryFactRow extends StatelessWidget {
                     if (fact.observedCount > 1)
                       _CareerMemoryMetaChip(
                         label: 'Seen ${fact.observedCount}x',
+                        muted: true,
+                      ),
+                    if (fact.referenceCount > 0)
+                      _CareerMemoryMetaChip(
+                        label: 'Referenced ${fact.referenceCount}x',
                         muted: true,
                       ),
                   ],
