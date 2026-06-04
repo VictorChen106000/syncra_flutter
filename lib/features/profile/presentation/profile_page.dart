@@ -80,6 +80,15 @@ final _careerMemoryProvider =
           );
     });
 
+String _normalizeMemoryTopic(String raw) {
+  return raw
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+      .replaceAll(RegExp(r'_+'), '_')
+      .replaceAll(RegExp(r'^_|_$'), '');
+}
+
 String _formatMemoryTopic(String topic) {
   final words = topic
       .split('_')
@@ -560,7 +569,7 @@ class _ProfileAvatar extends StatelessWidget {
 
 // ---------------------------------------------------------------------------
 // Career Memory — reusable facts the agent learned from user answers.
-// The agent writes facts through `remember_fact`; the user can delete one
+// The agent writes facts through `remember_fact`; the user can edit/delete one
 // memory, clear all Career Memory, or reset the account.
 // ---------------------------------------------------------------------------
 
@@ -683,6 +692,107 @@ class _CareerMemorySection extends ConsumerWidget {
     }
   }
 
+  Future<void> _confirmAndEditFact(
+    BuildContext context,
+    WidgetRef ref,
+    _CareerMemoryFact fact,
+  ) async {
+    final topicController = TextEditingController(
+      text: _formatMemoryTopic(fact.topic),
+    );
+    final detailController = TextEditingController(text: fact.detail);
+
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          final brand = dialogContext.brand;
+
+          return AlertDialog(
+            backgroundColor: brand.surface,
+            title: Text(
+              'Edit memory',
+              style: TextStyle(color: brand.ink, fontWeight: FontWeight.w800),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: topicController,
+                  decoration: const InputDecoration(
+                    labelText: 'Topic',
+                    hintText: 'Remote preference',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: detailController,
+                  minLines: 3,
+                  maxLines: 5,
+                  decoration: const InputDecoration(
+                    labelText: 'Detail',
+                    hintText: 'What should Syncra remember?',
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('Save memory'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (confirmed != true) return;
+
+      final user = ref.read(authProvider).appUser;
+      if (user == null || user.isGuest) return;
+
+      final topic = _normalizeMemoryTopic(topicController.text);
+      final detail = detailController.text.trim();
+
+      if (topic.isEmpty || detail.isEmpty) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Topic and detail cannot be empty.')),
+        );
+        return;
+      }
+
+      try {
+        await UserRepository().updateLearnedFact(
+          user.uid,
+          fact.id,
+          topic: topic,
+          detail: detail,
+        );
+        if (!context.mounted) return;
+
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Career Memory updated.')));
+      } catch (_) {
+        if (!context.mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not update this memory. Try again.'),
+          ),
+        );
+      }
+    } finally {
+      topicController.dispose();
+      detailController.dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final factsAsync = ref.watch(_careerMemoryProvider);
@@ -705,6 +815,8 @@ class _CareerMemorySection extends ConsumerWidget {
               const _GroupedDivider(),
               _CareerMemoryFactRow(
                 fact: visibleFacts[i],
+                onEdit: () =>
+                    _confirmAndEditFact(context, ref, visibleFacts[i]),
                 onDelete: () =>
                     _confirmAndDeleteFact(context, ref, visibleFacts[i]),
               ),
@@ -812,9 +924,14 @@ class _CareerMemorySummaryRow extends StatelessWidget {
 }
 
 class _CareerMemoryFactRow extends StatelessWidget {
-  const _CareerMemoryFactRow({required this.fact, required this.onDelete});
+  const _CareerMemoryFactRow({
+    required this.fact,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   final _CareerMemoryFact fact;
+  final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   @override
@@ -881,16 +998,32 @@ class _CareerMemoryFactRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          IconButton(
-            tooltip: 'Delete memory',
-            onPressed: onDelete,
-            visualDensity: VisualDensity.compact,
-            style: IconButton.styleFrom(
-              foregroundColor: brand.textMuted,
-              minimumSize: const Size(36, 36),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            icon: const Icon(Icons.delete_outline_rounded, size: 18),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: 'Edit memory',
+                onPressed: onEdit,
+                visualDensity: VisualDensity.compact,
+                style: IconButton.styleFrom(
+                  foregroundColor: brand.textMuted,
+                  minimumSize: const Size(36, 36),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                icon: const Icon(Icons.edit_outlined, size: 18),
+              ),
+              IconButton(
+                tooltip: 'Delete memory',
+                onPressed: onDelete,
+                visualDensity: VisualDensity.compact,
+                style: IconButton.styleFrom(
+                  foregroundColor: brand.textMuted,
+                  minimumSize: const Size(36, 36),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                icon: const Icon(Icons.delete_outline_rounded, size: 18),
+              ),
+            ],
           ),
         ],
       ),

@@ -74,6 +74,31 @@ class UserRepository {
     await _paths.user(uid).delete();
   }
 
+  /// Updates one learned Career Memory fact after the user edits it.
+  /// Resumes, pipeline cards, applications, briefs, and conversations are
+  /// left untouched.
+  Future<void> updateLearnedFact(
+    String uid,
+    String factId, {
+    required String topic,
+    required String detail,
+  }) {
+    final cleanId = factId.trim();
+    final cleanTopic = topic.trim();
+    final cleanDetail = detail.trim();
+
+    if (cleanId.isEmpty || cleanTopic.isEmpty || cleanDetail.isEmpty) {
+      return Future.value();
+    }
+
+    return _paths.learnedFacts(uid).doc(cleanId).update({
+      'topic': cleanTopic,
+      'detail': cleanDetail,
+      'source': 'user',
+      'updated_at': FieldValue.serverTimestamp(),
+    });
+  }
+
   /// Deletes one learned Career Memory fact. Resumes, pipeline cards,
   /// applications, briefs, and conversations are left untouched.
   Future<void> deleteLearnedFact(String uid, String factId) {
