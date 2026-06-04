@@ -339,6 +339,25 @@ void _registerRememberFact(ToolRegistry registry) {
             'description':
                 'One or two clear sentences describing the reusable fact.',
           },
+          'category': {
+            'type': 'string',
+            'description':
+                'Optional memory category. Use one of: skill, experience, '
+                'preference, constraint, target_role, location, salary, '
+                'availability, missing_info, other.',
+            'enum': [
+              'skill',
+              'experience',
+              'preference',
+              'constraint',
+              'target_role',
+              'location',
+              'salary',
+              'availability',
+              'missing_info',
+              'other',
+            ],
+          },
         },
         'required': ['topic', 'detail'],
       },
@@ -355,6 +374,9 @@ void _registerRememberFact(ToolRegistry registry) {
 
       final topic = _normalizeFactTopic(args['topic']?.toString() ?? '');
       final detail = (args['detail']?.toString() ?? '').trim();
+      final category = _normalizeFactCategory(
+        args['category']?.toString() ?? '',
+      );
 
       if (topic.isEmpty) {
         return ToolResult.error('topic is required.');
@@ -379,6 +401,7 @@ void _registerRememberFact(ToolRegistry registry) {
 
         await doc.reference.update({
           'detail': detail,
+          'category': category,
           'source': 'agent',
           'updated_at': FieldValue.serverTimestamp(),
           'observed_count': observedCount + 1,
@@ -390,6 +413,7 @@ void _registerRememberFact(ToolRegistry registry) {
             'fact_id': doc.id,
             'topic': topic,
             'detail': detail,
+            'category': category,
             'updated': true,
           },
         );
@@ -400,6 +424,7 @@ void _registerRememberFact(ToolRegistry registry) {
       await ref.set({
         'topic': topic,
         'detail': detail,
+        'category': category,
         'source': 'agent',
         'created_at': FieldValue.serverTimestamp(),
         'updated_at': FieldValue.serverTimestamp(),
@@ -412,6 +437,7 @@ void _registerRememberFact(ToolRegistry registry) {
           'fact_id': ref.id,
           'topic': topic,
           'detail': detail,
+          'category': category,
           'updated': false,
         },
       );
@@ -1500,6 +1526,25 @@ String _normalizeFactTopic(String raw) {
       .replaceAll(RegExp(r'^_|_$'), '');
 }
 
+const _factCategories = <String>{
+  'skill',
+  'experience',
+  'preference',
+  'constraint',
+  'target_role',
+  'location',
+  'salary',
+  'availability',
+  'missing_info',
+  'other',
+};
+
+String _normalizeFactCategory(String raw) {
+  final normalized = _normalizeFactTopic(raw);
+  if (_factCategories.contains(normalized)) return normalized;
+  return 'other';
+}
+
 Future<List<Map<String, dynamic>>> _readLearnedFacts(
   FirestorePaths paths,
   String uid,
@@ -1518,6 +1563,10 @@ Future<List<Map<String, dynamic>>> _readLearnedFacts(
             'id': doc.id,
             'topic': (data['topic'] as String?) ?? '',
             'detail': (data['detail'] as String?) ?? '',
+            'category': _normalizeFactCategory(
+              data['category']?.toString() ?? '',
+            ),
+            'observed_count': (data['observed_count'] as num?)?.toInt() ?? 1,
           };
         })
         .where(
