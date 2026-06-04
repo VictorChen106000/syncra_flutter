@@ -107,16 +107,15 @@ class PassiveAgentState {
   }
 }
 
-class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
-  static const _defaultBriefQuery =
-      'UX Designer Frontend Developer Product Designer';
+@visibleForTesting
+String buildPassiveAgentBriefPrompt(String query) {
+  final effectiveQuery = query.trim();
 
-  String _briefPrompt(String query) =>
-      '''
+  return '''
     Run today's career brief.
 
     Use the tool flow only:
-    1. Call search_jobs with query "$query" and location "Remote".
+    1. Call search_jobs with query "$effectiveQuery" and location "Remote".
     2. Call read_resume.
     3. Call match_jobs for the best jobs returned by search_jobs.
     4. Call check_job_risk for each job you intend to save.
@@ -137,6 +136,11 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
       category "exploration" — do not fabricate scores, and still run Trust Guard before saving.
     - End with one short sentence summarizing what you saved.
     ''';
+}
+
+class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
+  static const _defaultBriefQuery =
+      'UX Designer Frontend Developer Product Designer';
   PassiveAgentNotifier({
     AnthropicService? service,
     PipelineRepository? pipelineRepository,
@@ -251,7 +255,7 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
       // The brief is a self-contained one-shot — run it non-threaded so it
       // neither inherits nor pollutes the chat's running conversation.
       await for (final event in service.runPrompt(
-        prompt: _briefPrompt(query),
+        prompt: buildPassiveAgentBriefPrompt(query),
         threaded: false,
       )) {
         ref.read(notificationsProvider.notifier).onAgentEvent(event);
