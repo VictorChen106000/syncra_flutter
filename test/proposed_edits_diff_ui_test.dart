@@ -8,11 +8,11 @@ import 'package:syncra/features/agent_chat/state/agent_chat_notifier.dart';
 import 'package:syncra/features/resumes/models/proposed_edit.dart';
 
 ProposedEdit _edit(String id) => ProposedEdit(
-      targetPath: 'experience.$id',
-      originalText: 'old $id',
-      proposedText: 'new $id',
-      reason: 'because $id',
-    );
+  targetPath: 'experience.$id',
+  originalText: 'old $id',
+  proposedText: 'new $id',
+  reason: 'because $id',
+);
 
 /// Replaces [AgentChatNotifier.build] with a fixed transcript so tests skip the
 /// real notifier's Firebase-backed hydration. The decision/apply methods under
@@ -30,11 +30,7 @@ class _SeededChatNotifier extends AgentChatNotifier {
     return AgentChatState(
       conversationId: conversationId,
       items: [
-        AgentTurn(
-          id: 'turn-1',
-          blocks: [seed],
-          isStreaming: false,
-        ),
+        AgentTurn(id: 'turn-1', blocks: [seed], isStreaming: false),
       ],
     );
   }
@@ -65,9 +61,7 @@ class _Harness extends ConsumerWidget {
         .first;
     return MaterialApp(
       home: Scaffold(
-        body: SingleChildScrollView(
-          child: AgentBlockView(block: block),
-        ),
+        body: SingleChildScrollView(child: AgentBlockView(block: block)),
       ),
     );
   }
@@ -86,28 +80,33 @@ void main() {
     }
 
     test('setEditDecision records a per-edit choice', () {
-      final seed =
-          ProposedEditsBlock(id: 'b', edits: [_edit('a'), _edit('b')]);
+      final seed = ProposedEditsBlock(id: 'b', edits: [_edit('a'), _edit('b')]);
       final c = containerWith(seed);
 
-      c.read(agentChatProvider.notifier)
+      c
+          .read(agentChatProvider.notifier)
           .setEditDecision('b', 0, EditDecision.accepted);
 
       expect(_currentBlock(c).acceptedCount, 1);
       expect(_currentBlock(c).decisions[0], EditDecision.accepted);
     });
 
-    test('applyProposedEdits settles to applied when something is accepted', () {
-      final seed =
-          ProposedEditsBlock(id: 'b', edits: [_edit('a'), _edit('b')]);
-      final c = containerWith(seed);
-      final notifier = c.read(agentChatProvider.notifier);
+    test(
+      'applyProposedEdits settles to applied when something is accepted',
+      () {
+        final seed = ProposedEditsBlock(
+          id: 'b',
+          edits: [_edit('a'), _edit('b')],
+        );
+        final c = containerWith(seed);
+        final notifier = c.read(agentChatProvider.notifier);
 
-      notifier.setEditDecision('b', 0, EditDecision.accepted);
-      notifier.applyProposedEdits('b');
+        notifier.setEditDecision('b', 0, EditDecision.accepted);
+        notifier.applyProposedEdits('b');
 
-      expect(_currentBlock(c).state, ProposedEditsState.applied);
-    });
+        expect(_currentBlock(c).state, ProposedEditsState.applied);
+      },
+    );
 
     test('applyProposedEdits is a no-op when nothing is accepted', () {
       final seed = ProposedEditsBlock(id: 'b', edits: [_edit('a')]);
@@ -132,10 +131,17 @@ void main() {
   });
 
   group('ProposedEdits diff card widget', () {
-    testWidgets('tapping Accept updates the status pill', (tester) async {
+    testWidgets('shows accepted count and apply label from current decisions', (
+      tester,
+    ) async {
       final seed = ProposedEditsBlock(
         id: 'b',
         edits: [_edit('a'), _edit('b'), _edit('c')],
+        decisions: [
+          EditDecision.accepted,
+          EditDecision.pending,
+          EditDecision.pending,
+        ],
       );
 
       await tester.pumpWidget(
@@ -146,75 +152,44 @@ void main() {
           child: const _Harness(),
         ),
       );
-      await tester.pumpAndSettle();
-
-      expect(find.text('0/3 accepted'), findsOneWidget);
-
-      await tester.tap(find.widgetWithText(InkWell, 'Accept').first);
       await tester.pumpAndSettle();
 
       expect(find.text('1/3 accepted'), findsOneWidget);
-      expect(find.text('0/3 accepted'), findsNothing);
-    });
-
-    testWidgets('rejecting then accepting moves the count correctly',
-        (tester) async {
-      final seed = ProposedEditsBlock(
-        id: 'b',
-        edits: [_edit('a'), _edit('b')],
-      );
-
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            agentChatProvider.overrideWith(() => _SeededChatNotifier(seed)),
-          ],
-          child: const _Harness(),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.widgetWithText(InkWell, 'Reject').first);
-      await tester.pumpAndSettle();
-      expect(find.text('0/2 accepted'), findsOneWidget);
-
-      await tester.tap(find.widgetWithText(InkWell, 'Accept').last);
-      await tester.pumpAndSettle();
-      expect(find.text('1/2 accepted'), findsOneWidget);
-    });
-
-    testWidgets('Apply button reflects the accepted count and settles the card',
-        (tester) async {
-      final seed = ProposedEditsBlock(
-        id: 'b',
-        edits: [_edit('a'), _edit('b')],
-      );
-
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            agentChatProvider.overrideWith(() => _SeededChatNotifier(seed)),
-          ],
-          child: const _Harness(),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      // Nothing accepted yet: the generic, disabled label.
-      expect(find.text('Apply edits'), findsOneWidget);
-
-      await tester.tap(find.widgetWithText(InkWell, 'Accept').first);
-      await tester.pumpAndSettle();
       expect(find.text('Apply 1 edit'), findsOneWidget);
-
-      await tester.tap(find.widgetWithText(InkWell, 'Apply 1 edit'));
-      await tester.pumpAndSettle();
-
-      // Settled: footer moves to preview-ready state, controls gone.
-      expect(find.text('Preview ready'), findsOneWidget); // status pill
-      expect(find.text('Preview ready — tap to review'), findsOneWidget);
-      expect(find.widgetWithText(InkWell, 'Accept'), findsNothing);
+      expect(find.text('Apply edits'), findsNothing);
     });
+
+    testWidgets(
+      'Apply button reflects the accepted count and settles the card',
+      (tester) async {
+        final seed = ProposedEditsBlock(
+          id: 'b',
+          edits: [_edit('a'), _edit('b')],
+          decisions: [EditDecision.accepted, EditDecision.pending],
+        );
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              agentChatProvider.overrideWith(() => _SeededChatNotifier(seed)),
+            ],
+            child: const _Harness(),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('1/2 accepted'), findsOneWidget);
+        expect(find.text('Apply 1 edit'), findsOneWidget);
+
+        await tester.tap(find.widgetWithText(InkWell, 'Apply 1 edit'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Preview ready'), findsOneWidget);
+        expect(find.text('1 improvement woven in'), findsOneWidget);
+        expect(find.text('See what changed'), findsOneWidget);
+        expect(find.text('Dismiss all'), findsNothing);
+      },
+    );
 
     testWidgets('Dismiss all settles to the dismissed outcome', (tester) async {
       final seed = ProposedEditsBlock(id: 'b', edits: [_edit('a')]);
@@ -232,7 +207,7 @@ void main() {
       await tester.tap(find.widgetWithText(InkWell, 'Dismiss all'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Dismissed'), findsOneWidget); // status pill
+      expect(find.text('Dismissed'), findsOneWidget);
       expect(find.text('Dismissed — no changes were made'), findsOneWidget);
     });
   });

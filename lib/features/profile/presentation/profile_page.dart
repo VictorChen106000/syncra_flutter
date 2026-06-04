@@ -12,6 +12,7 @@ import '../../../core/dev/dev_flags_notifier.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../core/theme/theme_mode_notifier.dart';
+import '../../../core/utils/date_formatter.dart';
 import '../../../data/firestore/firestore_paths.dart';
 import '../../../data/firestore/user_repository.dart';
 import '../../../shared/widgets/app_bottom_nav.dart';
@@ -31,6 +32,8 @@ class _CareerMemoryFact {
     required this.category,
     required this.observedCount,
     required this.referenceCount,
+    required this.updatedAt,
+    required this.lastReferencedAt,
   });
 
   final String id;
@@ -39,6 +42,8 @@ class _CareerMemoryFact {
   final String category;
   final int observedCount;
   final int referenceCount;
+  final DateTime? updatedAt;
+  final DateTime? lastReferencedAt;
 }
 
 final _careerMemoryProvider =
@@ -60,6 +65,10 @@ final _careerMemoryProvider =
             (snapshot) => snapshot.docs
                 .map((doc) {
                   final data = doc.data();
+                  final updatedAt =
+                      _memoryDate(data['updated_at']) ??
+                      _memoryDate(data['created_at']);
+
                   return _CareerMemoryFact(
                     id: doc.id,
                     topic: (data['topic'] as String?)?.trim() ?? '',
@@ -71,6 +80,8 @@ final _careerMemoryProvider =
                         (data['observed_count'] as num?)?.toInt() ?? 1,
                     referenceCount:
                         (data['reference_count'] as num?)?.toInt() ?? 0,
+                    updatedAt: updatedAt,
+                    lastReferencedAt: _memoryDate(data['last_referenced_at']),
                   );
                 })
                 .where(
@@ -79,6 +90,29 @@ final _careerMemoryProvider =
                 .toList(growable: false),
           );
     });
+
+DateTime? _memoryDate(Object? value) {
+  if (value is Timestamp) return value.toDate();
+  if (value is DateTime) return value;
+  return null;
+}
+
+String? _memoryActivityLabel(_CareerMemoryFact fact) {
+  final parts = <String>[];
+
+  final updatedAt = fact.updatedAt;
+  if (updatedAt != null) {
+    parts.add('Updated ${DateFormatter.relativeShort(updatedAt)}');
+  }
+
+  final lastReferencedAt = fact.lastReferencedAt;
+  if (lastReferencedAt != null) {
+    parts.add('Used ${DateFormatter.relativeShort(lastReferencedAt)}');
+  }
+
+  if (parts.isEmpty) return null;
+  return parts.join(' · ');
+}
 
 String _normalizeMemoryTopic(String raw) {
   return raw
@@ -701,6 +735,7 @@ class _CareerMemorySection extends ConsumerWidget {
       text: _formatMemoryTopic(fact.topic),
     );
     final detailController = TextEditingController(text: fact.detail);
+    var selectedCategory = _normalizeMemoryCategory(fact.category);
 
     try {
       final confirmed = await showDialog<bool>(
@@ -708,44 +743,70 @@ class _CareerMemorySection extends ConsumerWidget {
         builder: (dialogContext) {
           final brand = dialogContext.brand;
 
-          return AlertDialog(
-            backgroundColor: brand.surface,
-            title: Text(
-              'Edit memory',
-              style: TextStyle(color: brand.ink, fontWeight: FontWeight.w800),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: topicController,
-                  decoration: const InputDecoration(
-                    labelText: 'Topic',
-                    hintText: 'Remote preference',
+          return StatefulBuilder(
+            builder: (dialogContext, setDialogState) {
+              return AlertDialog(
+                backgroundColor: brand.surface,
+                title: Text(
+                  'Edit memory',
+                  style: TextStyle(
+                    color: brand.ink,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: detailController,
-                  minLines: 3,
-                  maxLines: 5,
-                  decoration: const InputDecoration(
-                    labelText: 'Detail',
-                    hintText: 'What should Syncra remember?',
-                  ),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedCategory,
+                      decoration: const InputDecoration(labelText: 'Category'),
+                      items: _memoryCategories
+                          .map(
+                            (category) => DropdownMenuItem<String>(
+                              value: category,
+                              child: Text(_formatMemoryCategory(category)),
+                            ),
+                          )
+                          .toList(growable: false),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setDialogState(() {
+                          selectedCategory = _normalizeMemoryCategory(value);
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: topicController,
+                      decoration: const InputDecoration(
+                        labelText: 'Topic',
+                        hintText: 'Remote preference',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: detailController,
+                      minLines: 3,
+                      maxLines: 5,
+                      decoration: const InputDecoration(
+                        labelText: 'Detail',
+                        hintText: 'What should Syncra remember?',
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(dialogContext).pop(true),
-                child: const Text('Save memory'),
-              ),
-            ],
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                    child: const Text('Save memory'),
+                  ),
+                ],
+              );
+            },
           );
         },
       );
@@ -772,6 +833,7 @@ class _CareerMemorySection extends ConsumerWidget {
           fact.id,
           topic: topic,
           detail: detail,
+          category: selectedCategory,
         );
         if (!context.mounted) return;
 
@@ -937,6 +999,7 @@ class _CareerMemoryFactRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
+    final activityLabel = _memoryActivityLabel(fact);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 13),
@@ -994,6 +1057,20 @@ class _CareerMemoryFactRow extends StatelessWidget {
                     height: 1.35,
                   ),
                 ),
+                if (activityLabel != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    activityLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: brand.textSoft,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      height: 1.25,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

@@ -69,23 +69,27 @@ class JobsBlock extends AgentBlock {
   List<Job> jobs;
 }
 
-/// Where a single proposed edit stands in the user's review. Each edit starts
-/// [pending] and the user flips it to [accepted] or [rejected] in the diff
-/// viewer before applying.
+/// Where one proposed edit stands in the card lifecycle.
+///
+/// The current tailoring flow auto-accepts proposed edits before rendering the
+/// tailored preview, but these states are retained for applied/dismissed card
+/// state, fixtures, and future per-edit review support.
 enum EditDecision { pending, accepted, rejected }
 
-/// Lifecycle of the whole proposed-edits card. While [reviewing] the user can
-/// toggle individual edits; tapping Apply flips to [applying] while the
-/// tailored PDF renders, then [applied] (preview ready, not yet saved). The
-/// card settles to [dismissed] if the user dismisses it instead.
+/// Lifecycle of the whole proposed-edits card.
+///
+/// In the current flow, proposed edits are shown as a read-only change log:
+/// the card renders a tailored preview, lets the user inspect what changed,
+/// then either saves or dismisses the result.
 enum ProposedEditsState { reviewing, applying, applied, dismissed }
 
-/// PR-style resume edits proposed by `tailor_resume`.
+/// Reviewable resume edits proposed by `tailor_resume`.
 ///
-/// The diff viewer renders one row per [edits] entry with Accept / Reject
-/// controls. Per-edit choices live in [decisions] (index-aligned with [edits]);
-/// the overall card lifecycle lives in [state]. Both are mutable so the
-/// notifier can flip them in place and re-emit, matching [ActionProposalBlock].
+/// The proposed-edits card renders one row per [edits] entry as a read-only
+/// change log. The current tailor flow auto-accepts proposed edits, renders a
+/// tailored PDF preview, and lets the user save or dismiss the result. The
+/// [decisions] list is retained for applied/dismissed state and future
+/// per-edit review support.
 class ProposedEditsBlock extends AgentBlock {
   ProposedEditsBlock({
     required super.id,

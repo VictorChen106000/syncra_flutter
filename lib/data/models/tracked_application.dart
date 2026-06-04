@@ -3,7 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'job.dart';
 
 /// What stage an application is at, derived from timestamps + the user's
-/// `gotReply` flag. See [docs/api-contract.md §3 applications].
+/// `gotReply` flag. The application data model is documented in
+/// `docs/ARCHITECTURE.md`.
 enum ApplicationPhase {
   /// Agent has prepared a draft. User hasn't sent it yet.
   draft,
@@ -16,10 +17,10 @@ enum ApplicationPhase {
   replied;
 
   String get label => switch (this) {
-        ApplicationPhase.draft => 'Draft',
-        ApplicationPhase.sent => 'Sent',
-        ApplicationPhase.replied => 'Replied',
-      };
+    ApplicationPhase.draft => 'Draft',
+    ApplicationPhase.sent => 'Sent',
+    ApplicationPhase.replied => 'Replied',
+  };
 }
 
 @immutable
@@ -47,6 +48,11 @@ class TrackedApplication {
     this.followUpAt,
     this.sentEmailId,
     this.notes = const [],
+    this.trustRiskLevel = 'unchecked',
+    this.trustRiskLabel = 'Not checked',
+    this.trustSignalsCount = 0,
+    this.trustSignals = const [],
+    this.trustSafeNextStep = '',
   });
 
   final String id;
@@ -58,6 +64,15 @@ class TrackedApplication {
   final DateTime? followUpAt;
   final String? sentEmailId;
   final List<TrackedApplicationNote> notes;
+
+  final String trustRiskLevel;
+  final String trustRiskLabel;
+  final int trustSignalsCount;
+  final List<Map<String, String>> trustSignals;
+  final String trustSafeNextStep;
+
+  bool get needsTrustReview =>
+      trustRiskLevel == 'medium' || trustRiskLevel == 'high';
 
   ApplicationPhase get phase {
     if (gotReply) return ApplicationPhase.replied;
@@ -77,6 +92,11 @@ class TrackedApplication {
     DateTime? followUpAt,
     String? sentEmailId,
     List<TrackedApplicationNote>? notes,
+    String? trustRiskLevel,
+    String? trustRiskLabel,
+    int? trustSignalsCount,
+    List<Map<String, String>>? trustSignals,
+    String? trustSafeNextStep,
     bool clearSentAt = false,
     bool clearFollowUpAt = false,
   }) {
@@ -90,6 +110,11 @@ class TrackedApplication {
       followUpAt: clearFollowUpAt ? null : (followUpAt ?? this.followUpAt),
       sentEmailId: sentEmailId ?? this.sentEmailId,
       notes: notes ?? this.notes,
+      trustRiskLevel: trustRiskLevel ?? this.trustRiskLevel,
+      trustRiskLabel: trustRiskLabel ?? this.trustRiskLabel,
+      trustSignalsCount: trustSignalsCount ?? this.trustSignalsCount,
+      trustSignals: trustSignals ?? this.trustSignals,
+      trustSafeNextStep: trustSafeNextStep ?? this.trustSafeNextStep,
     );
   }
 }

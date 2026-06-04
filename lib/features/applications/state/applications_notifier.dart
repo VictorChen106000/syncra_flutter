@@ -9,16 +9,18 @@ import '../../auth/state/auth_notifier.dart';
 
 enum ApplicationsFilter {
   all,
+  trustReview,
   drafts,
   sent,
   replied;
 
   String get label => switch (this) {
-        ApplicationsFilter.all => 'All',
-        ApplicationsFilter.drafts => 'Drafts',
-        ApplicationsFilter.sent => 'Sent',
-        ApplicationsFilter.replied => 'Replied',
-      };
+    ApplicationsFilter.all => 'All',
+    ApplicationsFilter.trustReview => 'Trust review',
+    ApplicationsFilter.drafts => 'Drafts',
+    ApplicationsFilter.sent => 'Sent',
+    ApplicationsFilter.replied => 'Replied',
+  };
 }
 
 @immutable
@@ -37,6 +39,8 @@ class ApplicationsState {
   List<TrackedApplication> get filtered {
     final base = switch (filter) {
       ApplicationsFilter.all => items,
+      ApplicationsFilter.trustReview =>
+        items.where((a) => a.needsTrustReview).toList(),
       ApplicationsFilter.drafts =>
         items.where((a) => a.phase == ApplicationPhase.draft).toList(),
       ApplicationsFilter.sent =>
@@ -66,7 +70,7 @@ class ApplicationsState {
 
 class ApplicationsNotifier extends Notifier<ApplicationsState> {
   ApplicationsNotifier({ApplicationsRepository? repository})
-      : _repository = repository ?? ApplicationsRepository();
+    : _repository = repository ?? ApplicationsRepository();
 
   final ApplicationsRepository _repository;
   StreamSubscription<List<TrackedApplication>>? _subscription;
@@ -97,14 +101,16 @@ class ApplicationsNotifier extends Notifier<ApplicationsState> {
     }
 
     _boundUid = uid;
-    _subscription = _repository.watchApplications(uid).listen(
-      (apps) {
-        state = state.copyWith(items: apps);
-      },
-      onError: (Object e) {
-        debugPrint('applications stream error: $e');
-      },
-    );
+    _subscription = _repository
+        .watchApplications(uid)
+        .listen(
+          (apps) {
+            state = state.copyWith(items: apps);
+          },
+          onError: (Object e) {
+            debugPrint('applications stream error: $e');
+          },
+        );
   }
 
   String? consumeMessage() {
@@ -132,9 +138,7 @@ class ApplicationsNotifier extends Notifier<ApplicationsState> {
     final app = _find(applicationId);
     if (uid == null || app == null) return;
     await _repository.markSent(uid, applicationId, sentEmailId: sentEmailId);
-    state = state.copyWith(
-      lastMessage: '${app.job.company} marked as sent',
-    );
+    state = state.copyWith(lastMessage: '${app.job.company} marked as sent');
   }
 
   Future<void> setGotReply(String applicationId, bool gotReply) async {
@@ -167,4 +171,6 @@ class ApplicationsNotifier extends Notifier<ApplicationsState> {
 }
 
 final applicationsProvider =
-    NotifierProvider<ApplicationsNotifier, ApplicationsState>(ApplicationsNotifier.new);
+    NotifierProvider<ApplicationsNotifier, ApplicationsState>(
+      ApplicationsNotifier.new,
+    );

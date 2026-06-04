@@ -12,4 +12,3 @@ void main() async {
   await GoogleAuthService.initialize();
   runApp(const ProviderScope(child: SyncraApp()));
 }
-//test11

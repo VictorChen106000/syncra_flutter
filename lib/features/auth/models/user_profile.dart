@@ -4,8 +4,9 @@ import '../../resumes/models/resume_fit.dart';
 
 /// Snapshot of `users/{uid}` — settings the user controls.
 ///
-/// Mirrors the schema in [docs/api-contract.md §3]. Immutable; mutations
-/// go through `UserProfileNotifier`, which writes via `UserRepository.update()`.
+/// Mirrors the user profile schema documented in `docs/ARCHITECTURE.md`.
+/// Immutable; mutations go through `UserProfileNotifier`, which writes via
+/// `UserRepository.update()`.
 @immutable
 class UserProfile {
   const UserProfile({
@@ -76,7 +77,7 @@ class UserProfile {
       // in the old flow, so they don't get re-prompted on next sign-in.
       hasCompletedOnboarding:
           (data['has_completed_onboarding'] as bool?) ??
-              ((data['role'] as String?)?.trim().isNotEmpty ?? false),
+          ((data['role'] as String?)?.trim().isNotEmpty ?? false),
       resumeFit: rawFit is Map
           ? ResumeFit.fromJson(rawFit.cast<String, dynamic>())
           : null,
