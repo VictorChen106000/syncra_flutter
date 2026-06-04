@@ -46,6 +46,7 @@ void registerBuiltinTools(ToolRegistry registry) {
   _registerReadResume(registry, orchestrator);
   _registerRememberFact(registry);
   _registerMatchJobs(registry, jobs, anthropic, orchestrator);
+  _registerCheckJobRisk(registry, jobs);
   _registerSaveToPipeline(registry, jobs, pipeline);
   _registerTailorResume(registry, jobs, paraphrase, orchestrator);
   _registerApplyResumeEdits(registry, orchestrator, pipeline);
@@ -222,6 +223,170 @@ List<String> _searchTokens(String query) {
       .where((token) => !stopWords.contains(token))
       .toSet()
       .toList(growable: false);
+}
+
+// ---------------------------------------------------------------------------
+// check_job_risk — quick trust screen before outreach/application actions.
+// This is not a certification system; it only flags obvious red signals.
+// ---------------------------------------------------------------------------
+
+void _registerCheckJobRisk(ToolRegistry registry, JobsRepository jobsRepo) {
+  registry.register(
+    tool: const Tool(
+      name: 'check_job_risk',
+      description:
+          'Run a quick trust/risk screen for a specific job_id. Use before '
+          'drafting outreach, saving to tracker, or any apply/send step; also '
+          'use when the user asks whether a role looks safe. This checks '
+          'obvious red flags only and does not certify a job as legitimate.',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'job_id': {
+            'type': 'string',
+            'description': 'The job id returned by search_jobs or match_jobs.',
+          },
+        },
+        'required': ['job_id'],
+      },
+      uiLabel: 'Checking job trust…',
+      uiIcon: Icons.verified_user_outlined,
+    ),
+    handler: (args) async {
+      final jobId = (args['job_id'] as String? ?? '').trim();
+      if (jobId.isEmpty) {
+        return ToolResult.error('job_id is required.');
+      }
+
+      final job = await jobsRepo.fetchById(jobId);
+      if (job == null) {
+        return ToolResult.error('Job not found.');
+      }
+
+      final signals = _jobRiskSignals(job);
+      final hasHigh = signals.any((signal) => signal['severity'] == 'high');
+
+      final riskLevel = hasHigh
+          ? 'high'
+          : signals.length >= 2
+          ? 'medium'
+          : 'low';
+
+      final riskLabel = switch (riskLevel) {
+        'high' => 'High risk',
+        'medium' => 'Needs verification',
+        _ => 'Looks normal',
+      };
+
+      final safeNextStep = switch (riskLevel) {
+        'high' =>
+          'Do not send personal documents or payment. Verify the company and posting first.',
+        'medium' =>
+          'Verify the company site, recruiter identity, and application link before outreach.',
+        _ =>
+          'No obvious red flags found. Still verify the official posting before applying.',
+      };
+
+      return ToolResult(
+        summary: signals.isEmpty
+            ? '$riskLabel · no obvious red flags'
+            : '$riskLabel · ${signals.length} signal${signals.length == 1 ? '' : 's'}',
+        data: {
+          'job_id': job.id,
+          'title': job.title,
+          'company': job.company,
+          'risk_level': riskLevel,
+          'risk_label': riskLabel,
+          'signals': signals,
+          'safe_next_step': safeNextStep,
+        },
+      );
+    },
+  );
+}
+
+List<Map<String, String>> _jobRiskSignals(Job job) {
+  final signals = <Map<String, String>>[];
+
+  void add(String severity, String label, String detail) {
+    signals.add({'severity': severity, 'label': label, 'detail': detail});
+  }
+
+  final company = job.company.trim();
+  final title = job.title.trim();
+  final description = job.why.trim();
+  final combined = [
+    title,
+    company,
+    job.location,
+    job.salary,
+    description,
+  ].join(' ').toLowerCase();
+
+  if (company.isEmpty) {
+    add(
+      'medium',
+      'Missing company',
+      'The posting does not show a clear company name.',
+    );
+  }
+
+  final genericCompany = company.toLowerCase();
+  if (genericCompany == 'confidential' ||
+      genericCompany == 'private employer' ||
+      genericCompany == 'undisclosed') {
+    add(
+      'medium',
+      'Generic company identity',
+      'The company identity is hidden or too generic.',
+    );
+  }
+
+  if (description.length < 80) {
+    add(
+      'medium',
+      'Thin job description',
+      'The role description is too short to verify responsibilities clearly.',
+    );
+  }
+
+  const highRiskTerms = {
+    'gift card': 'Mentions gift cards, which is a common scam signal.',
+    'wire transfer': 'Mentions wire transfers or money movement.',
+    'processing fee': 'Mentions a processing fee before employment.',
+    'training fee': 'Mentions a training fee before employment.',
+    'crypto': 'Mentions crypto payment or crypto handling.',
+    'telegram': 'Moves communication to Telegram.',
+    'whatsapp': 'Moves communication to WhatsApp.',
+    'personal bank': 'Asks about a personal bank account.',
+    'send money': 'Asks the candidate to send money.',
+  };
+
+  for (final entry in highRiskTerms.entries) {
+    if (combined.contains(entry.key)) {
+      add('high', 'Red-flag wording', entry.value);
+    }
+  }
+
+  const vagueTitleTerms = {
+    'easy money',
+    'no interview',
+    'work from home assistant',
+    'payment processor',
+  };
+
+  for (final term in vagueTitleTerms) {
+    if (combined.contains(term)) {
+      add(
+        'medium',
+        'Vague opportunity wording',
+        'The posting uses wording often seen in low-trust job ads.',
+      );
+      break;
+    }
+  }
+
+  return signals;
 }
 
 // ---------------------------------------------------------------------------

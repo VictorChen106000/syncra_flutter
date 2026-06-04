@@ -80,6 +80,15 @@ void main() {
       expect(prompt, contains('mention at most 1-2 relevant facts'));
     });
 
+    test('checks job trust before outreach or application actions', () {
+      expect(prompt, contains('job trust guard'));
+      expect(prompt, contains('check_job_risk'));
+      expect(prompt, contains('before `draft_email`'));
+      expect(prompt, contains('save_to_tracker'));
+      expect(prompt, contains('high risk'));
+      expect(prompt, contains('never mark a job as safe'));
+    });
+
     test('drives the search → tailor → email sequence via ask_user offers', () {
       expect(prompt, contains('standard job-search sequence'));
       // After search, it must offer tailoring instead of stopping on a job list.
