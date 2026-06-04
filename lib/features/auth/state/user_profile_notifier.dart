@@ -59,17 +59,6 @@ class UserProfileNotifier extends Notifier<UserProfile?> {
     );
   }
 
-  Future<void> setMorningBriefEnabled(bool enabled) async {
-    final uid = _boundUid;
-    if (uid == null) return;
-    state = state?.copyWith(morningBriefEnabled: enabled);
-    try {
-      await _repository.update(uid, morningBriefEnabled: enabled);
-    } catch (e) {
-      debugPrint('setMorningBriefEnabled failed: $e');
-    }
-  }
-
   Future<void> setRole(String role) async {
     final uid = _boundUid;
     if (uid == null) return;
@@ -131,6 +120,26 @@ class UserProfileNotifier extends Notifier<UserProfile?> {
     } catch (e) {
       debugPrint('setResumeFit failed: $e');
     }
+  }
+
+  /// Snaps the in-memory profile back to its first-run shape (keeps identity:
+  /// name / email / avatar) so the router redirect lands the user on onboarding
+  /// the instant a reset completes. The persisted reset is done by
+  /// [UserRepository.resetUserData]; this only mirrors it locally so the UI
+  /// doesn't flash the dashboard while the profile stream catches up.
+  void resetToFirstRun() {
+    final current = state;
+    if (current == null) return;
+    state = UserProfile(
+      name: current.name,
+      email: current.email,
+      avatarUrl: current.avatarUrl,
+      role: null,
+      isAgentActive: true,
+      gmailConnected: false,
+      hasCompletedOnboarding: false,
+      resumeFit: null,
+    );
   }
 
   /// Writes the captured role and flips `hasCompletedOnboarding` in a single

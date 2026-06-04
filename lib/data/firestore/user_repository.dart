@@ -27,7 +27,6 @@ class UserRepository {
       'avatar_url': firebaseUser.photoURL,
       'role': null,
       'is_agent_active': true,
-      'morning_brief_enabled': false,
       'gmail_connected': false,
       'has_completed_onboarding': false,
       'created_at': FieldValue.serverTimestamp(),
@@ -52,7 +51,6 @@ class UserRepository {
     String uid, {
     String? role,
     bool? isAgentActive,
-    bool? morningBriefEnabled,
     bool? gmailConnected,
     bool? hasCompletedOnboarding,
     ResumeFit? resumeFit,
@@ -60,9 +58,6 @@ class UserRepository {
     final patch = <String, dynamic>{};
     if (role != null) patch['role'] = role;
     if (isAgentActive != null) patch['is_agent_active'] = isAgentActive;
-    if (morningBriefEnabled != null) {
-      patch['morning_brief_enabled'] = morningBriefEnabled;
-    }
     if (gmailConnected != null) patch['gmail_connected'] = gmailConnected;
     if (hasCompletedOnboarding != null) {
       patch['has_completed_onboarding'] = hasCompletedOnboarding;
@@ -86,9 +81,12 @@ class UserRepository {
   }
 
   /// Wipes every user-owned subcollection (applications, resumes, pipeline,
-  /// briefs, conversations, learned_facts) and any associated Storage blobs.
-  /// The auth account and the `users/{uid}` profile doc are left intact so
-  /// the user remains signed in on a clean slate.
+  /// briefs, conversations, learned_facts) and any associated Storage blobs,
+  /// then rolls the `users/{uid}` profile doc back to its first-run shape so
+  /// the router drops the user into onboarding again — a true "start over".
+  /// The Firebase auth account is kept (the user stays signed in) and identity
+  /// fields (name / email / avatar / created_at) are preserved; everything the
+  /// user configured (role, agent toggles, resume-fit, onboarding flag) resets.
   Future<void> resetUserData(String uid) async {
     final resumesSnap = await _paths.resumes(uid).get();
     for (final doc in resumesSnap.docs) {
@@ -109,6 +107,16 @@ class UserRepository {
       _deleteCollection(_paths.conversations(uid)),
       _deleteCollection(_paths.learnedFacts(uid)),
     ]);
+
+    // Flip the profile doc back to first-run. `has_completed_onboarding: false`
+    // is what the router redirect keys off to bounce the user to onboarding.
+    await _paths.user(uid).update({
+      'role': null,
+      'is_agent_active': true,
+      'gmail_connected': false,
+      'has_completed_onboarding': false,
+      'resume_fit': FieldValue.delete(),
+    });
   }
 
   Future<void> _deleteCollection(

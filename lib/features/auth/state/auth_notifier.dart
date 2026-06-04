@@ -201,8 +201,9 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
-  /// Wipes every user-owned subcollection but keeps the auth account and
-  /// `users/{uid}` profile doc, so the user stays signed in on a clean slate.
+  /// Wipes every user-owned subcollection and rolls the `users/{uid}` profile
+  /// back to first-run, so the user stays signed in but is dropped through
+  /// onboarding again — a true "start over". See [UserRepository.resetUserData].
   Future<void> resetAccountData() async {
     final user = state.appUser;
     if (user == null || user.isGuest) return;

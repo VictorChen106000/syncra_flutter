@@ -1463,15 +1463,14 @@ class _TextBlockViewState extends State<_TextBlockView> {
     final typing = _shown < widget.text.length;
     // Trailing block caret while typing — reads as a live cursor.
     final data = typing ? '${widget.text.substring(0, _shown)}▌' : widget.text;
-    // Agent prose renders in a serif (Source Serif 4) to set the AI's
-    // "voice" apart from the all-Inter UI chrome — the same chrome/serif
-    // split Claude's mobile app uses.
-    final body = GoogleFonts.sourceSerif4(
+    // Agent prose uses the app's one typeface (Inter) so the chat reads as a
+    // single, consistent surface — no serif/sans split.
+    final body = GoogleFonts.inter(
       color: brand.ink,
-      fontSize: 16,
-      height: 1.62,
-      fontWeight: FontWeight.w400,
-      letterSpacing: 0,
+      fontSize: 15.5,
+      height: 1.58,
+      fontWeight: FontWeight.w500,
+      letterSpacing: -0.1,
     );
     return MarkdownBody(
       data: data,
@@ -1510,10 +1509,9 @@ class _TextBlockViewState extends State<_TextBlockView> {
           letterSpacing: -0.15,
         ),
         listBullet: body,
-        code: TextStyle(
-          fontFamily: 'monospace',
-          fontFamilyFallback: const ['Menlo', 'Courier'],
+        code: GoogleFonts.inter(
           fontSize: 13.5,
+          fontWeight: FontWeight.w600,
           color: brand.ink,
           backgroundColor: brand.surfaceMuted,
           height: 1.4,

@@ -14,7 +14,6 @@ class UserProfile {
     this.avatarUrl,
     this.role,
     this.isAgentActive = true,
-    this.morningBriefEnabled = false,
     this.gmailConnected = false,
     this.hasCompletedOnboarding = false,
     this.resumeFit,
@@ -25,7 +24,6 @@ class UserProfile {
   final String? avatarUrl;
   final String? role;
   final bool isAgentActive;
-  final bool morningBriefEnabled;
   final bool gmailConnected;
 
   /// True once the user has finished (or explicitly skipped) the first-run
@@ -46,7 +44,6 @@ class UserProfile {
     String? avatarUrl,
     String? role,
     bool? isAgentActive,
-    bool? morningBriefEnabled,
     bool? gmailConnected,
     bool? hasCompletedOnboarding,
     ResumeFit? resumeFit,
@@ -58,7 +55,6 @@ class UserProfile {
       avatarUrl: avatarUrl ?? this.avatarUrl,
       role: role ?? this.role,
       isAgentActive: isAgentActive ?? this.isAgentActive,
-      morningBriefEnabled: morningBriefEnabled ?? this.morningBriefEnabled,
       gmailConnected: gmailConnected ?? this.gmailConnected,
       hasCompletedOnboarding:
           hasCompletedOnboarding ?? this.hasCompletedOnboarding,
@@ -74,7 +70,6 @@ class UserProfile {
       avatarUrl: data['avatar_url'] as String?,
       role: data['role'] as String?,
       isAgentActive: (data['is_agent_active'] as bool?) ?? true,
-      morningBriefEnabled: (data['morning_brief_enabled'] as bool?) ?? false,
       gmailConnected: (data['gmail_connected'] as bool?) ?? false,
       // Legacy users (created before this flag existed) are migrated lazily:
       // a non-empty `role` is treated as proof they already finished onboarding

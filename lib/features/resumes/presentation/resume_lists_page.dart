@@ -65,10 +65,9 @@ class ResumeListsPage extends ConsumerWidget {
                   36,
                 ),
                 children: [
-                  _UploadDropZone(onTap: notifier.pickAndUploadResumes),
-                  const SizedBox(height: 12),
-                  _BuildFromScratchCard(
-                    onTap: () {
+                  _TopActions(
+                    onUpload: notifier.pickAndUploadResumes,
+                    onBuild: () {
                       ref.read(agentChatProvider.notifier).sendPrompt(
                             prompt: 'Help me build a resume from scratch.',
                           );
@@ -81,14 +80,11 @@ class ResumeListsPage extends ConsumerWidget {
                       child: ResumeUploadCard(uploadingItem: item),
                     ),
                   if (isEmpty) ...[
-                    const SizedBox(height: 16),
-                    EmptyStateCard(
-                      icon: Icons.upload_rounded,
+                    const SizedBox(height: 20),
+                    const EmptyStateCard(
+                      icon: Icons.upload_file_rounded,
                       title: AppStrings.noResumesTitle,
                       body: AppStrings.noResumesBody,
-                      actionLabel: 'Upload resume',
-                      actionIcon: Icons.add_rounded,
-                      onAction: notifier.pickAndUploadResumes,
                     ),
                   ] else ...[
                     if (uploads.isNotEmpty) ...[
@@ -143,109 +139,91 @@ class ResumeListsPage extends ConsumerWidget {
   }
 }
 
-/// Entry point into the agent's from-scratch resume builder. Seeds a goal
-/// prompt into the chat and routes there — the one agent then runs the
-/// `build_resume` flow (ask questions → draft → preview → save).
-class _BuildFromScratchCard extends StatelessWidget {
-  const _BuildFromScratchCard({required this.onTap});
+/// Two primary entry points, side by side: upload an existing file, or hand
+/// the job to the agent's from-scratch builder (seeds a goal prompt into chat
+/// then routes there to run the `build_resume` flow). Kept to two short labels
+/// — the heavy lifting is explained in the chat, not on a card.
+class _TopActions extends StatelessWidget {
+  const _TopActions({required this.onUpload, required this.onBuild});
 
+  final VoidCallback onUpload;
+  final VoidCallback onBuild;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _ActionButton(
+            icon: Icons.file_upload_outlined,
+            label: 'Upload',
+            onTap: onUpload,
+            filled: true,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _ActionButton(
+            icon: Icons.auto_awesome_rounded,
+            label: 'Build with AI',
+            onTap: onBuild,
+            filled: false,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  const _ActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    required this.filled,
+  });
+
+  final IconData icon;
+  final String label;
   final VoidCallback onTap;
+
+  /// Filled = solid ink hero (Upload). Otherwise an outlined surface with a
+  /// lime accent glyph (Build with AI).
+  final bool filled;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
+    final fg = filled ? brand.inkInverse : brand.ink;
     return Material(
-      color: brand.ink,
+      color: filled ? brand.ink : brand.surface,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              Icon(Icons.auto_awesome_rounded, size: 20, color: brand.accent),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Build from scratch',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 14,
-                        color: brand.inkInverse,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      "No resume? Syncra will ask a few questions and build one.",
-                      style: TextStyle(
-                        color: brand.inkInverse.withValues(alpha: 0.7),
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: brand.inkInverse.withValues(alpha: 0.7),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _UploadDropZone extends StatelessWidget {
-  const _UploadDropZone({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Material(
-      color: brand.surface,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          height: 130,
+          height: 56,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: brand.ink.withValues(alpha: 0.30),
-              width: 1.5,
-              style: BorderStyle.solid,
-            ),
+            borderRadius: BorderRadius.circular(16),
+            border: filled ? null : Border.all(color: brand.border),
           ),
-          child: Column(
+          alignment: Alignment.center,
+          child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.upload_rounded, size: 28, color: brand.ink),
-              const SizedBox(height: 8),
-              Text(
-                AppStrings.uploadResume,
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 14,
-                  color: brand.ink,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                AppStrings.uploadResumeHint,
-                style: TextStyle(
-                  color: brand.textMuted,
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w500,
+              Icon(icon, size: 19, color: filled ? fg : brand.accent),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                    letterSpacing: -0.2,
+                    color: fg,
+                  ),
                 ),
               ),
             ],

@@ -1,18 +1,15 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
-import '../../../core/utils/file_formatter.dart';
 import '../../../data/models/job.dart';
 import '../../../shared/widgets/gooey_orb.dart';
-import '../../resumes/models/resume_file.dart';
-import '../../resumes/presentation/widgets/select_resumes_bottom_sheet.dart';
-import '../../resumes/state/resume_notifier.dart';
 import '../agent_prompt_suggestions.dart';
 import '../models/agent_block.dart';
 import '../models/chat_message.dart';
@@ -22,6 +19,7 @@ import 'widgets/chat_history_drawer.dart';
 import 'widgets/chat_input_bar.dart';
 import 'widgets/chat_message_bubble.dart';
 import 'widgets/docked_panels.dart';
+import 'widgets/job_results_takeover.dart';
 
 class AiChatbotPage extends ConsumerStatefulWidget {
   const AiChatbotPage({super.key, this.autofocusComposer = false});
@@ -38,6 +36,16 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
   final ScrollController _scrollController = ScrollController();
   bool _showJumpToLatest = false;
 
+  /// Whether the transcript should glue itself to the latest content as the
+  /// agent streams. Stays true until the user deliberately scrolls up to read
+  /// back; returning to the bottom (drag, fling, or the jump pill) re-arms it.
+  bool _autoFollow = true;
+
+  /// JobsBlock ids we've already auto-expanded into the full-screen takeover,
+  /// so dismissing one (or `match_jobs` re-scoring it in place) never re-opens
+  /// it. A fresh search mints a new id and opens again.
+  final Set<String> _autoShownJobBlocks = {};
+
   /// Within this many pixels of the bottom we consider the user "pinned" and
   /// auto-scroll new content into view. Beyond it we leave them alone and
   /// surface the jump-to-latest FAB instead.
@@ -52,21 +60,32 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     final pos = _scrollController.position;
-    final distance = pos.maxScrollExtent - pos.pixels;
-    final shouldShow = distance > _stickyThreshold;
-    if (shouldShow != _showJumpToLatest) {
-      setState(() => _showJumpToLatest = shouldShow);
+    final awayFromBottom = pos.maxScrollExtent - pos.pixels > _stickyThreshold;
+
+    if (awayFromBottom != _showJumpToLatest) {
+      setState(() => _showJumpToLatest = awayFromBottom);
+    }
+
+    // Follow-intent is driven by *user* scrolls, not by geometry alone:
+    // a programmatic animateTo never reports a `forward` direction, so the
+    // auto-follow never fights its own catch-up scroll. Dragging up to read
+    // suspends following; landing back at the bottom re-arms it.
+    if (!awayFromBottom) {
+      _autoFollow = true;
+    } else if (pos.userScrollDirection == ScrollDirection.forward) {
+      _autoFollow = false;
     }
   }
 
   void _scheduleScrollToBottom() {
+    // Decide whether to follow against the *current* geometry — before the new
+    // content lays out. Once it does, maxScrollExtent jumps up while pixels
+    // stay put, so a post-layout distance check reads "far from bottom" on
+    // every streamed chunk and bails — that's what stranded the view in the
+    // past mid-turn. The post-frame scroll then targets the grown extent.
+    if (!_autoFollow) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
-      // Only auto-follow when the user is already near the bottom. If they've
-      // scrolled up to read, respect that and let the FAB do the work.
-      final pos = _scrollController.position;
-      if (pos.maxScrollExtent - pos.pixels > _stickyThreshold) return;
-      _scrollToBottom();
+      if (_scrollController.hasClients) _scrollToBottom();
     });
   }
 
@@ -79,6 +98,52 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
     );
   }
 
+  /// Auto-expand the latest batch of job results into the full-screen takeover
+  /// the first time it appears, so the chat hands off to a results page instead
+  /// of burying the roles in a rail behind the composer.
+  void _maybeOpenJobResults(AgentChatState state) {
+    for (var i = state.items.length - 1; i >= 0; i--) {
+      final item = state.items[i];
+      if (item is! AgentTurn) continue;
+      for (var j = item.blocks.length - 1; j >= 0; j--) {
+        final block = item.blocks[j];
+        if (block is JobsBlock && block.jobs.isNotEmpty) {
+          // add() is true only the first time we see this id.
+          if (_autoShownJobBlocks.add(block.id)) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              ref.read(jobResultsFocusProvider.notifier).state = block.id;
+            });
+          }
+          return; // only the most recent results matter
+        }
+      }
+    }
+  }
+
+  /// Locate the focused [JobsBlock] and the agent prose from the same turn, so
+  /// the takeover can show that message on top of the results.
+  static ({JobsBlock block, String intro})? _findJobsBlockWithIntro(
+    List<ChatItem> items,
+    String id,
+  ) {
+    for (final item in items) {
+      if (item is! AgentTurn) continue;
+      JobsBlock? jobsBlock;
+      final texts = <String>[];
+      for (final block in item.blocks) {
+        if (block is JobsBlock && block.id == id) jobsBlock = block;
+        if (block is TextBlock && block.text.trim().isNotEmpty) {
+          texts.add(block.text.trim());
+        }
+      }
+      if (jobsBlock != null) {
+        return (block: jobsBlock, intro: texts.join('\n\n'));
+      }
+    }
+    return null;
+  }
+
   @override
   void dispose() {
     _scrollController.removeListener(_onScroll);
@@ -89,26 +154,25 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    ref.listen<AgentChatState>(
-      agentChatProvider,
-      (_, _) => _scheduleScrollToBottom(),
-    );
+    ref.listen<AgentChatState>(agentChatProvider, (_, next) {
+      _scheduleScrollToBottom();
+      _maybeOpenJobResults(next);
+    });
 
     final state = ref.watch(agentChatProvider);
-    final notifier = ref.read(agentChatProvider.notifier);
-    final hasAttachedResume = ref.watch(
-      resumeProvider.select((s) => s.selectedResumes.isNotEmpty),
-    );
 
+    // When set, the full-screen job-results takeover covers the conversation.
+    final jobsFocusId = ref.watch(jobResultsFocusProvider);
+    final jobsFocus = jobsFocusId == null
+        ? null
+        : _findJobsBlockWithIntro(state.items, jobsFocusId);
     final onlyInitial =
         state.items.length == 1 && state.items.first is AgentTurn;
-    final stickyPrompt = _latestUserMessage(state.items);
     final pendingProposal = _pendingProposal(state.items);
     final pendingInput = _pendingInputRequest(state.items);
-    final transcriptForList = _transcriptExcludingStickyPrompt(
-      state.items,
-      stickyPrompt,
-    );
+    // The latest prompt and any attached resume now flow inline as right-side
+    // bubbles, so nothing is hoisted out of the transcript anymore.
+    final transcriptForList = state.items;
 
     final media = MediaQuery.of(context);
     final topSafe = media.padding.top;
@@ -118,11 +182,6 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
     // Slight overlap under the frosted bars is intentional — that's the
     // "chat seen through the controls" effect.
     double topInset = topSafe + 56;
-    if (state.threadJob != null) topInset += 58;
-    // The resume card only surfaces once the chat is underway — until then
-    // the attached resume previews inside the composer instead.
-    if (hasAttachedResume && stickyPrompt != null) topInset += 58;
-    if (stickyPrompt != null) topInset += 80;
     double bottomInset = media.padding.bottom + 152;
     // A docked panel sits above the composer — give the transcript extra
     // clearance so the last message isn't buried behind it.
@@ -148,8 +207,7 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
                     controller: _scrollController,
                     padding: EdgeInsets.fromLTRB(20, topInset, 20, bottomInset),
                     children: [
-                      if (state.threadJob != null &&
-                          !state.items.any((i) => i is UserMessage))
+                      if (state.threadJob != null)
                         _ThreadHero(job: state.threadJob!),
                       for (final item in transcriptForList)
                         switch (item) {
@@ -178,18 +236,14 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
             child: IgnorePointer(child: _FadeScrim(brand: brand, top: false)),
           ),
 
-          // Floating top chrome: header buttons + optional thread chip +
-          // optional sticky prompt.
+          // Floating top chrome: just the frosted nav buttons. The active job
+          // thread is announced by the company card at the top of the
+          // transcript ([_ThreadHero]), not by a pinned header.
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            child: _FloatingTop(
-              isStreaming: state.isStreaming,
-              threadJob: state.threadJob,
-              stickyPrompt: stickyPrompt,
-              onClearThread: notifier.newConversation,
-            ),
+            child: _FloatingTop(isStreaming: state.isStreaming),
           ),
 
           // Jump-to-latest pill — sits just above the floating composer.
@@ -227,18 +281,34 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
               ],
             ),
           ),
+
+          // Full-screen job-results takeover — covers all chat chrome while the
+          // user reviews the roles the agent just surfaced. Dismissing returns
+          // to the conversation, where the same roles remain in the transcript.
+          // The takeover is an overlay, not a route, so a hardware back /
+          // edge-swipe would otherwise pop the whole chat and strand it open.
+          // PopScope (mounted only while it shows) intercepts back to dismiss
+          // the takeover first; once closed it unmounts and normal pops resume.
+          if (jobsFocus != null)
+            Positioned.fill(
+              child: PopScope(
+                canPop: false,
+                onPopInvokedWithResult: (didPop, _) {
+                  if (!didPop) {
+                    ref.read(jobResultsFocusProvider.notifier).state = null;
+                  }
+                },
+                child: JobResultsTakeover(
+                  jobs: jobsFocus.block.jobs,
+                  intro: jobsFocus.intro,
+                  onClose: () =>
+                      ref.read(jobResultsFocusProvider.notifier).state = null,
+                ),
+              ),
+            ),
         ],
       ),
     );
-  }
-
-  /// The most recent [UserMessage] in the transcript, or null if none yet.
-  static UserMessage? _latestUserMessage(List<ChatItem> items) {
-    for (var i = items.length - 1; i >= 0; i--) {
-      final item = items[i];
-      if (item is UserMessage) return item;
-    }
-    return null;
   }
 
   /// Pending action proposal hoisted from the latest agent turn into the
@@ -275,295 +345,16 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
     return null;
   }
 
-  /// Strip the sticky prompt from the in-list transcript so we don't render
-  /// it twice. Everything else (older prompts, agent turns) still flows in
-  /// chronological order in the scroll view.
-  static List<ChatItem> _transcriptExcludingStickyPrompt(
-    List<ChatItem> items,
-    UserMessage? sticky,
-  ) {
-    if (sticky == null) return items;
-    return [
-      for (final item in items)
-        if (!(item is UserMessage && item.id == sticky.id)) item,
-    ];
-  }
 }
 
-/// Pinned latest-prompt banner: gives the agent's reasoning timeline a
-/// persistent "what you asked" header, Claude-Code style.
-class _StickyUserPrompt extends StatelessWidget {
-  const _StickyUserPrompt({required this.message});
-
-  final UserMessage message;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return _FrostedCard(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 11, 14, 12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 3,
-              height: 32,
-              margin: const EdgeInsets.only(top: 2, right: 12),
-              decoration: BoxDecoration(
-                color: brand.ink,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'YOU ASKED',
-                    style: TextStyle(
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.4,
-                      color: brand.textMuted,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    message.text,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: brand.ink,
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w700,
-                      height: 1.35,
-                      letterSpacing: -0.15,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    ).animate(key: ValueKey(message.id)).fadeIn(duration: 220.ms).moveY(
-          begin: -6,
-          end: 0,
-          duration: 220.ms,
-          curve: Curves.easeOutCubic,
-        );
-  }
-}
-
-/// Pinned chip below the header announcing the active job thread. Tap the
-/// X to clear context and return to a generic chat.
-class _ThreadContextChip extends StatelessWidget {
-  const _ThreadContextChip({required this.job, required this.onClear});
-
-  final Job job;
-  final VoidCallback onClear;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return _FrostedCard(
-      child: Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-      child: Row(
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: brand.ink,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              job.company.isNotEmpty ? job.company[0] : '?',
-              style: TextStyle(
-                color: brand.accent,
-                fontWeight: FontWeight.w900,
-                fontSize: 13,
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'THREAD',
-                  style: TextStyle(
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.4,
-                    color: brand.textMuted,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${job.title} · ${job.company}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: brand.ink,
-                    letterSpacing: -0.1,
-                    height: 1.2,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Semantics(
-            label: 'Close thread',
-            button: true,
-            child: InkResponse(
-              onTap: onClear,
-              radius: 24,
-              excludeFromSemantics: true,
-              child: SizedBox(
-                width: 44,
-                height: 44,
-                child: Center(
-                  child: Icon(
-                    Icons.close_rounded,
-                    size: 18,
-                    color: brand.textMuted,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-      ),
-    );
-  }
-}
-
-/// Pinned chip below the header announcing which resume(s) Syncra has in
-/// context for the chat — the user's signal that the agent is working from
-/// their actual resume. Tap the body to swap resumes; tap the X to detach.
-class _ResumeContextChip extends ConsumerWidget {
-  const _ResumeContextChip({required this.resumes});
-
-  final List<ResumeFile> resumes;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final brand = context.brand;
-    final isSingle = resumes.length == 1;
-    final title = isSingle
-        ? FileFormatter.cleanName(resumes.first.name)
-        : '${resumes.length} resumes attached';
-    return _FrostedCard(
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(_FrostedCard.radius),
-        child: InkWell(
-          onTap: () => SelectResumesBottomSheet.show(context),
-          borderRadius: BorderRadius.circular(_FrostedCard.radius),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-            child: Row(
-              children: [
-                Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: brand.ink,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(
-                    Icons.description_rounded,
-                    size: 15,
-                    color: brand.accent,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'RESUME IN USE',
-                        style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.4,
-                          color: brand.textMuted,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          color: brand.ink,
-                          letterSpacing: -0.1,
-                          height: 1.2,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Semantics(
-                  label: 'Detach resume',
-                  button: true,
-                  child: InkResponse(
-                    onTap: () => ref
-                        .read(resumeProvider.notifier)
-                        .clearSelectedResumes(),
-                    radius: 24,
-                    excludeFromSemantics: true,
-                    child: SizedBox(
-                      width: 44,
-                      height: 44,
-                      child: Center(
-                        child: Icon(
-                          Icons.close_rounded,
-                          size: 18,
-                          color: brand.textMuted,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Floating top chrome over the full-bleed transcript: a back button and a
-/// new-chat button (frosted circles), plus the optional thread chip and
-/// sticky prompt as frosted cards. No solid bar — the chat scrolls behind it.
+/// Floating top chrome over the full-bleed transcript: a back button, history
+/// button and a new-chat button (frosted circles). No solid bar and no thread
+/// header — the chat scrolls behind it, and an active job thread is announced
+/// by the company card at the top of the transcript ([_ThreadHero]).
 class _FloatingTop extends ConsumerWidget {
-  const _FloatingTop({
-    required this.isStreaming,
-    required this.threadJob,
-    required this.stickyPrompt,
-    required this.onClearThread,
-  });
+  const _FloatingTop({required this.isStreaming});
 
   final bool isStreaming;
-  final Job? threadJob;
-  final UserMessage? stickyPrompt;
-  final VoidCallback onClearThread;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -572,61 +363,36 @@ class _FloatingTop extends ConsumerWidget {
         (s) => s.items.length > 1 || s.threadJob != null,
       ),
     );
-    final attachedResumes = ref.watch(resumeProvider).selectedResumes;
     return SafeArea(
       bottom: false,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-            child: Row(
-              children: [
-                _IconBtn(
-                  icon: Icons.arrow_back_ios_new_rounded,
-                  tooltip: 'Back',
-                  onTap: () => context.go(RouteNames.dashboard),
-                ),
-                const SizedBox(width: 8),
-                _IconBtn(
-                  icon: Icons.history_rounded,
-                  tooltip: 'Chat history',
-                  onTap: () => Scaffold.of(context).openDrawer(),
-                ),
-                const Spacer(),
-                _IconBtn(
-                  icon: Icons.edit_square,
-                  tooltip: 'New chat',
-                  onTap: hasHistory && !isStreaming
-                      ? () =>
-                          ref.read(agentChatProvider.notifier).newConversation()
-                      : null,
-                ),
-              ],
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: Row(
+          children: [
+            _IconBtn(
+              icon: Icons.arrow_back_ios_new_rounded,
+              tooltip: 'Back',
+              onTap: () => context.go(RouteNames.dashboard),
             ),
-          ),
-          if (threadJob != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: _ThreadContextChip(
-                job: threadJob!,
-                onClear: onClearThread,
-              ),
+            const SizedBox(width: 8),
+            _IconBtn(
+              icon: Icons.history_rounded,
+              tooltip: 'Chat history',
+              onTap: () => Scaffold.of(context).openDrawer(),
             ),
-          if (attachedResumes.isNotEmpty && stickyPrompt != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: _ResumeContextChip(resumes: attachedResumes),
+            const Spacer(),
+            _IconBtn(
+              icon: Icons.edit_square,
+              tooltip: 'New chat',
+              onTap: hasHistory && !isStreaming
+                  ? () => ref.read(agentChatProvider.notifier).newConversation()
+                  : null,
             ),
-          if (stickyPrompt != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: _StickyUserPrompt(message: stickyPrompt!),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
-
 }
 
 /// Soft gradient that fades the transcript into the background behind the
@@ -649,47 +415,6 @@ class _FadeScrim extends StatelessWidget {
             brand.surface.withValues(alpha: 0.0),
           ],
           stops: const [0.55, 1.0],
-        ),
-      ),
-    );
-  }
-}
-
-/// Frosted-glass container — translucent + blurred so the transcript stays
-/// faintly visible through the floating cards.
-class _FrostedCard extends StatelessWidget {
-  const _FrostedCard({required this.child});
-
-  final Widget child;
-
-  static const double radius = 16;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(radius),
-        boxShadow: [
-          BoxShadow(
-            color: brand.shadow.withValues(alpha: 0.12),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(radius),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: brand.surface.withValues(alpha: 0.82),
-              borderRadius: BorderRadius.circular(radius),
-              border: Border.all(color: brand.border, width: 0.8),
-            ),
-            child: child,
-          ),
         ),
       ),
     );

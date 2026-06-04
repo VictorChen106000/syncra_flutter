@@ -91,7 +91,7 @@ Progressive autonomy / request scope:
 Standard job-search sequence — follow it, one gate at a time:
 1. `search_jobs` renders the roles as interactive cards. Add at most one short sentence introducing them.
    If the user only asked to find/search/show jobs, stop after calling `ask_user` with next-step chips such as
-   ["Match these with my resume", "Save best to Mission Control", "Tailor for the top role"].
+   ["Match these with my resume", "Save best to Pipeline", "Tailor for the top role"].
 2. If the user requested matching, call `read_resume` after `search_jobs`, then call `match_jobs`.
 3. If the user requested saving, call `save_to_pipeline` after matching or after the user approves which jobs
    to save.
@@ -673,7 +673,7 @@ Progress and style:
           location: (m['location'] as String?)?.trim() ?? '',
           salary: (m['salary'] as String?)?.trim() ?? '',
           category: _jobCategoryFromName(m['category'] as String?),
-          matchScore: (m['match'] as num?)?.toInt() ?? 0,
+          matchScore: _matchScoreFromData(m),
           agentAction: (m['agent_action'] as String?)?.trim() ?? '',
           agentJustification: justification,
           skills: _stringList(m['matched_skills'] ?? m['skills']),
@@ -684,6 +684,29 @@ Progress and style:
     }
 
     return jobs;
+  }
+
+  /// Internal-only sort signal — never shown to the user. `search_jobs`
+  /// carries no `match` field; `match_jobs` puts the *qualitative* label there
+  /// ("All Match" / "Several Match" / "No Match"), never a number. A blind
+  /// `as num?` cast on that label threw "type 'String' is not a subtype of
+  /// type 'num?'", which the loop surfaced as a failed tool even though
+  /// scoring had succeeded. Accept a real number when one is present, derive a
+  /// coarse rank from the qualitative label otherwise, and default to 0.
+  int _matchScoreFromData(Map<String, dynamic> m) {
+    final raw = m['match'] ?? m['match_score'];
+    if (raw is num) return raw.toInt();
+    if (raw is String) {
+      final parsed = int.tryParse(raw.trim());
+      if (parsed != null) return parsed;
+      return switch (raw.trim().toLowerCase()) {
+        'all match' => 3,
+        'several match' => 2,
+        'no match' => 1,
+        _ => 0,
+      };
+    }
+    return 0;
   }
 
   List<String> _stringList(Object? value) {

@@ -193,31 +193,32 @@ class _UploadPhase extends ConsumerWidget {
     final uploading = resumeState.uploadQueue.where((i) => !i.hasError).toList();
     final hasResume = resumes.isNotEmpty;
 
+    final busy = uploading.isNotEmpty;
+
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       child: Column(
         children: [
-          const SizedBox(height: 24),
+          const SizedBox(height: 32),
           GooeyOrb(size: 132)
               .animate()
               .fadeIn(duration: 480.ms)
               .scale(begin: const Offset(0.85, 0.85), end: const Offset(1, 1)),
-          const SizedBox(height: 28),
+          const SizedBox(height: 30),
           Text(
             "Let's set you up",
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 26,
+              fontSize: 27,
               fontWeight: FontWeight.w900,
               color: brand.ink,
               letterSpacing: -0.6,
-              height: 1.15,
+              height: 1.1,
             ),
           ).animate(delay: 100.ms).fadeIn().moveY(begin: 8, end: 0),
           const SizedBox(height: 10),
           Text(
-            'Drop in your resume — Syncra reads it and tailors everything '
-            'to you. No forms.',
+            'Drop in your resume and Syncra tailors everything to you.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 14.5,
@@ -227,7 +228,7 @@ class _UploadPhase extends ConsumerWidget {
               letterSpacing: -0.1,
             ),
           ).animate(delay: 180.ms).fadeIn(),
-          const SizedBox(height: 32),
+          const SizedBox(height: 36),
 
           // Live upload progress for any in-flight file.
           for (final item in uploading)
@@ -236,42 +237,49 @@ class _UploadPhase extends ConsumerWidget {
               child: ResumeUploadCard(uploadingItem: item),
             ),
 
-          // Existing resume(s) the user already has — lets returning users
-          // continue without re-uploading.
-          if (hasResume && uploading.isEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: ResumeUploadCard(resume: resumes.first),
-            ),
-
-          _UploadDropCard(onTap: onPick, compact: hasResume)
-              .animate(delay: 240.ms)
-              .fadeIn()
-              .moveY(begin: 10, end: 0),
-
-          const SizedBox(height: 20),
-
-          if (hasResume && uploading.isEmpty)
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: onContinue,
-                style: FilledButton.styleFrom(
-                  backgroundColor: brand.ink,
-                  foregroundColor: brand.inkInverse,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                ),
-                child: const Text(
-                  'Continue',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+          if (!busy) ...[
+            if (hasResume) ...[
+              // Returning user — show what they have, then a clear Continue
+              // with a quiet way to swap the file.
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: ResumeUploadCard(resume: resumes.first),
+              ),
+              _BigButton(
+                label: 'Continue',
+                icon: Icons.arrow_forward_rounded,
+                filled: true,
+                onTap: onContinue,
+              ),
+              const SizedBox(height: 10),
+              _BigButton(
+                label: 'Upload a different resume',
+                icon: Icons.upload_file_rounded,
+                filled: false,
+                onTap: onPick,
+              ),
+            ] else ...[
+              _BigButton(
+                label: 'Upload resume',
+                icon: Icons.upload_file_rounded,
+                filled: true,
+                iconColor: brand.accent,
+                onTap: onPick,
+              ).animate(delay: 240.ms).fadeIn().moveY(begin: 10, end: 0),
+              const SizedBox(height: 12),
+              Text(
+                'PDF, DOC or DOCX · up to 5MB',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: brand.textSoft,
+                  letterSpacing: 0.1,
                 ),
               ),
-            ),
+            ],
+          ],
 
-          const SizedBox(height: 8),
+          const SizedBox(height: 16),
           TextButton(
             onPressed: onSkip,
             child: Text(
@@ -289,61 +297,58 @@ class _UploadPhase extends ConsumerWidget {
   }
 }
 
-class _UploadDropCard extends StatelessWidget {
-  const _UploadDropCard({required this.onTap, this.compact = false});
+/// Full-width pill action shared by the upload phase. Filled = solid ink hero;
+/// otherwise an outlined surface. Mirrors the resume-list button language so
+/// onboarding and the library feel like one product.
+class _BigButton extends StatelessWidget {
+  const _BigButton({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    required this.filled,
+    this.iconColor,
+  });
 
+  final String label;
+  final IconData icon;
   final VoidCallback onTap;
-  final bool compact;
+  final bool filled;
+  final Color? iconColor;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
+    final fg = filled ? brand.inkInverse : brand.ink;
     return Material(
-      color: Colors.transparent,
+      color: filled ? brand.ink : brand.surface,
+      borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(18),
         child: Container(
           width: double.infinity,
-          padding: EdgeInsets.symmetric(vertical: compact ? 18 : 30),
+          height: 56,
           decoration: BoxDecoration(
-            color: brand.surfaceMuted,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: brand.border, width: 1.4),
+            borderRadius: BorderRadius.circular(18),
+            border: filled ? null : Border.all(color: brand.border, width: 1.4),
           ),
-          child: Column(
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: brand.ink,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  Icons.upload_file_rounded,
-                  color: brand.accent,
-                  size: 24,
-                ),
+              Icon(
+                icon,
+                size: 20,
+                color: iconColor ?? (filled ? fg : brand.accent),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(width: 10),
               Text(
-                compact ? 'Upload a different resume' : 'Upload your resume',
+                label,
                 style: TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 15,
-                  color: brand.ink,
                   letterSpacing: -0.2,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'PDF, DOC or DOCX · up to 5MB',
-                style: TextStyle(
-                  fontWeight: FontWeight.w500,
-                  fontSize: 12,
-                  color: brand.textMuted,
+                  color: fg,
                 ),
               ),
             ],

@@ -29,22 +29,20 @@ final _learnedFactsCountProvider = StreamProvider.autoDispose<int>((ref) {
       .map((snap) => snap.docs.length);
 });
 
-/// The dashboard hero: a vertical timeline of what the agent has actually done
-/// for the user, newest work building toward a live "working now" dot while a
-/// brief is running.
+/// The dashboard hero: a quiet vertical timeline of what the agent has actually
+/// done, completed work resolving into a single live dot while a brief runs.
 ///
-/// Every milestone is derived from durable state (pipeline matches, tailored
-/// résumés, learned facts, drafted applications) rather than the ephemeral
-/// in-memory activity log — so the story survives an app restart and can never
-/// show a fabricated step. The live passive-agent status is layered on top as a
-/// pulsing dot only while [PassiveAgentState.isRunning].
+/// Premium-minimal by intent: no per-row glyphs, monochrome ink dots, and a
+/// lone lime accent reserved for the "working now" point so the eye lands on
+/// what's live. Every milestone is derived from durable state (pipeline
+/// matches, tailored résumés, learned facts, drafted applications) rather than
+/// the ephemeral in-memory log — so the story survives a restart and can never
+/// show a fabricated step. The live passive-agent status is layered on top.
 class AgentActivityTimeline extends ConsumerWidget {
   const AgentActivityTimeline({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final brand = context.brand;
-
     final matchCount = ref.watch(jobsProvider.select((s) => s.cards.length));
     final tailoredCount = ref.watch(
       resumeProvider.select((s) => s.tailoredResumes.length),
@@ -59,136 +57,115 @@ class AgentActivityTimeline extends ConsumerWidget {
     final isRunning = ref.watch(
       passiveAgentProvider.select((s) => s.isRunning),
     );
-    final lastBriefAt = ref.watch(
+    final briefAt = ref.watch(
       passiveAgentProvider.select((s) => s.lastBriefAt),
     );
-    final liveLabel = ref.watch(
-      passiveAgentProvider.select(_liveLabelFor),
-    );
+    final liveLabel = ref.watch(passiveAgentProvider.select(_liveLabelFor));
 
     final milestones = <_Milestone>[
       _Milestone(
-        icon: Icons.travel_explore_rounded,
         title: role.isEmpty
             ? 'Scanned the market for you'
             : 'Scanned the market for $role roles',
-        status: status == AgentBriefStatus.scanning
-            ? _DotStatus.active
-            : _DotStatus.done,
+        time: briefAt,
+        active: status == AgentBriefStatus.scanning,
       ),
       if (matchCount > 0)
         _Milestone(
-          icon: Icons.workspace_premium_rounded,
           title: 'Found ${_plural(matchCount, 'strong match', 'strong matches')}',
-          subtitle: 'Tap to review your pipeline',
-          status: status == AgentBriefStatus.matching
-              ? _DotStatus.active
-              : _DotStatus.done,
+          subtitle: 'Review your pipeline',
+          time: briefAt,
+          active: status == AgentBriefStatus.matching,
           route: RouteNames.jobs,
         ),
       if (tailoredCount > 0)
         _Milestone(
-          icon: Icons.auto_awesome_rounded,
-          title: 'Tailored your résumé · '
-              '${_plural(tailoredCount, 'version', 'versions')}',
-          subtitle: 'Review the changes line by line',
-          status: _DotStatus.done,
+          title: 'Tailored your résumé',
+          subtitle: _plural(tailoredCount, 'version ready', 'versions ready'),
+          time: briefAt,
           route: RouteNames.resumes,
         ),
       if (learnedCount > 0)
         _Milestone(
-          icon: Icons.psychology_rounded,
-          title: 'Learned ${_plural(learnedCount, 'thing', 'things')} '
-              'about your preferences',
-          subtitle: 'Saved to your Career Memory',
-          status: _DotStatus.done,
+          title: 'Learned ${_plural(learnedCount, 'thing', 'things')} about you',
+          subtitle: 'Saved to Career Memory',
+          time: briefAt,
           route: RouteNames.profile,
         ),
       if (draftCount > 0)
         _Milestone(
-          icon: Icons.drafts_rounded,
-          title: '${_plural(draftCount, 'application', 'applications')} '
-              'ready to review',
+          title: '${_plural(draftCount, 'application', 'applications')} ready',
           subtitle: 'Open the tracker to send',
-          status: _DotStatus.done,
+          time: briefAt,
           route: RouteNames.applications,
         ),
       if (isRunning)
-        _Milestone(
-          icon: Icons.bolt_rounded,
-          title: liveLabel,
-          status: _DotStatus.active,
-        ),
+        _Milestone(title: liveLabel, active: true),
     ];
 
     return Padding(
-      padding: const EdgeInsets.only(top: 8, bottom: 8),
+      padding: const EdgeInsets.only(top: 12, bottom: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _Header(lastBriefAt: lastBriefAt, isRunning: isRunning),
-          const SizedBox(height: 18),
+          _Header(isRunning: isRunning, briefAt: briefAt),
+          const SizedBox(height: 24),
           for (var i = 0; i < milestones.length; i++)
             _TimelineRow(
                   milestone: milestones[i],
                   isFirst: i == 0,
                   isLast: i == milestones.length - 1,
-                  lineColor: brand.border,
                 )
-                .animate(delay: (i * 90).ms)
-                .fadeIn(duration: 360.ms)
-                .moveY(begin: 10, end: 0, curve: Curves.easeOutCubic),
+                .animate(delay: (i * 80).ms)
+                .fadeIn(duration: 420.ms)
+                .moveY(begin: 12, end: 0, curve: Curves.easeOutCubic),
         ],
       ),
     );
   }
 }
 
-/// Compact header: an accent pulse, "Here's what I did", and a relative
-/// timestamp so the work reads as something the agent did on its own.
+/// Quiet header: a title and, only while a brief runs, a "Working now"
+/// indicator. Per-step times live on the rows, so the header stays bare.
 class _Header extends StatelessWidget {
-  const _Header({required this.lastBriefAt, required this.isRunning});
+  const _Header({required this.isRunning, required this.briefAt});
 
-  final DateTime? lastBriefAt;
   final bool isRunning;
+  final DateTime? briefAt;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final stamp = isRunning
-        ? 'Working now'
-        : lastBriefAt == null
-        ? null
-        : 'Updated ${_relativeTime(lastBriefAt!)}';
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
       children: [
-        Container(
-          width: 10,
-          height: 10,
-          decoration: BoxDecoration(
-            color: brand.accent,
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: 10),
         Text(
           "Here's what I did",
           style: TextStyle(
-            fontSize: 17,
+            fontSize: 20,
             fontWeight: FontWeight.w800,
-            letterSpacing: -0.3,
+            letterSpacing: -0.6,
+            height: 1.1,
             color: brand.ink,
           ),
         ),
         const Spacer(),
-        if (stamp != null)
-          Text(
-            stamp,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: brand.textMuted,
-            ),
+        if (isRunning)
+          Row(
+            children: [
+              _PulseDot(color: brand.accent, size: 7),
+              const SizedBox(width: 7),
+              Text(
+                'WORKING NOW',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.2,
+                  color: brand.textMuted,
+                ),
+              ),
+            ],
           ),
       ],
     );
@@ -200,67 +177,77 @@ class _TimelineRow extends StatelessWidget {
     required this.milestone,
     required this.isFirst,
     required this.isLast,
-    required this.lineColor,
   });
 
   final _Milestone milestone;
   final bool isFirst;
   final bool isLast;
-  final Color lineColor;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final tappable = milestone.route != null;
+    final m = milestone;
+    final tappable = m.route != null;
+    final eyebrow = m.active
+        ? 'NOW'
+        : (m.time != null ? _relativeTime(m.time!).toUpperCase() : null);
 
     final content = Padding(
-      padding: EdgeInsets.only(bottom: isLast ? 0 : 18),
-      child: Row(
+      padding: EdgeInsets.only(bottom: isLast ? 0 : 26),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: brand.surfaceMuted,
-              borderRadius: BorderRadius.circular(12),
+          if (eyebrow != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 5),
+              child: Text(
+                eyebrow,
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.4,
+                  height: 1,
+                  color: m.active ? brand.ink : brand.textMuted,
+                ),
+              ),
             ),
-            alignment: Alignment.center,
-            child: Icon(milestone.icon, size: 18, color: brand.ink),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  milestone.title,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  m.title,
                   style: TextStyle(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w800,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.4,
                     height: 1.25,
-                    letterSpacing: -0.2,
                     color: brand.ink,
                   ),
                 ),
-                if (milestone.subtitle != null) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    milestone.subtitle!,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w500,
-                      height: 1.2,
-                      color: brand.textMuted,
-                    ),
-                  ),
-                ],
+              ),
+              if (tappable) ...[
+                const SizedBox(width: 10),
+                Icon(
+                  Icons.arrow_outward_rounded,
+                  size: 17,
+                  color: brand.textMuted.withValues(alpha: 0.7),
+                ),
               ],
-            ),
+            ],
           ),
-          if (tappable) ...[
-            const SizedBox(width: 8),
-            Icon(Icons.chevron_right_rounded, size: 20, color: brand.textMuted),
+          if (m.subtitle != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              m.subtitle!,
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w500,
+                letterSpacing: -0.1,
+                height: 1.3,
+                color: brand.textMuted,
+              ),
+            ),
           ],
         ],
       ),
@@ -270,18 +257,13 @@ class _TimelineRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _Rail(
-            status: milestone.status,
-            isFirst: isFirst,
-            isLast: isLast,
-            lineColor: lineColor,
-          ),
-          const SizedBox(width: 14),
+          _Rail(active: m.active, isFirst: isFirst, isLast: isLast),
+          const SizedBox(width: 16),
           Expanded(
             child: tappable
                 ? InkWell(
-                    onTap: () => context.go(milestone.route!),
-                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => context.go(m.route!),
+                    borderRadius: BorderRadius.circular(14),
                     child: content,
                   )
                 : content,
@@ -292,40 +274,42 @@ class _TimelineRow extends StatelessWidget {
   }
 }
 
-/// The left "thread": a continuous 2px line with this row's dot punched in
-/// near the top, so dots line up with each milestone's icon while the line
-/// flows unbroken between them.
+/// The left "thread": a hairline connector with this row's dot. The dot sits
+/// near the top so it lands on the time eyebrow / title; the line flows
+/// unbroken to the next milestone.
 class _Rail extends StatelessWidget {
   const _Rail({
-    required this.status,
+    required this.active,
     required this.isFirst,
     required this.isLast,
-    required this.lineColor,
   });
 
-  final _DotStatus status;
+  final bool active;
   final bool isFirst;
   final bool isLast;
-  final Color lineColor;
+
+  static const double _dot = 18;
 
   @override
   Widget build(BuildContext context) {
+    final brand = context.brand;
+    final line = brand.border;
     return SizedBox(
-      width: 16,
+      width: _dot,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Top connector — aligns the dot with the icon chip's vertical center.
+          // Aligns the dot's centre with the first text line.
           Container(
-            width: 2,
-            height: 13,
-            color: isFirst ? Colors.transparent : lineColor,
+            width: 1.5,
+            height: 4,
+            color: isFirst ? Colors.transparent : line,
           ),
-          _Dot(status: status),
+          _Dot(active: active, size: _dot),
           Expanded(
             child: Container(
-              width: 2,
-              color: isLast ? Colors.transparent : lineColor,
+              width: 1.5,
+              color: isLast ? Colors.transparent : line,
             ),
           ),
         ],
@@ -334,98 +318,116 @@ class _Rail extends StatelessWidget {
   }
 }
 
+/// A pure geometric marker — no glyph. Completed steps are a solid ink dot;
+/// the step in progress is a faded-green dot ringed in green with a breathing
+/// halo, so "done" settles to black and only the live step carries colour.
 class _Dot extends StatelessWidget {
-  const _Dot({required this.status});
+  const _Dot({required this.active, required this.size});
 
-  final _DotStatus status;
+  final bool active;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    switch (status) {
-      case _DotStatus.done:
-        return Container(
-          width: 14,
-          height: 14,
-          decoration: BoxDecoration(
-            color: brand.accent,
-            shape: BoxShape.circle,
-            border: Border.all(color: brand.bg, width: 2),
-          ),
-          alignment: Alignment.center,
-          child: Icon(Icons.check_rounded, size: 9, color: brand.onAccent),
-        );
-      case _DotStatus.waiting:
-        return Container(
-          width: 14,
-          height: 14,
-          decoration: BoxDecoration(
-            color: brand.bg,
-            shape: BoxShape.circle,
-            border: Border.all(color: brand.textMuted, width: 2),
-          ),
-        );
-      case _DotStatus.active:
-        // A filled dot with a pulsing halo — the agent is doing this now.
-        final dot = Container(
-          width: 14,
-          height: 14,
-          decoration: BoxDecoration(
-            color: brand.accent,
-            shape: BoxShape.circle,
-            border: Border.all(color: brand.bg, width: 2),
-          ),
-        );
-        return SizedBox(
-          width: 14,
-          height: 14,
-          child: Stack(
-            clipBehavior: Clip.none,
-            alignment: Alignment.center,
-            children: [
-              Container(
-                    width: 14,
-                    height: 14,
-                    decoration: BoxDecoration(
-                      color: brand.accent.withValues(alpha: 0.5),
-                      shape: BoxShape.circle,
-                    ),
-                  )
-                  .animate(
-                    onPlay: shouldAnimate(context)
-                        ? (c) => c.repeat()
-                        : null,
-                  )
-                  .scaleXY(
-                    begin: 1,
-                    end: 2.4,
-                    duration: 1200.ms,
-                    curve: Curves.easeOut,
-                  )
-                  .fadeOut(duration: 1200.ms),
-              dot,
-            ],
-          ),
-        );
-    }
+    // A ring in the page background separates the dot from the connector line.
+    final core = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: active ? brand.accent.withValues(alpha: 0.32) : brand.ink,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: active ? brand.accent : brand.bg,
+          width: active ? 2 : 3,
+        ),
+      ),
+    );
+    if (!active) return core;
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [_Halo(color: brand.accent, size: size), core],
+      ),
+    );
   }
 }
 
-enum _DotStatus { done, active, waiting }
+/// Small solid dot with a breathing halo — used for the header's "working
+/// now" indicator.
+class _PulseDot extends StatelessWidget {
+  const _PulseDot({required this.color, required this.size});
+
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          _Halo(color: color, size: size),
+          Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The lone piece of motion in the timeline: a ring that scales out and fades
+/// on a loop. Gated on reduce-motion, where it renders nothing.
+class _Halo extends StatelessWidget {
+  const _Halo({required this.color, required this.size});
+
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!shouldAnimate(context)) return const SizedBox.shrink();
+    return Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.45),
+            shape: BoxShape.circle,
+          ),
+        )
+        .animate(onPlay: (c) => c.repeat())
+        .scaleXY(begin: 1, end: 2.6, duration: 1400.ms, curve: Curves.easeOut)
+        .fadeOut(duration: 1400.ms);
+  }
+}
 
 class _Milestone {
   const _Milestone({
-    required this.icon,
     required this.title,
-    required this.status,
     this.subtitle,
+    this.time,
+    this.active = false,
     this.route,
   });
 
-  final IconData icon;
   final String title;
   final String? subtitle;
-  final _DotStatus status;
+
+  /// When this work happened — rendered as the time eyebrow. Null hides it.
+  final DateTime? time;
+
+  /// The step the agent is on right now: drives the "NOW" eyebrow and the lime
+  /// pulsing dot.
+  final bool active;
   final String? route;
 }
 
@@ -443,8 +445,7 @@ String _liveLabelFor(PassiveAgentState s) {
   };
 }
 
-String _plural(int n, String one, String many) =>
-    '$n ${n == 1 ? one : many}';
+String _plural(int n, String one, String many) => '$n ${n == 1 ? one : many}';
 
 String _relativeTime(DateTime t) {
   final d = DateTime.now().difference(t);
