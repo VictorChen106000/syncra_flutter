@@ -62,6 +62,8 @@ two explicit gates: the diff viewer and the email modal.
   application cards. It never claims a job is guaranteed safe.
 - **Walk-away support.** Leave the chat mid-task and agent updates land in the
   in-app notifications inbox — answer or approve from there.
+- **Persistent chat history.** Conversations are saved and can be reopened from
+  the chat history drawer instead of disappearing after one session.
 - **Human-in-the-loop.** The agent never sends external traffic without an
   explicit user tap. Missing context → it pauses and asks.
 - **Honest scope.** The Applications page is an activity log (drafted / sent /
@@ -82,5 +84,4 @@ No FastAPI, no Cloud Functions. Course rule: Flutter + Firebase only.
 ## Out of scope for v1
 
 Push notifications (FCM), auto-submit, cover-letter documents, LinkedIn
-integration, chat persistence (in-memory only), multi-account Gmail,
-calendar / interview scheduling.
+integration, multi-account Gmail, calendar / interview scheduling.
