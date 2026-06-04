@@ -57,13 +57,29 @@ void main() {
       expect(prompt, contains('ask_user'));
     });
 
+    test('learns reusable facts after ask_user answers', () {
+      expect(prompt, contains('career memory'));
+      expect(prompt, contains('after `ask_user` returns an answer'));
+      expect(prompt, contains('stable career fact'));
+      expect(
+        prompt,
+        contains('call `remember_fact` before continuing the workflow'),
+      );
+      expect(prompt, contains('skill'));
+      expect(prompt, contains('missing_info'));
+      expect(
+        prompt,
+        contains('do not call `remember_fact` for one-off task choices'),
+      );
+    });
+
     test('drives the search → tailor → email sequence via ask_user offers', () {
       expect(prompt, contains('standard job-search sequence'));
       // After search, it must offer tailoring instead of stopping on a job list.
       expect(prompt, contains('never stop with just a result'));
       expect(prompt, contains('tailor for the top role'));
       // After the tailored resume is saved, it must offer outreach.
-      expect(prompt, contains('draft an outreach email'));
+      expect(prompt, contains('draft recruiter outreach'));
       expect(
         prompt,
         contains('only call `draft_email` after the user says yes'),

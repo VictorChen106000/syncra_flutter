@@ -319,12 +319,13 @@ void _registerRememberFact(ToolRegistry registry) {
     tool: const Tool(
       name: 'remember_fact',
       description:
-          'Persist a reusable fact about the user that came up during the '
-          'conversation, such as skills, experience, preferences, constraints, '
-          'or missing experience they disclosed. Use after ask_user when the '
-          'answer should help future matching, tailoring, or outreach. Do not '
-          'store one-off task instructions, temporary job choices, or sensitive '
-          'personal attributes.',
+          'Persist a reusable career fact learned from the user. Use after '
+          'ask_user whenever the answer contains stable information useful for '
+          'future matching, tailoring, or outreach: skills, experience, target '
+          'roles, location, salary, availability preferences, constraints, or '
+          'missing experience. Choose the best category. Do not store one-off '
+          'task instructions, temporary job choices, button approvals, or '
+          'sensitive personal attributes.',
       inputSchema: {
         'type': 'object',
         'properties': {
