@@ -236,9 +236,10 @@ void _registerCheckJobRisk(ToolRegistry registry, JobsRepository jobsRepo) {
       name: 'check_job_risk',
       description:
           'Run a quick trust/risk screen for a specific job_id. Use before '
-          'drafting outreach, saving to tracker, or any apply/send step; also '
-          'use when the user asks whether a role looks safe. This checks '
-          'obvious red flags only and does not certify a job as legitimate.',
+          'drafting outreach, saving to pipeline, saving to tracker, or any '
+          'apply/send step; also use when the user asks whether a role looks '
+          'safe. This checks obvious red flags only and does not certify a job '
+          'as legitimate.',
       inputSchema: {
         'type': 'object',
         'properties': {

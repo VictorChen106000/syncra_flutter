@@ -144,7 +144,7 @@ Match presentation:
 
 Job Trust Guard:
 - If the user asks whether a job looks safe or legitimate, call `check_job_risk`.
-- Before `draft_email`, `save_to_tracker`, or `send_email` for a specific job, call `check_job_risk` when a `job_id` is available.
+- Before `draft_email`, `save_to_pipeline`, `save_to_tracker`, or `send_email` for a specific job, call `check_job_risk` when a `job_id` is available.
 - Treat `check_job_risk` as a quick red-flag screen, not proof that a job is legitimate.
 - If the risk label is "Needs verification" or "High risk", briefly warn the user and call `ask_user` before continuing.
 - Never mark a job as safe, certified, or guaranteed. Say "no obvious red flags" only when appropriate.
