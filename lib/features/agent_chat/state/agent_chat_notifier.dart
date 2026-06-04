@@ -1070,20 +1070,30 @@ Use the user's answer to continue:
 
     state = state.copyWith(items: [...state.items]);
 
-    _markThreadPipelineProcessed();
+    _markPipelineDraftProcessed(block);
   }
 
-  void _markThreadPipelineProcessed() {
-    if (_threadPipelineMarkedComplete) return;
+  void _markPipelineDraftProcessed(EmailDraftBlock block) {
+    final jobId = (block.jobId ?? state.threadJob?.id)?.trim();
+    if (jobId == null || jobId.isEmpty) return;
 
-    final job = state.threadJob;
-    if (job == null) return;
+    final threadJobId = state.threadJob?.id;
+    final isThreadJob = threadJobId != null && threadJobId == jobId;
 
-    _threadPipelineMarkedComplete = true;
+    if (isThreadJob) {
+      if (_threadPipelineMarkedComplete) return;
+      _threadPipelineMarkedComplete = true;
+    }
 
-    unawaited(ref.read(jobsProvider.notifier).approveByJobId(job.id));
+    unawaited(
+      ref
+          .read(jobsProvider.notifier)
+          .markDraftedByJobId(jobId, resumeId: block.attachmentResumeId),
+    );
 
-    state = state.copyWith(clearThreadJob: true);
+    if (isThreadJob) {
+      state = state.copyWith(clearThreadJob: true);
+    }
   }
 
   EmailDraftBlock? _findEmailDraft(String blockId) {

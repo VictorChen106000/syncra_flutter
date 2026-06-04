@@ -801,6 +801,7 @@ Progress and style:
     final recipient = (data['recipient'] as String?)?.trim() ?? '';
     final subject = (data['subject'] as String?)?.trim() ?? '';
     final body = (data['body'] as String?)?.trim() ?? '';
+    final jobId = (data['job_id'] as String?)?.trim() ?? '';
     if (recipient.isEmpty || subject.isEmpty || body.isEmpty) return null;
 
     // draft_email tailors the resume to the job and flags the PDF to attach;
@@ -813,6 +814,7 @@ Progress and style:
       recipient: recipient,
       subject: subject,
       body: body,
+      jobId: jobId.isEmpty ? null : jobId,
       attachmentResumeId: (attachmentId == null || attachmentId.isEmpty)
           ? null
           : attachmentId,
