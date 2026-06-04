@@ -289,6 +289,7 @@ class EmailDraftBlock extends AgentBlock {
     required this.recipient,
     required this.subject,
     required this.body,
+    this.jobId,
     this.status = EmailDraftStatus.reviewing,
     this.savedDraftId,
     this.attachmentResumeId,
@@ -298,6 +299,11 @@ class EmailDraftBlock extends AgentBlock {
   final String recipient;
   final String subject;
   final String body;
+
+  /// Job this outreach draft belongs to. Used to complete the matching
+  /// pipeline card after the user reviews/saves the draft, even when the chat
+  /// was not opened as a job thread.
+  final String? jobId;
 
   /// When set, the review sheet attaches this resume's PDF to the draft. Holds
   /// the resume id (manual or tailored) — the view downloads the bytes lazily

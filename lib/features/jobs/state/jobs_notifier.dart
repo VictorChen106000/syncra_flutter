@@ -53,8 +53,8 @@ class JobsNotifier extends Notifier<JobsState> {
   JobsNotifier({
     PipelineRepository? repository,
     ApplicationsRepository? applicationsRepository,
-  })  : _repository = repository ?? PipelineRepository(),
-        _applications = applicationsRepository ?? ApplicationsRepository();
+  }) : _repository = repository ?? PipelineRepository(),
+       _applications = applicationsRepository ?? ApplicationsRepository();
 
   final PipelineRepository _repository;
   final ApplicationsRepository _applications;
@@ -94,14 +94,16 @@ class JobsNotifier extends Notifier<JobsState> {
     }
 
     _boundUid = uid;
-    _subscription = _repository.watchPending(uid).listen(
-      (cards) {
-        state = state.copyWith(cards: cards);
-      },
-      onError: (Object e) {
-        debugPrint('pipeline stream error: $e');
-      },
-    );
+    _subscription = _repository
+        .watchPending(uid)
+        .listen(
+          (cards) {
+            state = state.copyWith(cards: cards);
+          },
+          onError: (Object e) {
+            debugPrint('pipeline stream error: $e');
+          },
+        );
   }
 
   String? consumeMessage() {
@@ -168,6 +170,33 @@ class JobsNotifier extends Notifier<JobsState> {
     state = state.copyWith(dismissedIds: next);
   }
 
+  /// Completes the active pipeline card after the user reviewed/saved an
+  /// outreach draft. This moves the card out of the active queue and creates
+  /// a draft application record, but does not mark it as sent.
+  Future<void> markDraftedByJobId(String jobId, {String? resumeId}) async {
+    final user = ref.read(authProvider).appUser;
+    final uid = user?.uid;
+    if (uid == null || user!.isGuest) return;
+
+    final card = state.cards.where((c) => c.job.id == jobId).firstOrNull;
+    if (card == null) return;
+
+    try {
+      await _applications.createApplication(
+        uid: uid,
+        job: card.job,
+        resumeId: resumeId,
+      );
+      await _repository.approve(uid, card.id);
+      state = state.copyWith(
+        lastMessage: '${card.job.company} moved to Applications',
+      );
+    } catch (e) {
+      debugPrint('draft completion failed: $e');
+      state = state.copyWith(lastMessage: 'Could not complete draft');
+    }
+  }
+
   /// Approves the pipeline card whose embedded job id matches [jobId]:
   /// marks the card as approved and creates a matching application doc
   /// that will appear in the tracker. Safe to call for guests (no-op).
@@ -197,4 +226,6 @@ class JobsNotifier extends Notifier<JobsState> {
   }
 }
 
-final jobsProvider = NotifierProvider<JobsNotifier, JobsState>(JobsNotifier.new);
+final jobsProvider = NotifierProvider<JobsNotifier, JobsState>(
+  JobsNotifier.new,
+);

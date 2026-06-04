@@ -944,7 +944,11 @@ void _registerApplyResumeEdits(
         // pipeline stepper to "Tailored" so the user sees the progress.
         if (jobId != null && jobId.isNotEmpty) {
           await _advancePipelineStage(
-            pipeline, uid, jobId, PipelineStage.tailored);
+            pipeline,
+            uid,
+            jobId,
+            PipelineStage.tailored,
+          );
         }
         final skippedNote = result.skippedCount > 0
             ? ' (${result.skippedCount} skipped — no verbatim match)'
@@ -985,7 +989,7 @@ void _registerDraftEmail(
           'the tailored PDF to the draft (falls back to the original resume if '
           'it is already a strong fit). Pass resume_id to choose the source '
           'resume; defaults to the latest manual one. Returns '
-          '{ subject, body, recipient, attachment_resume_id, '
+          '{ job_id, subject, body, recipient, attachment_resume_id, '
           'attachment_filename, tailored }. Does NOT send.',
       inputSchema: {
         'type': 'object',
@@ -1088,10 +1092,15 @@ void _registerDraftEmail(
         // An outreach draft now exists for this role — advance the pipeline
         // stepper to "Drafted" so the card flips to "Review & send".
         await _advancePipelineStage(
-          pipeline, uid, job.id, PipelineStage.drafted);
+          pipeline,
+          uid,
+          job.id,
+          PipelineStage.drafted,
+        );
         return ToolResult(
           summary: 'Draft ready for $recipient',
           data: {
+            'job_id': job.id,
             'subject': draft['subject'],
             'body': draft['body'],
             'recipient': recipient,
