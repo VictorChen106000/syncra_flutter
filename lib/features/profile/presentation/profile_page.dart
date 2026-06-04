@@ -24,10 +24,17 @@ import '../../resumes/presentation/widgets/resume_fit_chart.dart';
 import '../../resumes/state/resume_notifier.dart';
 
 class _CareerMemoryFact {
-  const _CareerMemoryFact({required this.topic, required this.detail});
+  const _CareerMemoryFact({
+    required this.topic,
+    required this.detail,
+    required this.category,
+    required this.observedCount,
+  });
 
   final String topic;
   final String detail;
+  final String category;
+  final int observedCount;
 }
 
 final _careerMemoryProvider =
@@ -52,6 +59,11 @@ final _careerMemoryProvider =
                   return _CareerMemoryFact(
                     topic: (data['topic'] as String?)?.trim() ?? '',
                     detail: (data['detail'] as String?)?.trim() ?? '',
+                    category: _normalizeMemoryCategory(
+                      data['category']?.toString() ?? '',
+                    ),
+                    observedCount:
+                        (data['observed_count'] as num?)?.toInt() ?? 1,
                   );
                 })
                 .where(
@@ -73,6 +85,61 @@ String _formatMemoryTopic(String topic) {
   return words
       .map((word) => '${word[0].toUpperCase()}${word.substring(1)}')
       .join(' ');
+}
+
+const _memoryCategories = <String>{
+  'skill',
+  'experience',
+  'preference',
+  'constraint',
+  'target_role',
+  'location',
+  'salary',
+  'availability',
+  'missing_info',
+  'other',
+};
+
+String _normalizeMemoryCategory(String raw) {
+  final normalized = raw
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+      .replaceAll(RegExp(r'_+'), '_')
+      .replaceAll(RegExp(r'^_|_$'), '');
+
+  if (_memoryCategories.contains(normalized)) return normalized;
+  return 'other';
+}
+
+String _formatMemoryCategory(String category) {
+  return switch (_normalizeMemoryCategory(category)) {
+    'skill' => 'Skill',
+    'experience' => 'Experience',
+    'preference' => 'Preference',
+    'constraint' => 'Constraint',
+    'target_role' => 'Target role',
+    'location' => 'Location',
+    'salary' => 'Salary',
+    'availability' => 'Availability',
+    'missing_info' => 'Missing info',
+    _ => 'Other',
+  };
+}
+
+IconData _memoryCategoryIcon(String category) {
+  return switch (_normalizeMemoryCategory(category)) {
+    'skill' => Icons.bolt_rounded,
+    'experience' => Icons.work_history_rounded,
+    'preference' => Icons.tune_rounded,
+    'constraint' => Icons.lock_outline_rounded,
+    'target_role' => Icons.flag_rounded,
+    'location' => Icons.location_on_outlined,
+    'salary' => Icons.payments_outlined,
+    'availability' => Icons.schedule_rounded,
+    'missing_info' => Icons.help_outline_rounded,
+    _ => Icons.auto_awesome_rounded,
+  };
 }
 
 class ProfilePage extends StatelessWidget {
@@ -688,12 +755,30 @@ class _CareerMemoryFactRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _IconChip(icon: Icons.auto_awesome_rounded, tint: brand.textSoft),
+          _IconChip(
+            icon: _memoryCategoryIcon(fact.category),
+            tint: brand.textSoft,
+          ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _CareerMemoryMetaChip(
+                      label: _formatMemoryCategory(fact.category),
+                    ),
+                    if (fact.observedCount > 1)
+                      _CareerMemoryMetaChip(
+                        label: 'Seen ${fact.observedCount}x',
+                        muted: true,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 7),
                 Text(
                   _formatMemoryTopic(fact.topic),
                   style: TextStyle(
@@ -720,6 +805,39 @@ class _CareerMemoryFactRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CareerMemoryMetaChip extends StatelessWidget {
+  const _CareerMemoryMetaChip({required this.label, this.muted = false});
+
+  final String label;
+  final bool muted;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: muted ? brand.surfaceMuted : brand.accentMuted,
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(
+          color: muted ? brand.border : brand.accent.withValues(alpha: 0.35),
+          width: 0.8,
+        ),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: muted ? brand.textMuted : brand.ink,
+          fontSize: 10.8,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.05,
+        ),
       ),
     );
   }
@@ -1084,7 +1202,9 @@ class _AccountSection extends ConsumerWidget {
 
     if (error != null) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error)));
       return;
     }
 
