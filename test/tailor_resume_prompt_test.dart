@@ -73,6 +73,13 @@ void main() {
       );
     });
 
+    test('surfaces when career memory affects output', () {
+      expect(prompt, contains('learned_facts'));
+      expect(prompt, contains('used career memory'));
+      expect(prompt, contains('if learned facts materially affect matching'));
+      expect(prompt, contains('mention at most 1-2 relevant facts'));
+    });
+
     test('drives the search → tailor → email sequence via ask_user offers', () {
       expect(prompt, contains('standard job-search sequence'));
       // After search, it must offer tailoring instead of stopping on a job list.
