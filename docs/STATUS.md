@@ -91,6 +91,8 @@ Effectively complete. Empty states (resume / pipeline / applications) already
 ship with one-tap CTAs; morning brief is now opt-in. Remaining:
 
 - [x] Gmail compose/send OAuth scopes are requested by the Gmail link flow.
+- [x] Email/password auth uses Firebase email/password sign-in and account creation; it no longer falls through to guest mode.
+- [x] Resume upload progress is wired to Firebase Storage transfer progress.
 - [ ] Optional polish pass — animations, snackbar / error consistency.
 
 Done 2026-05-21 — **morning brief is opt-in.** The router routes to the morning
@@ -101,8 +103,6 @@ flipped — the brief runs only from the dashboard CTA or the post-sign-in page.
 
 ## 🐞 Known bugs / cleanup
 
-- **Upload progress is fake** — `ResumeNotifier._uploadFile` sets `progress: 50` then jumps to 100. Cosmetic; wire real progress or simplify the UI.
-- **Email/password sign-in is a stub** — `AuthNotifier.signInWithEmail` falls through to a guest session. Decide: wire Firebase email/password, or remove the login/signup form (the stack is Google-only).
 - Delete `backend/` (the old Python directory) after the demo.
 
 ## Critical path
