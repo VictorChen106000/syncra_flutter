@@ -10,9 +10,9 @@ import '../models/resume_json.dart';
 /// structured data. Result is cached back to Firestore by the caller.
 ///
 /// Transport lives in the shared [AnthropicClient]; the response is constrained
-/// to [ResumeJson.outputSchema] via structured outputs, so the model can only
-/// return valid, parseable resume JSON — no markdown fences, no commentary, and
-/// no need for a malformed-JSON retry.
+/// to [ResumeJson.outputSchema] via structured outputs. If the model or
+/// transport still returns malformed JSON, the parser retries once with a
+/// stricter prompt before surfacing an actionable parse error.
 class ResumeParserService {
   ResumeParserService({
     AnthropicClient? client,
@@ -59,13 +59,47 @@ Rules:
   /// back gracefully.
   Future<ResumeJson?> parse(String rawText) async {
     if (!hasApiKey) return null;
-    if (rawText.trim().isEmpty) {
+    final cleanText = rawText.trim();
+    if (cleanText.isEmpty) {
       throw const ResumeParseException(
         "Couldn't read any text from the PDF. It may be a scanned image.",
       );
     }
 
-    final response = await _client.createMessage({
+    final response = await _client.createMessage(_buildParsePayload(cleanText));
+    final text = AnthropicClient.textOf(response);
+    if (text.isEmpty) {
+      throw const ResumeParseException('Anthropic returned no content.');
+    }
+
+    try {
+      return _parseJsonResponse(text);
+    } on ResumeParseException {
+      debugPrint('Resume parser returned invalid JSON — retrying once.');
+    }
+
+    final retryResponse = await _client.createMessage(
+      _buildParsePayload(cleanText, strictRetry: true),
+    );
+    final retryText = AnthropicClient.textOf(retryResponse);
+    if (retryText.isEmpty) {
+      throw const ResumeParseException('Anthropic returned no content.');
+    }
+
+    return _parseJsonResponse(retryText);
+  }
+
+  Map<String, dynamic> _buildParsePayload(
+    String rawText, {
+    bool strictRetry = false,
+  }) {
+    final userPrompt = strictRetry
+        ? 'Your previous response was not valid ResumeJSON. Return ONLY the '
+              'raw JSON object matching the schema. Do not use markdown fences '
+              'or commentary.\n\nParse this resume text:\n\n$rawText'
+        : 'Parse this resume text:\n\n$rawText';
+
+    return {
       'model': model,
       // Headroom for a full resume; structured outputs makes a truncation a
       // hard failure (invalid JSON), so give the model room to finish.
@@ -75,15 +109,9 @@ Rules:
         'format': {'type': 'json_schema', 'schema': ResumeJson.outputSchema},
       },
       'messages': [
-        {'role': 'user', 'content': 'Parse this resume text:\n\n$rawText'},
+        {'role': 'user', 'content': userPrompt},
       ],
-    });
-
-    final text = AnthropicClient.textOf(response);
-    if (text.isEmpty) {
-      throw const ResumeParseException('Anthropic returned no content.');
-    }
-    return _parseJsonResponse(text);
+    };
   }
 
   ResumeJson _parseJsonResponse(String raw) {

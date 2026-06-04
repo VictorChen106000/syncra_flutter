@@ -32,12 +32,13 @@ tape between them. **Syncra is the duct tape, automated.**
 1. Sign in with Google.
 2. Upload your resume (PDF) — stored in Firebase Storage.
 3. Open chat. Type: *"Help me apply to a senior UX role at an AI startup, remote."*
-4. Agent searches jobs → ranks them → asks *"Linear is the top match (94%).
-   Tailor for them?"* → you tap **Yes**.
+4. Agent searches jobs → ranks them qualitatively → asks *"Linear is the top
+   match. Tailor for them?"* → you tap **Yes**.
 5. Agent reads your resume → proposes 3–8 targeted edits. You see each as a
    PR-style diff (original, rewrite, one-line reason) and accept or reject each.
 6. Tap **Apply N edits** → a new tailored PDF renders from the accepted subset.
-7. Agent drafts a cold-outreach email to the hiring manager.
+7. Agent runs Trust Guard for obvious job red flags, then drafts a cold-outreach
+   email if the role looks normal or you approve continuing.
 8. You review, tap **Send** → email goes out via your own Gmail. The application
    appears on the Applications page.
 
@@ -56,6 +57,9 @@ two explicit gates: the diff viewer and the email modal.
   resume is never touched.
 - **The agent learns about you.** When you answer a follow-up question, the
   agent persists it as a learned fact, so it doesn't ask twice.
+- **Trust Guard before outreach.** Before saving or drafting for a role, Syncra
+  checks for obvious scam signals and shows the result on pipeline and
+  application cards. It never claims a job is guaranteed safe.
 - **Walk-away support.** Leave the chat mid-task and agent updates land in the
   in-app notifications inbox — answer or approve from there.
 - **Human-in-the-loop.** The agent never sends external traffic without an

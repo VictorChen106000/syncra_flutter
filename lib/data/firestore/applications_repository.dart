@@ -6,7 +6,7 @@ import 'firestore_paths.dart';
 
 class ApplicationsRepository {
   ApplicationsRepository({FirebaseFirestore? db})
-      : _paths = FirestorePaths(db ?? FirebaseFirestore.instance);
+    : _paths = FirestorePaths(db ?? FirebaseFirestore.instance);
 
   final FirestorePaths _paths;
 
@@ -24,6 +24,11 @@ class ApplicationsRepository {
     required String uid,
     required Job job,
     String? resumeId,
+    String trustRiskLevel = 'unchecked',
+    String trustRiskLabel = 'Not checked',
+    int trustSignalsCount = 0,
+    List<Map<String, String>> trustSignals = const [],
+    String trustSafeNextStep = '',
   }) async {
     final ref = _paths.applications(uid).doc();
     await ref.set({
@@ -34,6 +39,14 @@ class ApplicationsRepository {
       'got_reply': false,
       'follow_up_at': null,
       'sent_email_id': null,
+      'trust_risk_level': trustRiskLevel,
+      'trust_risk_label': trustRiskLabel,
+      'trust_signals_count': trustSignalsCount,
+      'trust_signals': trustSignals,
+      'trust_safe_next_step': trustSafeNextStep,
+      'trust_checked_at': trustRiskLevel == 'unchecked'
+          ? null
+          : FieldValue.serverTimestamp(),
       'notes': <Map<String, dynamic>>[],
     });
     return ref.id;
@@ -68,8 +81,9 @@ class ApplicationsRepository {
     DateTime? followUpAt,
   ) async {
     await _paths.applications(uid).doc(applicationId).update({
-      'follow_up_at':
-          followUpAt == null ? null : Timestamp.fromDate(followUpAt),
+      'follow_up_at': followUpAt == null
+          ? null
+          : Timestamp.fromDate(followUpAt),
     });
   }
 
@@ -78,10 +92,7 @@ class ApplicationsRepository {
     if (trimmed.isEmpty) return;
     await _paths.applications(uid).doc(applicationId).update({
       'notes': FieldValue.arrayUnion([
-        {
-          'body': trimmed,
-          'created_at': Timestamp.now(),
-        }
+        {'body': trimmed, 'created_at': Timestamp.now()},
       ]),
     });
   }
@@ -101,46 +112,74 @@ TrackedApplication _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     gotReply: (data['got_reply'] as bool?) ?? false,
     followUpAt: _toDate(data['follow_up_at']),
     sentEmailId: data['sent_email_id'] as String?,
+    trustRiskLevel: (data['trust_risk_level'] as String?) ?? 'unchecked',
+    trustRiskLabel: (data['trust_risk_label'] as String?) ?? 'Not checked',
+    trustSignalsCount: (data['trust_signals_count'] as num?)?.toInt() ?? 0,
+    trustSignals: _trustSignalsFrom(data['trust_signals']),
+    trustSafeNextStep: (data['trust_safe_next_step'] as String?) ?? '',
     notes: notesRaw
         .whereType<Map>()
-        .map((m) => TrackedApplicationNote(
-              body: (m['body'] as String?) ?? '',
-              createdAt: _toDate(m['created_at']) ?? DateTime.now(),
-            ))
+        .map(
+          (m) => TrackedApplicationNote(
+            body: (m['body'] as String?) ?? '',
+            createdAt: _toDate(m['created_at']) ?? DateTime.now(),
+          ),
+        )
         .toList(growable: false),
   );
 }
 
+List<Map<String, String>> _trustSignalsFrom(Object? value) {
+  if (value is! List) return const [];
+
+  final signals = <Map<String, String>>[];
+
+  for (final raw in value.whereType<Map>()) {
+    final severity = raw['severity']?.toString().trim() ?? '';
+    final label = raw['label']?.toString().trim() ?? '';
+    final detail = raw['detail']?.toString().trim() ?? '';
+
+    if (label.isEmpty && detail.isEmpty) continue;
+
+    signals.add({
+      'severity': severity.isEmpty ? 'medium' : severity,
+      'label': label.isEmpty ? 'Trust signal' : label,
+      'detail': detail,
+    });
+  }
+
+  return signals;
+}
+
 Job _jobFromMap(Map<String, dynamic> m) => Job(
-      id: (m['id'] ?? '').toString(),
-      title: (m['title'] as String?) ?? '',
-      company: (m['company'] as String?) ?? '',
-      location: (m['location'] as String?) ?? '',
-      salary: (m['salary'] as String?) ?? '',
-      category: _categoryFromName(m['category'] as String?),
-      matchScore: (m['match_score'] as num?)?.toInt() ?? 0,
-      agentAction: (m['agent_action'] as String?) ?? '',
-      agentJustification: (m['agent_justification'] as String?) ?? '',
-      skills: List<String>.from((m['skills'] as List?) ?? const []),
-      missingSkills:
-          List<String>.from((m['missing_skills'] as List?) ?? const []),
-      why: (m['why'] as String?) ?? '',
-    );
+  id: (m['id'] ?? '').toString(),
+  title: (m['title'] as String?) ?? '',
+  company: (m['company'] as String?) ?? '',
+  location: (m['location'] as String?) ?? '',
+  salary: (m['salary'] as String?) ?? '',
+  category: _categoryFromName(m['category'] as String?),
+  matchScore: (m['match_score'] as num?)?.toInt() ?? 0,
+  agentAction: (m['agent_action'] as String?) ?? '',
+  agentJustification: (m['agent_justification'] as String?) ?? '',
+  skills: List<String>.from((m['skills'] as List?) ?? const []),
+  missingSkills: List<String>.from((m['missing_skills'] as List?) ?? const []),
+  why: (m['why'] as String?) ?? '',
+);
 
 Map<String, dynamic> _jobToMap(Job j) => {
-      'id': j.id,
-      'title': j.title,
-      'company': j.company,
-      'location': j.location,
-      'salary': j.salary,
-      'category': j.category.name,
-      'match_score': j.matchScore,
-      'agent_action': j.agentAction,
-      'agent_justification': j.agentJustification,
-      'skills': j.skills,
-      'missing_skills': j.missingSkills,
-      'why': j.why,
-    };
+  'id': j.id,
+  'title': j.title,
+  'company': j.company,
+  'location': j.location,
+  'salary': j.salary,
+  'category': j.category.name,
+  'match_score': j.matchScore,
+  'agent_action': j.agentAction,
+  'agent_justification': j.agentJustification,
+  'skills': j.skills,
+  'missing_skills': j.missingSkills,
+  'why': j.why,
+};
 
 JobCategory _categoryFromName(String? name) {
   for (final c in JobCategory.values) {

@@ -18,6 +18,7 @@ this file, fix the code (or change this file by PR). Product context is in
 | Job source | JSearch via RapidAPI, direct from Flutter |
 | Email | Gmail API — user's own account, `gmail.send` scope only |
 | Hiring-manager lookup | None — outreach uses the company's generic `careers@` address |
+| Job Trust Guard | Heuristic red-flag screen only; never certifies a job as legitimate |
 | Secrets | `--dart-define=KEY=...` at build time; rotate after demo |
 | Agent paradigm | Tool use — Claude picks tools, client executes, loop continues |
 | Human-in-the-loop | Agent never sends external traffic without an explicit user tap |
@@ -111,13 +112,14 @@ Each tool is declared in `tool_registry.dart` (`name`, `description`,
 | `search_jobs` | Search live listings; returns ≤25 `Job`s | auto |
 | `read_resume` | Load the user's `ResumeJSON`; lazy-parses the PDF on first call | auto |
 | `match_jobs` | Score jobs vs resume → category, score, justification, missing skills | auto |
+| `check_job_risk` | Run a quick Trust Guard red-flag screen for a job | auto; asks before continuing on medium/high risk |
 | `tailor_resume` | **Propose** 3–8 targeted edits for a job. No PDF, no write. | auto, then pause |
 | `apply_resume_edits` | Apply the accepted edit subset → render PDF → new resume doc | **user-gated** — fired by the diff viewer, never by Claude |
 | `draft_email` | Draft a cold-outreach email for a job, using a tailored resume | auto; user reviews before send |
 | `lookup_hiring_manager` | The company's generic `careers@` address (no named-contact lookup) | auto |
 | `remember_fact` | Persist a reusable fact about the user → `learned_facts` | auto |
-| `save_to_pipeline` | Write a scored match as a pipeline approval card | auto |
-| `save_to_tracker` | Persist an application record to the Applications page | depends on `autonomy_level` |
+| `save_to_pipeline` | Write a scored match as a pipeline card, including Trust Guard result | auto |
+| `save_to_tracker` | Persist an application record to the Applications page, including Trust Guard result | depends on `autonomy_level` |
 | `send_email` | Send the drafted email via Gmail | **always requires a user tap** |
 | `ask_user` | Ask the user a question and pause; optional suggestion chips | pauses the loop |
 
@@ -138,6 +140,27 @@ Each tool is declared in `tool_registry.dart` (`name`, `description`,
    `parent_resume_id`, `tailored_for_job_id`) → returns `{ tailored_resume_id }`.
 5. That result feeds back into the loop; Claude proceeds (typically to
    `draft_email`).
+
+### Trust Guard contract
+
+`check_job_risk` is a lightweight red-flag screen, not a background check or
+legitimacy certificate. It evaluates the saved job text for obvious signals such
+as missing company identity, thin descriptions, generic/confidential employers,
+money-transfer language, gift-card requests, crypto/payment wording, or moving
+communication to Telegram/WhatsApp.
+
+The result shape is reused by the agent tool, pipeline cards, job action sheet,
+and application tracker:
+
+```json
+{
+  "risk_level": "low | medium | high",
+  "risk_label": "Looks normal | Needs verification | High risk",
+  "signals": [
+    { "severity": "medium | high", "label": "...", "detail": "..." }
+  ],
+  "safe_next_step": "..."
+}
 
 ### Tool input notes
 
@@ -175,6 +198,12 @@ Each tool is declared in `tool_registry.dart` (`name`, `description`,
 | `follow_up_at` | Timestamp? | optional reminder |
 | `notes` | array<{body, created_at}> | free-form |
 | `sent_email_id` | string? | Gmail message id |
+| `trust_risk_level` | `unchecked \| low \| medium \| high` | Trust Guard level captured when saved |
+| `trust_risk_label` | string | UI label: `Not checked`, `Looks normal`, `Needs verification`, `High risk` |
+| `trust_signals_count` | int | number of saved Trust Guard signals |
+| `trust_signals` | array<{severity, label, detail}> | signal details shown in the detail sheet |
+| `trust_safe_next_step` | string | recommended verification step |
+| `trust_checked_at` | Timestamp? | null when unchecked |
 
 **`users/{uid}/resumes/{resumeId}` — resume metadata**
 
@@ -191,8 +220,10 @@ Each tool is declared in `tool_registry.dart` (`name`, `description`,
 **`users/{uid}/pipeline/{cardId}`** — agent-generated job cards: `job`,
 `category` (`ready \| input_needed \| exploration`), `match_score`,
 `agent_action`, `agent_justification`, `matched_skills`, `missing_skills`,
-`status` (`pending \| approved \| dismissed`), `tailored_resume_id?`,
-`created_at`.
+`stage` (`matched \| tailored \| drafted \| sent \| replied`), `status`
+(`pending \| approved \| dismissed`), Trust Guard fields
+(`trust_risk_level`, `trust_risk_label`, `trust_signals_count`,
+`trust_signals`, `trust_safe_next_step`, `trust_checked_at`), `created_at`.
 
 **`users/{uid}/learned_facts/{factId}`** — `topic`, `detail`, `source`, `created_at`.
 
