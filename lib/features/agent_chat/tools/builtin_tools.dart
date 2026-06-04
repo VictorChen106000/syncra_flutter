@@ -1458,17 +1458,31 @@ void _registerSaveToTracker(
       final job = await jobsRepo.fetchById(jobId);
       if (job == null) return ToolResult.error('Job not found.');
 
+      final trust = evaluateJobTrust(job);
+
       final appId = await applicationsRepo.createApplication(
         uid: uid,
         job: job,
         resumeId: args['resume_id'] as String?,
+        trustRiskLevel: trust.riskLevel,
+        trustRiskLabel: trust.riskLabel,
+        trustSignalsCount: trust.signalsCount,
+        trustSignals: trust.signals,
+        trustSafeNextStep: trust.safeNextStep,
       );
       if (args['mark_sent'] == true) {
         await applicationsRepo.markSent(uid, appId);
       }
       return ToolResult(
-        summary: 'Saved ${job.company} to tracker',
-        data: {'application_id': appId},
+        summary: 'Saved ${job.company} to tracker · ${trust.riskLabel}',
+        data: {
+          'application_id': appId,
+          'trust_risk_level': trust.riskLevel,
+          'trust_risk_label': trust.riskLabel,
+          'trust_signals_count': trust.signalsCount,
+          'trust_signals': trust.signals,
+          'trust_safe_next_step': trust.safeNextStep,
+        },
       );
     },
   );
