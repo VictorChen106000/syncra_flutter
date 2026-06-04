@@ -69,15 +69,18 @@ class JobsBlock extends AgentBlock {
   List<Job> jobs;
 }
 
-/// Where a single proposed edit stands in the user's review. Each edit starts
-/// [pending] and the user flips it to [accepted] or [rejected] in the diff
-/// viewer before applying.
+/// Where one proposed edit stands in the card lifecycle.
+///
+/// The current tailoring flow auto-accepts proposed edits before rendering the
+/// tailored preview, but these states are retained for applied/dismissed card
+/// state, fixtures, and future per-edit review support.
 enum EditDecision { pending, accepted, rejected }
 
-/// Lifecycle of the whole proposed-edits card. While [reviewing] the user can
-/// toggle individual edits; tapping Apply flips to [applying] while the
-/// tailored PDF renders, then [applied] (preview ready, not yet saved). The
-/// card settles to [dismissed] if the user dismisses it instead.
+/// Lifecycle of the whole proposed-edits card.
+///
+/// In the current flow, proposed edits are shown as a read-only change log:
+/// the card renders a tailored preview, lets the user inspect what changed,
+/// then either saves or dismisses the result.
 enum ProposedEditsState { reviewing, applying, applied, dismissed }
 
 /// Reviewable resume edits proposed by `tailor_resume`.
