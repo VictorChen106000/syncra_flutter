@@ -95,11 +95,10 @@ ship with one-tap CTAs; morning brief is now opt-in. Remaining:
 - [x] Resume upload progress is wired to Firebase Storage transfer progress.
 - [ ] Optional polish pass — animations, snackbar / error consistency.
 
-Done 2026-05-21 — **morning brief is opt-in.** The router routes to the morning
-brief page after sign-in only when `morning_brief_enabled` is true (off by
-default); otherwise sign-in lands on the dashboard. The Profile → "Today's
-brief" toggle controls it and no longer fires the brief (no token spend) when
-flipped — the brief runs only from the dashboard CTA or the post-sign-in page.
+Done 2026-06-05 — **morning brief is controlled by the current router/dev-flag
+flow.** Returning signed-in users can be routed to the morning brief once per app
+session, devs can force-preview it with the debug flag, and the actual brief
+still runs only through the agent tool loop.
 
 ## 🐞 Known bugs / cleanup
 
@@ -112,7 +111,7 @@ demoable end to end:
 
 ```
 Resume Engine: resume_diff_service + apply_resume_edits  ──┐
-                                                          ├──► Resume Diff UI: interactive block + ResumeState V1/V2 ──► full tailor flow demoable
+                                                          ├──► Resume Diff UI: read-only change log + tailored preview ──► full tailor flow demoable
 Agent Reasoning: feed apply result back into the loop   ──┘
 ```
 
