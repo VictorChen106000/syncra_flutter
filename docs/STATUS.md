@@ -1,6 +1,6 @@
 # Syncra — Status & Plan
 
-**Demo day:** June 16, 2026 · **Today:** 2026-05-21 · **~26 days out.**
+**Demo day:** June 16, 2026 · **Today:** 2026-06-05 · **~11 days out.**
 
 The live tracker of what's done, what's left, and who owns it. Update this as
 work lands. Product context: [README.md](./README.md). Technical contract:
@@ -42,7 +42,7 @@ The propose path and accepted-edit preview/save path work. Remaining engine poli
 
 - [x] **`resume_diff_service.dart`** — pure accepted-edit application with target-path / verbatim-original backstop.
 - [x] Accepted edits can render a tailored PDF preview and save it as a tailored resume.
-- [ ] Cascade-delete tailored children when a manual resume is deleted (`ResumeNotifier.deleteResume`).
+- [x] Cascade-delete tailored children when a manual resume is deleted (`ResumeNotifier.deleteResume`).
 - [ ] Parser retry — one stricter-prompt retry on malformed JSON for `read_resume` / tailor edits.
 - [ ] Scanned-PDF: when text extraction returns empty, surface "upload a text PDF" instead of falling back to the sample resume.
 
@@ -79,17 +79,18 @@ Loop, prompts, and tools are in place. Current status:
 - [x] `ActionProposalBlock` approvals now carry a hidden continuation prompt and resume the agent loop after the user taps Accept.
 - [x] Main agent prompt is regression-tested for goal-oriented workflow behavior, approval gates, saved-resume continuation, and `send_email` safety.
 - [x] `tailor_resume` prompt is regression-tested: no full-section rewrites, every `original_text` must be verbatim, and no invented experience.
+- [x] Morning brief Trust Guard prompt is regression-tested: `check_job_risk` runs before `save_to_pipeline`, medium/high-risk jobs are skipped, no outreach is attempted, no user questions are asked, and the no-resume fallback still runs Trust Guard.
+- [x] `draft_email` uses real selected/uploaded resume context through `_loadResumeContextForAgent`, defaults to the latest manual resume, and attaches the chosen or tailored PDF.
 
 Remaining / delegated:
 
 - [x] Email draft review handoff: `draft_email` results render a reviewable email draft block that opens `EmailReviewPage.show`.
-- [ ] `draft_email` should use real selected/uploaded resume context instead of sample resume fallback.
 
 ### App Shell
 Effectively complete. Empty states (resume / pipeline / applications) already
 ship with one-tap CTAs; morning brief is now opt-in. Remaining:
 
-- [ ] Add the `gmail.send` OAuth scope — **blocked on Integrations**; do it when the Gmail work lands.
+- [x] Gmail compose/send OAuth scopes are requested by the Gmail link flow.
 - [ ] Optional polish pass — animations, snackbar / error consistency.
 
 Done 2026-05-21 — **morning brief is opt-in.** The router routes to the morning
@@ -100,7 +101,6 @@ flipped — the brief runs only from the dashboard CTA or the post-sign-in page.
 
 ## 🐞 Known bugs / cleanup
 
-- **`draft_email` uses the sample resume.** It hardcodes `kFakeResumeJson` and has no `resume_id` input — unlike `match_jobs` / `tailor_resume`. Wire it to `_loadResumeContextForAgent`. (ARCHITECTURE.md §3 is the target.)
 - **Upload progress is fake** — `ResumeNotifier._uploadFile` sets `progress: 50` then jumps to 100. Cosmetic; wire real progress or simplify the UI.
 - **Email/password sign-in is a stub** — `AuthNotifier.signInWithEmail` falls through to a guest session. Decide: wire Firebase email/password, or remove the login/signup form (the stack is Google-only).
 - Delete `backend/` (the old Python directory) after the demo.
