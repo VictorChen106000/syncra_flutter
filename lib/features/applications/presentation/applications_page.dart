@@ -85,19 +85,20 @@ class ApplicationsPage extends ConsumerWidget {
                         : const _EmptyFiltered()
                   else
                     ...filtered.asMap().entries.map(
-                          (entry) => _TrackerCard(
-                            app: entry.value,
-                            onTap: () => ApplicationDetailSheet.show(
-                              context,
-                              entry.value,
-                            ),
-                            onToggleReply: (v) =>
-                                notifier.setGotReply(entry.value.id, v),
-                          )
+                      (entry) =>
+                          _TrackerCard(
+                                app: entry.value,
+                                onTap: () => ApplicationDetailSheet.show(
+                                  context,
+                                  entry.value,
+                                ),
+                                onToggleReply: (v) =>
+                                    notifier.setGotReply(entry.value.id, v),
+                              )
                               .animate(delay: (entry.key * 60).ms)
                               .fadeIn()
                               .moveY(begin: 14, end: 0),
-                        ),
+                    ),
                 ],
               ),
             ),
@@ -116,8 +117,7 @@ class _SummaryStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    int countOf(ApplicationPhase p) =>
-        apps.where((a) => a.phase == p).length;
+    int countOf(ApplicationPhase p) => apps.where((a) => a.phase == p).length;
     final cells = <(int, String, Color, Color)>[
       (
         countOf(ApplicationPhase.draft),
@@ -125,12 +125,7 @@ class _SummaryStrip extends StatelessWidget {
         brand.surfaceMuted,
         brand.ink,
       ),
-      (
-        countOf(ApplicationPhase.sent),
-        'Sent',
-        brand.ink,
-        brand.accent,
-      ),
+      (countOf(ApplicationPhase.sent), 'Sent', brand.ink, brand.accent),
       (
         countOf(ApplicationPhase.replied),
         'Replied',
@@ -291,15 +286,11 @@ class _EmptyFiltered extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Icon(Icons.filter_alt_off_outlined,
-              color: brand.textMuted, size: 26),
+          Icon(Icons.filter_alt_off_outlined, color: brand.textMuted, size: 26),
           const SizedBox(height: 8),
           Text(
             'No applications match this filter',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              color: brand.ink,
-            ),
+            style: TextStyle(fontWeight: FontWeight.w800, color: brand.ink),
           ),
         ],
       ),
@@ -392,6 +383,10 @@ class _TrackerCard extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                if (app.trustRiskLevel != 'unchecked') ...[
+                  const SizedBox(height: 10),
+                  _ApplicationTrustTag(app: app),
+                ],
                 const SizedBox(height: 10),
                 Divider(color: brand.border, height: 1),
                 const SizedBox(height: 6),
@@ -427,6 +422,72 @@ class _TrackerCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ApplicationTrustTag extends StatelessWidget {
+  const _ApplicationTrustTag({required this.app});
+
+  final TrackedApplication app;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final color = _trustRiskColor(app.trustRiskLevel, brand);
+    final icon = _trustRiskIcon(app.trustRiskLevel);
+    final label = _trustRiskLabel(app);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: brand.isDark ? 0.18 : 0.11),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: color.withValues(alpha: 0.32)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.55,
+                color: color,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Color _trustRiskColor(String level, BrandTheme brand) => switch (level) {
+  'high' => brand.danger,
+  'medium' => brand.warning,
+  'low' => brand.success,
+  _ => brand.textSoft,
+};
+
+IconData _trustRiskIcon(String level) => switch (level) {
+  'high' => Icons.warning_amber_rounded,
+  'medium' => Icons.verified_user_outlined,
+  'low' => Icons.shield_outlined,
+  _ => Icons.shield_outlined,
+};
+
+String _trustRiskLabel(TrackedApplication app) {
+  final label = app.trustRiskLabel.trim().isEmpty
+      ? 'Not checked'
+      : app.trustRiskLabel.trim();
+
+  if (app.trustSignalsCount <= 0) return 'Trust: $label';
+  return 'Trust: $label · ${app.trustSignalsCount}';
 }
 
 class _PhaseBadge extends StatelessWidget {

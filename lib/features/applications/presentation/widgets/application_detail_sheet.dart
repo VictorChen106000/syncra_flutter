@@ -105,6 +105,10 @@ class _ApplicationDetailSheetState
               const SizedBox(height: 10),
               _Timeline(app: app),
               const SizedBox(height: 20),
+              const _SectionHeader(label: 'TRUST GUARD'),
+              const SizedBox(height: 10),
+              _TrustGuardPanel(app: app),
+              const SizedBox(height: 20),
               const _SectionHeader(label: 'STATUS'),
               const SizedBox(height: 10),
               _StatusControls(
@@ -221,6 +225,247 @@ class _Timeline extends StatelessWidget {
     );
   }
 }
+
+class _TrustGuardPanel extends StatelessWidget {
+  const _TrustGuardPanel({required this.app});
+
+  final TrackedApplication app;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final color = _trustRiskColor(app.trustRiskLevel, brand);
+    final icon = _trustRiskIcon(app.trustRiskLevel);
+    final label = app.trustRiskLabel.trim().isEmpty
+        ? 'Not checked'
+        : app.trustRiskLabel.trim();
+    final safeNextStep = _trustSafeNextStep(app);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: brand.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: brand.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: brand.isDark ? 0.2 : 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: color.withValues(alpha: 0.34)),
+                ),
+                alignment: Alignment.center,
+                child: Icon(icon, size: 17, color: color),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Trust Guard · $label',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    color: brand.ink,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Quick red-flag screen only. This does not certify the job as legitimate.',
+            style: TextStyle(
+              fontSize: 12,
+              color: brand.textMuted,
+              fontWeight: FontWeight.w600,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (app.trustSignals.isEmpty)
+            _TrustEmptySignal(color: color, level: app.trustRiskLevel)
+          else
+            for (final signal in app.trustSignals) ...[
+              _TrustSignalRow(signal: signal),
+              const SizedBox(height: 8),
+            ],
+          const SizedBox(height: 4),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: brand.surfaceMuted,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: brand.border.withValues(alpha: 0.7)),
+            ),
+            child: Text(
+              safeNextStep,
+              style: TextStyle(
+                fontSize: 12.2,
+                color: brand.ink,
+                fontWeight: FontWeight.w700,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TrustEmptySignal extends StatelessWidget {
+  const _TrustEmptySignal({required this.color, required this.level});
+
+  final Color color;
+  final String level;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final text = level == 'unchecked'
+        ? 'No Trust Guard result was saved for this application yet.'
+        : 'No obvious red flags were found in the saved posting text.';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: brand.isDark ? 0.15 : 0.09),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.26)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.check_circle_outline_rounded, size: 16, color: color),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 12.2,
+                color: brand.ink,
+                fontWeight: FontWeight.w700,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TrustSignalRow extends StatelessWidget {
+  const _TrustSignalRow({required this.signal});
+
+  final Map<String, String> signal;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final severity = signal['severity'] ?? 'medium';
+    final color = _signalSeverityColor(severity, brand);
+    final label = signal['label'] ?? 'Trust signal';
+    final detail = signal['detail'] ?? '';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: brand.surfaceMuted,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: brand.border.withValues(alpha: 0.7)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.error_outline_rounded, size: 16, color: color),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${_signalSeverityLabel(severity)} · $label',
+                  style: TextStyle(
+                    fontSize: 12.4,
+                    fontWeight: FontWeight.w900,
+                    color: brand.ink,
+                    height: 1.25,
+                  ),
+                ),
+                if (detail.trim().isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    detail,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: brand.textMuted,
+                      fontWeight: FontWeight.w600,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Color _trustRiskColor(String level, BrandTheme brand) => switch (level) {
+  'high' => brand.danger,
+  'medium' => brand.warning,
+  'low' => brand.success,
+  _ => brand.textSoft,
+};
+
+IconData _trustRiskIcon(String level) => switch (level) {
+  'high' => Icons.warning_amber_rounded,
+  'medium' => Icons.verified_user_outlined,
+  'low' => Icons.shield_outlined,
+  _ => Icons.shield_outlined,
+};
+
+String _trustSafeNextStep(TrackedApplication app) {
+  final saved = app.trustSafeNextStep.trim();
+  if (saved.isNotEmpty) return saved;
+
+  return switch (app.trustRiskLevel) {
+    'high' =>
+      'Do not send personal documents or payment. Verify the company and posting first.',
+    'medium' =>
+      'Verify the company site, recruiter identity, and application link before outreach.',
+    'low' =>
+      'No obvious red flags found. Still verify the official posting before applying.',
+    _ =>
+      'Run a Trust Guard check before sending personal documents or applying.',
+  };
+}
+
+Color _signalSeverityColor(String severity, BrandTheme brand) =>
+    switch (severity) {
+      'high' => brand.danger,
+      'medium' => brand.warning,
+      _ => brand.textSoft,
+    };
+
+String _signalSeverityLabel(String severity) => switch (severity) {
+  'high' => 'High',
+  'medium' => 'Medium',
+  _ => 'Note',
+};
 
 class _StatusControls extends StatelessWidget {
   const _StatusControls({
