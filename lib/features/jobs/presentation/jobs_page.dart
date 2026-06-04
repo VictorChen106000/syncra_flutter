@@ -123,8 +123,9 @@ class _PipelineFeedState extends ConsumerState<_PipelineFeed> {
   @override
   Widget build(BuildContext context) {
     final cards = widget.cards;
-    final filtered =
-        cards.where((c) => _filter.matches(c)).toList(growable: false);
+    final filtered = cards
+        .where((c) => _filter.matches(c))
+        .toList(growable: false);
 
     final needs = filtered.where((c) => c.needsYou).toList()
       // Drafts ready to send float above missing-info matches — they're the
@@ -134,8 +135,7 @@ class _PipelineFeedState extends ConsumerState<_PipelineFeed> {
         return byStage != 0 ? byStage : b.createdAt.compareTo(a.createdAt);
       });
     final sent = filtered.where((c) => c.isSent).toList();
-    final inProgress =
-        filtered.where((c) => !c.needsYou && !c.isSent).toList();
+    final inProgress = filtered.where((c) => !c.needsYou && !c.isSent).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -164,8 +164,8 @@ class _PipelineFeedState extends ConsumerState<_PipelineFeed> {
                   hadAnyPipeline: widget.hadAnyPipeline,
                 )
               : filtered.isEmpty
-                  ? _EmptyFilter(filter: _filter)
-                  : _list(context, ref, needs, inProgress, sent),
+              ? _EmptyFilter(filter: _filter)
+              : _list(context, ref, needs, inProgress, sent),
         ),
       ],
     );
@@ -203,21 +203,21 @@ class _PipelineFeedState extends ConsumerState<_PipelineFeed> {
         _SectionHeader(label: label, count: items.length, accent: accent),
         for (var i = 0; i < items.length; i++)
           Padding(
-            padding: const EdgeInsets.only(bottom: 14),
-            child: _SwipeDismissible(
-              key: ValueKey('pipe-${items[i].id}'),
-              onDismissed: () => widget.onDismiss(items[i].job),
-              child: _PipelineCard(
-                card: items[i],
-                onTap: () {
-                  ref
-                      .read(agentChatProvider.notifier)
-                      .openJobThread(items[i].job);
-                  context.go(RouteNames.agentChat);
-                },
-              ),
-            ),
-          )
+                padding: const EdgeInsets.only(bottom: 14),
+                child: _SwipeDismissible(
+                  key: ValueKey('pipe-${items[i].id}'),
+                  onDismissed: () => widget.onDismiss(items[i].job),
+                  child: _PipelineCard(
+                    card: items[i],
+                    onTap: () {
+                      ref
+                          .read(agentChatProvider.notifier)
+                          .openJobThread(items[i].job);
+                      context.go(RouteNames.agentChat);
+                    },
+                  ),
+                ),
+              )
               .animate(delay: (animIndex++ * 55).ms)
               .fadeIn(duration: 320.ms)
               .moveY(begin: 14, end: 0, curve: Curves.easeOutCubic),
@@ -249,21 +249,20 @@ enum _PipelineFilter { all, allMatch, severalMatch, noMatch }
 
 extension _PipelineFilterX on _PipelineFilter {
   String get label => switch (this) {
-        _PipelineFilter.all => 'All',
-        _PipelineFilter.allMatch => 'All match',
-        _PipelineFilter.severalMatch => 'Several match',
-        _PipelineFilter.noMatch => 'No match',
-      };
+    _PipelineFilter.all => 'All',
+    _PipelineFilter.allMatch => 'All match',
+    _PipelineFilter.severalMatch => 'Several match',
+    _PipelineFilter.noMatch => 'No match',
+  };
 
   /// True when [card] belongs under this tab. "All" admits everything.
   bool matches(PipelineCard card) => switch (this) {
-        _PipelineFilter.all => true,
-        _PipelineFilter.allMatch => card.job.category == JobCategory.ready,
-        _PipelineFilter.severalMatch =>
-          card.job.category == JobCategory.inputNeeded,
-        _PipelineFilter.noMatch =>
-          card.job.category == JobCategory.exploration,
-      };
+    _PipelineFilter.all => true,
+    _PipelineFilter.allMatch => card.job.category == JobCategory.ready,
+    _PipelineFilter.severalMatch =>
+      card.job.category == JobCategory.inputNeeded,
+    _PipelineFilter.noMatch => card.job.category == JobCategory.exploration,
+  };
 }
 
 /// The horizontal row of filter pills under the page title. Each pill carries a
@@ -279,8 +278,7 @@ class _FilterTabs extends StatelessWidget {
   final _PipelineFilter selected;
   final ValueChanged<_PipelineFilter> onSelected;
 
-  int _countFor(_PipelineFilter f) =>
-      cards.where((c) => f.matches(c)).length;
+  int _countFor(_PipelineFilter f) => cards.where((c) => f.matches(c)).length;
 
   @override
   Widget build(BuildContext context) {
@@ -331,9 +329,7 @@ class _FilterChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(99),
-            border: Border.all(
-              color: selected ? brand.accent : brand.border,
-            ),
+            border: Border.all(color: selected ? brand.accent : brand.border),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -382,7 +378,11 @@ class _EmptyFilter extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.filter_list_off_rounded, size: 34, color: brand.textSoft),
+            Icon(
+              Icons.filter_list_off_rounded,
+              size: 34,
+              color: brand.textSoft,
+            ),
             const SizedBox(height: 14),
             Text(
               'No "${filter.label}" roles right now',
@@ -516,6 +516,13 @@ class _PipelineCard extends StatelessWidget {
   /// you, quiet and factual for the rest. The dots carry stage, so this never
   /// repeats it.
   String _phrase() {
+    if (card.trustRiskLevel == 'high') {
+      return 'High-risk signals found';
+    }
+    if (card.trustRiskLevel == 'medium') {
+      return 'Needs trust verification';
+    }
+
     if (card.isSent) {
       return card.stage == PipelineStage.replied
           ? 'Reply received'
@@ -692,10 +699,10 @@ class _PipelineCard extends StatelessWidget {
 /// Warm accent for a card, keyed to match quality. Deep enough to stay legible
 /// as tinted pill text, soft enough to read as a colored shadow at low alpha.
 Color _categoryTint(JobCategory category) => switch (category) {
-      JobCategory.ready => const Color(0xFF059669), // emerald
-      JobCategory.inputNeeded => const Color(0xFFD97706), // amber
-      JobCategory.exploration => const Color(0xFF7C3AED), // violet
-    };
+  JobCategory.ready => const Color(0xFF059669), // emerald
+  JobCategory.inputNeeded => const Color(0xFFD97706), // amber
+  JobCategory.exploration => const Color(0xFF7C3AED), // violet
+};
 
 /// A company "logo" stand-in — the first initial on a stable, per-company
 /// tinted tile. Gives every card a distinct colored mark without needing real

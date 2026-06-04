@@ -18,6 +18,9 @@ class PipelineCard {
     required this.status,
     required this.createdAt,
     this.stage = PipelineStage.matched,
+    this.trustRiskLevel = 'unchecked',
+    this.trustRiskLabel = 'Not checked',
+    this.trustSignalsCount = 0,
   });
 
   final String id;
@@ -28,6 +31,15 @@ class PipelineCard {
   /// Current pipeline stage. Defaults to [PipelineStage.matched] for cards
   /// written before the `stage` field existed, so old data still renders.
   final PipelineStage stage;
+
+  /// Trust Guard result captured when this role was saved to the pipeline.
+  /// Values are "unchecked", "low", "medium", or "high".
+  final String trustRiskLevel;
+  final String trustRiskLabel;
+  final int trustSignalsCount;
+
+  bool get needsTrustReview =>
+      trustRiskLevel == 'medium' || trustRiskLevel == 'high';
 
   /// Terminal stages — the agent (or user) already sent this one.
   bool get isSent =>
@@ -50,15 +62,17 @@ class PipelineRepository {
 
   final FirestorePaths _paths;
 
- Stream<List<PipelineCard>> watchPending(String uid) {
+  Stream<List<PipelineCard>> watchPending(String uid) {
     return _paths
         .pipeline(uid)
         .orderBy('created_at', descending: true)
         .snapshots()
-        .map((snap) => snap.docs
-            .map(_fromDoc)
-            .where((card) => card.status == PipelineCardStatus.pending)
-            .toList(growable: false));
+        .map(
+          (snap) => snap.docs
+              .map(_fromDoc)
+              .where((card) => card.status == PipelineCardStatus.pending)
+              .toList(growable: false),
+        );
   }
 
   Future<List<PipelineCard>> fetchPending(String uid, {int limit = 40}) async {
@@ -94,8 +108,10 @@ class PipelineRepository {
     required String jobId,
     required PipelineStage stage,
   }) async {
-    final snap =
-        await _paths.pipeline(uid).where('job.id', isEqualTo: jobId).get();
+    final snap = await _paths
+        .pipeline(uid)
+        .where('job.id', isEqualTo: jobId)
+        .get();
     if (snap.docs.isEmpty) return;
 
     final target = _stageRank(stage);
@@ -115,6 +131,9 @@ class PipelineRepository {
     required String agentJustification,
     required List<String> matchedSkills,
     required List<String> missingSkills,
+    String trustRiskLevel = 'unchecked',
+    String trustRiskLabel = 'Not checked',
+    int trustSignalsCount = 0,
   }) async {
     await _paths.pipeline(uid).doc().set({
       'job': {
@@ -131,6 +150,12 @@ class PipelineRepository {
       'matched_skills': matchedSkills,
       'missing_skills': missingSkills,
       'why': job.why,
+      'trust_risk_level': trustRiskLevel,
+      'trust_risk_label': trustRiskLabel,
+      'trust_signals_count': trustSignalsCount,
+      'trust_checked_at': trustRiskLevel == 'unchecked'
+          ? null
+          : FieldValue.serverTimestamp(),
       'status': 'pending',
       'created_at': FieldValue.serverTimestamp(),
     });
@@ -167,6 +192,9 @@ PipelineCard _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     status: _statusFromName(data['status'] as String?),
     stage: _stageFromName(data['stage'] as String?),
     createdAt: _toDate(data['created_at']) ?? DateTime.now(),
+    trustRiskLevel: (data['trust_risk_level'] as String?) ?? 'unchecked',
+    trustRiskLabel: (data['trust_risk_label'] as String?) ?? 'Not checked',
+    trustSignalsCount: (data['trust_signals_count'] as num?)?.toInt() ?? 0,
   );
 }
 

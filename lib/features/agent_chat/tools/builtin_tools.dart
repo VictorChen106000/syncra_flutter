@@ -818,6 +818,21 @@ void _registerSaveToPipeline(
         (args['missing_skills'] as List?) ?? job.missingSkills,
       );
 
+      final trustSignals = _jobRiskSignals(job);
+      final hasHighTrustRisk = trustSignals.any(
+        (signal) => signal['severity'] == 'high',
+      );
+      final trustRiskLevel = hasHighTrustRisk
+          ? 'high'
+          : trustSignals.length >= 2
+          ? 'medium'
+          : 'low';
+      final trustRiskLabel = switch (trustRiskLevel) {
+        'high' => 'High risk',
+        'medium' => 'Needs verification',
+        _ => 'Looks normal',
+      };
+
       await pipelineRepo.createCard(
         uid: uid,
         job: job,
@@ -829,11 +844,21 @@ void _registerSaveToPipeline(
             : agentJustification,
         matchedSkills: matchedSkills,
         missingSkills: missingSkills,
+        trustRiskLevel: trustRiskLevel,
+        trustRiskLabel: trustRiskLabel,
+        trustSignalsCount: trustSignals.length,
       );
 
       return ToolResult(
-        summary: 'Saved ${job.company} to pipeline',
-        data: {'saved': true, 'job_id': job.id, 'category': category.name},
+        summary: 'Saved ${job.company} to pipeline · $trustRiskLabel',
+        data: {
+          'saved': true,
+          'job_id': job.id,
+          'category': category.name,
+          'trust_risk_level': trustRiskLevel,
+          'trust_risk_label': trustRiskLabel,
+          'trust_signals_count': trustSignals.length,
+        },
       );
     },
   );
