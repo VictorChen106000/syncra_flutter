@@ -14,6 +14,7 @@ import '../../../shared/widgets/gooey_orb.dart';
 import '../../agent/state/passive_agent_notifier.dart';
 import '../../agent_chat/tools/anthropic_tool_calls.dart';
 import '../../resumes/models/resume_fit.dart';
+import '../../resumes/models/resume_json.dart';
 import '../../resumes/presentation/widgets/resume_upload_card.dart';
 import '../../resumes/services/resume_parser_service.dart';
 import '../../resumes/services/resume_tailor_orchestrator.dart';
@@ -391,6 +392,15 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
   String _detail = 'Getting started…';
   String? _inferredRole;
 
+  /// Concrete facts pulled from the parsed resume, revealed as chips so the
+  /// user sees the agent *actually read their file* — not just a spinner.
+  List<String> _found = const [];
+
+  /// Cycles the [_detail] caption through a few human-readable lines while the
+  /// inference call is in flight, so the longest (opaque) step reads as live
+  /// reasoning instead of a frozen "Mapping your strengths…".
+  Timer? _thinking;
+
   /// Built locally (not via the agent tool layer) so onboarding owns its own
   /// dependency graph and doesn't reach into the chat's tool registry.
   late final ResumeTailorOrchestrator _orchestrator = ResumeTailorOrchestrator(
@@ -406,12 +416,57 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _runSetup());
   }
 
+  @override
+  void dispose() {
+    _thinking?.cancel();
+    super.dispose();
+  }
+
   void _set(int i, _StepStatus status, {String? detail}) {
     if (!mounted) return;
     setState(() {
       _statuses[i] = status;
       if (detail != null) _detail = detail;
     });
+  }
+
+  /// Builds a short, human list of what the parse actually pulled out of the
+  /// file (name, role count, top skills) and reveals it under the headline.
+  void _revealFindings(ResumeJson r) {
+    final chips = <String>[];
+    final name = r.header.name.trim();
+    if (name.isNotEmpty) chips.add(name.split(RegExp(r'\s+')).first);
+    if (r.experience.isNotEmpty) {
+      final n = r.experience.length;
+      chips.add('$n ${n == 1 ? 'role' : 'roles'}');
+    }
+    if (r.education.isNotEmpty) chips.add(r.education.first.degree.trim());
+    chips.addAll(r.skills.where((s) => s.trim().isNotEmpty).take(4));
+    final cleaned = chips.where((c) => c.trim().isNotEmpty).take(6).toList();
+    if (!mounted || cleaned.isEmpty) return;
+    setState(() => _found = cleaned);
+  }
+
+  /// Starts cycling [_detail] through [lines] every ~1.4s. Caller stops it the
+  /// moment the underlying async work resolves.
+  void _startThinking(List<String> lines) {
+    if (lines.isEmpty) return;
+    var i = 0;
+    _set(1, _StepStatus.active, detail: lines.first);
+    _thinking?.cancel();
+    _thinking = Timer.periodic(const Duration(milliseconds: 1400), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      i = (i + 1) % lines.length;
+      setState(() => _detail = lines[i]);
+    });
+  }
+
+  void _stopThinking() {
+    _thinking?.cancel();
+    _thinking = null;
   }
 
   Future<void> _runSetup() async {
@@ -423,7 +478,7 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
 
     // Step 1 — read + parse the resume.
     _set(0, _StepStatus.active, detail: 'Reading your resume…');
-    final dynamic parsed;
+    final ResumeJson parsed;
     try {
       final resumeId = await _orchestrator.latestManualResumeId(uid);
       if (resumeId == null) {
@@ -431,6 +486,7 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
       }
       parsed = await _orchestrator.readResumeJson(uid: uid, resumeId: resumeId);
       _set(0, _StepStatus.done);
+      _revealFindings(parsed);
     } catch (e) {
       // Scanned PDF / parse failure / missing key — don't trap the user. Mark
       // them past setup and let them into the app; the agent can read the
@@ -441,13 +497,25 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
       return;
     }
 
-    // Step 2 — infer role + role-fit in one headless agent call.
-    _set(1, _StepStatus.active, detail: 'Mapping your strengths…');
+    // Step 2 — infer role + role-fit in one headless agent call. This is the
+    // longest, most opaque step, so narrate it with rotating captions drawn
+    // from the user's own resume rather than a single frozen line.
+    _startThinking([
+      'Mapping your strengths…',
+      if (parsed.experience.isNotEmpty)
+        'Weighing ${parsed.experience.length} '
+            '${parsed.experience.length == 1 ? 'role' : 'roles'} of experience…',
+      if (parsed.skills.isNotEmpty)
+        'Connecting ${parsed.skills.first} to live roles…',
+      'Reading between your bullet points…',
+      'Pinpointing your best-fit role…',
+    ]);
     String role = '';
     try {
       final inferred = await _paraphrase.inferOnboardingProfile(
-        resumeJson: parsed.toJson() as Map<String, dynamic>,
+        resumeJson: parsed.toJson(),
       );
+      _stopThinking();
       role = (inferred['role'] as String?)?.trim() ?? '';
       final fit = _fitFrom(inferred['segments']);
       if (fit != null) {
@@ -455,6 +523,7 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
       }
       _set(1, _StepStatus.done);
     } catch (e) {
+      _stopThinking();
       _set(1, _StepStatus.failed);
     }
 
@@ -551,6 +620,28 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
             ),
           ),
         ),
+        if (_found.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (var i = 0; i < _found.length; i++)
+                  _FoundChip(label: _found[i])
+                      .animate(delay: (i * 90).ms)
+                      .fadeIn(duration: 260.ms)
+                      .moveY(begin: 6, end: 0)
+                      .scale(
+                        begin: const Offset(0.9, 0.9),
+                        end: const Offset(1, 1),
+                      ),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 36),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
@@ -575,6 +666,51 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// A single extracted fact (name, role count, a skill) surfaced during setup
+/// so the agent's read of the resume is visible, not implied.
+class _FoundChip extends StatelessWidget {
+  const _FoundChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Container(
+      // Bound the width so the inner Flexible has a finite constraint (a Wrap
+      // hands children unbounded width) and long entries ellipsize instead of
+      // overflowing.
+      constraints: const BoxConstraints(maxWidth: 220),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: brand.surfaceMuted,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: brand.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.check_rounded, size: 13, color: brand.accentBright),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: brand.ink,
+                letterSpacing: -0.1,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

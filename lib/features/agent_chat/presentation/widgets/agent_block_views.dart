@@ -94,7 +94,7 @@ class JobsBlockView extends StatelessWidget {
           ),
         ),
         SizedBox(
-          height: 176,
+          height: 188,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
@@ -262,56 +262,68 @@ class _JobMatchCardState extends State<_JobMatchCard> {
             ),
           ],
         ),
-        const Spacer(),
-        Row(
-          children: [
-            Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(
-                color: matchColor,
-                shape: BoxShape.circle,
+        // Fills the slack between the icon row and the info block, and clamps
+        // the title/subtitle so a long role name ellipsizes instead of
+        // overflowing the fixed-height card.
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: matchColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    matchLabel,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                      color: brand.textMuted,
+                    ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              matchLabel,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.2,
-                color: brand.textMuted,
+              const SizedBox(height: 8),
+              Flexible(
+                child: Text(
+                  job.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: brand.ink,
+                    letterSpacing: -0.2,
+                    height: 1.25,
+                  ),
+                ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text(
-          job.title,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
-            color: brand.ink,
-            letterSpacing: -0.2,
-            height: 1.25,
+              if (subtitle.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: brand.textMuted,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
-        if (subtitle.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              color: brand.textMuted,
-              letterSpacing: -0.1,
-            ),
-          ),
-        ],
       ],
     );
   }
@@ -345,44 +357,55 @@ class _JobMatchCardState extends State<_JobMatchCard> {
           ],
         ),
         const SizedBox(height: 10),
-        Text(
-          justification,
-          maxLines: matched.isEmpty && gaps.isEmpty ? 3 : 2,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 12.5,
-            height: 1.35,
-            fontWeight: FontWeight.w500,
-            color: brand.ink,
+        // Reasoning fills the slack above the pinned pill; the justification
+        // flexes so matched/gap lines never push the pill out of the card.
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Flexible(
+                child: Text(
+                  justification,
+                  maxLines: matched.isEmpty && gaps.isEmpty ? 3 : 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.35,
+                    fontWeight: FontWeight.w500,
+                    color: brand.ink,
+                  ),
+                ),
+              ),
+              if (matched.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Matched: $matched',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    color: brand.textMuted,
+                  ),
+                ),
+              ],
+              if (gaps.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Gap: $gaps',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    color: brand.textMuted,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
-        if (matched.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Text(
-            'Matched: $matched',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w800,
-              color: brand.textMuted,
-            ),
-          ),
-        ],
-        if (gaps.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          Text(
-            'Gap: $gaps',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w800,
-              color: brand.textMuted,
-            ),
-          ),
-        ],
-        const Spacer(),
+        const SizedBox(height: 10),
         Material(
           color: brand.surfaceMuted,
           borderRadius: BorderRadius.circular(99),

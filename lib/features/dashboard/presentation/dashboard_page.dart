@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_constants.dart';
-import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/motion.dart';
@@ -96,6 +95,9 @@ class _DashboardHeader extends ConsumerWidget {
       notificationsProvider.select((s) => s.unreadCount > 0),
     );
     final user = auth.appUser;
+    // Real, agent-captured role from onboarding — not a hardcoded placeholder.
+    // Empty (guest / pre-onboarding) hides the line rather than guessing.
+    final role = (ref.watch(userProfileProvider)?.role ?? '').trim();
     return AppHeader.home(
       avatar: _Avatar(
         photoUrl: user?.photoUrl,
@@ -103,7 +105,7 @@ class _DashboardHeader extends ConsumerWidget {
         onTap: () => Scaffold.of(context).openDrawer(),
       ),
       name: user?.displayName ?? 'there',
-      role: AppStrings.dashboardGreetingRole,
+      role: role.isEmpty ? null : role,
     );
   }
 }

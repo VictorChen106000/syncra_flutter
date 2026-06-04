@@ -19,6 +19,7 @@ import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/section_title.dart';
 import '../../auth/state/auth_notifier.dart';
 import '../../auth/state/user_profile_notifier.dart';
+import '../../resumes/presentation/widgets/resume_fit_chart.dart';
 import '../../resumes/state/resume_notifier.dart';
 
 class _CareerMemoryFact {
@@ -273,8 +274,8 @@ class _ProfileHeaderCard extends ConsumerWidget {
     final email = user?.email ?? '';
     final photoUrl = user?.photoUrl;
     final role = (profile?.role ?? '').trim();
-    final fitSegments = profile?.resumeFit?.segments ?? const [];
-    final topStrength = fitSegments.isNotEmpty ? fitSegments.first : null;
+    final resumeFit = profile?.resumeFit;
+    final hasFit = resumeFit != null && resumeFit.segments.isNotEmpty;
 
     return Container(
       padding: const EdgeInsets.all(AppConstants.cardPadding),
@@ -341,11 +342,26 @@ class _ProfileHeaderCard extends ConsumerWidget {
             label: 'Target role',
             value: role.isEmpty ? 'Not set yet' : role,
           ),
-          if (topStrength != null)
-            _SearchCriteriaRow(
-              label: 'Top strength',
-              value: '${topStrength.label} · ${topStrength.percent.round()}%',
+          // The agent's resume-fit read, rendered as the same interactive donut
+          // used in chat and the dashboard — the dominant strength is
+          // pre-focused, so the headline number reads at a glance.
+          if (hasFit) ...[
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Strengths',
+                style: TextStyle(
+                  color: brand.textMuted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.1,
+                ),
+              ),
             ),
+            const SizedBox(height: 8),
+            ResumeFitChart(fit: resumeFit),
+          ],
         ],
       ),
     );

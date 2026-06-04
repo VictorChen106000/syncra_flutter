@@ -19,7 +19,6 @@ import 'widgets/chat_history_drawer.dart';
 import 'widgets/chat_input_bar.dart';
 import 'widgets/chat_message_bubble.dart';
 import 'widgets/docked_panels.dart';
-import 'widgets/job_results_takeover.dart';
 
 class AiChatbotPage extends ConsumerStatefulWidget {
   const AiChatbotPage({super.key, this.autofocusComposer = false});
@@ -40,11 +39,6 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
   /// agent streams. Stays true until the user deliberately scrolls up to read
   /// back; returning to the bottom (drag, fling, or the jump pill) re-arms it.
   bool _autoFollow = true;
-
-  /// JobsBlock ids we've already auto-expanded into the full-screen takeover,
-  /// so dismissing one (or `match_jobs` re-scoring it in place) never re-opens
-  /// it. A fresh search mints a new id and opens again.
-  final Set<String> _autoShownJobBlocks = {};
 
   /// Within this many pixels of the bottom we consider the user "pinned" and
   /// auto-scroll new content into view. Beyond it we leave them alone and
@@ -98,52 +92,6 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
     );
   }
 
-  /// Auto-expand the latest batch of job results into the full-screen takeover
-  /// the first time it appears, so the chat hands off to a results page instead
-  /// of burying the roles in a rail behind the composer.
-  void _maybeOpenJobResults(AgentChatState state) {
-    for (var i = state.items.length - 1; i >= 0; i--) {
-      final item = state.items[i];
-      if (item is! AgentTurn) continue;
-      for (var j = item.blocks.length - 1; j >= 0; j--) {
-        final block = item.blocks[j];
-        if (block is JobsBlock && block.jobs.isNotEmpty) {
-          // add() is true only the first time we see this id.
-          if (_autoShownJobBlocks.add(block.id)) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!mounted) return;
-              ref.read(jobResultsFocusProvider.notifier).state = block.id;
-            });
-          }
-          return; // only the most recent results matter
-        }
-      }
-    }
-  }
-
-  /// Locate the focused [JobsBlock] and the agent prose from the same turn, so
-  /// the takeover can show that message on top of the results.
-  static ({JobsBlock block, String intro})? _findJobsBlockWithIntro(
-    List<ChatItem> items,
-    String id,
-  ) {
-    for (final item in items) {
-      if (item is! AgentTurn) continue;
-      JobsBlock? jobsBlock;
-      final texts = <String>[];
-      for (final block in item.blocks) {
-        if (block is JobsBlock && block.id == id) jobsBlock = block;
-        if (block is TextBlock && block.text.trim().isNotEmpty) {
-          texts.add(block.text.trim());
-        }
-      }
-      if (jobsBlock != null) {
-        return (block: jobsBlock, intro: texts.join('\n\n'));
-      }
-    }
-    return null;
-  }
-
   @override
   void dispose() {
     _scrollController.removeListener(_onScroll);
@@ -156,16 +104,10 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
     final brand = context.brand;
     ref.listen<AgentChatState>(agentChatProvider, (_, next) {
       _scheduleScrollToBottom();
-      _maybeOpenJobResults(next);
     });
 
     final state = ref.watch(agentChatProvider);
 
-    // When set, the full-screen job-results takeover covers the conversation.
-    final jobsFocusId = ref.watch(jobResultsFocusProvider);
-    final jobsFocus = jobsFocusId == null
-        ? null
-        : _findJobsBlockWithIntro(state.items, jobsFocusId);
     final onlyInitial =
         state.items.length == 1 && state.items.first is AgentTurn;
     final pendingProposal = _pendingProposal(state.items);
@@ -281,31 +223,6 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
               ],
             ),
           ),
-
-          // Full-screen job-results takeover — covers all chat chrome while the
-          // user reviews the roles the agent just surfaced. Dismissing returns
-          // to the conversation, where the same roles remain in the transcript.
-          // The takeover is an overlay, not a route, so a hardware back /
-          // edge-swipe would otherwise pop the whole chat and strand it open.
-          // PopScope (mounted only while it shows) intercepts back to dismiss
-          // the takeover first; once closed it unmounts and normal pops resume.
-          if (jobsFocus != null)
-            Positioned.fill(
-              child: PopScope(
-                canPop: false,
-                onPopInvokedWithResult: (didPop, _) {
-                  if (!didPop) {
-                    ref.read(jobResultsFocusProvider.notifier).state = null;
-                  }
-                },
-                child: JobResultsTakeover(
-                  jobs: jobsFocus.block.jobs,
-                  intro: jobsFocus.intro,
-                  onClose: () =>
-                      ref.read(jobResultsFocusProvider.notifier).state = null,
-                ),
-              ),
-            ),
         ],
       ),
     );

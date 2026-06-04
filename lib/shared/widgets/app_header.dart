@@ -26,7 +26,7 @@ class AppHeader extends StatelessWidget {
   factory AppHeader.home({
     required Widget avatar,
     required String name,
-    required String role,
+    String? role,
     Widget? trailing,
     Widget? bottom,
   }) {
@@ -117,12 +117,15 @@ class AppHeader extends StatelessWidget {
 }
 
 class _HomeTitle extends StatelessWidget {
-  const _HomeTitle({required this.name, required this.role});
+  const _HomeTitle({required this.name, this.role});
   final String name;
-  final String role;
+  final String? role;
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
+    // Role line only appears once the agent has captured a real role —
+    // guests and pre-onboarding users see just the name, no empty gap.
+    final hasRole = role != null && role!.trim().isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -139,18 +142,20 @@ class _HomeTitle extends StatelessWidget {
             height: 1.05,
           ),
         ),
-        const SizedBox(height: 4),
-        Text(
-          role,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: brand.textMuted,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.1,
+        if (hasRole) ...[
+          const SizedBox(height: 4),
+          Text(
+            role!,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: brand.textMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.1,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
