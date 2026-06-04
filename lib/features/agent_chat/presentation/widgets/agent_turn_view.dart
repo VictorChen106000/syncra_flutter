@@ -373,13 +373,190 @@ class _TurnActionButton extends StatelessWidget {
   }
 }
 
-/// Vertical rail of reasoning steps. Each step has a dot on the left and a
-/// connecting line down to the next dot — Claude Code / Cursor agent style.
-class _ReasoningTimeline extends StatelessWidget {
+/// The agent's reasoning, presented ephemerally so the page never fills with a
+/// growing stack of tool cards and thoughts.
+///
+/// While the agent is still working this run of steps, only the *current* step
+/// shows — a single line that cross-fades to the next as work advances (the
+/// "header that swaps sentence to sentence"). Once the run settles it folds
+/// into one quiet "Worked through N steps" summary; tapping replays the full
+/// Claude-Code-style rail. The reasoning is never lost, just out of the way.
+class _ReasoningTimeline extends StatefulWidget {
   const _ReasoningTimeline({required this.steps, required this.streaming});
 
   final List<AgentBlock> steps;
   final bool streaming;
+
+  @override
+  State<_ReasoningTimeline> createState() => _ReasoningTimelineState();
+}
+
+class _ReasoningTimelineState extends State<_ReasoningTimeline> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final steps = widget.steps;
+    if (steps.isEmpty) return const SizedBox.shrink();
+
+    if (widget.streaming) {
+      return _LiveReasoningLine(
+        step: steps.last,
+        // Changes with every new step, so the AnimatedSwitcher cross-fades the
+        // outgoing line out and the incoming one in.
+        position: steps.length,
+      );
+    }
+
+    return _SettledReasoning(
+      steps: steps,
+      expanded: _expanded,
+      onToggle: () => setState(() => _expanded = !_expanded),
+    );
+  }
+}
+
+/// The live, single-line presenter shown while a reasoning run is active. Pulses
+/// a dot and shimmers the current step's label; each new step slides up and in
+/// as the previous one fades up and out.
+class _LiveReasoningLine extends StatelessWidget {
+  const _LiveReasoningLine({required this.step, required this.position});
+
+  final AgentBlock step;
+  final int position;
+
+  static String _labelFor(AgentBlock step) => switch (step) {
+    ThinkingBlock() => 'Thinking…',
+    ToolCallBlock(:final label) => label,
+    _ => 'Working…',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(top: 3),
+          child: _TimelineDot(active: true),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 320),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeIn,
+            layoutBuilder: (current, previous) => Stack(
+              alignment: Alignment.centerLeft,
+              children: [...previous, ?current],
+            ),
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.45),
+                  end: Offset.zero,
+                ).animate(animation),
+                child: child,
+              ),
+            ),
+            child: Padding(
+              key: ValueKey(position),
+              padding: const EdgeInsets.only(top: 1),
+              child: _ThinkingLabel(text: _labelFor(step), active: true),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Settled reasoning: a quiet, tappable one-liner that expands to the full rail.
+class _SettledReasoning extends StatelessWidget {
+  const _SettledReasoning({
+    required this.steps,
+    required this.expanded,
+    required this.onToggle,
+  });
+
+  final List<AgentBlock> steps;
+  final bool expanded;
+  final VoidCallback onToggle;
+
+  String get _summary {
+    final hasTool = steps.any((s) => s is ToolCallBlock);
+    if (!hasTool) return 'Thought for a moment';
+    final n = steps.length;
+    return 'Worked through $n step${n == 1 ? '' : 's'}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          child: InkWell(
+            onTap: onToggle,
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.check_rounded, size: 14, color: brand.textSoft),
+                  const SizedBox(width: 8),
+                  Text(
+                    _summary,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: brand.textMuted,
+                      letterSpacing: -0.1,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  AnimatedRotation(
+                    duration: const Duration(milliseconds: 180),
+                    turns: expanded ? 0.5 : 0,
+                    child: Icon(
+                      Icons.expand_more_rounded,
+                      size: 15,
+                      color: brand.textSoft,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        AnimatedCrossFade(
+          duration: const Duration(milliseconds: 240),
+          sizeCurve: Curves.easeOutCubic,
+          crossFadeState: expanded
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
+          firstChild: const SizedBox(width: double.infinity, height: 0),
+          secondChild: Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: _FullTimelineRail(steps: steps),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The full Claude-Code-style rail — a dot per step joined by a vertical line.
+/// Shown only when the user expands a settled reasoning summary.
+class _FullTimelineRail extends StatelessWidget {
+  const _FullTimelineRail({required this.steps});
+
+  final List<AgentBlock> steps;
 
   @override
   Widget build(BuildContext context) {
@@ -390,17 +567,9 @@ class _ReasoningTimeline extends StatelessWidget {
           _TimelineRow(
             step: steps[i],
             isFirst: i == 0,
-            isLast: i == steps.length - 1 && !streaming,
-            isActive: streaming && i == steps.length - 1,
-          )
-              .animate()
-              .fadeIn(duration: 220.ms)
-              .moveY(
-                begin: 4,
-                end: 0,
-                duration: 220.ms,
-                curve: Curves.easeOutCubic,
-              ),
+            isLast: i == steps.length - 1,
+            isActive: false,
+          ),
       ],
     );
   }
@@ -668,8 +837,6 @@ class _ToolDetailBox extends StatelessWidget {
       child: Text(
         text,
         style: TextStyle(
-          fontFamily: 'monospace',
-          fontFamilyFallback: const ['Menlo', 'Courier'],
           fontSize: 11.5,
           height: 1.5,
           letterSpacing: -0.1,
@@ -713,12 +880,10 @@ class _ToolNameChip extends StatelessWidget {
           Text(
             name,
             style: TextStyle(
-              fontFamily: 'monospace',
-              fontFamilyFallback: const ['Courier', 'Menlo'],
               fontSize: 11,
               fontWeight: FontWeight.w700,
               color: fg,
-              letterSpacing: 0,
+              letterSpacing: -0.1,
               height: 1.0,
             ),
           ),

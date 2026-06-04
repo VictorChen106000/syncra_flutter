@@ -20,8 +20,10 @@ class AppStrings {
   static const String onboardingHeader = 'Syncra AI Setup';
   static const String goToDashboard = 'Go to Dashboard';
 
-  // Morning brief
+  // Morning brief — the agent's "while you were away" autonomy reveal
   static const String goodMorning = 'Good morning,';
+  static const String briefAutonomySubline =
+      'While you were away, I kept working — here\'s what I lined up.';
 
   // Resumes
   static const String resumeListsTitle = 'Resumes';
@@ -57,11 +59,11 @@ class AppStrings {
   static const String chatTypingTitle = 'Syncra is drafting...';
 
   // Jobs
-  static const String agentPipeline = 'Mission Control';
+  static const String agentPipeline = 'Pipeline';
   static const String reviewQueue = 'Review Queue';
   static const String history = 'History';
   static const String agentPipelineQueueSubtitle =
-      'Syncra prepared your active job missions. Review what needs you next.';
+      'Syncra lined up your active roles. Review what needs you next.';
   static const String agentPipelineHistorySubtitle =
       'Handled applications, drafts, and agent progress history.';
   static const String searchJobsHint = 'Search roles, companies…';

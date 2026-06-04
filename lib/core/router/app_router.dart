@@ -93,13 +93,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         return RouteNames.dashboard;
       }
 
-      // After sign-in, only greet the user with the morning brief when they
-      // have opted in (Profile → "Today's brief"). Off by default — most
-      // sign-ins, and every sign-in during development, land straight on the
-      // dashboard. `morningBriefShown` keeps it to once per app session.
+      // After sign-in, lead returning users into the agent's overnight brief —
+      // the "here's what I did while you were away" reveal that makes the
+      // agent's background work visible. New users hit onboarding first (which
+      // fires its own brief), so they skip straight to the dashboard. Guests
+      // have no pipeline to show. `morningBriefShown` keeps it to once per app
+      // session; the dev `showMorningBrief` toggle (above) forces it on demand.
       if (loc == RouteNames.login || loc == RouteNames.signup) {
-        final wantsMorningBrief = profile?.morningBriefEnabled ?? false;
-        if (wantsMorningBrief && !passive.morningBriefShown) {
+        final isReturningUser = profile?.hasCompletedOnboarding ?? false;
+        if (!isGuest && isReturningUser && !passive.morningBriefShown) {
           return RouteNames.morningBrief;
         }
         return RouteNames.dashboard;

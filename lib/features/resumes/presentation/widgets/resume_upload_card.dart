@@ -94,6 +94,7 @@ class ResumeUploadCard extends StatelessWidget {
                         style: TextStyle(
                           fontWeight: FontWeight.w800,
                           fontSize: 14,
+                          letterSpacing: -0.2,
                           color: brand.ink,
                         ),
                       ),
@@ -122,24 +123,18 @@ class ResumeUploadCard extends StatelessWidget {
                   ),
                 ),
                 if (resume != null && onOpen != null)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 6),
-                    child: _ActionIconButton(
-                      icon: Icons.search_rounded,
-                      onTap: onOpen!,
-                      bg: brand.surface,
-                      hasBorder: true,
-                    ),
+                  _ActionIconButton(
+                    icon: Icons.visibility_outlined,
+                    tooltip: 'Preview',
+                    onTap: onOpen!,
+                    color: brand.ink,
                   ),
                 if (onDelete != null)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 6),
-                    child: _ActionIconButton(
-                      icon: Icons.delete_outline_rounded,
-                      onTap: onDelete!,
-                      bg: brand.surfaceMuted,
-                      iconColor: brand.textMuted,
-                    ),
+                  _ActionIconButton(
+                    icon: Icons.delete_outline_rounded,
+                    tooltip: 'Delete',
+                    onTap: onDelete!,
+                    color: brand.textMuted,
                   ),
               ],
             ),
@@ -158,39 +153,32 @@ class ResumeUploadCard extends StatelessWidget {
   }
 }
 
+/// Bare glyph action — no chip, no circle. Just the icon in a 44px tap target
+/// with a quiet ripple, so the file name stays the loudest thing on the row.
 class _ActionIconButton extends StatelessWidget {
   const _ActionIconButton({
     required this.icon,
     required this.onTap,
-    required this.bg,
-    this.iconColor,
-    this.hasBorder = false,
+    required this.tooltip,
+    required this.color,
   });
 
   final IconData icon;
   final VoidCallback onTap;
-  final Color bg;
-  final Color? iconColor;
-  final bool hasBorder;
+  final String tooltip;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Material(
-      color: bg,
-      shape: const CircleBorder(),
-      child: InkWell(
+    return Tooltip(
+      message: tooltip,
+      child: InkResponse(
         onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: hasBorder ? Border.all(color: brand.border) : null,
-          ),
-          alignment: Alignment.center,
-          child: Icon(icon, size: 16, color: iconColor ?? brand.ink),
+        radius: 22,
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Center(child: Icon(icon, size: 20, color: color)),
         ),
       ),
     );

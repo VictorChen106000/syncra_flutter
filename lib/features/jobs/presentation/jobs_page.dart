@@ -84,7 +84,7 @@ class _JobsPageState extends ConsumerState<JobsPage> {
 }
 
 // ---------------------------------------------------------------------------
-// Mission Control feed — one vertical scroll, grouped into three priority
+// Pipeline feed — one vertical scroll, grouped into three priority
 // sections.
 //
 //  • Needs approval — anything waiting on the user: missing info, review, or
@@ -172,19 +172,19 @@ class _PipelineFeedState extends ConsumerState<_PipelineFeed> {
   }
 
   String? _subtitle(List<PipelineCard> cards, int active, int sent) {
-    if (cards.isEmpty) return 'Mission board is quiet';
+    if (cards.isEmpty) return 'Your pipeline is quiet';
 
     final parts = <String>[];
 
     if (active > 0) {
-      parts.add(active == 1 ? '1 active mission' : '$active active missions');
+      parts.add(active == 1 ? '1 in progress' : '$active in progress');
     }
 
     if (sent > 0) {
       parts.add(sent == 1 ? '1 handled' : '$sent handled');
     }
 
-    return parts.isEmpty ? 'All missions handled' : parts.join(' · ');
+    return parts.isEmpty ? 'All caught up' : parts.join(' · ');
   }
 
   Widget _list(
@@ -202,21 +202,25 @@ class _PipelineFeedState extends ConsumerState<_PipelineFeed> {
       return [
         _SectionHeader(label: label, count: items.length, accent: accent),
         for (var i = 0; i < items.length; i++)
-          _SwipeDismissible(
-            key: ValueKey('pipe-${items[i].id}'),
-            onDismissed: () => widget.onDismiss(items[i].job),
-            child: _PipelineRow(
-              card: items[i],
-              showDivider: i < items.length - 1,
-              onTap: () {
-                ref.read(agentChatProvider.notifier).openJobThread(items[i].job);
-                context.go(RouteNames.agentChat);
-              },
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: _SwipeDismissible(
+              key: ValueKey('pipe-${items[i].id}'),
+              onDismissed: () => widget.onDismiss(items[i].job),
+              child: _PipelineCard(
+                card: items[i],
+                onTap: () {
+                  ref
+                      .read(agentChatProvider.notifier)
+                      .openJobThread(items[i].job);
+                  context.go(RouteNames.agentChat);
+                },
+              ),
             ),
           )
               .animate(delay: (animIndex++ * 55).ms)
               .fadeIn(duration: 320.ms)
-              .moveY(begin: 12, end: 0, curve: Curves.easeOutCubic),
+              .moveY(begin: 14, end: 0, curve: Curves.easeOutCubic),
       ];
     }
 
@@ -228,8 +232,8 @@ class _PipelineFeedState extends ConsumerState<_PipelineFeed> {
         140,
       ),
       children: [
-        ...section('Needs approval', brand.warning, needs),
-        ...section('Syncra working', brand.ink, inProgress),
+        ...section('Needs approval', brand.accent, needs),
+        ...section('Syncra working', brand.textMuted, inProgress),
         ...section('Handled', brand.success, sent),
       ],
     );
@@ -467,7 +471,7 @@ class _SectionHeader extends StatelessWidget {
               fontSize: 11.5,
               fontWeight: FontWeight.w900,
               letterSpacing: 1.35,
-              color: accent,
+              color: brand.ink,
             ),
           ),
           const SizedBox(width: 8),
@@ -496,20 +500,17 @@ class _SectionHeader extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Pipeline row — the shared borderless notification row, with a stage stepper
-// (and, when relevant, the agent's note) tucked under the subtitle.
+// Pipeline card — a standalone job listing card: a company mark, the role,
+// salary, a row of tag pills, then the agentic footer (stage stepper + the one
+// status line). It floats on a soft category-tinted shadow so the feed reads as
+// a premium stack of cards rather than a flat list.
 // ---------------------------------------------------------------------------
 
-class _PipelineRow extends StatelessWidget {
-  const _PipelineRow({
-    required this.card,
-    required this.onTap,
-    this.showDivider = true,
-  });
+class _PipelineCard extends StatelessWidget {
+  const _PipelineCard({required this.card, required this.onTap});
 
   final PipelineCard card;
   final VoidCallback onTap;
-  final bool showDivider;
 
   /// The single status line under the stepper. Action-led for cards that need
   /// you, quiet and factual for the rest. The dots carry stage, so this never
@@ -531,105 +532,8 @@ class _PipelineRow extends StatelessWidget {
     }
     return switch (card.stage) {
       PipelineStage.tailored => 'Tailored resume ready',
-      _ => 'Syncra queued this mission',
+      _ => 'Syncra queued this role',
     };
-  }
-
-  String _preparedLabel() {
-    if (card.isSent) return 'application record';
-    return switch (card.stage) {
-      PipelineStage.matched => 'match scan',
-      PipelineStage.tailored => 'tailored resume',
-      PipelineStage.drafted => 'draft email',
-      PipelineStage.sent => 'sent application',
-      PipelineStage.replied => 'reply tracking',
-    };
-  }
-
-  String _nextLabel() {
-    if (card.isSent) {
-      return card.stage == PipelineStage.replied
-          ? 'review reply'
-          : 'wait for response';
-    }
-
-    if (card.stage == PipelineStage.drafted) {
-      return 'review draft';
-    }
-
-    if (card.job.category == JobCategory.inputNeeded) {
-      return 'answer missing context';
-    }
-
-    if (card.needsYou) {
-      return 'approve next step';
-    }
-
-    return switch (card.stage) {
-      PipelineStage.matched => 'Syncra prepares resume path',
-      PipelineStage.tailored => 'Syncra drafts outreach',
-      PipelineStage.drafted => 'review draft',
-      PipelineStage.sent => 'wait for response',
-      PipelineStage.replied => 'review reply',
-    };
-  }
-
-  String _needsLabel() {
-    if (card.isSent) return 'none';
-
-    if (card.stage == PipelineStage.drafted) {
-      return 'review';
-    }
-
-    if (card.job.missingSkills.isNotEmpty) {
-      return card.job.missingSkills.first;
-    }
-
-    if (card.needsYou) {
-      return 'approval';
-    }
-
-    return 'none';
-  }
-
-  String _compactListLabel(List<String> values, {required String fallback}) {
-    final cleaned = values
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toList();
-
-    if (cleaned.isEmpty) return fallback;
-
-    final visible = cleaned.take(2).join(', ');
-    final extra = cleaned.length - 2;
-
-    return extra > 0 ? '$visible +$extra more' : visible;
-  }
-
-  String _fitLabel() {
-    return _compactListLabel(
-      card.job.skills,
-      fallback: card.job.matchLabel.toLowerCase(),
-    );
-  }
-
-  String _gapLabel() {
-    if (card.job.missingSkills.isNotEmpty) {
-      return _compactListLabel(
-        card.job.missingSkills,
-        fallback: 'missing context',
-      );
-    }
-
-    if (card.stage == PipelineStage.drafted) {
-      return 'draft review';
-    }
-
-    if (card.needsYou) {
-      return 'approval needed';
-    }
-
-    return 'none flagged';
   }
 
   @override
@@ -638,73 +542,126 @@ class _PipelineRow extends StatelessWidget {
     final job = card.job;
     // Cards that need you weight their status line in ink; the rest stay muted.
     final actionable = card.needsYou;
-    // Salary · work mode/location — only the parts we actually have, so a card
-    // missing one never renders a dangling separator.
-    final meta = [
-      job.salary,
-      job.location,
-    ].where((s) => s.trim().isNotEmpty).join('   ·   ');
+    // Warm, per-match-quality accent — tints both the card's soft drop shadow
+    // and its lead pill so the feed spreads with the same variety as a stack of
+    // real listings.
+    final tint = _categoryTint(job.category);
+
+    // Match label + work mode + a couple of top skills, rendered as pills.
+    final skillTags = job.skills
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .take(2)
+        .toList(growable: false);
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
+        borderRadius: BorderRadius.circular(AppConstants.cardRadius),
         child: Container(
-          decoration: showDivider
-              ? BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: brand.border.withValues(alpha: 0.5),
-                    ),
-                  ),
-                )
-              : null,
-          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            color: brand.surface,
+            borderRadius: BorderRadius.circular(AppConstants.cardRadius),
+            border: Border.all(color: brand.border.withValues(alpha: 0.6)),
+            boxShadow: [
+              // The soft colored drop shadow — tinted by match quality.
+              BoxShadow(
+                color: tint.withValues(alpha: brand.isDark ? 0.20 : 0.16),
+                blurRadius: 26,
+                spreadRadius: -4,
+                offset: const Offset(0, 14),
+              ),
+              // A neutral shadow underneath so the card lifts on any backdrop.
+              BoxShadow(
+                color: brand.shadow,
+                blurRadius: 14,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Company — a quiet eyebrow that sits above the role.
-              Text(
-                job.company,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: brand.textMuted,
-                  letterSpacing: -0.1,
-                ),
+              // Company mark + name, with a quiet relative time on the right.
+              Row(
+                children: [
+                  _LogoMark(company: job.company),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Text(
+                      job.company,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: brand.textMuted,
+                        letterSpacing: -0.1,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    _timeAgo(card.createdAt),
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: brand.textSoft,
+                      letterSpacing: -0.1,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 2),
-              // Position — the headline the eye lands on first.
+              const SizedBox(height: 14),
+              // Role — the headline the eye lands on first.
               Text(
                 job.title,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 19,
                   fontWeight: FontWeight.w800,
                   color: brand.ink,
-                  letterSpacing: -0.3,
+                  letterSpacing: -0.4,
                   height: 1.15,
                 ),
               ),
-              if (meta.isNotEmpty) ...[
-                const SizedBox(height: 3),
+              if (job.salary.trim().isNotEmpty) ...[
+                const SizedBox(height: 4),
                 Text(
-                  meta,
+                  job.salary,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w500,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
                     color: brand.textMuted,
-                    letterSpacing: -0.1,
+                    letterSpacing: -0.2,
                   ),
                 ),
               ],
-              const SizedBox(height: 11),
+              const SizedBox(height: 14),
+              // Tag pills — match label leads (tinted), then work mode + skills.
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _Tag(label: job.matchLabel, color: tint),
+                  if (job.location.trim().isNotEmpty) _Tag(label: job.location),
+                  for (final skill in skillTags) _Tag(label: skill),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Divider(
+                height: 1,
+                thickness: 1,
+                color: brand.border.withValues(alpha: 0.5),
+              ),
+              const SizedBox(height: 13),
+              // Agentic footer — progress dots + the single status line.
               Row(
                 children: [
                   _StageStepper(stage: card.stage),
@@ -724,15 +681,6 @@ class _PipelineRow extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 9),
-              _MissionInsightLine(
-                prepared: _preparedLabel(),
-                needs: _needsLabel(),
-                next: _nextLabel(),
-                fit: _fitLabel(),
-                gap: _gapLabel(),
-                highlighted: actionable,
-              ),
             ],
           ),
         ),
@@ -741,100 +689,108 @@ class _PipelineRow extends StatelessWidget {
   }
 }
 
-class _MissionInsightLine extends StatelessWidget {
-  const _MissionInsightLine({
-    required this.prepared,
-    required this.needs,
-    required this.next,
-    required this.fit,
-    required this.gap,
-    required this.highlighted,
-  });
+/// Warm accent for a card, keyed to match quality. Deep enough to stay legible
+/// as tinted pill text, soft enough to read as a colored shadow at low alpha.
+Color _categoryTint(JobCategory category) => switch (category) {
+      JobCategory.ready => const Color(0xFF059669), // emerald
+      JobCategory.inputNeeded => const Color(0xFFD97706), // amber
+      JobCategory.exploration => const Color(0xFF7C3AED), // violet
+    };
 
-  final String prepared;
-  final String needs;
-  final String next;
-  final String fit;
-  final String gap;
-  final bool highlighted;
+/// A company "logo" stand-in — the first initial on a stable, per-company
+/// tinted tile. Gives every card a distinct colored mark without needing real
+/// brand assets.
+class _LogoMark extends StatelessWidget {
+  const _LogoMark({required this.company});
+
+  final String company;
+
+  static const _palette = <Color>[
+    Color(0xFF6366F1), // indigo
+    Color(0xFF8B5CF6), // violet
+    Color(0xFFEC4899), // pink
+    Color(0xFFF59E0B), // amber
+    Color(0xFF10B981), // emerald
+    Color(0xFF0EA5E9), // sky
+    Color(0xFFF43F5E), // rose
+    Color(0xFF14B8A6), // teal
+  ];
+
+  Color get _color {
+    if (company.isEmpty) return _palette.first;
+    var sum = 0;
+    for (final unit in company.codeUnits) {
+      sum += unit;
+    }
+    return _palette[sum % _palette.length];
+  }
+
+  String get _initial {
+    final trimmed = company.trim();
+    return trimmed.isEmpty ? '?' : trimmed.substring(0, 1).toUpperCase();
+  }
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final accent = highlighted ? brand.warning : brand.accent;
-    final labelColor = highlighted ? brand.ink : brand.textSoft;
-    final valueColor = highlighted ? brand.ink : brand.textMuted;
-
-    final labelStyle = TextStyle(
-      color: labelColor,
-      fontWeight: FontWeight.w900,
-    );
-
-    final valueStyle = TextStyle(
-      color: valueColor.withValues(alpha: highlighted ? 0.98 : 0.86),
-      fontWeight: FontWeight.w700,
-    );
-
+    final color = _color;
     return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(top: 1),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      width: 40,
+      height: 40,
+      alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: highlighted
-            ? accent.withValues(alpha: 0.11)
-            : brand.surfaceMuted.withValues(alpha: 0.62),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: highlighted
-              ? accent.withValues(alpha: 0.30)
-              : brand.border.withValues(alpha: 0.45),
+        color: color.withValues(alpha: brand.isDark ? 0.22 : 0.14),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Text(
+        _initial,
+        style: TextStyle(
+          fontSize: 17,
+          fontWeight: FontWeight.w800,
+          color: color,
+          letterSpacing: -0.5,
         ),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 20,
-            height: 20,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: highlighted ? 0.18 : 0.12),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(Icons.auto_awesome_rounded, size: 12, color: accent),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text.rich(
-              TextSpan(
-                style: TextStyle(
-                  color: valueColor,
-                  fontSize: 11.7,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.1,
-                  height: 1.32,
-                ),
-                children: [
-                  TextSpan(text: 'Prepared: ', style: labelStyle),
-                  TextSpan(text: prepared, style: valueStyle),
-                  const TextSpan(text: ' · '),
-                  TextSpan(text: 'Needs: ', style: labelStyle),
-                  TextSpan(text: needs, style: valueStyle),
-                  const TextSpan(text: ' · '),
-                  TextSpan(text: 'Next: ', style: labelStyle),
-                  TextSpan(text: next, style: valueStyle),
-                  const TextSpan(text: '\n'),
-                  TextSpan(text: 'Why it fits: ', style: labelStyle),
-                  TextSpan(text: fit, style: valueStyle),
-                  const TextSpan(text: ' · '),
-                  TextSpan(text: 'Gap: ', style: labelStyle),
-                  TextSpan(text: gap, style: valueStyle),
-                ],
-              ),
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
+    );
+  }
+}
+
+/// A pill tag — the match label, work mode, or a skill. Accent-tinted when
+/// [color] is given, otherwise a quiet outlined chip.
+class _Tag extends StatelessWidget {
+  const _Tag({required this.label, this.color});
+
+  final String label;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final tinted = color != null;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+      decoration: BoxDecoration(
+        color: tinted
+            ? color!.withValues(alpha: brand.isDark ? 0.18 : 0.12)
+            : brand.surfaceMuted,
+        borderRadius: BorderRadius.circular(AppConstants.pillRadius),
+        border: Border.all(
+          color: tinted
+              ? color!.withValues(alpha: 0.34)
+              : brand.border.withValues(alpha: 0.7),
+        ),
+      ),
+      child: Text(
+        label.toUpperCase(),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.5,
+          color: tinted ? color! : brand.textMuted,
+        ),
       ),
     );
   }
@@ -945,24 +901,24 @@ class _GooeyEmptyState extends StatelessWidget {
     final String route;
 
     if (!agentHasRun) {
-      title = 'Mission Control is idle';
+      title = 'Your pipeline is empty';
       body =
           'Enable "Today\'s brief" in Settings, then run it from the '
-          'dashboard. Syncra will place new job missions here.';
+          'dashboard. Syncra will line up new roles here.';
       actionLabel = 'Open dashboard';
       route = RouteNames.dashboard;
     } else if (!hadAnyPipeline) {
-      title = 'No missions queued right now';
+      title = 'No roles queued right now';
       body =
-          'Syncra scanned but found no strong missions. Broaden your '
+          'Syncra scanned but found no strong matches. Broaden your '
           'criteria, or ask the agent to explore a new direction.';
       actionLabel = 'Ask the agent';
       route = RouteNames.agentChat;
     } else {
-      title = 'Mission Control cleared';
+      title = 'All caught up';
       body =
-          'Every job mission Syncra surfaced has been handled. The next '
-          'brief will refill Mission Control.';
+          'Every role Syncra surfaced has been handled. The next brief '
+          'will refill your pipeline.';
       actionLabel = 'Back to dashboard';
       route = RouteNames.dashboard;
     }

@@ -18,7 +18,11 @@ import '../state/auth_notifier.dart';
 // keeps the dark aesthetic without strobing the eye.
 const Color _softInk = Color(0xFFF1F1F3);
 
-/// The morning briefing the agent delivers right after sign-in.
+/// The agent's "while you were away" reveal, shown to returning users right
+/// after sign-in. Its job is to make the agent's *background* work visible —
+/// the clearest proof of the product's autonomy pitch ("it works while you
+/// sleep"). Auto-fires a brief on open and animates the agent scanning →
+/// matching → surfacing a top match.
 ///
 /// Intentionally dark in both themes — uses [BrandTheme.dark] hardcoded so
 /// the headline aesthetic doesn't shift when system flips to light.
@@ -115,6 +119,22 @@ class _MorningBriefPageState extends ConsumerState<MorningBriefPage> {
                   .animate()
                   .fadeIn(duration: 500.ms)
                   .moveY(begin: 12, end: 0, curve: Curves.easeOutCubic),
+              const SizedBox(height: 14),
+              // The autonomy line — this sentence is the pitch: the agent kept
+              // working while the user was away. Everything below is the proof.
+              Text(
+                AppStrings.briefAutonomySubline,
+                style: TextStyle(
+                  color: _softInk.withValues(alpha: 0.66),
+                  fontSize: 15.5,
+                  height: 1.5,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: -0.1,
+                ),
+              )
+                  .animate(delay: 200.ms)
+                  .fadeIn(duration: 460.ms)
+                  .moveY(begin: 8, end: 0, curve: Curves.easeOutCubic),
               const SizedBox(height: 28),
               _BriefBody(agent: agent),
               const Spacer(),

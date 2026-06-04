@@ -689,10 +689,10 @@ Do not call send_email. Sending still requires explicit user approval.
     final rankedJobs = _latestRankedJobsForNextStep(turn);
     final input = InputRequestBlock(
       id: _nextId('input'),
-      question: 'Saved to Mission Control. What should I do next?',
+      question: 'Saved to Pipeline. What should I do next?',
       suggestions: const [
         'Tailor for the strongest saved role',
-        'Open Mission Control',
+        'Open Pipeline',
         'Search more roles',
       ],
       continuationPrompt: _pipelineSavedNextStepPrompt(rankedJobs),
@@ -739,11 +739,11 @@ Do not call send_email. Sending still requires explicit user approval.
 
     if (topJobs.isEmpty) {
       return '''
-The user just saved roles to Mission Control.
+The user just saved roles to Pipeline.
 
 Use the user's answer to continue:
 - If they choose "Tailor for the strongest saved role", ask which saved role they want to tailor for with 2-3 short suggestion chips.
-- If they choose "Open Mission Control", briefly tell them Mission Control now contains the saved roles and they can open it from the Jobs tab.
+- If they choose "Open Pipeline", briefly tell them Pipeline now contains the saved roles and they can open it from the Jobs tab.
 - If they choose "Search more roles", call search_jobs and then continue the standard job-search sequence.
 - Do not show numeric match scores in user-visible text.
 - Do not call send_email.
@@ -755,7 +755,7 @@ Use the user's answer to continue:
     final jobContext = topJobs.map(_jobContextLine).join('\n');
 
     return '''
-The user just saved roles to Mission Control.
+The user just saved roles to Pipeline.
 
 Saved/matched job context, sorted strongest-first:
 $jobContext
@@ -767,7 +767,7 @@ Recommended strongest saved role:
 
 Use the user's answer to continue:
 - If they choose "Tailor for the strongest saved role", call read_resume if needed, then call tailor_resume for the recommended strongest saved role.
-- If they choose "Open Mission Control", briefly tell them Mission Control now contains these saved roles and they can open it from the Jobs tab. Do not call tools for this.
+- If they choose "Open Pipeline", briefly tell them Pipeline now contains these saved roles and they can open it from the Jobs tab. Do not call tools for this.
 - If they choose "Search more roles", call search_jobs with a related query based on the saved roles, then continue the standard job-search sequence.
 - Do not show numeric match scores in user-visible text.
 - Do not call draft_email until after a tailored resume is saved or the user directly asks for outreach.
@@ -797,7 +797,7 @@ Use the user's answer to continue:
       id: _nextId('input'),
       question: 'What should I do with these matches next?',
       suggestions: const [
-        'Save top 3 to Mission Control',
+        'Save top 3 to Pipeline',
         'Tailor for the top role',
         'Explore one role',
       ],
@@ -875,7 +875,7 @@ Top 3 job_ids:
 $topThreeIds
 
 Use the user's answer to continue:
-- If they choose "Save top 3 to Mission Control", call save_to_pipeline for the top 3 job_ids.
+- If they choose "Save top 3 to Pipeline", call save_to_pipeline for the top 3 job_ids.
 - If they choose "Tailor for the top role", call tailor_resume for the recommended top role.
 - If they choose "Explore one role", compare the strongest roles briefly and ask which one they want to continue with if needed.
 - Do not show numeric match scores in user-visible text.

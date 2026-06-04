@@ -1005,8 +1005,8 @@ class _AccountSection extends ConsumerWidget {
         title: const Text('Reset account?'),
         content: const Text(
           'This clears every resume, application, pipeline card, saved chat, '
-          'and learned fact tied to your account. Your sign-in stays intact. '
-          'This cannot be undone.',
+          'and learned fact tied to your account, then starts you over from '
+          'onboarding. Your sign-in stays intact. This cannot be undone.',
         ),
         actions: [
           TextButton(
@@ -1024,16 +1024,20 @@ class _AccountSection extends ConsumerWidget {
     if (ok != true) return;
 
     await ref.read(authProvider.notifier).resetAccountData();
-
-    // Drop in-memory state that mirrors the now-empty Firestore data so the
-    // UI snaps to a clean slate without waiting for streams to settle.
-    ref.read(resumeProvider.notifier).clearSelectedResumes();
-
-    if (!context.mounted) return;
     final error = ref.read(authProvider).error;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(error ?? 'Account data reset.')));
+
+    if (error != null) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      return;
+    }
+
+    // Reset succeeded. Drop in-memory state that mirrors the now-empty
+    // Firestore data, then snap the profile back to first-run — the router
+    // redirect keys off `hasCompletedOnboarding` and routes us to onboarding,
+    // so no manual navigation (or success snackbar) is needed here.
+    ref.read(resumeProvider.notifier).clearSelectedResumes();
+    ref.read(userProfileProvider.notifier).resetToFirstRun();
   }
 
   @override
