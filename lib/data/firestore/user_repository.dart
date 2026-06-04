@@ -74,6 +74,14 @@ class UserRepository {
     await _paths.user(uid).delete();
   }
 
+  /// Deletes one learned Career Memory fact. Resumes, pipeline cards,
+  /// applications, briefs, and conversations are left untouched.
+  Future<void> deleteLearnedFact(String uid, String factId) {
+    final cleanId = factId.trim();
+    if (cleanId.isEmpty) return Future.value();
+    return _paths.learnedFacts(uid).doc(cleanId).delete();
+  }
+
   /// Deletes only the agent's learned Career Memory facts. Resumes, pipeline
   /// cards, applications, briefs, and conversations are left untouched.
   Future<void> clearLearnedFacts(String uid) {

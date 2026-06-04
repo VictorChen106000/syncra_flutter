@@ -25,12 +25,14 @@ import '../../resumes/state/resume_notifier.dart';
 
 class _CareerMemoryFact {
   const _CareerMemoryFact({
+    required this.id,
     required this.topic,
     required this.detail,
     required this.category,
     required this.observedCount,
   });
 
+  final String id;
   final String topic;
   final String detail;
   final String category;
@@ -57,6 +59,7 @@ final _careerMemoryProvider =
                 .map((doc) {
                   final data = doc.data();
                   return _CareerMemoryFact(
+                    id: doc.id,
                     topic: (data['topic'] as String?)?.trim() ?? '',
                     detail: (data['detail'] as String?)?.trim() ?? '',
                     category: _normalizeMemoryCategory(
@@ -553,8 +556,8 @@ class _ProfileAvatar extends StatelessWidget {
 
 // ---------------------------------------------------------------------------
 // Career Memory — reusable facts the agent learned from user answers.
-// Read-only for now: the agent writes facts through `remember_fact`, and the
-// user can reset them from Reset account.
+// The agent writes facts through `remember_fact`; the user can delete one
+// memory, clear all Career Memory, or reset the account.
 // ---------------------------------------------------------------------------
 
 class _CareerMemorySection extends ConsumerWidget {
@@ -617,6 +620,65 @@ class _CareerMemorySection extends ConsumerWidget {
     }
   }
 
+  Future<void> _confirmAndDeleteFact(
+    BuildContext context,
+    WidgetRef ref,
+    _CareerMemoryFact fact,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final brand = dialogContext.brand;
+        final topic = _formatMemoryTopic(fact.topic);
+
+        return AlertDialog(
+          backgroundColor: brand.surface,
+          title: Text(
+            'Delete this memory?',
+            style: TextStyle(color: brand.ink, fontWeight: FontWeight.w800),
+          ),
+          content: Text(
+            '"$topic" will be removed from Syncra Career Memory. '
+            'Your resumes, jobs, and applications will stay.',
+            style: TextStyle(color: brand.textMuted, height: 1.45),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Delete memory'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    final user = ref.read(authProvider).appUser;
+    if (user == null || user.isGuest) return;
+
+    try {
+      await UserRepository().deleteLearnedFact(user.uid, fact.id);
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Career Memory removed.')));
+    } catch (_) {
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not remove this memory. Try again.'),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final factsAsync = ref.watch(_careerMemoryProvider);
@@ -637,7 +699,11 @@ class _CareerMemorySection extends ConsumerWidget {
             ),
             for (var i = 0; i < visibleFacts.length; i++) ...[
               const _GroupedDivider(),
-              _CareerMemoryFactRow(fact: visibleFacts[i]),
+              _CareerMemoryFactRow(
+                fact: visibleFacts[i],
+                onDelete: () =>
+                    _confirmAndDeleteFact(context, ref, visibleFacts[i]),
+              ),
             ],
           ],
         );
@@ -742,9 +808,10 @@ class _CareerMemorySummaryRow extends StatelessWidget {
 }
 
 class _CareerMemoryFactRow extends StatelessWidget {
-  const _CareerMemoryFactRow({required this.fact});
+  const _CareerMemoryFactRow({required this.fact, required this.onDelete});
 
   final _CareerMemoryFact fact;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -803,6 +870,18 @@ class _CareerMemoryFactRow extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            tooltip: 'Delete memory',
+            onPressed: onDelete,
+            visualDensity: VisualDensity.compact,
+            style: IconButton.styleFrom(
+              foregroundColor: brand.textMuted,
+              minimumSize: const Size(36, 36),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            icon: const Icon(Icons.delete_outline_rounded, size: 18),
           ),
         ],
       ),
