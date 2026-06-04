@@ -25,11 +25,12 @@ Foundation, verified in code:
 - Google Sign-In · Firestore + owner-only rules · Firebase Storage for resume blobs
 - Riverpod migration — all controllers are immutable `Notifier`s
 - Agent chat with the full tool-use loop · `ask_user` mid-flow input · extended thinking
-- Tool registry + 10 tools registered (mix of real and stub — see below)
+- Tool registry with real job-search, resume, memory, Trust Guard, pipeline, tracker, and email tools
 - Resume upload (Storage blob + Firestore metadata) · PDF text extraction · lazy resume parser → `ResumeJSON`
 - Fixed PDF template · resume tailor orchestrator
 - `tailor_resume` proposes edits and the loop pauses · read-only `ProposedEditsBlock` preview in chat
-- `read_resume`, `match_jobs`, `save_to_pipeline`, `save_to_tracker`, `remember_fact` — real implementations
+- `read_resume`, `match_jobs`, `check_job_risk`, `save_to_pipeline`, `save_to_tracker`, `remember_fact` — real implementations
+- Trust Guard checks obvious job red flags, persists results on pipeline/application records, surfaces badges/details in UI, and has unit tests
 - Applications activity-log (drafted / sent / "got reply") · pipeline approve → application
 - Dashboard prompt entry + "Run today's brief" CTA · Settings (autonomy, brief toggle, delete account) · onboarding role capture · router redirects
 - Live notifications inbox subscribed to agent events
@@ -68,7 +69,7 @@ One cross-workstream wire remains (see below).
 - [x] `email_review_page.dart` — editable review sheet that mints the token and sends.
 - [x] `lookup_hiring_manager` — returns the company's `careers@` address; no named-contact lookup (Hunter.io considered and dropped 2026-05-21).
 
-- [ ] **Wire the modal in** — `EmailReviewPage.show` has no caller. A `draft_email` chat result needs a "Review & send" button that opens it. This is a chat-block change (Agent Reasoning / Resume Diff UI), not a service — the modal's own header comment flags it as a deliberate handoff. Until it lands, the Gmail send path is built but unreachable.
+- [x] Email review UI is reachable from chat email draft blocks and the manual job action sheet.
 
 ### Agent Reasoning
 Loop, prompts, and tools are in place. Current status:
@@ -81,7 +82,7 @@ Loop, prompts, and tools are in place. Current status:
 
 Remaining / delegated:
 
-- [ ] Email draft review handoff: wire `draft_email` results to a chat block/button that opens `EmailReviewPage.show`.
+- [x] Email draft review handoff: `draft_email` results render a reviewable email draft block that opens `EmailReviewPage.show`.
 - [ ] `draft_email` should use real selected/uploaded resume context instead of sample resume fallback.
 
 ### App Shell
