@@ -80,12 +80,13 @@ enum EditDecision { pending, accepted, rejected }
 /// card settles to [dismissed] if the user dismisses it instead.
 enum ProposedEditsState { reviewing, applying, applied, dismissed }
 
-/// PR-style resume edits proposed by `tailor_resume`.
+/// Reviewable resume edits proposed by `tailor_resume`.
 ///
-/// The diff viewer renders one row per [edits] entry with Accept / Reject
-/// controls. Per-edit choices live in [decisions] (index-aligned with [edits]);
-/// the overall card lifecycle lives in [state]. Both are mutable so the
-/// notifier can flip them in place and re-emit, matching [ActionProposalBlock].
+/// The proposed-edits card renders one row per [edits] entry as a read-only
+/// change log. The current tailor flow auto-accepts proposed edits, renders a
+/// tailored PDF preview, and lets the user save or dismiss the result. The
+/// [decisions] list is retained for applied/dismissed state and future
+/// per-edit review support.
 class ProposedEditsBlock extends AgentBlock {
   ProposedEditsBlock({
     required super.id,

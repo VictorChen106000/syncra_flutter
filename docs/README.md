@@ -51,10 +51,9 @@ two explicit gates: the diff viewer and the email modal.
   registry. The user invokes it by typing a chat prompt, or by tapping *"Run
   today's brief"* on the dashboard (a canned prompt, same code path). Nothing
   fires on app open.
-- **Tailoring is a pull request, not a rewrite.** The agent proposes a short
-  list of targeted edits with reasons; you accept or reject each like a GitHub
-  PR. Only after **Apply N edits** does a tailored PDF render. Your original
-  resume is never touched.
+- **Tailoring is a reviewable change log, not a rewrite.** The agent proposes
+  targeted edits with reasons, renders a tailored PDF preview, and shows what
+  changed before you save anything. Your original resume is never touched.
 - **The agent learns about you.** When you answer a follow-up question, the
   agent persists it as a learned fact, so it doesn't ask twice.
 - **Trust Guard before outreach.** Before saving or drafting for a role, Syncra
