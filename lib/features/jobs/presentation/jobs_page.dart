@@ -657,7 +657,10 @@ class _PipelineCard extends StatelessWidget {
                 runSpacing: 8,
                 children: [
                   _Tag(label: job.matchLabel, color: tint),
-                  _TrustGuardTag(card: card),
+                  _TrustGuardTag(
+                    card: card,
+                    onTap: () => _showTrustGuardDetails(context, card),
+                  ),
                   if (job.location.trim().isNotEmpty) _Tag(label: job.location),
                   for (final skill in skillTags) _Tag(label: skill),
                 ],
@@ -728,6 +731,36 @@ String _trustRiskLabel(PipelineCard card) {
   return 'Trust: $label · ${card.trustSignalsCount}';
 }
 
+String _trustSafeNextStep(PipelineCard card) {
+  final saved = card.trustSafeNextStep.trim();
+  if (saved.isNotEmpty) return saved;
+
+  return switch (card.trustRiskLevel) {
+    'high' =>
+      'Do not send personal documents or payment. Verify the company and posting first.',
+    'medium' =>
+      'Verify the company site, recruiter identity, and application link before outreach.',
+    _ =>
+      'No obvious red flags found. Still verify the official posting before applying.',
+  };
+}
+
+Color _signalSeverityColor(String severity, BrandTheme brand) {
+  return switch (severity) {
+    'high' => brand.danger,
+    'medium' => brand.warning,
+    _ => brand.textSoft,
+  };
+}
+
+String _signalSeverityLabel(String severity) {
+  return switch (severity) {
+    'high' => 'High',
+    'medium' => 'Medium',
+    _ => 'Note',
+  };
+}
+
 /// A company "logo" stand-in — the first initial on a stable, per-company
 /// tinted tile. Gives every card a distinct colored mark without needing real
 /// brand assets.
@@ -787,10 +820,221 @@ class _LogoMark extends StatelessWidget {
   }
 }
 
-class _TrustGuardTag extends StatelessWidget {
-  const _TrustGuardTag({required this.card});
+void _showTrustGuardDetails(BuildContext context, PipelineCard card) {
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _TrustGuardDetailsSheet(card: card),
+  );
+}
+
+class _TrustGuardDetailsSheet extends StatelessWidget {
+  const _TrustGuardDetailsSheet({required this.card});
 
   final PipelineCard card;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final color = _trustRiskColor(card.trustRiskLevel, brand);
+    final icon = _trustRiskIcon(card.trustRiskLevel);
+    final signals = card.trustSignals;
+    final safeNextStep = _trustSafeNextStep(card);
+
+    return SafeArea(
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: brand.surface,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: brand.border),
+          boxShadow: [
+            BoxShadow(
+              color: brand.shadow.withValues(alpha: 0.22),
+              blurRadius: 28,
+              offset: const Offset(0, 14),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: brand.isDark ? 0.2 : 0.12),
+                    borderRadius: BorderRadius.circular(13),
+                    border: Border.all(color: color.withValues(alpha: 0.34)),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(icon, size: 19, color: color),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Trust Guard · ${card.trustRiskLabel}',
+                    style: TextStyle(
+                      color: brand.ink,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Quick red-flag screen only. This does not certify the job as legitimate.',
+              style: TextStyle(
+                color: brand.textMuted,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (signals.isEmpty)
+              _TrustGuardEmptySignals(color: color)
+            else
+              for (final signal in signals) ...[
+                _TrustSignalRow(signal: signal),
+                const SizedBox(height: 9),
+              ],
+            const SizedBox(height: 6),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(13),
+              decoration: BoxDecoration(
+                color: brand.surfaceMuted,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: brand.border.withValues(alpha: 0.7)),
+              ),
+              child: Text(
+                safeNextStep,
+                style: TextStyle(
+                  color: brand.ink,
+                  fontSize: 12.8,
+                  fontWeight: FontWeight.w700,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TrustGuardEmptySignals extends StatelessWidget {
+  const _TrustGuardEmptySignals({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: brand.isDark ? 0.16 : 0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.check_circle_outline_rounded, size: 17, color: color),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              'No obvious red flags were found in the saved posting text.',
+              style: TextStyle(
+                color: brand.ink,
+                fontSize: 12.8,
+                fontWeight: FontWeight.w700,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TrustSignalRow extends StatelessWidget {
+  const _TrustSignalRow({required this.signal});
+
+  final Map<String, String> signal;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final severity = signal['severity'] ?? 'medium';
+    final color = _signalSeverityColor(severity, brand);
+    final label = signal['label'] ?? 'Trust signal';
+    final detail = signal['detail'] ?? '';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: brand.surfaceMuted,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: brand.border.withValues(alpha: 0.7)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.error_outline_rounded, size: 17, color: color),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${_signalSeverityLabel(severity)} · $label',
+                  style: TextStyle(
+                    color: brand.ink,
+                    fontSize: 12.8,
+                    fontWeight: FontWeight.w900,
+                    height: 1.25,
+                  ),
+                ),
+                if (detail.trim().isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    detail,
+                    style: TextStyle(
+                      color: brand.textMuted,
+                      fontSize: 12.3,
+                      fontWeight: FontWeight.w600,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TrustGuardTag extends StatelessWidget {
+  const _TrustGuardTag({required this.card, required this.onTap});
+
+  final PipelineCard card;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -800,30 +1044,37 @@ class _TrustGuardTag extends StatelessWidget {
     final icon = _trustRiskIcon(level);
     final label = _trustRiskLabel(card);
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: brand.isDark ? 0.18 : 0.12),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(AppConstants.pillRadius),
-        border: Border.all(color: color.withValues(alpha: 0.34)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12.5, color: color),
-          const SizedBox(width: 5),
-          Text(
-            label.toUpperCase(),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.45,
-              color: color,
-            ),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: brand.isDark ? 0.18 : 0.12),
+            borderRadius: BorderRadius.circular(AppConstants.pillRadius),
+            border: Border.all(color: color.withValues(alpha: 0.34)),
           ),
-        ],
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 12.5, color: color),
+              const SizedBox(width: 5),
+              Text(
+                label.toUpperCase(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.45,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

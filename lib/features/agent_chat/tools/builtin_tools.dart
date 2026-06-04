@@ -279,14 +279,7 @@ void _registerCheckJobRisk(ToolRegistry registry, JobsRepository jobsRepo) {
         _ => 'Looks normal',
       };
 
-      final safeNextStep = switch (riskLevel) {
-        'high' =>
-          'Do not send personal documents or payment. Verify the company and posting first.',
-        'medium' =>
-          'Verify the company site, recruiter identity, and application link before outreach.',
-        _ =>
-          'No obvious red flags found. Still verify the official posting before applying.',
-      };
+      final safeNextStep = _jobRiskSafeNextStep(riskLevel);
 
       return ToolResult(
         summary: signals.isEmpty
@@ -305,6 +298,15 @@ void _registerCheckJobRisk(ToolRegistry registry, JobsRepository jobsRepo) {
     },
   );
 }
+
+String _jobRiskSafeNextStep(String riskLevel) => switch (riskLevel) {
+  'high' =>
+    'Do not send personal documents or payment. Verify the company and posting first.',
+  'medium' =>
+    'Verify the company site, recruiter identity, and application link before outreach.',
+  _ =>
+    'No obvious red flags found. Still verify the official posting before applying.',
+};
 
 List<Map<String, String>> _jobRiskSignals(Job job) {
   final signals = <Map<String, String>>[];
@@ -832,6 +834,7 @@ void _registerSaveToPipeline(
         'medium' => 'Needs verification',
         _ => 'Looks normal',
       };
+      final trustSafeNextStep = _jobRiskSafeNextStep(trustRiskLevel);
 
       await pipelineRepo.createCard(
         uid: uid,
@@ -847,6 +850,8 @@ void _registerSaveToPipeline(
         trustRiskLevel: trustRiskLevel,
         trustRiskLabel: trustRiskLabel,
         trustSignalsCount: trustSignals.length,
+        trustSignals: trustSignals,
+        trustSafeNextStep: trustSafeNextStep,
       );
 
       return ToolResult(
@@ -858,6 +863,8 @@ void _registerSaveToPipeline(
           'trust_risk_level': trustRiskLevel,
           'trust_risk_label': trustRiskLabel,
           'trust_signals_count': trustSignals.length,
+          'trust_signals': trustSignals,
+          'trust_safe_next_step': trustSafeNextStep,
         },
       );
     },

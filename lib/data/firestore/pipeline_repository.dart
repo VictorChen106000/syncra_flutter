@@ -21,6 +21,8 @@ class PipelineCard {
     this.trustRiskLevel = 'unchecked',
     this.trustRiskLabel = 'Not checked',
     this.trustSignalsCount = 0,
+    this.trustSignals = const [],
+    this.trustSafeNextStep = '',
   });
 
   final String id;
@@ -37,6 +39,8 @@ class PipelineCard {
   final String trustRiskLevel;
   final String trustRiskLabel;
   final int trustSignalsCount;
+  final List<Map<String, String>> trustSignals;
+  final String trustSafeNextStep;
 
   bool get needsTrustReview =>
       trustRiskLevel == 'medium' || trustRiskLevel == 'high';
@@ -134,6 +138,8 @@ class PipelineRepository {
     String trustRiskLevel = 'unchecked',
     String trustRiskLabel = 'Not checked',
     int trustSignalsCount = 0,
+    List<Map<String, String>> trustSignals = const [],
+    String trustSafeNextStep = '',
   }) async {
     await _paths.pipeline(uid).doc().set({
       'job': {
@@ -153,6 +159,8 @@ class PipelineRepository {
       'trust_risk_level': trustRiskLevel,
       'trust_risk_label': trustRiskLabel,
       'trust_signals_count': trustSignalsCount,
+      'trust_signals': trustSignals,
+      'trust_safe_next_step': trustSafeNextStep,
       'trust_checked_at': trustRiskLevel == 'unchecked'
           ? null
           : FieldValue.serverTimestamp(),
@@ -195,7 +203,31 @@ PipelineCard _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     trustRiskLevel: (data['trust_risk_level'] as String?) ?? 'unchecked',
     trustRiskLabel: (data['trust_risk_label'] as String?) ?? 'Not checked',
     trustSignalsCount: (data['trust_signals_count'] as num?)?.toInt() ?? 0,
+    trustSignals: _trustSignalsFrom(data['trust_signals']),
+    trustSafeNextStep: (data['trust_safe_next_step'] as String?) ?? '',
   );
+}
+
+List<Map<String, String>> _trustSignalsFrom(Object? value) {
+  if (value is! List) return const [];
+
+  final signals = <Map<String, String>>[];
+
+  for (final raw in value.whereType<Map>()) {
+    final severity = raw['severity']?.toString().trim() ?? '';
+    final label = raw['label']?.toString().trim() ?? '';
+    final detail = raw['detail']?.toString().trim() ?? '';
+
+    if (label.isEmpty && detail.isEmpty) continue;
+
+    signals.add({
+      'severity': severity.isEmpty ? 'medium' : severity,
+      'label': label.isEmpty ? 'Trust signal' : label,
+      'detail': detail,
+    });
+  }
+
+  return signals;
 }
 
 PipelineStage _stageFromName(String? name) => switch (name) {
