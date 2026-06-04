@@ -102,7 +102,9 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   /// Skips the whole flow — marks the user past first-run setup with no role
   /// captured. Mirrors the previous escape hatch.
   Future<void> _skip() async {
-    await ref.read(userProfileProvider.notifier).setHasCompletedOnboarding(true);
+    await ref
+        .read(userProfileProvider.notifier)
+        .setHasCompletedOnboarding(true);
     final dev = ref.read(devFlagsProvider);
     if (dev.showOnboarding) {
       await ref.read(devFlagsProvider.notifier).setShowOnboarding(false);
@@ -143,16 +145,16 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     // The moment a resume the user just uploaded lands, let the water-fill
     // visibly top out, then reveal the prompt. Selecting on the count keeps
     // this from firing on unrelated resume-list churn.
-    ref.listen<int>(
-      resumeProvider.select((s) => s.resumes.length),
-      (prev, next) {
-        if (_armed && _phase == _Phase.upload && next > (prev ?? 0)) {
-          Future<void>.delayed(const Duration(milliseconds: 950), () {
-            if (mounted && _phase == _Phase.upload) _goToPrompt();
-          });
-        }
-      },
-    );
+    ref.listen<int>(resumeProvider.select((s) => s.resumes.length), (
+      prev,
+      next,
+    ) {
+      if (_armed && _phase == _Phase.upload && next > (prev ?? 0)) {
+        Future<void>.delayed(const Duration(milliseconds: 950), () {
+          if (mounted && _phase == _Phase.upload) _goToPrompt();
+        });
+      }
+    });
 
     return Theme(
       data: _darkTheme,
@@ -199,21 +201,21 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                             FadeTransition(opacity: anim, child: child),
                         child: switch (_phase) {
                           _Phase.upload => _UploadPhase(
-                              key: const ValueKey('upload'),
-                              onPick: _pickResume,
-                              onContinue: _goToPrompt,
-                              onSkip: _skip,
-                            ),
+                            key: const ValueKey('upload'),
+                            onPick: _pickResume,
+                            onContinue: _goToPrompt,
+                            onSkip: _skip,
+                          ),
                           _Phase.prompt => _PromptPhase(
-                              key: const ValueKey('prompt'),
-                              onSend: _send,
-                              onSkip: _skip,
-                              initialText: _instruction,
-                            ),
+                            key: const ValueKey('prompt'),
+                            onSend: _send,
+                            onSkip: _skip,
+                            initialText: _instruction,
+                          ),
                           _Phase.setup => _SetupPhase(
-                              key: const ValueKey('setup'),
-                              instruction: _instruction,
-                            ),
+                            key: const ValueKey('setup'),
+                            instruction: _instruction,
+                          ),
                         },
                       ),
                     ),
@@ -262,10 +264,10 @@ class _UploadPhase extends ConsumerWidget {
     final caption = hasError
         ? 'That file didn\'t work — try another.'
         : busy
-            ? 'Uploading your resume…'
-            : hasResume
-                ? 'Got it. Tap to continue.'
-                : 'Drop in a PDF, DOC or DOCX — up to 5MB.';
+        ? 'Uploading your resume…'
+        : hasResume
+        ? 'Got it. Tap to continue.'
+        : 'Drop in a PDF, DOC or DOCX — up to 5MB.';
 
     final onTap = busy ? null : (hasResume ? onContinue : onPick);
 
@@ -301,34 +303,34 @@ class _UploadPhase extends ConsumerWidget {
         ).animate(delay: 120.ms).fadeIn(),
         const Spacer(flex: 5),
         GestureDetector(
-          onTap: onTap,
-          behavior: HitTestBehavior.opaque,
-          child: SizedBox(
-            width: 224,
-            height: 224,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                WaterFillCircle(fill: fill, active: busy, size: 224),
-                _CircleContent(
-                  empty: !busy && !hasResume,
-                  filled: filled,
-                  fill: fill,
-                  brand: brand,
+              onTap: onTap,
+              behavior: HitTestBehavior.opaque,
+              child: SizedBox(
+                width: 224,
+                height: 224,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    WaterFillCircle(fill: fill, active: busy, size: 224),
+                    _CircleContent(
+                      empty: !busy && !hasResume,
+                      filled: filled,
+                      fill: fill,
+                      brand: brand,
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-        )
+              ),
+            )
             .animate(delay: 160.ms)
             .fadeIn(duration: 460.ms)
             .scale(begin: const Offset(0.9, 0.9), end: const Offset(1, 1)),
         const SizedBox(height: 22),
         if (hasResume && !busy)
-          _FileChip(resume: state.resumes.first, ready: true)
-              .animate()
-              .fadeIn(duration: 320.ms)
-              .moveY(begin: 6, end: 0),
+          _FileChip(
+            resume: state.resumes.first,
+            ready: true,
+          ).animate().fadeIn(duration: 320.ms).moveY(begin: 6, end: 0),
         const Spacer(flex: 7),
         if (hasResume && !busy)
           TextButton(
@@ -379,8 +381,8 @@ class _CircleContent extends StatelessWidget {
     final String stateKey = empty
         ? 'empty'
         : filled
-            ? 'filled'
-            : 'busy';
+        ? 'filled'
+        : 'busy';
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 280),
@@ -393,41 +395,33 @@ class _CircleContent extends StatelessWidget {
       ),
       child: switch (stateKey) {
         'filled' => Icon(
-            Icons.check_rounded,
-            key: const ValueKey('filled'),
-            size: 56,
-            color: brand.onAccent,
-          ),
+          Icons.check_rounded,
+          key: const ValueKey('filled'),
+          size: 56,
+          color: brand.onAccent,
+        ),
         'busy' => Opacity(
-            key: const ValueKey('busy'),
-            opacity: (1 - fill).clamp(0.0, 1.0),
-            child: Icon(
-              Icons.arrow_upward_rounded,
-              size: 46,
-              color: _softInk,
-            ),
-          ),
+          key: const ValueKey('busy'),
+          opacity: (1 - fill).clamp(0.0, 1.0),
+          child: Icon(Icons.arrow_upward_rounded, size: 46, color: _softInk),
+        ),
         _ => Column(
-            key: const ValueKey('empty'),
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.file_upload_outlined,
-                size: 46,
-                color: brand.accent,
+          key: const ValueKey('empty'),
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.file_upload_outlined, size: 46, color: brand.accent),
+            const SizedBox(height: 10),
+            Text(
+              'Tap to upload',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: brand.textMuted,
+                letterSpacing: 0.1,
               ),
-              const SizedBox(height: 10),
-              Text(
-                'Tap to upload',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: brand.textMuted,
-                  letterSpacing: 0.1,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
+        ),
       },
     );
   }
@@ -457,8 +451,9 @@ class _PromptPhase extends ConsumerStatefulWidget {
 }
 
 class _PromptPhaseState extends ConsumerState<_PromptPhase> {
-  late final TextEditingController _controller =
-      TextEditingController(text: widget.initialText);
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initialText,
+  );
   final FocusNode _focus = FocusNode();
 
   @override
@@ -493,29 +488,29 @@ class _PromptPhaseState extends ConsumerState<_PromptPhase> {
               children: [
                 const SizedBox(height: 20),
                 if (resume != null)
-                  _FileChip(resume: resume, ready: true)
-                      .animate()
-                      .fadeIn(duration: 380.ms)
-                      .moveY(begin: 6, end: 0),
+                  _FileChip(
+                    resume: resume,
+                    ready: true,
+                  ).animate().fadeIn(duration: 380.ms).moveY(begin: 6, end: 0),
                 const SizedBox(height: 30),
                 Text.rich(
-                  TextSpan(
-                    children: [
-                      const TextSpan(text: 'What do you want\nme to '),
                       TextSpan(
-                        text: 'do?',
-                        style: TextStyle(color: brand.accent),
+                        children: [
+                          const TextSpan(text: 'What do you want\nme to '),
+                          TextSpan(
+                            text: 'do?',
+                            style: TextStyle(color: brand.accent),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  style: TextStyle(
-                    fontSize: 34,
-                    fontWeight: FontWeight.w800,
-                    color: _softInk,
-                    height: 1.1,
-                    letterSpacing: -1.0,
-                  ),
-                )
+                      style: TextStyle(
+                        fontSize: 34,
+                        fontWeight: FontWeight.w800,
+                        color: _softInk,
+                        height: 1.1,
+                        letterSpacing: -1.0,
+                      ),
+                    )
                     .animate(delay: 120.ms)
                     .fadeIn(duration: 460.ms)
                     .moveY(begin: 10, end: 0, curve: Curves.easeOutCubic),
@@ -535,11 +530,10 @@ class _PromptPhaseState extends ConsumerState<_PromptPhase> {
             ),
           ),
         ),
-        _Composer(
-          controller: _controller,
-          focus: _focus,
-          onSend: _submit,
-        ).animate(delay: 280.ms).fadeIn(duration: 380.ms).moveY(begin: 12, end: 0),
+        _Composer(controller: _controller, focus: _focus, onSend: _submit)
+            .animate(delay: 280.ms)
+            .fadeIn(duration: 380.ms)
+            .moveY(begin: 12, end: 0),
         const SizedBox(height: 6),
         Center(
           child: TextButton(
@@ -771,8 +765,10 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     'Finding roles for you',
   ];
 
-  final List<_StepStatus> _statuses =
-      List<_StepStatus>.filled(4, _StepStatus.pending);
+  final List<_StepStatus> _statuses = List<_StepStatus>.filled(
+    4,
+    _StepStatus.pending,
+  );
 
   /// Live caption per step. The active step narrates what the agent is doing
   /// right now; finished steps keep a short result line. Drives the per-row
@@ -934,8 +930,11 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
       // them past setup and let them into the app; the agent can read the
       // resume later from chat.
       _stopThinking();
-      _set(0, _StepStatus.failed,
-          detail: "Couldn't read that file — you can still continue.");
+      _set(
+        0,
+        _StepStatus.failed,
+        detail: "Couldn't read that file — you can still continue.",
+      );
       await _finish(roleSet: false);
       return;
     }
@@ -985,10 +984,13 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     // the search when given; otherwise we fall back to the inferred role. It
     // runs in the background; the dashboard picks up the live state from here.
     final instruction = widget.instruction.trim();
-    _set(3, _StepStatus.active,
-        detail: instruction.isNotEmpty
-            ? 'On it — searching live roles…'
-            : 'Searching live roles for you…');
+    _set(
+      3,
+      _StepStatus.active,
+      detail: instruction.isNotEmpty
+          ? 'On it — searching live roles…'
+          : 'Searching live roles for you…',
+    );
     _briefStarted = true;
     unawaited(
       ref.read(passiveAgentProvider.notifier).runBrief(query: _query()),
@@ -1004,13 +1006,15 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     if (rawSegments is! List) return null;
     final segments = rawSegments
         .whereType<Map>()
-        .map((m) => ResumeFitSegment(
-              label: (m['label'] as String?)?.trim() ?? '',
-              percent: (m['percent'] as num?)?.toDouble() ?? 0,
-              rationale: (m['rationale'] as String?)?.trim().isEmpty ?? true
-                  ? null
-                  : (m['rationale'] as String).trim(),
-            ))
+        .map(
+          (m) => ResumeFitSegment(
+            label: (m['label'] as String?)?.trim() ?? '',
+            percent: (m['percent'] as num?)?.toDouble() ?? 0,
+            rationale: (m['rationale'] as String?)?.trim().isEmpty ?? true
+                ? null
+                : (m['rationale'] as String).trim(),
+          ),
+        )
         .where((s) => s.label.isNotEmpty && s.percent > 0)
         .toList();
     if (segments.length < 2) return null;
@@ -1035,8 +1039,9 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final allSettled = _statuses
-        .every((s) => s == _StepStatus.done || s == _StepStatus.failed);
+    final allSettled = _statuses.every(
+      (s) => s == _StepStatus.done || s == _StepStatus.failed,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1065,7 +1070,7 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
                     allSettled
                         ? 'All set — taking you in…'
                         : 'Your copilot is getting to work. This only takes a '
-                            'few seconds.',
+                              'few seconds.',
                     key: ValueKey(allSettled),
                     style: TextStyle(
                       fontSize: 14.5,
@@ -1081,7 +1086,8 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
                 // that flows lime as work passes through it.
                 for (var i = 0; i < _labels.length; i++)
                   _ProcessStep(
-                    label: i == 2 &&
+                    label:
+                        i == 2 &&
                             _statuses[2] == _StepStatus.done &&
                             _inferredRole != null
                         ? 'Target role · $_inferredRole'
@@ -1213,7 +1219,9 @@ class _ProcessStep extends StatelessWidget {
               children: [
                 _Node(status: status),
                 if (!isLast)
-                  Expanded(child: _Connector(done: done, active: active)),
+                  Expanded(
+                    child: _Connector(done: done, active: active),
+                  ),
               ],
             ),
           ),
@@ -1228,8 +1236,9 @@ class _ProcessStep extends StatelessWidget {
                     duration: const Duration(milliseconds: 240),
                     style: TextStyle(
                       fontSize: 15.5,
-                      fontWeight:
-                          active || done ? FontWeight.w800 : FontWeight.w600,
+                      fontWeight: active || done
+                          ? FontWeight.w800
+                          : FontWeight.w600,
                       color: pending ? brand.textMuted : _softInk,
                       letterSpacing: -0.2,
                       height: 1.2,
@@ -1253,7 +1262,7 @@ class _ProcessStep extends StatelessWidget {
                       ),
                     ),
                   ],
-                  if (child != null) child!,
+                  ?child,
                 ],
               ),
             ),
@@ -1303,8 +1312,11 @@ class _Node extends StatelessWidget {
             border: Border.all(color: brand.warning, width: 1.6),
           ),
           alignment: Alignment.center,
-          child:
-              Icon(Icons.priority_high_rounded, size: 14, color: brand.warning),
+          child: Icon(
+            Icons.priority_high_rounded,
+            size: 14,
+            color: brand.warning,
+          ),
         );
       case _StepStatus.active:
         return const _ActiveNode();
@@ -1321,8 +1333,10 @@ class _Node extends StatelessWidget {
           child: Container(
             width: 6,
             height: 6,
-            decoration:
-                BoxDecoration(color: brand.textSoft, shape: BoxShape.circle),
+            decoration: BoxDecoration(
+              color: brand.textSoft,
+              shape: BoxShape.circle,
+            ),
           ),
         );
     }
@@ -1352,14 +1366,21 @@ class _ActiveNode extends StatelessWidget {
       child: Container(
         width: 9,
         height: 9,
-        decoration:
-            BoxDecoration(color: brand.accentBright, shape: BoxShape.circle),
+        decoration: BoxDecoration(
+          color: brand.accentBright,
+          shape: BoxShape.circle,
+        ),
       ),
     );
     if (!shouldAnimate(context)) return core;
     return core
         .animate(onPlay: (c) => c.repeat(reverse: true))
-        .scaleXY(begin: 0.9, end: 1.1, duration: 900.ms, curve: Curves.easeInOut);
+        .scaleXY(
+          begin: 0.9,
+          end: 1.1,
+          duration: 900.ms,
+          curve: Curves.easeInOut,
+        );
   }
 }
 
@@ -1422,8 +1443,8 @@ class _ConnectorState extends State<_Connector>
             child: widget.done
                 ? _doneFill(brand)
                 : widget.active
-                    ? _activeFlow(brand)
-                    : Container(color: brand.border),
+                ? _activeFlow(brand)
+                : Container(color: brand.border),
           ),
         ),
       ),
@@ -1525,8 +1546,9 @@ class _AddContextState extends State<_AddContext> {
   void _toggle() {
     setState(() => _open = !_open);
     if (_open) {
-      WidgetsBinding.instance
-          .addPostFrameCallback((_) => _focus.requestFocus());
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _focus.requestFocus(),
+      );
     }
   }
 
@@ -1558,9 +1580,7 @@ class _AddContextState extends State<_AddContext> {
             child: Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: [
-                for (final c in widget.added) _ContextChip(label: c),
-              ],
+              children: [for (final c in widget.added) _ContextChip(label: c)],
             ),
           ),
         AnimatedSwitcher(
@@ -1747,8 +1767,9 @@ class _OnboardingProgress extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 11,
-                    fontWeight:
-                        i == phaseIndex ? FontWeight.w800 : FontWeight.w600,
+                    fontWeight: i == phaseIndex
+                        ? FontWeight.w800
+                        : FontWeight.w600,
                     color: i <= phaseIndex ? brand.ink : brand.textSoft,
                     letterSpacing: -0.1,
                   ),
@@ -1819,7 +1840,11 @@ class _ProgressSegment extends StatelessWidget {
 
 /// Frosted circular icon button — the sign-out / back-to-login escape hatch.
 class _FrostedIconBtn extends StatelessWidget {
-  const _FrostedIconBtn({required this.icon, required this.onTap, this.tooltip});
+  const _FrostedIconBtn({
+    required this.icon,
+    required this.onTap,
+    this.tooltip,
+  });
 
   final IconData icon;
   final VoidCallback? onTap;

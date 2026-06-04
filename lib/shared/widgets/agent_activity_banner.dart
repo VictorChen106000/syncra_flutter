@@ -34,7 +34,7 @@ class AgentActivityBanner extends ConsumerWidget {
           opacity: animation,
           child: SizeTransition(
             sizeFactor: animation,
-            axisAlignment: -1.0,
+            alignment: Alignment.topCenter,
             child: child,
           ),
         );
@@ -46,9 +46,8 @@ class AgentActivityBanner extends ConsumerWidget {
               notification: active,
               onPrimary: () => _onPrimary(ref, active),
               onSecondary: () => _onSecondary(ref, active),
-              onDismiss: () => ref
-                  .read(notificationsProvider.notifier)
-                  .markRead(active.id),
+              onDismiss: () =>
+                  ref.read(notificationsProvider.notifier).markRead(active.id),
             ),
     );
   }
@@ -128,108 +127,108 @@ class _BannerCard extends StatelessWidget {
     final brand = context.brand;
     final isDark = brand.isDark;
     return SafeArea(
-      bottom: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-        child: Material(
-          color: Colors.transparent,
-          child: Container(
-            decoration: BoxDecoration(
-              color: isDark
-                  ? brand.surface.withValues(alpha: 0.96)
-                  : brand.surface,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: brand.border),
-              boxShadow: [
-                BoxShadow(
-                  color: brand.shadow,
-                  blurRadius: 24,
-                  offset: const Offset(0, 10),
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? brand.surface.withValues(alpha: 0.96)
+                      : brand.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: brand.border),
+                  boxShadow: [
+                    BoxShadow(
+                      color: brand.shadow,
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
+                padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    const _PulsingAgentDot(),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const _PulsingAgentDot(),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'AGENT',
-                                style: TextStyle(
-                                  color: brand.accent,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 1.4,
-                                ),
+                              Row(
+                                children: [
+                                  Text(
+                                    'AGENT',
+                                    style: TextStyle(
+                                      color: brand.accent,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 1.4,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    _kindLabel(notification.kind),
+                                    style: TextStyle(
+                                      color: brand.textMuted,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 1.0,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 8),
+                              const SizedBox(height: 4),
                               Text(
-                                _kindLabel(notification.kind),
+                                notification.title,
+                                style: TextStyle(
+                                  color: brand.ink,
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.2,
+                                  height: 1.25,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                notification.body,
                                 style: TextStyle(
                                   color: brand.textMuted,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 1.0,
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w500,
+                                  height: 1.45,
                                 ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ],
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            notification.title,
-                            style: TextStyle(
-                              color: brand.ink,
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.2,
-                              height: 1.25,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            notification.body,
-                            style: TextStyle(
-                              color: brand.textMuted,
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w500,
-                              height: 1.45,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(width: 6),
+                        _DismissChip(onTap: onDismiss),
+                      ],
                     ),
-                    const SizedBox(width: 6),
-                    _DismissChip(onTap: onDismiss),
+                    const SizedBox(height: 12),
+                    _BannerActions(
+                      notification: notification,
+                      onPrimary: onPrimary,
+                      onSecondary: onSecondary,
+                      onDismiss: onDismiss,
+                    ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                _BannerActions(
-                  notification: notification,
-                  onPrimary: onPrimary,
-                  onSecondary: onSecondary,
-                  onDismiss: onDismiss,
-                ),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
-    )
+        )
         .animate()
         .fadeIn(duration: 220.ms)
         .moveY(begin: -14, end: 0, curve: Curves.easeOutCubic);
@@ -268,21 +267,16 @@ class _BannerActions extends StatelessWidget {
     final isProposal = notification.kind == NotificationKind.proposal;
     final primaryLabel = notification.actionLabel ?? 'Open';
     if (isProposal) {
-      final secondaryLabel = notification.secondaryActionLabel ?? 'Make changes';
+      final secondaryLabel =
+          notification.secondaryActionLabel ?? 'Make changes';
       return Row(
         children: [
           Expanded(
-            child: _SecondaryAction(
-              label: secondaryLabel,
-              onTap: onSecondary,
-            ),
+            child: _SecondaryAction(label: secondaryLabel, onTap: onSecondary),
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: _PrimaryAction(
-              label: primaryLabel,
-              onTap: onPrimary,
-            ),
+            child: _PrimaryAction(label: primaryLabel, onTap: onPrimary),
           ),
         ],
       );
@@ -290,16 +284,10 @@ class _BannerActions extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: _PrimaryAction(
-            label: primaryLabel,
-            onTap: onPrimary,
-          ),
+          child: _PrimaryAction(label: primaryLabel, onTap: onPrimary),
         ),
         const SizedBox(width: 8),
-        _SecondaryAction(
-          label: 'Later',
-          onTap: onDismiss,
-        ),
+        _SecondaryAction(label: 'Later', onTap: onDismiss),
       ],
     );
   }
@@ -312,14 +300,14 @@ class _PulsingAgentDot extends StatelessWidget {
   Widget build(BuildContext context) {
     final brand = context.brand;
     return Container(
-      width: 10,
-      height: 10,
-      margin: const EdgeInsets.only(top: 4),
-      decoration: BoxDecoration(
-        color: brand.accent,
-        shape: BoxShape.circle,
-      ),
-    )
+          width: 10,
+          height: 10,
+          margin: const EdgeInsets.only(top: 4),
+          decoration: BoxDecoration(
+            color: brand.accent,
+            shape: BoxShape.circle,
+          ),
+        )
         .animate(onPlay: (c) => c.repeat(reverse: true))
         .fadeIn(begin: 0.4, duration: 900.ms, curve: Curves.easeInOut);
   }
@@ -406,11 +394,7 @@ class _DismissChip extends StatelessWidget {
           width: 28,
           height: 28,
           alignment: Alignment.center,
-          child: Icon(
-            Icons.close_rounded,
-            size: 16,
-            color: brand.textMuted,
-          ),
+          child: Icon(Icons.close_rounded, size: 16, color: brand.textMuted),
         ),
       ),
     );

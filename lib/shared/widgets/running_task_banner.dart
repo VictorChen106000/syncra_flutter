@@ -29,7 +29,10 @@ class RunningTaskBanner extends ConsumerWidget {
     // Yield to a pending intercept/proposal so the user-facing "needs action"
     // banner gets the top slot — the running pill is informational, those
     // are blocking.
-    final hasActionable = ref.watch(notificationsProvider).items.any(
+    final hasActionable = ref
+        .watch(notificationsProvider)
+        .items
+        .any(
           (n) =>
               n.unread &&
               (n.kind == NotificationKind.intercept ||
@@ -41,15 +44,13 @@ class RunningTaskBanner extends ConsumerWidget {
     return ListenableBuilder(
       listenable: router.routerDelegate,
       builder: (context, _) {
-        final location =
-            router.routerDelegate.currentConfiguration.uri.path;
+        final location = router.routerDelegate.currentConfiguration.uri.path;
         final isRunning = task.status == RunningTaskStatus.running;
         final suppressForOrigin =
             isRunning && task.originRoutes.contains(location);
         final suppressForActionable = isRunning && hasActionable;
-        final visible = task.isActive &&
-            !suppressForOrigin &&
-            !suppressForActionable;
+        final visible =
+            task.isActive && !suppressForOrigin && !suppressForActionable;
         return AnimatedSwitcher(
           duration: const Duration(milliseconds: 240),
           switchInCurve: Curves.easeOutCubic,
@@ -58,7 +59,7 @@ class RunningTaskBanner extends ConsumerWidget {
             opacity: animation,
             child: SizeTransition(
               sizeFactor: animation,
-              axisAlignment: -1,
+              alignment: Alignment.topCenter,
               child: child,
             ),
           ),
@@ -116,99 +117,99 @@ class _TaskCard extends StatelessWidget {
           };
 
     return SafeArea(
-      bottom: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              decoration: BoxDecoration(
-                color: isDark
-                    ? brand.surface.withValues(alpha: 0.96)
-                    : brand.surface,
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onTap,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: brand.border),
-                boxShadow: [
-                  BoxShadow(
-                    color: brand.shadow,
-                    blurRadius: 24,
-                    offset: const Offset(0, 10),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? brand.surface.withValues(alpha: 0.96)
+                        : brand.surface,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: brand.border),
+                    boxShadow: [
+                      BoxShadow(
+                        color: brand.shadow,
+                        blurRadius: 24,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _StatusBadge(status: task.status, accent: accent),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _StatusBadge(status: task.status, accent: accent),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            Row(
+                              children: [
+                                Text(
+                                  'AGENT',
+                                  style: TextStyle(
+                                    color: brand.accent,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 1.4,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '· $eyebrow',
+                                  style: TextStyle(
+                                    color: brand.textMuted,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 1.0,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
                             Text(
-                              'AGENT',
+                              task.label,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                color: brand.accent,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.4,
+                                color: brand.ink,
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.2,
+                                height: 1.25,
                               ),
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(height: 4),
                             Text(
-                              '· $eyebrow',
+                              body,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 color: brand.textMuted,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 1.0,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w500,
+                                height: 1.45,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          task.label,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: brand.ink,
-                            fontSize: 14.5,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.2,
-                            height: 1.25,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          body,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: brand.textMuted,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w500,
-                            height: 1.45,
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(width: 6),
+                      _DismissButton(onTap: onDismiss),
+                    ],
                   ),
-                  const SizedBox(width: 6),
-                  _DismissButton(onTap: onDismiss),
-                ],
+                ),
               ),
             ),
           ),
-        ),
-      ),
-    )
+        )
         .animate()
         .fadeIn(duration: 220.ms)
         .moveY(begin: -14, end: 0, curve: Curves.easeOutCubic);
@@ -270,11 +271,7 @@ class _DismissButton extends StatelessWidget {
           width: 28,
           height: 28,
           alignment: Alignment.center,
-          child: Icon(
-            Icons.close_rounded,
-            size: 16,
-            color: brand.textMuted,
-          ),
+          child: Icon(Icons.close_rounded, size: 16, color: brand.textMuted),
         ),
       ),
     );
