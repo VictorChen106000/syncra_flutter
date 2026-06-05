@@ -1482,47 +1482,36 @@ class _AutoApplyChoiceList<T> extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(72, 0, 16, 12),
-      child: Align(
-        alignment: Alignment.centerRight,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 218, maxWidth: 264),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: brand.surfaceMuted.withValues(
-                alpha: brand.isDark ? 0.86 : 1,
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: brand.accent.withValues(
-                  alpha: brand.isDark ? 0.38 : 0.46,
-                ),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: brand.shadow.withValues(
-                    alpha: brand.isDark ? 0.42 : 0.14,
-                  ),
-                  blurRadius: 22,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final value in values)
-                  _AutoApplyChoiceTile<T>(
-                    value: value,
-                    selected: value == selected,
-                    label: labelFor(value),
-                    onSelected: onSelected,
-                  ),
-              ],
-            ),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        width: double.infinity,
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: brand.surfaceMuted.withValues(alpha: brand.isDark ? 0.86 : 1),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: brand.accent.withValues(alpha: brand.isDark ? 0.38 : 0.46),
           ),
+          boxShadow: [
+            BoxShadow(
+              color: brand.shadow.withValues(alpha: brand.isDark ? 0.42 : 0.14),
+              blurRadius: 22,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final value in values)
+              _AutoApplyChoiceTile<T>(
+                value: value,
+                selected: value == selected,
+                label: labelFor(value),
+                onSelected: onSelected,
+              ),
+          ],
         ),
       ),
     );
