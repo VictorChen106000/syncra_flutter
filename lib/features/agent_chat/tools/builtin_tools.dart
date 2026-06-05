@@ -54,7 +54,7 @@ void registerBuiltinTools(ToolRegistry registry) {
   _registerBuildResume(registry);
   _registerDraftEmail(registry, jobs, paraphrase, orchestrator, pipeline);
   _registerLookupHiringManager(registry);
-  _registerSaveToTracker(registry, jobs, applications);
+  _registerSaveToTracker(registry, jobs, applications, pipeline);
   _registerSendEmail(registry);
 }
 
@@ -1427,6 +1427,7 @@ void _registerSaveToTracker(
   ToolRegistry registry,
   JobsRepository jobsRepo,
   ApplicationsRepository applicationsRepo,
+  PipelineRepository pipeline,
 ) {
   registry.register(
     tool: const Tool(
@@ -1473,6 +1474,13 @@ void _registerSaveToTracker(
       if (args['mark_sent'] == true) {
         await applicationsRepo.markSent(uid, appId);
       }
+
+      try {
+        await pipeline.approveByJobId(uid: uid, jobId: job.id);
+      } catch (e) {
+        debugPrint('save_to_tracker: approve pipeline card failed: $e');
+      }
+
       return ToolResult(
         summary: 'Saved ${job.company} to tracker · ${trust.riskLabel}',
         data: {

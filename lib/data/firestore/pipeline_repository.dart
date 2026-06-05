@@ -74,7 +74,10 @@ class PipelineRepository {
         .map(
           (snap) => snap.docs
               .map(_fromDoc)
-              .where((card) => card.status == PipelineCardStatus.pending)
+              .where(
+                (card) =>
+                    card.status == PipelineCardStatus.pending && !card.isSent,
+              )
               .toList(growable: false),
         );
   }
@@ -88,7 +91,9 @@ class PipelineRepository {
 
     return snap.docs
         .map(_fromDoc)
-        .where((card) => card.status == PipelineCardStatus.pending)
+        .where(
+          (card) => card.status == PipelineCardStatus.pending && !card.isSent,
+        )
         .toList(growable: false);
   }
 
@@ -98,6 +103,23 @@ class PipelineRepository {
 
   Future<void> approve(String uid, String cardId) {
     return _paths.pipeline(uid).doc(cardId).update({'status': 'approved'});
+  }
+
+  Future<void> approveByJobId({
+    required String uid,
+    required String jobId,
+  }) async {
+    final cleanJobId = jobId.trim();
+    if (cleanJobId.isEmpty) return;
+
+    final snap = await _paths
+        .pipeline(uid)
+        .where('job.id', isEqualTo: cleanJobId)
+        .get();
+
+    for (final doc in snap.docs) {
+      await doc.reference.update({'status': 'approved'});
+    }
   }
 
   /// Moves the pipeline card(s) for [jobId] forward to [stage] — this is what
@@ -112,17 +134,34 @@ class PipelineRepository {
     required String jobId,
     required PipelineStage stage,
   }) async {
+    final cleanJobId = jobId.trim();
+    if (cleanJobId.isEmpty) return;
+
     final snap = await _paths
         .pipeline(uid)
-        .where('job.id', isEqualTo: jobId)
+        .where('job.id', isEqualTo: cleanJobId)
         .get();
     if (snap.docs.isEmpty) return;
 
     final target = _stageRank(stage);
+    final completesPipeline =
+        stage == PipelineStage.sent || stage == PipelineStage.replied;
+
     for (final doc in snap.docs) {
       final current = _stageFromName(doc.data()['stage'] as String?);
-      if (_stageRank(current) >= target) continue;
-      await doc.reference.update({'stage': _stageToName(stage)});
+      final shouldAdvanceStage = _stageRank(current) < target;
+
+      if (!shouldAdvanceStage && !completesPipeline) continue;
+
+      final patch = <String, dynamic>{};
+      if (shouldAdvanceStage) {
+        patch['stage'] = _stageToName(stage);
+      }
+      if (completesPipeline) {
+        patch['status'] = 'approved';
+      }
+
+      await doc.reference.update(patch);
     }
   }
 
