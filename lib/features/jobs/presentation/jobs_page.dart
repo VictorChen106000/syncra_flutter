@@ -15,6 +15,7 @@ import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/gooey_orb.dart';
 import '../../agent/state/passive_agent_notifier.dart';
 import '../../agent_chat/state/agent_chat_notifier.dart';
+import '../services/application_quality_meter.dart';
 import '../state/jobs_notifier.dart';
 
 class JobsPage extends ConsumerStatefulWidget {
@@ -710,9 +711,9 @@ class _ApplicationQualityMeter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final score = _applicationQualityScore(card);
-    final color = _qualityColor(score, brand);
-    final reasons = _applicationQualityReasons(card).take(2).join(' · ');
+    final quality = evaluateApplicationQuality(card);
+    final color = _qualityColor(quality.score, brand);
+    final reasons = quality.reasons.take(2).join(' · ');
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -730,7 +731,7 @@ class _ApplicationQualityMeter extends StatelessWidget {
               const SizedBox(width: 7),
               Expanded(
                 child: Text(
-                  _applicationQualityLabel(score),
+                  quality.label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -742,7 +743,7 @@ class _ApplicationQualityMeter extends StatelessWidget {
                 ),
               ),
               Text(
-                '$score%',
+                '${quality.score}%',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w900,
@@ -756,7 +757,7 @@ class _ApplicationQualityMeter extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(99),
             child: LinearProgressIndicator(
-              value: score / 100,
+              value: quality.score / 100,
               minHeight: 5,
               backgroundColor: brand.border.withValues(alpha: 0.55),
               valueColor: AlwaysStoppedAnimation<Color>(color),
@@ -782,93 +783,11 @@ class _ApplicationQualityMeter extends StatelessWidget {
   }
 }
 
-int _applicationQualityScore(PipelineCard card) {
-  var score = 35;
-
-  score += switch (card.job.category) {
-    JobCategory.ready => 25,
-    JobCategory.inputNeeded => 14,
-    JobCategory.exploration => 6,
-  };
-
-  score += switch (card.trustRiskLevel) {
-    'low' => 20,
-    'unchecked' => 8,
-    'medium' => -8,
-    'high' => -30,
-    _ => 0,
-  };
-
-  if (card.job.missingSkills.isEmpty) {
-    score += 15;
-  } else {
-    score -= (card.job.missingSkills.length * 5).clamp(0, 15).toInt();
-  }
-
-  score += switch (card.stage) {
-    PipelineStage.replied || PipelineStage.sent => 18,
-    PipelineStage.drafted => 16,
-    PipelineStage.tailored => 10,
-    PipelineStage.matched => 0,
-  };
-
-  return score.clamp(0, 100).toInt();
-}
-
-String _applicationQualityLabel(int score) {
-  if (score >= 80) return 'Application quality · Ready';
-  if (score >= 60) return 'Application quality · Needs polish';
-  if (score >= 40) return 'Application quality · Needs info';
-  return 'Application quality · Blocked';
-}
-
 Color _qualityColor(int score, BrandTheme brand) {
   if (score >= 80) return brand.success;
   if (score >= 60) return brand.warning;
   if (score >= 40) return brand.textMuted;
   return brand.danger;
-}
-
-List<String> _applicationQualityReasons(PipelineCard card) {
-  final reasons = <String>[];
-
-  if (card.trustRiskLevel == 'high') {
-    reasons.add('Trust blocked');
-  } else if (card.trustRiskLevel == 'medium') {
-    reasons.add('Verify trust first');
-  } else if (card.trustRiskLevel == 'low') {
-    reasons.add('Trust looks okay');
-  } else {
-    reasons.add('Trust not checked');
-  }
-
-  switch (card.job.category) {
-    case JobCategory.ready:
-      reasons.add('Resume fit strong');
-    case JobCategory.inputNeeded:
-      reasons.add('Needs missing info');
-    case JobCategory.exploration:
-      reasons.add('Stretch role');
-  }
-
-  if (card.job.missingSkills.isNotEmpty) {
-    reasons.add('Missing ${card.job.missingSkills.take(2).join(', ')}');
-  }
-
-  switch (card.stage) {
-    case PipelineStage.drafted:
-      reasons.add('Draft ready');
-    case PipelineStage.tailored:
-      reasons.add('Resume tailored');
-    case PipelineStage.sent:
-      reasons.add('Already sent');
-    case PipelineStage.replied:
-      reasons.add('Reply received');
-    case PipelineStage.matched:
-      break;
-  }
-
-  return reasons;
 }
 
 /// Warm accent for a card, keyed to match quality. Deep enough to stay legible
