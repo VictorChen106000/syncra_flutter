@@ -32,8 +32,8 @@ final agentServiceProvider = Provider<AgentService>((ref) {
   return AnthropicChatService(registry: registry);
 });
 
-/// Persists the text-only transcript so chats survive app restarts. Scoped
-/// to the signed-in user's Firestore subtree.
+/// Persists the recoverable full chat UI snapshot so chats survive app
+/// restarts. Scoped to the signed-in user's Firestore subtree.
 final chatHistoryRepositoryProvider = Provider<ChatHistoryRepository>(
   (ref) => ChatHistoryRepository(),
 );
@@ -100,6 +100,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
   late ResumeTailorOrchestrator _orchestrator;
   StreamSubscription<AgentEvent>? _activeSub;
   AgentTurn? _activeTurn;
+  Timer? _persistDebounce;
   int _seq = 0;
   bool _hydrating = false;
   bool _serviceReady = false;
@@ -120,6 +121,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     ref.onDispose(() {
       _serviceReady = false;
       _activeSub?.cancel();
+      _persistDebounce?.cancel();
     });
 
     // Hydrate the most recent saved conversation in the background. We start
@@ -184,7 +186,20 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     }
   }
 
-  void _persist() {
+  /// Debounced snapshot write for high-frequency UI changes such as streamed
+  /// blocks, tool completion updates, and card-state transitions.
+  void _schedulePersist() {
+    if (_hydrating) return;
+    _persistDebounce?.cancel();
+    _persistDebounce = Timer(const Duration(milliseconds: 450), _persistNow);
+  }
+
+  /// Immediate snapshot write for durable boundaries: user sends a prompt,
+  /// a turn ends/fails/stops, or the user settles a card/action.
+  void _persistNow() {
+    _persistDebounce?.cancel();
+    _persistDebounce = null;
+
     if (_hydrating) return;
     final uid = _uid;
     if (uid == null) return;
@@ -396,23 +411,9 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     );
   }
 
-  AgentTurn _buildHistoryNotice() {
-    return AgentTurn(
-      id: 'turn-history-notice',
-      blocks: [
-        TextBlock(
-          id: 'history-notice-text',
-          text:
-              'Restored transcript. Tool cards, resume diffs, and email review buttons are saved as text summaries in history. Continue below or start a new chat for a live workflow.',
-        ),
-      ],
-      isStreaming: false,
-    );
-  }
-
   List<ChatItem> _restoreHistoryItems(List<ChatItem> saved) {
     if (saved.isEmpty) return [_buildOpener(null)];
-    return [_buildHistoryNotice(), ...saved];
+    return [...saved];
   }
 
   /// Scopes the chat to [job] and replaces the opener with a contextual
@@ -425,6 +426,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
       return;
     }
 
+    _persistNow();
     _service.resetConversation();
     _threadPipelineMarkedComplete = false;
     state = AgentChatState(
@@ -438,6 +440,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
   /// to history (if it had content), so nothing is lost — no confirm needed.
   void newConversation() {
     if (state.isStreaming) return;
+    _persistNow();
     _service.resetConversation();
     _threadPipelineMarkedComplete = false;
     state = AgentChatState(
@@ -452,6 +455,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     if (conversationId == state.conversationId) return;
     final uid = _uid;
     if (uid == null) return;
+    _persistNow();
     _service.resetConversation();
     _threadPipelineMarkedComplete = false;
     final saved = await _history.loadConversation(uid, conversationId);
@@ -489,7 +493,12 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     if (uid == null) return;
     await _history.delete(uid, conversationId);
     if (conversationId == state.conversationId) {
-      newConversation();
+      _service.resetConversation();
+      _threadPipelineMarkedComplete = false;
+      state = AgentChatState(
+        items: [_buildOpener(null)],
+        conversationId: _newConversationId(),
+      );
     }
   }
 
@@ -528,6 +537,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     final turn = AgentTurn(id: _nextId('turn'));
     _activeTurn = turn;
     state = state.copyWith(items: [...next, turn], isStreaming: true);
+    _persistNow();
     _runningTask.start(
       'Prompt is running…',
       // Stay quiet on the agent chat and the resume-flow surfaces — the user
@@ -559,6 +569,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     _activeTurn = turn;
 
     state = state.copyWith(items: [...state.items, turn], isStreaming: true);
+    _persistNow();
 
     _activeSub = _service
         .runPrompt(prompt: clean, threaded: true)
@@ -649,6 +660,7 @@ Do not call send_email. Sending still requires explicit user approval.
     _mirrorToInbox(event, turn);
     // Rebuild the outer items list so Riverpod sees a new reference.
     state = state.copyWith(items: [...state.items]);
+    _schedulePersist();
   }
 
   /// Mirrors *actionable* agent events onto the inbox. Only events that
@@ -935,7 +947,7 @@ Use the user's answer to continue:
     _activeSub = null;
     state = state.copyWith(items: [...state.items], isStreaming: false);
     _runningTask.complete();
-    _persist();
+    _persistNow();
   }
 
   void _failActiveTurn(String message) {
@@ -949,7 +961,7 @@ Use the user's answer to continue:
     _activeSub = null;
     state = state.copyWith(items: [...state.items], isStreaming: false);
     _runningTask.fail();
-    _persist();
+    _persistNow();
   }
 
   void stopStreaming() {
@@ -961,7 +973,7 @@ Use the user's answer to continue:
     _activeSub = null;
     state = state.copyWith(items: [...state.items], isStreaming: false);
     _runningTask.dismiss();
-    _persist();
+    _persistNow();
   }
 
   /// Drops the most recent [AgentTurn] and re-runs the user prompt that
@@ -993,6 +1005,7 @@ Use the user's answer to continue:
     block.state = ActionState.accepted;
     ref.read(notificationsProvider.notifier).markReadByTargetBlock(blockId);
     state = state.copyWith(items: [...state.items]);
+    _persistNow();
 
     _continueAfterAcceptedProposal(block);
   }
@@ -1048,6 +1061,7 @@ Use the user's answer to continue:
     block.state = ActionState.dismissed;
     ref.read(notificationsProvider.notifier).markReadByTargetBlock(blockId);
     state = state.copyWith(items: [...state.items]);
+    _persistNow();
   }
 
   ActionProposalBlock? _findProposal(String blockId) {
@@ -1090,6 +1104,7 @@ Use the user's answer to continue:
     state = state.copyWith(items: [...state.items]);
 
     _markPipelineDraftProcessed(block);
+    _persistNow();
   }
 
   void _markPipelineDraftProcessed(EmailDraftBlock block) {
@@ -1136,6 +1151,7 @@ Use the user's answer to continue:
     if (block.decisions[editIndex] == decision) return;
     block.decisions[editIndex] = decision;
     state = state.copyWith(items: [...state.items]);
+    _schedulePersist();
   }
 
   /// Renders the tailored PDF for the accepted edits and moves the card into a
@@ -1157,6 +1173,7 @@ Use the user's answer to continue:
       block.applyError = null;
       block.state = ProposedEditsState.applied;
       state = state.copyWith(items: [...state.items]);
+      _persistNow();
       return;
     }
 
@@ -1164,12 +1181,14 @@ Use the user's answer to continue:
     if (uid == null) {
       block.applyError = 'Sign in to apply resume edits.';
       state = state.copyWith(items: [...state.items]);
+      _persistNow();
       return;
     }
 
     block.state = ProposedEditsState.applying;
     block.applyError = null;
     state = state.copyWith(items: [...state.items]);
+    _schedulePersist();
 
     final error = await _renderEditsPreview(block, uid);
     if (error == null) {
@@ -1181,6 +1200,7 @@ Use the user's answer to continue:
       block.applyError = error;
     }
     state = state.copyWith(items: [...state.items]);
+    _persistNow();
   }
 
   /// Renders the tailored PDF for [block]'s accepted edits and stores the
@@ -1244,6 +1264,7 @@ Use the user's answer to continue:
     block.state = ProposedEditsState.applying;
     block.applyError = null;
     state = state.copyWith(items: [...state.items]);
+    _schedulePersist();
 
     final error = await _renderEditsPreview(block, uid);
     if (error == null) {
@@ -1253,6 +1274,7 @@ Use the user's answer to continue:
       block.applyError = error;
     }
     state = state.copyWith(items: [...state.items]);
+    _persistNow();
   }
 
   // -------------------------------------------------------------------------
@@ -1290,6 +1312,7 @@ Use the user's answer to continue:
     }
     block.state = ResumeDraftState.ready;
     state = state.copyWith(items: [...state.items]);
+    _persistNow();
   }
 
   /// Persists a previewed from-scratch resume as a new `source: manual` base
@@ -1305,6 +1328,7 @@ Use the user's answer to continue:
     if (uid == null) {
       block.error = 'Sign in to save resumes.';
       state = state.copyWith(items: [...state.items]);
+      _persistNow();
       return;
     }
 
@@ -1321,9 +1345,11 @@ Use the user's answer to continue:
           .read(resumeProvider.notifier)
           .primeBytes(saved.id, block.previewBytes!);
       state = state.copyWith(items: [...state.items]);
+      _persistNow();
     } catch (e) {
       block.error = _shortError(e);
       state = state.copyWith(items: [...state.items]);
+      _persistNow();
     }
   }
 
@@ -1341,6 +1367,7 @@ Use the user's answer to continue:
     if (uid == null) {
       block.applyError = 'Sign in to save resumes.';
       state = state.copyWith(items: [...state.items]);
+      _persistNow();
       return;
     }
 
@@ -1359,11 +1386,13 @@ Use the user's answer to continue:
           .read(resumeProvider.notifier)
           .primeBytes(saved.id, block.previewBytes!);
       state = state.copyWith(items: [...state.items]);
+      _persistNow();
 
       _continueAfterSavedResume(block);
     } catch (e) {
       block.applyError = _shortError(e);
       state = state.copyWith(items: [...state.items]);
+      _persistNow();
     }
   }
 
@@ -1384,6 +1413,7 @@ Use the user's answer to continue:
     if (block.state != ProposedEditsState.reviewing) return;
     block.state = ProposedEditsState.dismissed;
     state = state.copyWith(items: [...state.items]);
+    _persistNow();
   }
 
   InputRequestBlock? _findInputRequest(String blockId) {
@@ -1409,6 +1439,7 @@ Use the user's answer to continue:
     block.answer = trimmed;
     ref.read(notificationsProvider.notifier).markReadByTargetBlock(blockId);
     state = state.copyWith(items: [...state.items]);
+    _persistNow();
 
     final continuation = block.continuationPrompt?.trim();
     if (continuation != null && continuation.isNotEmpty) {
