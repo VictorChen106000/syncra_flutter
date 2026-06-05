@@ -137,7 +137,15 @@ class ProposedEditsBlock extends AgentBlock {
   /// [ProposedEditsState.applied]. The preview screen reads this; it's only
   /// persisted to the resume library when the user taps Save (see
   /// [savedResumeId]). Mutable so the notifier can fill it in after rendering.
+  ///
+  /// Bytes are runtime-only. To survive app refresh/restart, the notifier also
+  /// uploads them to [previewStoragePath] and rehydrates [previewBytes] when
+  /// restoring chat history.
   Uint8List? previewBytes;
+
+  /// Firebase Storage path for the unsaved preview PDF. Stored in the chat
+  /// snapshot so old preview cards can recover their PDF bytes after restart.
+  String? previewStoragePath;
 
   /// The [ResumeJson] behind [previewBytes] — handed to the orchestrator's
   /// save step so the new resume doc caches its parsed structure.
@@ -203,7 +211,15 @@ class ResumeDraftBlock extends AgentBlock {
 
   /// The rendered-but-unsaved PDF, set once the render completes. The preview
   /// screen reads this; null until then (or if rendering failed).
+  ///
+  /// Bytes are runtime-only. To survive app refresh/restart, the notifier also
+  /// uploads them to [previewStoragePath] and rehydrates [previewBytes] when
+  /// restoring chat history.
   Uint8List? previewBytes;
+
+  /// Firebase Storage path for the unsaved preview PDF. Stored in the chat
+  /// snapshot so old preview cards can recover their PDF bytes after restart.
+  String? previewStoragePath;
 
   /// Set once the previewed PDF has been saved to the resume library. While
   /// null, the draft exists only in memory.

@@ -83,6 +83,8 @@ void main() {
             )
             ..resolvedResumeId = 'resume-1'
             ..savedResumeId = 'resume-2'
+            ..previewStoragePath =
+                'users/u1/conversation_previews/conv-1/edits-1.pdf'
             ..appliedCount = 1
             ..skippedCount = 0
             ..previewResume = _resume();
@@ -97,6 +99,10 @@ void main() {
       expect(restored.resumeId, 'resume-1');
       expect(restored.resolvedResumeId, 'resume-1');
       expect(restored.savedResumeId, 'resume-2');
+      expect(
+        restored.previewStoragePath,
+        'users/u1/conversation_previews/conv-1/edits-1.pdf',
+      );
       expect(restored.state, ProposedEditsState.applied);
       expect(restored.decisions.single, EditDecision.accepted);
       expect(restored.edits.single.targetPath, 'experience[0].bullets[0]');
@@ -104,12 +110,16 @@ void main() {
     });
 
     test('round-trips resume draft block state', () {
-      final block = ResumeDraftBlock(
-        id: 'draft-1',
-        resume: _resume(),
-        fileName: 'Alex_Chen_Resume.pdf',
-        state: ResumeDraftState.ready,
-      )..savedResumeId = 'resume-3';
+      final block =
+          ResumeDraftBlock(
+              id: 'draft-1',
+              resume: _resume(),
+              fileName: 'Alex_Chen_Resume.pdf',
+              state: ResumeDraftState.ready,
+            )
+            ..savedResumeId = 'resume-3'
+            ..previewStoragePath =
+                'users/u1/conversation_previews/conv-1/draft-1.pdf';
 
       final decoded = ChatSnapshotCodec.decodeBlock(
         ChatSnapshotCodec.encodeBlock(block),
@@ -120,6 +130,10 @@ void main() {
       expect(restored.fileName, 'Alex_Chen_Resume.pdf');
       expect(restored.state, ResumeDraftState.ready);
       expect(restored.savedResumeId, 'resume-3');
+      expect(
+        restored.previewStoragePath,
+        'users/u1/conversation_previews/conv-1/draft-1.pdf',
+      );
       expect(restored.resume.header.name, 'Alex Chen');
     });
 

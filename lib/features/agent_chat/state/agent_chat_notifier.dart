@@ -22,6 +22,7 @@ import '../services/anthropic_chat_service.dart';
 import '../services/chat_history_repository.dart';
 import '../tools/builtin_tools.dart';
 import '../tools/tool_registry.dart';
+import 'dart:typed_data';
 
 /// The active [AgentService] for the app — Claude via the tool-use loop.
 /// Requires an `ANTHROPIC_API_KEY`; without one the agent surfaces an error
@@ -97,6 +98,7 @@ class AgentChatState {
 class AgentChatNotifier extends Notifier<AgentChatState> {
   late AgentService _service;
   late ChatHistoryRepository _history;
+  late ResumesRepository _resumesRepository;
   late ResumeTailorOrchestrator _orchestrator;
   StreamSubscription<AgentEvent>? _activeSub;
   AgentTurn? _activeTurn;
@@ -111,8 +113,9 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     _service = ref.watch(agentServiceProvider);
     _serviceReady = true;
     _history = ref.watch(chatHistoryRepositoryProvider);
+    _resumesRepository = ResumesRepository();
     _orchestrator = ResumeTailorOrchestrator(
-      resumesRepository: ResumesRepository(),
+      resumesRepository: _resumesRepository,
       jobsRepository: JobsRepository(),
       parser: ResumeParserService(),
     );
@@ -182,6 +185,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
         saved.items,
         threadJob: saved.threadJob,
       );
+      unawaited(_restorePreviewBytesFromStorage());
     } catch (_) {
       // Best-effort hydration; failures are silent so a flaky network never
       // blocks the chat from working.
@@ -221,6 +225,78 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
         threadJob: state.threadJob,
       ),
     );
+  }
+
+  Future<void> _storePreviewBytes(AgentBlock block, List<int> bytes) async {
+    final uid = _uid;
+    if (uid == null || bytes.isEmpty) return;
+
+    try {
+      final path = await _resumesRepository.uploadConversationPreview(
+        uid: uid,
+        conversationId: state.conversationId,
+        blockId: block.id,
+        bytes: Uint8List.fromList(bytes),
+      );
+
+      switch (block) {
+        case ProposedEditsBlock():
+          block.previewStoragePath = path;
+        case ResumeDraftBlock():
+          block.previewStoragePath = path;
+        default:
+          return;
+      }
+    } catch (e) {
+      debugPrint('chat preview upload failed: $e');
+    }
+  }
+
+  Future<void> _restorePreviewBytesFromStorage() async {
+    final uid = _uid;
+    if (uid == null) return;
+
+    var changed = false;
+
+    for (final item in state.items) {
+      if (item is! AgentTurn) continue;
+
+      for (final block in item.blocks) {
+        if (block is ProposedEditsBlock) {
+          final path = block.previewStoragePath;
+          if (block.previewBytes != null || path == null || path.isEmpty) {
+            continue;
+          }
+
+          final bytes = await _resumesRepository.downloadConversationPreview(
+            path,
+          );
+          if (bytes == null || bytes.isEmpty) continue;
+
+          block.previewBytes = bytes;
+          changed = true;
+          continue;
+        }
+
+        if (block is ResumeDraftBlock) {
+          final path = block.previewStoragePath;
+          if (block.previewBytes != null || path == null || path.isEmpty) {
+            continue;
+          }
+
+          final bytes = await _resumesRepository.downloadConversationPreview(
+            path,
+          );
+          if (bytes == null || bytes.isEmpty) continue;
+
+          block.previewBytes = bytes;
+          changed = true;
+        }
+      }
+    }
+
+    if (!changed) return;
+    state = state.copyWith(items: [...state.items]);
   }
 
   List<ChatItem> _itemsForHistory(List<ChatItem> items) {
@@ -480,6 +556,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
       saved.items,
       threadJob: saved.threadJob,
     );
+    unawaited(_restorePreviewBytesFromStorage());
   }
 
   /// Resume ids attached to the most recent [UserMessage] in a loaded
@@ -1243,6 +1320,7 @@ Use the user's answer to continue:
       block.appliedCount = rendered.appliedCount;
       block.skippedCount = rendered.skippedCount;
       block.resolvedResumeId = resumeId;
+      await _storePreviewBytes(block, rendered.bytes);
       return null;
     } catch (e) {
       return _shortError(e);
@@ -1313,7 +1391,9 @@ Use the user's answer to continue:
     if (block.previewBytes != null) return;
 
     try {
-      block.previewBytes = await _orchestrator.renderResume(block.resume);
+      final bytes = await _orchestrator.renderResume(block.resume);
+      block.previewBytes = bytes;
+      await _storePreviewBytes(block, bytes);
       block.error = null;
     } catch (e) {
       block.error = _shortError(e);

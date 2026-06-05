@@ -213,6 +213,8 @@ class ChatSnapshotCodec {
       'appliedCount': block.appliedCount,
       'skippedCount': block.skippedCount,
       if (_clean(block.applyError) != null) 'applyError': block.applyError,
+      if (_clean(block.previewStoragePath) != null)
+        'previewStoragePath': block.previewStoragePath,
       if (block.previewResume != null)
         'previewResume': block.previewResume!.toJson(),
     };
@@ -238,6 +240,7 @@ class ChatSnapshotCodec {
     block.appliedCount = _int(map['appliedCount']);
     block.skippedCount = _int(map['skippedCount']);
     block.applyError = _clean(_string(map, 'applyError'));
+    block.previewStoragePath = _clean(_string(map, 'previewStoragePath'));
     block.previewResume = _decodeResumeJson(map['previewResume']);
     return block;
   }
@@ -251,6 +254,8 @@ class ChatSnapshotCodec {
       'resume': block.resume.toJson(),
       if (_clean(block.savedResumeId) != null)
         'savedResumeId': block.savedResumeId,
+      if (_clean(block.previewStoragePath) != null)
+        'previewStoragePath': block.previewStoragePath,
       if (_clean(block.error) != null) 'error': block.error,
     };
   }
@@ -269,6 +274,7 @@ class ChatSnapshotCodec {
       state: _decodeResumeDraftState(_string(map, 'state')),
     );
     block.savedResumeId = _clean(_string(map, 'savedResumeId'));
+    block.previewStoragePath = _clean(_string(map, 'previewStoragePath'));
     block.error = _clean(_string(map, 'error'));
     return block;
   }
