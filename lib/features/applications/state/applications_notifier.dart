@@ -6,9 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/firestore/applications_repository.dart';
 import '../../../data/models/tracked_application.dart';
 import '../../auth/state/auth_notifier.dart';
+import '../services/application_bundle_summary.dart';
 
 enum ApplicationsFilter {
   all,
+  bundleReview,
   trustReview,
   drafts,
   sent,
@@ -16,6 +18,7 @@ enum ApplicationsFilter {
 
   String get label => switch (this) {
     ApplicationsFilter.all => 'All',
+    ApplicationsFilter.bundleReview => 'Bundle review',
     ApplicationsFilter.trustReview => 'Trust review',
     ApplicationsFilter.drafts => 'Drafts',
     ApplicationsFilter.sent => 'Sent',
@@ -39,6 +42,8 @@ class ApplicationsState {
   List<TrackedApplication> get filtered {
     final base = switch (filter) {
       ApplicationsFilter.all => items,
+      ApplicationsFilter.bundleReview =>
+        items.where((a) => evaluateApplicationBundle(a).hasBlocker).toList(),
       ApplicationsFilter.trustReview =>
         items.where((a) => a.needsTrustReview).toList(),
       ApplicationsFilter.drafts =>

@@ -36,6 +36,9 @@ class ApplicationsPage extends ConsumerWidget {
     final notifier = ref.read(applicationsProvider.notifier);
     final filtered = state.filtered;
     final allItems = state.items;
+    final bundleReviewCount = allItems
+        .where((app) => evaluateApplicationBundle(app).hasBlocker)
+        .length;
     final trustReviewCount = allItems
         .where((app) => app.needsTrustReview)
         .length;
@@ -60,6 +63,14 @@ class ApplicationsPage extends ConsumerWidget {
                 ),
                 children: [
                   _SummaryStrip(apps: allItems),
+                  if (bundleReviewCount > 0) ...[
+                    const SizedBox(height: 12),
+                    _BundleReviewBanner(
+                      count: bundleReviewCount,
+                      onTap: () =>
+                          notifier.setFilter(ApplicationsFilter.bundleReview),
+                    ),
+                  ],
                   if (trustReviewCount > 0) ...[
                     const SizedBox(height: 12),
                     _TrustReviewBanner(
@@ -211,6 +222,72 @@ class _SummaryTile extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _BundleReviewBanner extends StatelessWidget {
+  const _BundleReviewBanner({required this.count, required this.onTap});
+
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final noun = count == 1 ? 'application bundle' : 'application bundles';
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: brand.warning.withValues(alpha: brand.isDark ? 0.18 : 0.11),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: brand.warning.withValues(alpha: 0.34)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: brand.warning.withValues(
+                    alpha: brand.isDark ? 0.22 : 0.14,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: brand.warning.withValues(alpha: 0.38),
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.inventory_2_outlined,
+                  size: 18,
+                  color: brand.warning,
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Text(
+                  '$count $noun need review',
+                  style: TextStyle(
+                    color: brand.ink,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    height: 1.25,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.arrow_forward_rounded, size: 18, color: brand.warning),
+            ],
+          ),
+        ),
       ),
     );
   }
