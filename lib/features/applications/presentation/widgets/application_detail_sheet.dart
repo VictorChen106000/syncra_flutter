@@ -4,7 +4,10 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/brand_theme.dart';
 import '../../../../data/models/tracked_application.dart';
+import '../../../auth/models/user_profile.dart';
+import '../../../auth/state/user_profile_notifier.dart';
 import '../../services/application_bundle_summary.dart';
+import '../../services/auto_apply_eligibility.dart';
 import '../../state/applications_notifier.dart';
 
 class ApplicationDetailSheet extends ConsumerStatefulWidget {
@@ -24,6 +27,19 @@ class ApplicationDetailSheet extends ConsumerStatefulWidget {
   @override
   ConsumerState<ApplicationDetailSheet> createState() =>
       _ApplicationDetailSheetState();
+}
+
+int _sentTodayCount(List<TrackedApplication> apps) {
+  final now = DateTime.now();
+
+  return apps.where((app) {
+    final sentAt = app.sentAt;
+    if (sentAt == null) return false;
+
+    return sentAt.year == now.year &&
+        sentAt.month == now.month &&
+        sentAt.day == now.day;
+  }).length;
 }
 
 class _ApplicationDetailSheetState
@@ -53,6 +69,10 @@ class _ApplicationDetailSheetState
       (a) => a.id == widget.application.id,
       orElse: () => widget.application,
     );
+    final profile = ref.watch(userProfileProvider);
+    final autoApplySettings =
+        profile?.autoApplySettings ?? const AutoApplySettings();
+    final autoApplySentToday = _sentTodayCount(state.items);
     final viewport = MediaQuery.of(context);
     return Padding(
       padding: EdgeInsets.only(bottom: viewport.viewInsets.bottom),
@@ -109,6 +129,14 @@ class _ApplicationDetailSheetState
               const _SectionHeader(label: 'APPLICATION BUNDLE'),
               const SizedBox(height: 10),
               _BundlePanel(app: app),
+              const SizedBox(height: 20),
+              const _SectionHeader(label: 'BOUNDED AUTO-APPLY'),
+              const SizedBox(height: 10),
+              _AutoApplyPanel(
+                app: app,
+                settings: autoApplySettings,
+                sentToday: autoApplySentToday,
+              ),
               const SizedBox(height: 20),
               const _SectionHeader(label: 'TRUST GUARD'),
               const SizedBox(height: 10),
@@ -342,6 +370,172 @@ class _BundleItemRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _AutoApplyPanel extends StatelessWidget {
+  const _AutoApplyPanel({
+    required this.app,
+    required this.settings,
+    required this.sentToday,
+  });
+
+  final TrackedApplication app;
+  final AutoApplySettings settings;
+  final int sentToday;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final result = evaluateAutoApplyEligibility(
+      app: app,
+      settings: settings,
+      sentToday: sentToday,
+    );
+
+    final color = result.isEligible
+        ? brand.success
+        : settings.enabled
+        ? brand.warning
+        : brand.textMuted;
+    final icon = result.isEligible
+        ? Icons.task_alt_rounded
+        : settings.enabled
+        ? Icons.rule_rounded
+        : Icons.pause_circle_outline_rounded;
+    final title = result.isEligible
+        ? 'Eligible under your rules'
+        : settings.enabled
+        ? 'Blocked by your rules'
+        : 'Auto-apply is off';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: brand.isDark ? 0.14 : 0.08),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: color),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    color: brand.ink,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+              ),
+              Text(
+                '$sentToday/${settings.maxDailyApplications} today',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w900,
+                  color: color,
+                  letterSpacing: -0.05,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 9),
+          Text(
+            result.statusLabel,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: brand.textMuted,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              _AutoApplyRuleChip(
+                label: 'Min ${settings.minQualityScore}%',
+                active: result.qualityScore >= settings.minQualityScore,
+              ),
+              _AutoApplyRuleChip(
+                label: 'Quality ${result.qualityScore}%',
+                active: result.qualityScore >= settings.minQualityScore,
+              ),
+              _AutoApplyRuleChip(
+                label: settings.requireLowTrust
+                    ? 'Low-risk only'
+                    : 'Bundle decides',
+                active:
+                    !settings.requireLowTrust || app.trustRiskLevel == 'low',
+              ),
+            ],
+          ),
+          if (result.reasons.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            for (final reason in result.reasons.take(3))
+              Padding(
+                padding: const EdgeInsets.only(top: 5),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.circle, size: 5, color: color),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        reason,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: brand.textMuted,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AutoApplyRuleChip extends StatelessWidget {
+  const _AutoApplyRuleChip({required this.label, required this.active});
+
+  final String label;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final color = active ? brand.success : brand.textMuted;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: brand.isDark ? 0.16 : 0.1),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w900,
+          color: color,
+          letterSpacing: -0.05,
+        ),
       ),
     );
   }
