@@ -93,6 +93,17 @@ class UserProfileNotifier extends Notifier<UserProfile?> {
     }
   }
 
+    Future<void> setAutoApplySettings(AutoApplySettings settings) async {
+    final uid = _boundUid;
+    if (uid == null) return;
+    state = state?.copyWith(autoApplySettings: settings);
+    try {
+      await _repository.update(uid, autoApplySettings: settings);
+    } catch (e) {
+      debugPrint('setAutoApplySettings failed: $e');
+    }
+  }
+
   /// Flips the user past first-run setup. Called by the Skip button (which
   /// leaves `role` untouched). Used by the router redirect to decide whether
   /// the user still needs the onboarding surface.

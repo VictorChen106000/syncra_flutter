@@ -2,6 +2,81 @@ import 'package:flutter/foundation.dart';
 
 import '../../resumes/models/resume_fit.dart';
 
+@immutable
+class AutoApplySettings {
+  const AutoApplySettings({
+    this.enabled = false,
+    this.minQualityScore = 85,
+    this.maxDailyApplications = 3,
+    this.requireLowTrust = true,
+  });
+
+  final bool enabled;
+  final int minQualityScore;
+  final int maxDailyApplications;
+  final bool requireLowTrust;
+
+  AutoApplySettings copyWith({
+    bool? enabled,
+    int? minQualityScore,
+    int? maxDailyApplications,
+    bool? requireLowTrust,
+  }) {
+    return AutoApplySettings(
+      enabled: enabled ?? this.enabled,
+      minQualityScore: minQualityScore ?? this.minQualityScore,
+      maxDailyApplications: maxDailyApplications ?? this.maxDailyApplications,
+      requireLowTrust: requireLowTrust ?? this.requireLowTrust,
+    );
+  }
+
+  factory AutoApplySettings.fromMap(Object? value) {
+    if (value is! Map) return const AutoApplySettings();
+
+    return AutoApplySettings(
+      enabled: _boolOrFallback(value['enabled'], fallback: false),
+      minQualityScore: _intInRange(
+        value['min_quality_score'],
+        min: 60,
+        max: 100,
+        fallback: 85,
+      ),
+      maxDailyApplications: _intInRange(
+        value['max_daily_applications'],
+        min: 1,
+        max: 10,
+        fallback: 3,
+      ),
+      requireLowTrust: _boolOrFallback(
+        value['require_low_trust'],
+        fallback: true,
+      ),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'enabled': enabled,
+    'min_quality_score': minQualityScore,
+    'max_daily_applications': maxDailyApplications,
+    'require_low_trust': requireLowTrust,
+  };
+
+  static int _intInRange(
+    Object? value, {
+    required int min,
+    required int max,
+    required int fallback,
+  }) {
+    final parsed = value is num ? value.toInt() : null;
+    if (parsed == null) return fallback;
+    return parsed.clamp(min, max).toInt();
+  }
+
+  static bool _boolOrFallback(Object? value, {required bool fallback}) {
+    return value is bool ? value : fallback;
+  }
+}
+
 /// Snapshot of `users/{uid}` — settings the user controls.
 ///
 /// Mirrors the user profile schema documented in `docs/ARCHITECTURE.md`.
@@ -18,6 +93,7 @@ class UserProfile {
     this.gmailConnected = false,
     this.hasCompletedOnboarding = false,
     this.resumeFit,
+    this.autoApplySettings = const AutoApplySettings(),
   });
 
   final String name;
@@ -39,6 +115,12 @@ class UserProfile {
   /// without a fresh agent call.
   final ResumeFit? resumeFit;
 
+  /// User-defined guardrails for future bounded auto-apply behavior.
+  ///
+  /// This does not auto-send anything by itself; it only stores the safe
+  /// boundaries the agent must obey later.
+  final AutoApplySettings autoApplySettings;
+
   UserProfile copyWith({
     String? name,
     String? email,
@@ -48,6 +130,7 @@ class UserProfile {
     bool? gmailConnected,
     bool? hasCompletedOnboarding,
     ResumeFit? resumeFit,
+    AutoApplySettings? autoApplySettings,
     bool clearResumeFit = false,
   }) {
     return UserProfile(
@@ -60,6 +143,7 @@ class UserProfile {
       hasCompletedOnboarding:
           hasCompletedOnboarding ?? this.hasCompletedOnboarding,
       resumeFit: clearResumeFit ? null : (resumeFit ?? this.resumeFit),
+      autoApplySettings: autoApplySettings ?? this.autoApplySettings,
     );
   }
 
@@ -81,6 +165,7 @@ class UserProfile {
       resumeFit: rawFit is Map
           ? ResumeFit.fromJson(rawFit.cast<String, dynamic>())
           : null,
+      autoApplySettings: AutoApplySettings.fromMap(data['auto_apply']),
     );
   }
 }

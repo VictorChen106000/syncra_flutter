@@ -19,6 +19,7 @@ import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/section_title.dart';
+import '../../auth/models/user_profile.dart';
 import '../../auth/state/auth_notifier.dart';
 import '../../auth/state/user_profile_notifier.dart';
 import '../../resumes/presentation/widgets/resume_fit_chart.dart';
@@ -223,6 +224,9 @@ class ProfilePage extends StatelessWidget {
                 const SizedBox(height: 24),
                 const SectionTitle(title: 'Connections'),
                 const _IntegrationSection(),
+                const SizedBox(height: 24),
+                const SectionTitle(title: 'Bounded Auto-Apply'),
+                const _BoundedAutoApplySection(),
                 const SizedBox(height: 24),
                 const SectionTitle(title: 'Appearance'),
                 const _AppearanceSection(),
@@ -1325,6 +1329,74 @@ class _IntegrationSection extends ConsumerWidget {
       ],
     );
   }
+}
+
+class _BoundedAutoApplySection extends ConsumerWidget {
+  const _BoundedAutoApplySection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(userProfileProvider);
+    final settings = profile?.autoApplySettings ?? const AutoApplySettings();
+
+    return _GroupedCard(
+      children: [
+        _PreferenceRow(
+          icon: Icons.auto_awesome_rounded,
+          title: 'Bounded Auto-Apply',
+          trailing: _LimeToggle(
+            active: settings.enabled,
+            onToggle: profile == null
+                ? null
+                : () {
+                    ref
+                        .read(userProfileProvider.notifier)
+                        .setAutoApplySettings(
+                          settings.copyWith(enabled: !settings.enabled),
+                        );
+                  },
+          ),
+        ),
+        const _GroupedDivider(),
+        _PreferenceRow(
+          icon: Icons.speed_rounded,
+          title: 'Minimum quality',
+          trailing: Text(
+            '${settings.minQualityScore}%',
+            style: _settingsValueStyle(context),
+          ),
+        ),
+        const _GroupedDivider(),
+        _PreferenceRow(
+          icon: Icons.today_rounded,
+          title: 'Daily limit',
+          trailing: Text(
+            '${settings.maxDailyApplications}/day',
+            style: _settingsValueStyle(context),
+          ),
+        ),
+        const _GroupedDivider(),
+        _PreferenceRow(
+          icon: Icons.verified_user_outlined,
+          title: 'Trust gate',
+          trailing: Text(
+            settings.requireLowTrust ? 'Low-risk only' : 'Needs review',
+            style: _settingsValueStyle(context),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+TextStyle _settingsValueStyle(BuildContext context) {
+  final brand = context.brand;
+  return TextStyle(
+    color: brand.textMuted,
+    fontSize: 12.5,
+    fontWeight: FontWeight.w800,
+    letterSpacing: -0.05,
+  );
 }
 
 class _IntegrationTile extends StatelessWidget {
