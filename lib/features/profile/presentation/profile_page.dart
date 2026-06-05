@@ -1332,38 +1332,38 @@ class _IntegrationSection extends ConsumerWidget {
   }
 }
 
-class _BoundedAutoApplySection extends ConsumerWidget {
+enum _AutoApplyMenu { minimumQuality, dailyLimit, trustGate }
+
+class _BoundedAutoApplySection extends ConsumerStatefulWidget {
   const _BoundedAutoApplySection();
 
+  @override
+  ConsumerState<_BoundedAutoApplySection> createState() =>
+      _BoundedAutoApplySectionState();
+}
+
+class _BoundedAutoApplySectionState
+    extends ConsumerState<_BoundedAutoApplySection> {
   static const _qualityStops = [80, 85, 90, 95];
   static const _dailyLimitStops = [1, 2, 3, 5, 10];
 
-  int _nextStop(List<int> stops, int current) {
-    for (final stop in stops) {
-      if (stop > current) return stop;
-    }
-    return stops.first;
+  _AutoApplyMenu? _openMenu;
+
+  void _toggleMenu(_AutoApplyMenu menu) {
+    setState(() {
+      _openMenu = _openMenu == menu ? null : menu;
+    });
   }
 
-  void _save(
-    BuildContext context,
-    WidgetRef ref,
-    AutoApplySettings settings,
-    String message,
-  ) {
+  void _save(AutoApplySettings settings, String message) {
     ref.read(userProfileProvider.notifier).setAutoApplySettings(settings);
+    setState(() => _openMenu = null);
     _showSettingsSnack(context, message);
   }
 
-  void _toggleEnabled(
-    BuildContext context,
-    WidgetRef ref,
-    AutoApplySettings settings,
-  ) {
+  void _toggleEnabled(AutoApplySettings settings) {
     final nextEnabled = !settings.enabled;
     _save(
-      context,
-      ref,
       settings.copyWith(enabled: nextEnabled),
       nextEnabled
           ? 'Bounded Auto-Apply turned on.'
@@ -1371,55 +1371,8 @@ class _BoundedAutoApplySection extends ConsumerWidget {
     );
   }
 
-  void _cycleMinimumQuality(
-    BuildContext context,
-    WidgetRef ref,
-    AutoApplySettings settings,
-  ) {
-    final nextScore = _nextStop(_qualityStops, settings.minQualityScore);
-    _save(
-      context,
-      ref,
-      settings.copyWith(minQualityScore: nextScore),
-      'Minimum quality set to $nextScore%.',
-    );
-  }
-
-  void _cycleDailyLimit(
-    BuildContext context,
-    WidgetRef ref,
-    AutoApplySettings settings,
-  ) {
-    final nextLimit = _nextStop(
-      _dailyLimitStops,
-      settings.maxDailyApplications,
-    );
-    _save(
-      context,
-      ref,
-      settings.copyWith(maxDailyApplications: nextLimit),
-      'Daily auto-apply limit set to $nextLimit.',
-    );
-  }
-
-  void _toggleTrustGate(
-    BuildContext context,
-    WidgetRef ref,
-    AutoApplySettings settings,
-  ) {
-    final nextRequireLowTrust = !settings.requireLowTrust;
-    _save(
-      context,
-      ref,
-      settings.copyWith(requireLowTrust: nextRequireLowTrust),
-      nextRequireLowTrust
-          ? 'Trust gate set to low-risk only.'
-          : 'Trust gate set to bundle review.',
-    );
-  }
-
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final profile = ref.watch(userProfileProvider);
     final settings = profile?.autoApplySettings ?? const AutoApplySettings();
     final canEdit = profile != null;
@@ -1431,11 +1384,9 @@ class _BoundedAutoApplySection extends ConsumerWidget {
           title: 'Bounded Auto-Apply',
           trailing: _LimeToggle(
             active: settings.enabled,
-            onToggle: canEdit
-                ? () => _toggleEnabled(context, ref, settings)
-                : null,
+            onToggle: canEdit ? () => _toggleEnabled(settings) : null,
           ),
-          onTap: canEdit ? () => _toggleEnabled(context, ref, settings) : null,
+          onTap: canEdit ? () => _toggleEnabled(settings) : null,
         ),
         const _GroupedDivider(),
         _PreferenceRow(
@@ -1444,11 +1395,22 @@ class _BoundedAutoApplySection extends ConsumerWidget {
           trailing: _SettingsValueTrail(
             value: '${settings.minQualityScore}%',
             enabled: canEdit,
+            expanded: _openMenu == _AutoApplyMenu.minimumQuality,
           ),
           onTap: canEdit
-              ? () => _cycleMinimumQuality(context, ref, settings)
+              ? () => _toggleMenu(_AutoApplyMenu.minimumQuality)
               : null,
         ),
+        if (_openMenu == _AutoApplyMenu.minimumQuality)
+          _AutoApplyChoiceList<int>(
+            values: _qualityStops,
+            selected: settings.minQualityScore,
+            labelFor: (value) => '$value%',
+            onSelected: (value) => _save(
+              settings.copyWith(minQualityScore: value),
+              'Minimum quality set to $value%.',
+            ),
+          ),
         const _GroupedDivider(),
         _PreferenceRow(
           icon: Icons.today_rounded,
@@ -1456,11 +1418,20 @@ class _BoundedAutoApplySection extends ConsumerWidget {
           trailing: _SettingsValueTrail(
             value: '${settings.maxDailyApplications}/day',
             enabled: canEdit,
+            expanded: _openMenu == _AutoApplyMenu.dailyLimit,
           ),
-          onTap: canEdit
-              ? () => _cycleDailyLimit(context, ref, settings)
-              : null,
+          onTap: canEdit ? () => _toggleMenu(_AutoApplyMenu.dailyLimit) : null,
         ),
+        if (_openMenu == _AutoApplyMenu.dailyLimit)
+          _AutoApplyChoiceList<int>(
+            values: _dailyLimitStops,
+            selected: settings.maxDailyApplications,
+            labelFor: (value) => '$value/day',
+            onSelected: (value) => _save(
+              settings.copyWith(maxDailyApplications: value),
+              'Daily auto-apply limit set to $value.',
+            ),
+          ),
         const _GroupedDivider(),
         _PreferenceRow(
           icon: Icons.verified_user_outlined,
@@ -1470,12 +1441,134 @@ class _BoundedAutoApplySection extends ConsumerWidget {
                 ? 'Low-risk only'
                 : 'Bundle review decides',
             enabled: canEdit,
+            expanded: _openMenu == _AutoApplyMenu.trustGate,
           ),
-          onTap: canEdit
-              ? () => _toggleTrustGate(context, ref, settings)
-              : null,
+          onTap: canEdit ? () => _toggleMenu(_AutoApplyMenu.trustGate) : null,
         ),
+        if (_openMenu == _AutoApplyMenu.trustGate)
+          _AutoApplyChoiceList<bool>(
+            values: const [true, false],
+            selected: settings.requireLowTrust,
+            labelFor: (value) =>
+                value ? 'Low-risk only' : 'Bundle review decides',
+            onSelected: (value) => _save(
+              settings.copyWith(requireLowTrust: value),
+              value
+                  ? 'Trust gate set to low-risk only.'
+                  : 'Trust gate set to bundle review.',
+            ),
+          ),
       ],
+    );
+  }
+}
+
+class _AutoApplyChoiceList<T> extends StatelessWidget {
+  const _AutoApplyChoiceList({
+    required this.values,
+    required this.selected,
+    required this.labelFor,
+    required this.onSelected,
+  });
+
+  final List<T> values;
+  final T selected;
+  final String Function(T value) labelFor;
+  final ValueChanged<T> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(68, 0, 16, 14),
+      child: Container(
+        decoration: BoxDecoration(
+          color: brand.surfaceMuted.withValues(alpha: brand.isDark ? 0.72 : 1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: brand.border.withValues(alpha: 0.75)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < values.length; i++) ...[
+              _AutoApplyChoiceTile<T>(
+                value: values[i],
+                selected: values[i] == selected,
+                label: labelFor(values[i]),
+                onSelected: onSelected,
+              ),
+              if (i < values.length - 1)
+                Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: brand.border.withValues(alpha: 0.6),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AutoApplyChoiceTile<T> extends StatelessWidget {
+  const _AutoApplyChoiceTile({
+    required this.value,
+    required this.selected,
+    required this.label,
+    required this.onSelected,
+  });
+
+  final T value;
+  final bool selected;
+  final String label;
+  final ValueChanged<T> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(15),
+        onTap: () => onSelected(value),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: selected ? brand.ink : brand.textMuted,
+                    fontSize: 13,
+                    fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
+                    letterSpacing: -0.05,
+                  ),
+                ),
+              ),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 160),
+                child: selected
+                    ? Icon(
+                        Icons.check_circle_rounded,
+                        key: const ValueKey('selected'),
+                        size: 17,
+                        color: brand.accent,
+                      )
+                    : Icon(
+                        Icons.circle_outlined,
+                        key: const ValueKey('unselected'),
+                        size: 17,
+                        color: brand.textSoft,
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1506,10 +1599,15 @@ void _showSettingsSnack(BuildContext context, String message) {
 }
 
 class _SettingsValueTrail extends StatelessWidget {
-  const _SettingsValueTrail({required this.value, required this.enabled});
+  const _SettingsValueTrail({
+    required this.value,
+    required this.enabled,
+    this.expanded = false,
+  });
 
   final String value;
   final bool enabled;
+  final bool expanded;
 
   @override
   Widget build(BuildContext context) {
@@ -1520,10 +1618,15 @@ class _SettingsValueTrail extends StatelessWidget {
       children: [
         Text(value, style: _settingsValueStyle(context)),
         const SizedBox(width: 4),
-        Icon(
-          Icons.chevron_right_rounded,
-          size: 18,
-          color: enabled ? brand.textMuted : brand.textSoft,
+        AnimatedRotation(
+          turns: expanded ? -0.25 : 0,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          child: Icon(
+            Icons.chevron_right_rounded,
+            size: 18,
+            color: enabled ? brand.textMuted : brand.textSoft,
+          ),
         ),
       ],
     );
