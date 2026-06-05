@@ -20,6 +20,7 @@
 The chat history drawer already exists and should be improved, not rebuilt.
 
 Important files likely involved:
+
 - `lib/features/agent_chat/presentation/widgets/chat_history_drawer.dart`
 - `lib/features/agent_chat/state/agent_chat_notifier.dart`
 - conversation repository / codec files
@@ -34,6 +35,7 @@ Goal:
 Map current behavior before changing UI.
 
 Tasks:
+
 - Inspect chat history drawer.
 - Inspect conversation list provider.
 - Inspect conversation repository.
@@ -46,6 +48,7 @@ Tasks:
 - Do not make product UI changes yet unless needed for compile fixes.
 
 Validation:
+
 - `flutter analyze`
 
 Stop after this checkpoint.
@@ -58,6 +61,7 @@ Goal:
 Make the drawer look polished and consistent with Syncra.
 
 Tasks:
+
 - Improve header.
 - Improve New Chat button.
 - Improve loading, empty, and error states.
@@ -65,6 +69,7 @@ Tasks:
 - Keep drawer responsive and dark-mode compatible.
 
 Validation:
+
 - `dart format`
 - `flutter analyze`
 
@@ -78,6 +83,7 @@ Goal:
 Make rows readable and useful.
 
 Tasks:
+
 - Show title clearly.
 - Show relative updated time.
 - Add preview snippet if available.
@@ -85,6 +91,7 @@ Tasks:
 - Keep delete action accessible but not visually noisy.
 
 Validation:
+
 - `dart format`
 - `flutter analyze`
 
@@ -98,12 +105,14 @@ Goal:
 Organize long history.
 
 Groups:
+
 - Today
 - Yesterday
 - Previous 7 days
 - Older
 
 Validation:
+
 - Add or update unit/widget test if grouping logic is extracted.
 - `flutter analyze`
 - relevant tests
@@ -118,12 +127,14 @@ Goal:
 Let users find old chats.
 
 Tasks:
+
 - Add search field in drawer.
 - Filter by title and preview.
 - Show empty search result state.
 - Do not query Firestore repeatedly on every keystroke if local filtering is enough.
 
 Validation:
+
 - `dart format`
 - `flutter analyze`
 - relevant tests if logic extracted
@@ -138,6 +149,7 @@ Goal:
 Make history management complete.
 
 Tasks:
+
 - Add rename action.
 - Add pin/unpin action.
 - Pinned chats appear before unpinned chats.
@@ -146,6 +158,7 @@ Tasks:
 - Preserve backward compatibility for old conversations without pinned fields.
 
 Validation:
+
 - `dart format`
 - `flutter analyze`
 - relevant repository/model tests
@@ -160,6 +173,7 @@ Goal:
 Opening saved chats must restore correctly.
 
 Tasks:
+
 - Verify transcript restoration.
 - Verify selected resume attachments restore.
 - Verify job thread context restores if saved.
@@ -168,6 +182,7 @@ Tasks:
 - Do not overwrite current streaming chat.
 
 Validation:
+
 - Add tests where practical.
 - `flutter analyze`
 - `flutter test`
@@ -182,6 +197,7 @@ Goal:
 Saved conversations should not crash if old/unknown block shapes exist.
 
 Tasks:
+
 - Review serialization/deserialization for all chat item/block types.
 - Unknown saved blocks should degrade gracefully.
 - Preserve support for:
@@ -196,6 +212,7 @@ Tasks:
   - action proposal blocks
 
 Validation:
+
 - Add focused codec tests.
 - `flutter test`
 - `flutter analyze`
@@ -210,10 +227,12 @@ Goal:
 Sync docs/status with completed chat history recovery.
 
 Tasks:
+
 - Update README/STATUS/ARCHITECTURE only if they mention chat persistence/history.
 - Run full validation.
 
 Validation:
+
 - `flutter test`
 - `flutter analyze`
 
