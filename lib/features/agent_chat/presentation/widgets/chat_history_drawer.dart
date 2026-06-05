@@ -425,7 +425,9 @@ List<ConversationSummary> _filterConversations(
 
   return [
     for (final conversation in conversations)
-      if (conversation.title.toLowerCase().contains(cleanQuery)) conversation,
+      if (conversation.title.toLowerCase().contains(cleanQuery) ||
+          conversation.preview.toLowerCase().contains(cleanQuery))
+        conversation,
   ];
 }
 
@@ -675,6 +677,7 @@ class _ConversationRowState extends State<_ConversationRow> {
   Widget build(BuildContext context) {
     final brand = context.brand;
     final active = widget.active;
+    final preview = widget.summary.preview.trim();
     final rowRadius = BorderRadius.circular(18);
     final menuColor = _menuHovered
         ? brand.ink
@@ -757,7 +760,21 @@ class _ConversationRowState extends State<_ConversationRow> {
                             color: brand.ink,
                           ),
                         ),
-                        const SizedBox(height: 6),
+                        if (preview.isNotEmpty) ...[
+                          const SizedBox(height: 5),
+                          Text(
+                            preview,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12.2,
+                              height: 1.28,
+                              fontWeight: FontWeight.w600,
+                              color: brand.textMuted,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 7),
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [

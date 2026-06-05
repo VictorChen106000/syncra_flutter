@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../data/firestore/firestore_paths.dart';
 import '../../../data/models/job.dart';
+import '../models/agent_block.dart';
 import '../models/chat_message.dart';
 import '../models/conversation_summary.dart';
 import 'chat_snapshot_codec.dart';
@@ -57,20 +58,25 @@ class ChatHistoryRepository {
     final rawItems = _listValue(data, 'items');
 
     // Skip empty or fully malformed shells so the drawer never renders a
-    // blank row. The codec check keeps this compatible with both v1 and v2.
+    // blank row. The codec keeps this compatible with both v1 and v2.
     if (rawItems.isEmpty) return null;
-    final hasRecoverableItem = rawItems.any(
-      (entry) => ChatSnapshotCodec.decodeItem(entry) != null,
-    );
-    if (!hasRecoverableItem) return null;
+
+    final decodedItems = rawItems
+        .map(ChatSnapshotCodec.decodeItem)
+        .whereType<ChatItem>()
+        .toList(growable: false);
+
+    if (decodedItems.isEmpty) return null;
 
     final renamedTitle = _stringValue(data, 'renamedTitle')?.trim();
     final title = _stringValue(data, 'title')?.trim();
+    final lastPreview = _stringValue(data, 'lastPreview')?.trim();
     final ts = data['updatedAt'];
 
     return ConversationSummary(
       id: doc.id,
       title: _displayTitle(renamedTitle, title, rawItems),
+      preview: _displayPreview(lastPreview, decodedItems),
       updatedAt: ts is Timestamp ? ts.toDate() : DateTime.now(),
       pinned: data['pinned'] == true,
     );
@@ -102,6 +108,98 @@ class ChatHistoryRepository {
     return 'New chat';
   }
 
+  static String _displayPreview(String? storedPreview, List<ChatItem> items) {
+    final cleanStored = _cleanPreview(storedPreview);
+    if (cleanStored != null) return _clipPreview(cleanStored);
+    return deriveConversationPreview(items);
+  }
+
+  static String deriveConversationPreview(List<ChatItem> items) {
+    for (final item in items.reversed) {
+      switch (item) {
+        case UserMessage():
+          final text = _cleanPreview(item.text);
+          if (text != null) return 'You: ${_clipPreview(text)}';
+
+        case AgentTurn():
+          for (final block in item.blocks.reversed) {
+            final preview = _previewForBlock(block);
+            if (preview != null) return preview;
+          }
+
+          final error = _cleanPreview(item.errorMessage);
+          if (error != null) return 'Error: ${_clipPreview(error)}';
+      }
+    }
+
+    return '';
+  }
+
+  static String? _previewForBlock(AgentBlock block) {
+    switch (block) {
+      case ThinkingBlock():
+        return null;
+
+      case TextBlock():
+        final text = _cleanPreview(block.text);
+        return text == null ? null : _clipPreview(text);
+
+      case ToolCallBlock():
+        final result = _cleanPreview(block.resultSummary);
+        if (result != null) return 'Tool result: ${_clipPreview(result)}';
+
+        final label = _cleanPreview(block.label);
+        return label == null ? null : 'Tool: ${_clipPreview(label)}';
+
+      case JobsBlock():
+        if (block.jobs.isEmpty) return null;
+        final label = block.jobs.length == 1 ? 'match' : 'matches';
+        return 'Showed ${block.jobs.length} job $label';
+
+      case ProposedEditsBlock():
+        final stateLabel = switch (block.state) {
+          ProposedEditsState.reviewing => 'for review',
+          ProposedEditsState.applying => 'rendering',
+          ProposedEditsState.applied => 'preview ready',
+          ProposedEditsState.dismissed => 'dismissed',
+        };
+        final label = block.edits.length == 1 ? 'change' : 'changes';
+        return 'Resume edits $stateLabel · ${block.edits.length} $label';
+
+      case ResumeDraftBlock():
+        final prefix = switch (block.state) {
+          ResumeDraftState.rendering => 'Rendering resume draft',
+          ResumeDraftState.ready => 'Resume draft ready',
+        };
+        return '$prefix: ${_clipPreview(block.fileName)}';
+
+      case InputRequestBlock():
+        if (block.state == InputRequestState.answered) {
+          final answer = _cleanPreview(block.answer);
+          if (answer != null) return 'Answered: ${_clipPreview(answer)}';
+        }
+        return 'Asked: ${_clipPreview(block.question)}';
+
+      case ActionProposalBlock():
+        return 'Action proposal: ${_clipPreview(block.title)}';
+
+      case EmailDraftBlock():
+        return 'Email draft: ${_clipPreview(block.subject)}';
+    }
+  }
+
+  static String? _cleanPreview(String? value) {
+    final clean = value?.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (clean == null || clean.isEmpty) return null;
+    return clean;
+  }
+
+  static String _clipPreview(String value, {int max = 96}) {
+    final clean = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (clean.length <= max) return clean;
+    return '${clean.substring(0, max)}…';
+  }
+
   Future<List<ChatItem>> load(String uid, String conversationId) async {
     return (await loadConversation(uid, conversationId)).items;
   }
@@ -128,6 +226,7 @@ class ChatHistoryRepository {
       'schemaVersion': schemaVersion,
       'items': payload,
       'title': title,
+      'lastPreview': deriveConversationPreview(items),
       'threadJob': threadJob == null
           ? FieldValue.delete()
           : _encodeThreadJob(threadJob),

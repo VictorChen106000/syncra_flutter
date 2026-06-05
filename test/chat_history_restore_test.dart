@@ -240,13 +240,59 @@ void main() {
     });
   });
 
-  test('ConversationSummary treats missing pinned field as unpinned', () {
+  test('ConversationSummary treats missing optional fields safely', () {
     final summary = ConversationSummary(
       id: 'conv-1',
       title: 'Legacy chat',
       updatedAt: DateTime(2026),
     );
 
+    expect(summary.preview, isEmpty);
     expect(summary.pinned, isFalse);
+  });
+
+  test('derives useful drawer previews from recovered chat items', () {
+    expect(
+      ChatHistoryRepository.deriveConversationPreview([
+        UserMessage(id: 'user-1', text: 'Find frontend roles'),
+      ]),
+      'You: Find frontend roles',
+    );
+
+    expect(
+      ChatHistoryRepository.deriveConversationPreview([
+        AgentTurn(
+          id: 'turn-1',
+          status: AgentTurnStatus.done,
+          blocks: [
+            EmailDraftBlock(
+              id: 'email-1',
+              recipient: 'recruiter@example.com',
+              subject: 'Frontend Engineer application',
+              body: 'Hello, I am interested.',
+            ),
+          ],
+        ),
+      ]),
+      'Email draft: Frontend Engineer application',
+    );
+
+    expect(
+      ChatHistoryRepository.deriveConversationPreview([
+        AgentTurn(
+          id: 'turn-2',
+          status: AgentTurnStatus.done,
+          blocks: [
+            ProposedEditsBlock.applied(
+              id: 'edits-1',
+              edits: const [],
+              jobId: 'job-1',
+              resumeId: 'resume-1',
+            ),
+          ],
+        ),
+      ]),
+      'Resume edits preview ready · 0 changes',
+    );
   });
 }
