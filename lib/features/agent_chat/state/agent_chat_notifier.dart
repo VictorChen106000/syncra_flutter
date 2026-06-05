@@ -178,6 +178,10 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
       ref
           .read(resumeProvider.notifier)
           .setSelectedResumes(_resumeIdsFromHistory(saved.items));
+      _service.restoreConversationContext(
+        saved.items,
+        threadJob: saved.threadJob,
+      );
     } catch (_) {
       // Best-effort hydration; failures are silent so a flaky network never
       // blocks the chat from working.
@@ -472,6 +476,10 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     ref
         .read(resumeProvider.notifier)
         .setSelectedResumes(_resumeIdsFromHistory(saved.items));
+    _service.restoreConversationContext(
+      saved.items,
+      threadJob: saved.threadJob,
+    );
   }
 
   /// Resume ids attached to the most recent [UserMessage] in a loaded
