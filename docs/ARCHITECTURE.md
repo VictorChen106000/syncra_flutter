@@ -8,7 +8,7 @@ this file, fix the code (or change this file by PR). Product context is in
 ## 0. Locked decisions
 
 | Area | Decision |
-|---|---|
+| --- | --- |
 | Platform | Flutter — iOS / Android / Web |
 | Server | None. No FastAPI, no Cloud Functions. |
 | Auth | Firebase Auth — Google Sign-In + email/password |
@@ -82,7 +82,7 @@ in `_notifier.dart`. Widgets use `ref.watch(xProvider)` for state and
 outside a notifier; never expose mutable lists/maps in a state class.
 
 | Provider | State (key fields) | Key notifier methods |
-|---|---|---|
+| --- | --- | --- |
 | `authProvider` | `AuthState` — `appUser`, `isLoading`, `error` | `signInWithGoogle`, `signOut`, `continueAsGuest`, `deleteAccount` |
 | `userProfileProvider` | `UserProfile?` — `role`, `autonomyLevel`, `morningBriefEnabled`, `gmailConnected` | `setAutonomyLevel`, `setMorningBriefEnabled`, `setRole`, `setAgentActive` |
 | `resumeProvider` | `ResumeState` — `allResumes`, `resumes`, `tailoredResumes`, `uploadQueue`, `selectedResumeIds` | `pickAndUploadResumes`, `deleteResume`, `toggleSelectedResume` |
@@ -110,7 +110,7 @@ Each tool is declared in `tool_registry.dart` (`name`, `description`,
 `builtin_tools.dart`.
 
 | Tool | Purpose | Gating |
-|---|---|---|
+| --- | --- | --- |
 | `search_jobs` | Search live listings; returns ≤25 `Job`s | auto |
 | `read_resume` | Load the user's `ResumeJSON`; lazy-parses the PDF on first call | auto |
 | `match_jobs` | Score jobs vs resume → category, score, justification, missing skills | auto |
@@ -236,9 +236,9 @@ Chat history is in-memory in v1 (a `conversations/` schema is reserved for v2).
 
 ## 5. Firebase Storage
 
-```
+```text
 
-gs://<bucket>/users/{uid}/resumes/
+gs://{bucket}/users/{uid}/resumes/
   ├── {manual-resumeId}.pdf|.docx|.doc   ← uploaded by the user
   └── {tailored-resumeId}.pdf            ← rendered by apply_resume_edits
 
@@ -286,7 +286,7 @@ text, never touches layout. Don't change the template without a team vote.
 ## 8. Rate limits & cost guards
 
 | Surface | Cap |
-|---|---|
+| --- | --- |
 | `search_jobs` (JSearch) | cache `jobs/` for 1h — stay under 200/month |
 | `match_jobs` | ≤25 jobs per call |
 | `tailor_resume` | one in-flight per session |
