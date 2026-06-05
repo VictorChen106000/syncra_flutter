@@ -35,6 +35,84 @@ void main() {
       expect((agent.blocks.single as TextBlock).text, 'I can help with that.');
     });
 
+    test('restores v2 full UI agent blocks', () {
+      final job = Job(
+        id: 'job-1',
+        title: 'Frontend Engineer',
+        company: 'Swiftlane',
+        location: 'Remote',
+        salary: r'$120k',
+        category: JobCategory.ready,
+        matchScore: 94,
+        agentAction: 'Tailor resume',
+        agentJustification: 'Strong React and TypeScript overlap.',
+        skills: const ['React', 'TypeScript'],
+        missingSkills: const [],
+        why: 'Build dashboard experiences.',
+      );
+
+      final saved = SavedConversation.fromMap({
+        'schemaVersion': 2,
+        'items': [
+          {
+            'kind': 'user',
+            'id': 'user-1',
+            'text': 'Find roles that fit my resume',
+            'attachments': [
+              {'id': 'resume-1', 'name': 'Alex Resume.pdf'},
+            ],
+          },
+          {
+            'kind': 'agent_turn',
+            'id': 'turn-1',
+            'status': 'done',
+            'blocks': [
+              {
+                'kind': 'tool_call',
+                'id': 'tool-1',
+                'name': 'search_jobs',
+                'label': 'Searching jobs',
+                'iconKey': 'travel_explore',
+                'status': 'done',
+                'resultSummary': 'Found 1 role',
+              },
+              {
+                'kind': 'jobs',
+                'id': 'jobs-1',
+                'jobs': [job.toJson()],
+              },
+              {
+                'kind': 'text',
+                'id': 'text-1',
+                'text': 'Swiftlane is a strong match.',
+              },
+            ],
+          },
+        ],
+      });
+
+      expect(saved.items, hasLength(2));
+
+      final user = saved.items.first as UserMessage;
+      expect(user.attachments.single.id, 'resume-1');
+
+      final agent = saved.items.last as AgentTurn;
+      expect(agent.status, AgentTurnStatus.done);
+      expect(agent.blocks, hasLength(3));
+
+      final tool = agent.blocks[0] as ToolCallBlock;
+      expect(tool.name, 'search_jobs');
+      expect(tool.status, ToolCallStatus.done);
+      expect(tool.resultSummary, 'Found 1 role');
+
+      final jobs = agent.blocks[1] as JobsBlock;
+      expect(jobs.jobs.single.id, 'job-1');
+      expect(jobs.jobs.single.category, JobCategory.ready);
+
+      final text = agent.blocks[2] as TextBlock;
+      expect(text.text, 'Swiftlane is a strong match.');
+    });
+
     test('restores saved thread job metadata', () {
       final job = Job(
         id: 'job-1',

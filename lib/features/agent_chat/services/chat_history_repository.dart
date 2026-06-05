@@ -2,29 +2,23 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../data/firestore/firestore_paths.dart';
 import '../../../data/models/job.dart';
-import '../models/agent_block.dart';
 import '../models/chat_message.dart';
 import '../models/conversation_summary.dart';
+import 'chat_snapshot_codec.dart';
 
-/// Persists *text-only* snapshots of chat transcripts — one Firestore document
-/// per conversation — so the history drawer can list and reopen past chats as
-/// readable transcripts.
+/// Persists versioned chat transcript snapshots — one Firestore document per
+/// conversation — so the history drawer can list and reopen past chats.
 ///
-/// The full reasoning timeline (thinking, tool calls, action proposals, resume
-/// diffs, and email draft buttons) is deliberately *not* round-tripped — it's
-/// transient by design and rebuilding the exact UI state from JSON is more
-/// failure surface than this demo needs.
+/// v2 stores the full recoverable chat UI model through [ChatSnapshotCodec]:
+/// user bubbles, attachments, agent turns, tool rows, job cards, proposed
+/// edits, resume drafts, input requests, action proposals, and email drafts.
 ///
-/// Schema: `users/{uid}/conversations/{conversationId}` — each doc holds:
-///   - `title`: short label derived from the first user message
-///   - `renamedTitle`: optional user-provided title override
-///   - `pinned`: optional bool; missing means unpinned
-///   - `threadJob`: optional job context for conversations opened from a job
-///   - `updatedAt`: server timestamp (also the history sort key)
-///   - `items`: [{ kind: 'user'|'agent', id, text, attachments? }]
+/// Legacy v1 text-only documents are still supported by the same decoder.
 class ChatHistoryRepository {
   ChatHistoryRepository({FirebaseFirestore? db})
     : _paths = FirestorePaths(db ?? FirebaseFirestore.instance);
+
+  static const int schemaVersion = 2;
 
   final FirestorePaths _paths;
 
@@ -61,11 +55,19 @@ class ChatHistoryRepository {
   ) {
     final data = doc.data();
     final rawItems = _listValue(data, 'items');
-    // Skip empty shells so the drawer never renders a blank row.
+
+    // Skip empty or fully malformed shells so the drawer never renders a
+    // blank row. The codec check keeps this compatible with both v1 and v2.
     if (rawItems.isEmpty) return null;
-    final renamedTitle = (data['renamedTitle'] as String?)?.trim();
-    final title = (data['title'] as String?)?.trim();
+    final hasRecoverableItem = rawItems.any(
+      (entry) => ChatSnapshotCodec.decodeItem(entry) != null,
+    );
+    if (!hasRecoverableItem) return null;
+
+    final renamedTitle = _stringValue(data, 'renamedTitle')?.trim();
+    final title = _stringValue(data, 'title')?.trim();
     final ts = data['updatedAt'];
+
     return ConversationSummary(
       id: doc.id,
       title: _displayTitle(renamedTitle, title, rawItems),
@@ -89,10 +91,13 @@ class ChatHistoryRepository {
   /// Fallback title for legacy docs written before `title` was stored.
   static String _deriveTitleFromRaw(List<dynamic> rawItems) {
     for (final entry in rawItems) {
-      if (entry is Map && entry['kind'] == 'user') {
-        final text = (entry['text'] as String?)?.trim() ?? '';
-        if (text.isNotEmpty) return text;
-      }
+      if (entry is! Map) continue;
+      final kind = _stringValue(entry, 'kind')?.trim().toLowerCase();
+      if (kind != 'user' && kind != 'user_message') continue;
+
+      final text = _stringValue(entry, 'text')?.trim() ?? '';
+      if (text.isEmpty) continue;
+      return text.length > 48 ? '${text.substring(0, 48)}…' : text;
     }
     return 'New chat';
   }
@@ -106,8 +111,7 @@ class ChatHistoryRepository {
     String conversationId,
   ) async {
     final snap = await _doc(uid, conversationId).get();
-    final data = snap.data();
-    return SavedConversation.fromMap(data);
+    return SavedConversation.fromMap(snap.data());
   }
 
   Future<void> save(
@@ -119,7 +123,9 @@ class ChatHistoryRepository {
   }) async {
     final payload = _encode(items);
     if (payload.isEmpty) return;
+
     await _doc(uid, conversationId).set({
+      'schemaVersion': schemaVersion,
       'items': payload,
       'title': title,
       'threadJob': threadJob == null
@@ -168,36 +174,24 @@ class ChatHistoryRepository {
   }
 
   static List<ChatItem> _decode(List<dynamic> raw) {
-    final items = <ChatItem>[];
-    for (final entry in raw) {
-      if (entry is! Map) continue;
-      final kind = _stringValue(entry, 'kind');
-      final id = _stringValue(entry, 'id');
-      if (id == null || id.trim().isEmpty) continue;
-      switch (kind) {
-        case 'user':
-          final text = _stringValue(entry, 'text')?.trim();
-          if (text == null || text.isEmpty) continue;
-          items.add(
-            UserMessage(
-              id: id,
-              text: text,
-              attachments: _decodeAttachments(entry['attachments']),
-            ),
-          );
-        case 'agent':
-          final text = _agentText(entry);
-          if (text == null || text.isEmpty) continue;
-          items.add(
-            AgentTurn(
-              id: id,
-              blocks: [TextBlock(id: '$id-text', text: text)],
-              status: AgentTurnStatus.done,
-            ),
-          );
-      }
+    return raw
+        .map(ChatSnapshotCodec.decodeItem)
+        .whereType<ChatItem>()
+        .toList(growable: false);
+  }
+
+  static List<Map<String, dynamic>> _encode(List<ChatItem> items) {
+    final payload = <Map<String, dynamic>>[];
+
+    for (final item in items) {
+      // Do not persist the empty initial assistant turn used only to keep the
+      // empty chat shell mounted.
+      if (item is AgentTurn && item.blocks.isEmpty) continue;
+
+      payload.add(ChatSnapshotCodec.encodeItem(item));
     }
-    return items;
+
+    return payload;
   }
 
   static String? _stringValue(Map<dynamic, dynamic> map, String key) {
@@ -209,80 +203,6 @@ class ChatHistoryRepository {
     final value = map[key];
     return value is List ? value : const [];
   }
-
-  static List<ChatAttachment> _decodeAttachments(Object? raw) {
-    if (raw is! List) return const [];
-    final attachments = <ChatAttachment>[];
-    for (final entry in raw) {
-      if (entry is! Map) continue;
-      final id = _stringValue(entry, 'id')?.trim();
-      final name = _stringValue(entry, 'name')?.trim();
-      if (id == null || id.isEmpty || name == null || name.isEmpty) continue;
-      attachments.add(ChatAttachment(id: id, name: name));
-    }
-    return attachments;
-  }
-
-  static String? _agentText(Map<dynamic, dynamic> map) {
-    final text = _stringValue(map, 'text')?.trim();
-    if (text != null && text.isNotEmpty) return text;
-
-    final blocks = map['blocks'];
-    if (blocks is! List) return null;
-
-    final buffer = StringBuffer();
-    for (final block in blocks) {
-      if (block is! Map) continue;
-      final kind = (_stringValue(block, 'kind') ?? _stringValue(block, 'type'))
-          ?.trim()
-          .toLowerCase();
-      if (kind != null && kind != 'text' && kind != 'textblock') continue;
-
-      final blockText = _stringValue(block, 'text')?.trim();
-      if (blockText == null || blockText.isEmpty) continue;
-      if (buffer.isNotEmpty) buffer.write('\n\n');
-      buffer.write(blockText);
-    }
-
-    final value = buffer.toString();
-    return value.isEmpty ? null : value;
-  }
-
-  static List<Map<String, dynamic>> _encode(List<ChatItem> items) {
-    final payload = <Map<String, dynamic>>[];
-    for (final item in items) {
-      switch (item) {
-        case UserMessage():
-          payload.add({
-            'kind': 'user',
-            'id': item.id,
-            'text': item.text,
-            if (item.attachments.isNotEmpty)
-              'attachments': [
-                for (final a in item.attachments) {'id': a.id, 'name': a.name},
-              ],
-          });
-        case AgentTurn():
-          // Skip turns that are still streaming or failed — only completed
-          // text-only summaries persist.
-          if (item.status != AgentTurnStatus.done &&
-              item.status != AgentTurnStatus.stopped) {
-            continue;
-          }
-          final buf = StringBuffer();
-          for (final block in item.blocks) {
-            if (block is TextBlock) {
-              if (buf.isNotEmpty) buf.write('\n\n');
-              buf.write(block.text);
-            }
-          }
-          final text = buf.toString();
-          if (text.isEmpty) continue;
-          payload.add({'kind': 'agent', 'id': item.id, 'text': text});
-      }
-    }
-    return payload;
-  }
 }
 
 class SavedConversation {
@@ -290,6 +210,7 @@ class SavedConversation {
 
   factory SavedConversation.fromMap(Map<String, dynamic>? data) {
     if (data == null) return const SavedConversation(items: []);
+
     return SavedConversation(
       items: ChatHistoryRepository._decode(
         ChatHistoryRepository._listValue(data, 'items'),
