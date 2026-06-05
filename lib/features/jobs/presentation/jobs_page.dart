@@ -665,6 +665,8 @@ class _PipelineCard extends StatelessWidget {
                   for (final skill in skillTags) _Tag(label: skill),
                 ],
               ),
+              const SizedBox(height: 14),
+              _ApplicationQualityMeter(card: card),
               const SizedBox(height: 16),
               Divider(
                 height: 1,
@@ -698,6 +700,175 @@ class _PipelineCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ApplicationQualityMeter extends StatelessWidget {
+  const _ApplicationQualityMeter({required this.card});
+
+  final PipelineCard card;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final score = _applicationQualityScore(card);
+    final color = _qualityColor(score, brand);
+    final reasons = _applicationQualityReasons(card).take(2).join(' · ');
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: brand.isDark ? 0.12 : 0.09),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.speed_rounded, size: 15, color: color),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  _applicationQualityLabel(score),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.1,
+                    color: brand.ink,
+                  ),
+                ),
+              ),
+              Text(
+                '$score%',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  color: color,
+                  letterSpacing: -0.1,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(
+              value: score / 100,
+              minHeight: 5,
+              backgroundColor: brand.border.withValues(alpha: 0.55),
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+          if (reasons.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              reasons,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: brand.textMuted,
+                letterSpacing: -0.05,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+int _applicationQualityScore(PipelineCard card) {
+  var score = 35;
+
+  score += switch (card.job.category) {
+    JobCategory.ready => 25,
+    JobCategory.inputNeeded => 14,
+    JobCategory.exploration => 6,
+  };
+
+  score += switch (card.trustRiskLevel) {
+    'low' => 20,
+    'unchecked' => 8,
+    'medium' => -8,
+    'high' => -30,
+    _ => 0,
+  };
+
+  if (card.job.missingSkills.isEmpty) {
+    score += 15;
+  } else {
+    score -= (card.job.missingSkills.length * 5).clamp(0, 15).toInt();
+  }
+
+  score += switch (card.stage) {
+    PipelineStage.replied || PipelineStage.sent => 18,
+    PipelineStage.drafted => 16,
+    PipelineStage.tailored => 10,
+    PipelineStage.matched => 0,
+  };
+
+  return score.clamp(0, 100).toInt();
+}
+
+String _applicationQualityLabel(int score) {
+  if (score >= 80) return 'Application quality · Ready';
+  if (score >= 60) return 'Application quality · Needs polish';
+  if (score >= 40) return 'Application quality · Needs info';
+  return 'Application quality · Blocked';
+}
+
+Color _qualityColor(int score, BrandTheme brand) {
+  if (score >= 80) return brand.success;
+  if (score >= 60) return brand.warning;
+  if (score >= 40) return brand.textMuted;
+  return brand.danger;
+}
+
+List<String> _applicationQualityReasons(PipelineCard card) {
+  final reasons = <String>[];
+
+  if (card.trustRiskLevel == 'high') {
+    reasons.add('Trust blocked');
+  } else if (card.trustRiskLevel == 'medium') {
+    reasons.add('Verify trust first');
+  } else if (card.trustRiskLevel == 'low') {
+    reasons.add('Trust looks okay');
+  } else {
+    reasons.add('Trust not checked');
+  }
+
+  switch (card.job.category) {
+    case JobCategory.ready:
+      reasons.add('Resume fit strong');
+    case JobCategory.inputNeeded:
+      reasons.add('Needs missing info');
+    case JobCategory.exploration:
+      reasons.add('Stretch role');
+  }
+
+  if (card.job.missingSkills.isNotEmpty) {
+    reasons.add('Missing ${card.job.missingSkills.take(2).join(', ')}');
+  }
+
+  switch (card.stage) {
+    case PipelineStage.drafted:
+      reasons.add('Draft ready');
+    case PipelineStage.tailored:
+      reasons.add('Resume tailored');
+    case PipelineStage.sent:
+      reasons.add('Already sent');
+    case PipelineStage.replied:
+      reasons.add('Reply received');
+    case PipelineStage.matched:
+      break;
+  }
+
+  return reasons;
 }
 
 /// Warm accent for a card, keyed to match quality. Deep enough to stay legible
