@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/brand_theme.dart';
 import '../../../../data/models/tracked_application.dart';
+import '../../services/application_bundle_summary.dart';
 import '../../state/applications_notifier.dart';
 
 class ApplicationDetailSheet extends ConsumerStatefulWidget {
@@ -104,6 +105,10 @@ class _ApplicationDetailSheetState
               const _SectionHeader(label: 'TIMELINE'),
               const SizedBox(height: 10),
               _Timeline(app: app),
+              const SizedBox(height: 20),
+              const _SectionHeader(label: 'APPLICATION BUNDLE'),
+              const SizedBox(height: 10),
+              _BundlePanel(app: app),
               const SizedBox(height: 20),
               const _SectionHeader(label: 'TRUST GUARD'),
               const SizedBox(height: 10),
@@ -222,6 +227,122 @@ class _Timeline extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+class _BundlePanel extends StatelessWidget {
+  const _BundlePanel({required this.app});
+
+  final TrackedApplication app;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final bundle = evaluateApplicationBundle(app);
+    final statusColor = bundle.hasBlocker
+        ? brand.warning
+        : bundle.completeCount == bundle.totalCount
+        ? brand.success
+        : brand.textMuted;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: brand.surfaceMuted.withValues(alpha: brand.isDark ? 0.72 : 0.9),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: brand.border.withValues(alpha: 0.72)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Icon(Icons.inventory_2_outlined, size: 17, color: brand.ink),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Bundle readiness',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    color: brand.ink,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+              ),
+              Text(
+                '${bundle.completeCount}/${bundle.totalCount} · ${bundle.statusLabel}',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  color: statusColor,
+                  letterSpacing: -0.05,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          for (final item in bundle.items) _BundleItemRow(item: item),
+        ],
+      ),
+    );
+  }
+}
+
+class _BundleItemRow extends StatelessWidget {
+  const _BundleItemRow({required this.item});
+
+  final ApplicationBundleItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final color = item.isBlocking
+        ? brand.warning
+        : item.isComplete
+        ? brand.success
+        : brand.textMuted;
+    final icon = item.isBlocking
+        ? Icons.error_outline_rounded
+        : item.isComplete
+        ? Icons.check_circle_rounded
+        : Icons.radio_button_unchecked_rounded;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 9),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.label,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w900,
+                    color: brand.ink,
+                    letterSpacing: -0.05,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  item.detail,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: brand.textMuted,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
