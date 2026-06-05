@@ -121,7 +121,7 @@ Each tool is declared in `tool_registry.dart` (`name`, `description`,
 | `lookup_hiring_manager` | The company's generic `careers@` address (no named-contact lookup) | auto |
 | `remember_fact` | Persist a reusable fact about the user → `learned_facts` | auto |
 | `save_to_pipeline` | Write a scored match as a pipeline card, including Trust Guard result | auto |
-| `save_to_tracker` | Persist an application record to the Applications page, including Trust Guard result | depends on `autonomy_level` |
+| `save_to_tracker` | Persist an application record to the Applications page, including Trust Guard result | auto; external sends still require the `send_email` user gate |
 | `send_email` | Send the drafted email via Gmail | **always requires a user tap** |
 | `ask_user` | Ask the user a question and pause; optional suggestion chips | pauses the loop |
 
@@ -163,15 +163,16 @@ and application tracker:
   ],
   "safe_next_step": "..."
 }
+```
 
 ### Tool input notes
 
 - **`draft_email`** — `{ job_id, resume_id, recipient_email?, recipient_name?,
   tone? }`. Drafts against the tailored resume identified by `resume_id`.
 - **`save_to_tracker`** — `{ job_id, resume_id?, mark_sent? }`. `mark_sent` is a
-  bool, default `false` (there is no `status` enum). In `auto_apply` mode after a
-  successful send the agent passes `mark_sent: true`; in `ask_first` mode it
-  saves a draft and the user taps "Mark as sent".
+  bool, default `false` (there is no `status` enum). In v1 this records prepared
+  or sent work in the Applications activity log; actual external sending still
+  goes through the `send_email` confirmation-token gate or a manual "Mark as sent".
 - **`send_email`** — `{ to, subject, body, attachments? }`. On success the
   handler calls `applicationsRepo.markSent(uid, appId, sentEmailId: messageId)`.
 
@@ -180,13 +181,23 @@ and application tracker:
 **`users/{uid}` — profile**
 
 | Field | Type | Notes |
-|---|---|---|
-| `name`, `email`, `avatar_url`, `role` | string | `role` captured in onboarding |
-| `autonomy_level` | `suggest \| ask_first \| auto_apply` | default `ask_first`; set in Settings |
-| `morning_brief_enabled` | bool | default `false`; gates the dashboard CTA + the after-sign-in brief — never auto-fires on app open |
-| `gmail_connected` | bool | |
-| `last_brief_at` | Timestamp? | display-only |
+| --- | --- | --- |
+| `name`, `email`, `avatar_url`, `role` | string | `role` captured in onboarding; empty role is allowed after Skip |
+| `is_agent_active` | bool | Settings toggle for active agent behavior |
+| `gmail_connected` | bool | Records Gmail connection/intent state |
+| `has_completed_onboarding` | bool | Router gate for first-run onboarding |
+| `resume_fit` | map? | persisted onboarding fit chart snapshot |
+| `auto_apply` | map | bounded auto-apply guardrails; defaults disabled |
 | `created_at` | Timestamp | |
+
+`auto_apply` map:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `enabled` | bool | default `false`; does not send/apply by itself |
+| `min_quality_score` | int | default `85`; clamped 60–100 |
+| `max_daily_applications` | int | default `3`; clamped 1–10 |
+| `require_low_trust` | bool | default `true`; requires Trust Guard `low` before eligibility |
 
 **`users/{uid}/applications/{appId}` — activity log**
 
@@ -232,7 +243,9 @@ and application tracker:
 **`jobs/{jobId}`** — global job cache, upserted by `search_jobs`: title,
 company, location, salary, description, source, source_url.
 
-Chat history is in-memory in v1 (a `conversations/` schema is reserved for v2).
+**`users/{uid}/conversations/{conversationId}`** — persisted chat history:
+conversation title, updated timestamp, and serialized chat items for the history
+drawer/reopen flow.
 
 ## 5. Firebase Storage
 
@@ -291,6 +304,7 @@ text, never touches layout. Don't change the template without a team vote.
 | `match_jobs` | ≤25 jobs per call |
 | `tailor_resume` | one in-flight per session |
 | `send_email` | hard-blocked without a user tap |
+| Bounded auto-apply | eligibility/settings only in v1; no autonomous external submit/send |
 | Anthropic | $5/month spend cap in the console |
 
 ## 9. Security
