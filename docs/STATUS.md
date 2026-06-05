@@ -11,7 +11,7 @@ work lands. Product context: [README.md](./README.md). Technical contract:
 Five workstreams, one owner each (5-person team). Plain names — no codes.
 
 | Workstream | Scope |
-|---|---|
+| --- | --- |
 | **Resume Engine** | Resume models, parsing, diff engine, PDF render, `tailor_resume` + `apply_resume_edits` tools |
 | **Resume Diff UI** | The inline accept/reject diff block, resume list/preview, `ResumeState` V1/V2 |
 | **Agent Reasoning** | Claude tool-use loop, prompts, tool descriptions, brief reasoner |
@@ -38,6 +38,7 @@ Foundation, verified in code:
 ## 🔲 Remaining work
 
 ### Resume Engine
+
 The propose path and accepted-edit preview/save path work. Remaining engine polish:
 
 - [x] **`resume_diff_service.dart`** — pure accepted-edit application with target-path / verbatim-original backstop.
@@ -47,6 +48,7 @@ The propose path and accepted-edit preview/save path work. Remaining engine poli
 - [ ] Scanned-PDF: when text extraction returns empty, surface "upload a text PDF" instead of falling back to the sample resume.
 
 ### Resume Diff UI
+
 The inline proposed-edits card is now interactive.
 
 - [x] `ProposedEditsBlock` renders the current read-only proposed-edits card state with accepted counter, Dismiss all, Apply N edits, preview-ready state, and current widget tests.
@@ -60,6 +62,7 @@ Remaining / delegated:
 - [ ] Confirm final preview / save UX with Resume Diff UI owner.
 
 ### Integrations
+
 Service layer complete — JSearch, Gmail, and the email review modal all ship.
 One cross-workstream wire remains (see below).
 
@@ -72,6 +75,7 @@ One cross-workstream wire remains (see below).
 - [x] Email review UI is reachable from chat email draft blocks and the manual job action sheet.
 
 ### Agent Reasoning
+
 Loop, prompts, and tools are in place. Current status:
 
 - [x] `ask_user` pauses and resumes the same running tool loop.
@@ -87,6 +91,7 @@ Remaining / delegated:
 - [x] Email draft review handoff: `draft_email` results render a reviewable email draft block that opens `EmailReviewPage.show`.
 
 ### App Shell
+
 Effectively complete. Empty states (resume / pipeline / applications) already
 ship with one-tap CTAs; morning brief is now opt-in. Remaining:
 
@@ -109,9 +114,9 @@ still runs only through the agent tool loop.
 The headline demo moment — propose → review → apply → tailored PDF — is now
 demoable end to end:
 
-```
+```text
 Resume Engine: resume_diff_service + apply_resume_edits  ──┐
-                                                          ├──► Resume Diff UI: read-only change log + tailored preview ──► full tailor flow demoable
+                                                         ├──► Resume Diff UI: read-only change log + tailored preview ──► full tailor flow demoable
 Agent Reasoning: feed apply result back into the loop   ──┘
 ```
 

@@ -1,3 +1,9 @@
 {
-  "cmake.sourceDirectory": "/Users/dyn/Desktop/syncra_flutter/linux"
+  "cmake.sourceDirectory": "/Users/dyn/Desktop/syncra_flutter/linux",
+  "[markdown]": {
+    "editor.formatOnSave": true
+  },
+  "editor.codeActionsOnSave": {
+    "source.fixAll.markdownlint": "explicit"
+  }
 }

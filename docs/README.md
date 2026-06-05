@@ -12,7 +12,7 @@ email, and lines it up for one tap to send. You review and approve at every step
 Three files, split by how often they change:
 
 | File | What | Changes |
-|---|---|---|
+| --- | --- | --- |
 | **README.md** (this) | What Syncra is, the demo, the stack | rarely |
 | **[ARCHITECTURE.md](./ARCHITECTURE.md)** | How it's wired — data model, tools, agent loop, state, APIs | by PR |
 | **[STATUS.md](./STATUS.md)** | What's done, what's left, who owns it | daily |

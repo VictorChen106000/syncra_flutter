@@ -237,9 +237,11 @@ Chat history is in-memory in v1 (a `conversations/` schema is reserved for v2).
 ## 5. Firebase Storage
 
 ```
+
 gs://<bucket>/users/{uid}/resumes/
   ├── {manual-resumeId}.pdf|.docx|.doc   ← uploaded by the user
   └── {tailored-resumeId}.pdf            ← rendered by apply_resume_edits
+
 ```
 
 Firestore resume docs carry `storage_path`. On **Flutter Web**, Firebase Storage
