@@ -10,11 +10,38 @@ import '../../state/agent_chat_notifier.dart';
 
 /// Left drawer on the chat page: a list of saved conversations. Tap a row to
 /// reopen it; "New chat" starts fresh. Swipe from the left edge to open.
-class ChatHistoryDrawer extends ConsumerWidget {
+class ChatHistoryDrawer extends ConsumerStatefulWidget {
   const ChatHistoryDrawer({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ChatHistoryDrawer> createState() => _ChatHistoryDrawerState();
+}
+
+class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(_handleSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_handleSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _handleSearchChanged() {
+    final next = _searchController.text;
+    if (next == _query) return;
+    setState(() => _query = next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final brand = context.brand;
     final width = MediaQuery.sizeOf(context).width;
     final convos = ref.watch(conversationListProvider);
@@ -51,13 +78,28 @@ class ChatHistoryDrawer extends ConsumerWidget {
                 },
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppConstants.screenHorizontalPadding,
+                0,
+                AppConstants.screenHorizontalPadding,
+                12,
+              ),
+              child: _SearchField(
+                controller: _searchController,
+                hasQuery: _query.trim().isNotEmpty,
+                onClear: () => _searchController.clear(),
+              ),
+            ),
             Expanded(
               child: convos.when(
                 loading: () => const _LoadingState(),
                 error: (_, _) => const _ErrorState(),
                 data: (list) {
                   if (list.isEmpty) return const _EmptyState();
-                  final groups = _groupConversationsByDate(list);
+                  final filtered = _filterConversations(list, _query);
+                  if (filtered.isEmpty) return const _SearchEmptyState();
+                  final groups = _groupConversationsByDate(filtered);
                   return ListView(
                     padding: const EdgeInsets.fromLTRB(
                       AppConstants.screenHorizontalPadding,
@@ -74,7 +116,7 @@ class ChatHistoryDrawer extends ConsumerWidget {
                             Navigator.of(context).maybePop();
                             notifier.switchConversation(c.id);
                           },
-                          onDelete: (c) => _confirmDelete(context, ref, c),
+                          onDelete: (c) => _confirmDelete(context, c),
                         ),
                     ],
                   );
@@ -89,7 +131,6 @@ class ChatHistoryDrawer extends ConsumerWidget {
 
   Future<void> _confirmDelete(
     BuildContext context,
-    WidgetRef ref,
     ConversationSummary c,
   ) async {
     final confirmed = await showDialog<bool>(
@@ -240,6 +281,19 @@ DateTime _dateOnly(DateTime value) {
   return DateTime(value.year, value.month, value.day);
 }
 
+List<ConversationSummary> _filterConversations(
+  List<ConversationSummary> conversations,
+  String query,
+) {
+  final cleanQuery = query.trim().toLowerCase();
+  if (cleanQuery.isEmpty) return conversations;
+
+  return [
+    for (final conversation in conversations)
+      if (conversation.title.toLowerCase().contains(cleanQuery)) conversation,
+  ];
+}
+
 class _Header extends StatelessWidget {
   const _Header({required this.onClose});
 
@@ -316,6 +370,73 @@ class _Header extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SearchField extends StatelessWidget {
+  const _SearchField({
+    required this.controller,
+    required this.hasQuery,
+    required this.onClear,
+  });
+
+  final TextEditingController controller;
+  final bool hasQuery;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Container(
+      decoration: BoxDecoration(
+        color: brand.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: brand.border),
+        boxShadow: [
+          BoxShadow(
+            color: brand.shadow,
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: TextField(
+        controller: controller,
+        textInputAction: TextInputAction.search,
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
+          color: brand.ink,
+        ),
+        cursorColor: brand.accent,
+        decoration: InputDecoration(
+          hintText: 'Search chats',
+          hintStyle: TextStyle(
+            color: brand.textSoft,
+            fontWeight: FontWeight.w700,
+          ),
+          prefixIcon: Icon(
+            Icons.search_rounded,
+            size: 20,
+            color: brand.textMuted,
+          ),
+          suffixIcon: hasQuery
+              ? IconButton(
+                  tooltip: 'Clear search',
+                  onPressed: onClear,
+                  icon: Icon(
+                    Icons.close_rounded,
+                    size: 18,
+                    color: brand.textMuted,
+                  ),
+                )
+              : null,
+          border: InputBorder.none,
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(vertical: 15),
+        ),
       ),
     );
   }
@@ -619,6 +740,22 @@ class _EmptyState extends StatelessWidget {
       title: 'No saved chats yet',
       message:
           'Saved Syncra conversations will appear here after you send a message.',
+    );
+  }
+}
+
+class _SearchEmptyState extends StatelessWidget {
+  const _SearchEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return _StatusCard(
+      icon: Icons.search_off_rounded,
+      iconColor: brand.textMuted,
+      iconBackground: brand.surfaceMuted,
+      title: 'No matching chats',
+      message: 'Try another title or clear search to see all saved chats.',
     );
   }
 }
