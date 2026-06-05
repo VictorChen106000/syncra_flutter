@@ -45,6 +45,68 @@ tape between them. **Syncra is the duct tape, automated.**
 End to end in ~2 minutes, with the user reviewing — never blindly trusting — at
 two explicit gates: the diff viewer and the email modal.
 
+## Demo runbook
+
+Use this before a live demo or team smoke test.
+
+### Required keys
+
+Run the app with compile-time keys. Do not commit real keys.
+
+```powershell
+flutter run -d chrome `
+  --dart-define=ANTHROPIC_API_KEY=sk-ant-... `
+  --dart-define=RAPIDAPI_KEY=...
+```
+
+For Android emulator:
+
+```powershell
+flutter run -d emulator `
+  --dart-define=ANTHROPIC_API_KEY=sk-ant-... `
+  --dart-define=RAPIDAPI_KEY=...
+```
+
+The debug-only Profile → Developer panel shows whether both keys are present. It
+does not reveal the key values.
+
+### Web storage check
+
+If demoing on Chrome, Firebase Storage CORS must allow the web origin. Without
+CORS, resume upload can succeed but later PDF download / parsing can fail in the
+browser. If demoing on Android or iOS, this browser CORS step can be skipped.
+
+### Build commands
+
+Android release APK:
+
+```powershell
+flutter build apk --release `
+  --dart-define=ANTHROPIC_API_KEY=sk-ant-... `
+  --dart-define=RAPIDAPI_KEY=...
+```
+
+Web release build:
+
+```powershell
+flutter build web --release `
+  --dart-define=ANTHROPIC_API_KEY=sk-ant-... `
+  --dart-define=RAPIDAPI_KEY=...
+```
+
+### One-hour team smoke test
+
+Each teammate should run through:
+
+1. Sign in with Google or email/password.
+2. Upload a text-based resume PDF.
+3. Ask Syncra to find matching jobs.
+4. Open a role, run Trust Guard, and save it.
+5. Tailor a resume and preview the generated PDF.
+6. Draft outreach, review the email, and confirm no email is sent without a tap.
+7. Check Applications for quality, bundle, trust, and bounded auto-apply status.
+8. Reset account only after confirming the demo path works.
+
 ## What makes Syncra different
 
 - **One agent, two triggers — both user-initiated.** One Claude agent, one tool
