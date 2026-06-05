@@ -105,6 +105,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
   Timer? _persistDebounce;
   int _seq = 0;
   bool _hydrating = false;
+  bool _persistenceReady = false;
   bool _serviceReady = false;
   bool _threadPipelineMarkedComplete = false;
 
@@ -119,10 +120,12 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
       jobsRepository: JobsRepository(),
       parser: ResumeParserService(),
     );
+    _persistenceReady = true;
     _seq = 0;
     _threadPipelineMarkedComplete = false;
     ref.onDispose(() {
       _serviceReady = false;
+      _persistenceReady = false;
       _activeSub?.cancel();
       _persistDebounce?.cancel();
     });
@@ -197,7 +200,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
   /// Debounced snapshot write for high-frequency UI changes such as streamed
   /// blocks, tool completion updates, and card-state transitions.
   void _schedulePersist() {
-    if (_hydrating) return;
+    if (_hydrating || !_persistenceReady) return;
     _persistDebounce?.cancel();
     _persistDebounce = Timer(const Duration(milliseconds: 450), _persistNow);
   }
@@ -208,7 +211,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     _persistDebounce?.cancel();
     _persistDebounce = null;
 
-    if (_hydrating) return;
+    if (_hydrating || !_persistenceReady) return;
     final uid = _uid;
     if (uid == null) return;
 
