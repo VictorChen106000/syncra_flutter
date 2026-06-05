@@ -123,6 +123,19 @@ flutter build web --release `
   --dart-define=RAPIDAPI_KEY=...
 ```
 
+### Feature freeze and bug bash
+
+About one week before the demo, stop adding new product features. From that
+point on, only make changes that improve demo reliability:
+
+- Fix crashes, compile errors, failed tests, and broken navigation.
+- Fix demo-path bugs in resume upload, job search, Trust Guard, tailoring,
+  email review, Applications, and Profile settings.
+- Improve unclear error messages only when they unblock the demo.
+- Do not add new screens, new agent tools, new Firebase collections, or new
+  flows unless the whole team agrees it is required for the demo.
+- Run `flutter test` and `flutter analyze` after every bug-bash change.
+
 ### One-hour team smoke test
 
 Each teammate should run through:

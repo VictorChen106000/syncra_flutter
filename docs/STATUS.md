@@ -134,7 +134,7 @@ and key configuration.
 
 ## Demo-day checklist
 
-- [ ] Feature freeze ~7 days out — bug bash only.
+- [ ] Feature freeze ~7 days out — bug bash only. README now documents the freeze rules, allowed bug-bash fixes, and required validation commands.
 - [ ] `ANTHROPIC_API_KEY` + `RAPIDAPI_KEY` set; spend caps configured. Debug Profile now shows whether both compile-time keys are present.
 - [ ] Web: Firebase Storage CORS configured (skip if demoing on a device). README now includes `cors.json`, `gsutil cors set`, and verification commands.
 - [ ] Build APK / TestFlight from `main`; README now includes the run/build commands and one-hour team smoke-test path.
