@@ -76,6 +76,35 @@ If demoing on Chrome, Firebase Storage CORS must allow the web origin. Without
 CORS, resume upload can succeed but later PDF download / parsing can fail in the
 browser. If demoing on Android or iOS, this browser CORS step can be skipped.
 
+Create a temporary `cors.json` file outside the repo:
+
+```json
+[
+  {
+    "origin": ["http://localhost:*", "https://localhost:*"],
+    "method": ["GET", "HEAD", "PUT", "POST", "DELETE"],
+    "responseHeader": ["Content-Type", "Authorization", "x-goog-resumable"],
+    "maxAgeSeconds": 3600
+  }
+]
+```
+
+Then apply it to the Firebase Storage bucket:
+
+```powershell
+gsutil cors set cors.json gs://YOUR_FIREBASE_STORAGE_BUCKET
+```
+
+Verify it:
+
+```powershell
+gsutil cors get gs://YOUR_FIREBASE_STORAGE_BUCKET
+```
+
+After CORS is set, smoke-test this exact Chrome path: upload a text-based resume
+PDF, open preview, ask Syncra to tailor it, and confirm the generated PDF preview
+loads without `ClientException: Failed to fetch`.
+
 ### Build commands
 
 Android release APK:
