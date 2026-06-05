@@ -55,33 +55,30 @@ class ChatHistoryDrawer extends ConsumerWidget {
               child: convos.when(
                 loading: () => const _LoadingState(),
                 error: (_, _) => const _ErrorState(),
-                data: (list) => list.isEmpty
-                    ? const _EmptyState()
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(
-                          AppConstants.screenHorizontalPadding,
-                          4,
-                          AppConstants.screenHorizontalPadding,
-                          40,
+                data: (list) {
+                  if (list.isEmpty) return const _EmptyState();
+                  final groups = _groupConversationsByDate(list);
+                  return ListView(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppConstants.screenHorizontalPadding,
+                      4,
+                      AppConstants.screenHorizontalPadding,
+                      40,
+                    ),
+                    children: [
+                      for (final group in groups)
+                        _ConversationSection(
+                          group: group,
+                          currentId: currentId,
+                          onOpen: (c) {
+                            Navigator.of(context).maybePop();
+                            notifier.switchConversation(c.id);
+                          },
+                          onDelete: (c) => _confirmDelete(context, ref, c),
                         ),
-                        itemCount: list.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 8),
-                        itemBuilder: (context, i) {
-                          final c = list[i];
-                          return _ConversationRow(
-                                summary: c,
-                                active: c.id == currentId,
-                                onTap: () {
-                                  Navigator.of(context).maybePop();
-                                  notifier.switchConversation(c.id);
-                                },
-                                onDelete: () => _confirmDelete(context, ref, c),
-                              )
-                              .animate(delay: (i * 35).ms)
-                              .fadeIn(duration: 220.ms)
-                              .moveX(begin: -10, end: 0);
-                        },
-                      ),
+                    ],
+                  );
+                },
               ),
             ),
           ],
@@ -116,6 +113,131 @@ class ChatHistoryDrawer extends ConsumerWidget {
       await ref.read(agentChatProvider.notifier).deleteConversation(c.id);
     }
   }
+}
+
+class _ConversationSection extends StatelessWidget {
+  const _ConversationSection({
+    required this.group,
+    required this.currentId,
+    required this.onOpen,
+    required this.onDelete,
+  });
+
+  final _ConversationGroup group;
+  final String currentId;
+  final ValueChanged<ConversationSummary> onOpen;
+  final ValueChanged<ConversationSummary> onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SectionHeader(label: group.label),
+          const SizedBox(height: 8),
+          for (var i = 0; i < group.conversations.length; i++)
+            Padding(
+              padding: EdgeInsets.only(
+                bottom: i == group.conversations.length - 1 ? 0 : 8,
+              ),
+              child:
+                  _ConversationRow(
+                        summary: group.conversations[i],
+                        active: group.conversations[i].id == currentId,
+                        onTap: () => onOpen(group.conversations[i]),
+                        onDelete: () => onDelete(group.conversations[i]),
+                      )
+                      .animate(delay: (i * 35).ms)
+                      .fadeIn(duration: 220.ms)
+                      .moveX(begin: -10, end: 0),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, top: 6),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+              color: brand.textMuted,
+              letterSpacing: 0.4,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Container(
+              height: 1,
+              decoration: BoxDecoration(
+                color: brand.border.withValues(alpha: brand.isDark ? 0.7 : 0.8),
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ConversationGroup {
+  const _ConversationGroup({required this.label, required this.conversations});
+
+  final String label;
+  final List<ConversationSummary> conversations;
+}
+
+List<_ConversationGroup> _groupConversationsByDate(
+  List<ConversationSummary> conversations,
+) {
+  final today = _dateOnly(DateTime.now());
+  final buckets = <String, List<ConversationSummary>>{
+    'Today': <ConversationSummary>[],
+    'Yesterday': <ConversationSummary>[],
+    'Previous 7 days': <ConversationSummary>[],
+    'Older': <ConversationSummary>[],
+  };
+
+  for (final conversation in conversations) {
+    final updatedAt = _dateOnly(conversation.updatedAt.toLocal());
+    final dayDelta = today.difference(updatedAt).inDays;
+
+    final label = dayDelta <= 0
+        ? 'Today'
+        : dayDelta == 1
+        ? 'Yesterday'
+        : dayDelta <= 7
+        ? 'Previous 7 days'
+        : 'Older';
+
+    buckets[label]!.add(conversation);
+  }
+
+  return [
+    for (final entry in buckets.entries)
+      if (entry.value.isNotEmpty)
+        _ConversationGroup(label: entry.key, conversations: entry.value),
+  ];
+}
+
+DateTime _dateOnly(DateTime value) {
+  return DateTime(value.year, value.month, value.day);
 }
 
 class _Header extends StatelessWidget {
