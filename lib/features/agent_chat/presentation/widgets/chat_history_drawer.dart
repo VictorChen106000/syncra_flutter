@@ -18,8 +18,9 @@ class ChatHistoryDrawer extends ConsumerWidget {
     final brand = context.brand;
     final width = MediaQuery.sizeOf(context).width;
     final convos = ref.watch(conversationListProvider);
-    final currentId =
-        ref.watch(agentChatProvider.select((s) => s.conversationId));
+    final currentId = ref.watch(
+      agentChatProvider.select((s) => s.conversationId),
+    );
     final notifier = ref.read(agentChatProvider.notifier);
 
     return Drawer(
@@ -52,14 +53,8 @@ class ChatHistoryDrawer extends ConsumerWidget {
             ),
             Expanded(
               child: convos.when(
-                loading: () => const Center(
-                  child: SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-                error: (_, _) => const _EmptyState(),
+                loading: () => const _LoadingState(),
+                error: (_, _) => const _ErrorState(),
                 data: (list) => list.isEmpty
                     ? const _EmptyState()
                     : ListView.separated(
@@ -74,14 +69,14 @@ class ChatHistoryDrawer extends ConsumerWidget {
                         itemBuilder: (context, i) {
                           final c = list[i];
                           return _ConversationRow(
-                            summary: c,
-                            active: c.id == currentId,
-                            onTap: () {
-                              Navigator.of(context).maybePop();
-                              notifier.switchConversation(c.id);
-                            },
-                            onDelete: () => _confirmDelete(context, ref, c),
-                          )
+                                summary: c,
+                                active: c.id == currentId,
+                                onTap: () {
+                                  Navigator.of(context).maybePop();
+                                  notifier.switchConversation(c.id);
+                                },
+                                onDelete: () => _confirmDelete(context, ref, c),
+                              )
                               .animate(delay: (i * 35).ms)
                               .fadeIn(duration: 220.ms)
                               .moveX(begin: -10, end: 0);
@@ -134,32 +129,47 @@ class _Header extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppConstants.screenHorizontalPadding,
-        16,
+        18,
         AppConstants.screenHorizontalPadding,
-        14,
+        16,
       ),
       child: Row(
         children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: brand.accentMuted,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: brand.accent.withValues(
+                  alpha: brand.isDark ? 0.28 : 0.5,
+                ),
+              ),
+            ),
+            alignment: Alignment.center,
+            child: Icon(Icons.history_rounded, size: 21, color: brand.ink),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Chats',
+                  'Chat history',
                   style: TextStyle(
-                    fontSize: 26,
+                    fontSize: 24,
                     fontWeight: FontWeight.w900,
                     color: brand.ink,
-                    letterSpacing: -0.6,
                     height: 1,
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Your conversation history',
+                  'Saved Syncra conversations',
                   style: TextStyle(
                     fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                     color: brand.textMuted,
                   ),
                 ),
@@ -171,7 +181,7 @@ class _Header extends StatelessWidget {
             button: true,
             child: Material(
               color: brand.surface,
-              shape: const CircleBorder(),
+              shape: CircleBorder(side: BorderSide(color: brand.border)),
               child: InkWell(
                 onTap: onClose,
                 customBorder: const CircleBorder(),
@@ -197,29 +207,42 @@ class _NewChatButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    return Material(
-      color: brand.ink,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
+    return DecoratedBox(
+      decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        child: SizedBox(
-          height: 50,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.add_rounded, size: 18, color: brand.inkInverse),
-              const SizedBox(width: 8),
-              Text(
-                'New chat',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: brand.inkInverse,
-                  letterSpacing: -0.1,
+        boxShadow: [
+          BoxShadow(
+            color: brand.accent.withValues(alpha: brand.isDark ? 0.16 : 0.24),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Material(
+        color: brand.accent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          splashColor: brand.onAccent.withValues(alpha: 0.08),
+          highlightColor: brand.onAccent.withValues(alpha: 0.04),
+          child: SizedBox(
+            height: 52,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.add_rounded, size: 20, color: brand.onAccent),
+                const SizedBox(width: 8),
+                Text(
+                  'New chat',
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w900,
+                    color: brand.onAccent,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -328,8 +351,8 @@ class _ConversationRow extends StatelessWidget {
   }
 }
 
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
+class _LoadingState extends StatelessWidget {
+  const _LoadingState();
 
   @override
   Widget build(BuildContext context) {
@@ -338,36 +361,156 @@ class _EmptyState extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Container(
-          padding: const EdgeInsets.all(28),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
           decoration: BoxDecoration(
             color: brand.surface,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(color: brand.border),
+            boxShadow: [
+              BoxShadow(
+                color: brand.shadow,
+                blurRadius: 18,
+                offset: const Offset(0, 10),
+              ),
+            ],
           ),
-          child: Column(
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.forum_outlined, size: 28, color: brand.textMuted),
-              const SizedBox(height: 10),
+              SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.4,
+                  color: brand.accent,
+                ),
+              ),
+              const SizedBox(width: 12),
               Text(
-                'No chats yet',
+                'Loading chats',
                 style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
                   color: brand.ink,
                 ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                'Your conversations with Syncra will show up here.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: brand.textMuted,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return _StatusCard(
+      icon: Icons.forum_outlined,
+      iconColor: brand.ink,
+      iconBackground: brand.accentMuted,
+      title: 'No saved chats yet',
+      message:
+          'Saved Syncra conversations will appear here after you send a message.',
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  const _ErrorState();
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return _StatusCard(
+      icon: Icons.error_outline_rounded,
+      iconColor: brand.warning,
+      iconBackground: brand.warning.withValues(
+        alpha: brand.isDark ? 0.14 : 0.1,
+      ),
+      title: "Couldn't load chats",
+      message:
+          'Saved conversations are still safe. Try reopening the drawer in a moment.',
+    );
+  }
+}
+
+class _StatusCard extends StatelessWidget {
+  const _StatusCard({
+    required this.icon,
+    required this.iconColor,
+    required this.iconBackground,
+    required this.title,
+    required this.message,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final Color iconBackground;
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 280),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: brand.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: brand.border),
+              boxShadow: [
+                BoxShadow(
+                  color: brand.shadow,
+                  blurRadius: 18,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: iconBackground,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(icon, size: 22, color: iconColor),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w900,
+                    color: brand.ink,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.35,
+                    color: brand.textMuted,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
