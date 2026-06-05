@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/dev/demo_readiness.dart';
 import '../../../core/dev/dev_flags_notifier.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
@@ -1767,7 +1768,9 @@ class _DevFlagsSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final flags = ref.watch(devFlagsProvider);
     final notifier = ref.read(devFlagsProvider.notifier);
+    final readiness = evaluateDemoReadiness();
     final brand = context.brand;
+
     return _GroupedCard(
       children: [
         _PreferenceRow(
@@ -1791,7 +1794,127 @@ class _DevFlagsSection extends ConsumerWidget {
             onChanged: notifier.setShowMorningBrief,
           ),
         ),
+        const _GroupedDivider(),
+        _DemoReadinessSummary(readiness: readiness),
+        for (final item in readiness.items) ...[
+          const _GroupedDivider(),
+          _DemoReadinessRow(item: item),
+        ],
       ],
+    );
+  }
+}
+
+class _DemoReadinessSummary extends StatelessWidget {
+  const _DemoReadinessSummary({required this.readiness});
+
+  final DemoReadiness readiness;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final color = readiness.isReady ? brand.success : brand.warning;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          _IconChip(icon: Icons.rocket_launch_outlined, tint: color),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Demo readiness',
+                  style: TextStyle(
+                    color: brand.ink,
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  readiness.isReady
+                      ? 'Required demo keys are configured.'
+                      : 'Some required demo keys are missing.',
+                  style: TextStyle(
+                    color: brand.textMuted,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            '${readiness.readyCount}/${readiness.totalCount}',
+            style: TextStyle(
+              color: color,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.05,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DemoReadinessRow extends StatelessWidget {
+  const _DemoReadinessRow({required this.item});
+
+  final DemoReadinessItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final color = item.isReady ? brand.success : brand.warning;
+    final icon = item.isReady
+        ? Icons.check_circle_rounded
+        : Icons.error_outline_rounded;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.label,
+                  style: TextStyle(
+                    color: brand.ink,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.1,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  item.detail,
+                  style: TextStyle(
+                    color: brand.textMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

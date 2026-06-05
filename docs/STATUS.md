@@ -135,7 +135,7 @@ and key configuration.
 ## Demo-day checklist
 
 - [ ] Feature freeze ~7 days out — bug bash only.
-- [ ] `ANTHROPIC_API_KEY` + `RAPIDAPI_KEY` set; spend caps configured.
+- [ ] `ANTHROPIC_API_KEY` + `RAPIDAPI_KEY` set; spend caps configured. Debug Profile now shows whether both compile-time keys are present.
 - [ ] Web: Firebase Storage CORS configured (skip if demoing on a device).
 - [ ] Build APK / TestFlight from `main`; the whole team uses the app for an hour.
 - [ ] Rotate every API key after the demo.
