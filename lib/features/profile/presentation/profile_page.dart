@@ -1481,38 +1481,55 @@ class _AutoApplyChoiceList<T> extends StatelessWidget {
     final brand = context.brand;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(68, 0, 16, 14),
-      child: Container(
-        decoration: BoxDecoration(
-          color: brand.surfaceMuted.withValues(alpha: brand.isDark ? 0.72 : 1),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: brand.border.withValues(alpha: 0.75)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (var i = 0; i < values.length; i++) ...[
-              _AutoApplyChoiceTile<T>(
-                value: values[i],
-                selected: values[i] == selected,
-                label: labelFor(values[i]),
-                onSelected: onSelected,
+      padding: const EdgeInsets.fromLTRB(72, 0, 16, 12),
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 218, maxWidth: 264),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: brand.surfaceMuted.withValues(
+                alpha: brand.isDark ? 0.86 : 1,
               ),
-              if (i < values.length - 1)
-                Divider(
-                  height: 1,
-                  thickness: 1,
-                  color: brand.border.withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: brand.accent.withValues(
+                  alpha: brand.isDark ? 0.38 : 0.46,
                 ),
-            ],
-          ],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: brand.shadow.withValues(
+                    alpha: brand.isDark ? 0.42 : 0.14,
+                  ),
+                  blurRadius: 22,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final value in values)
+                  _AutoApplyChoiceTile<T>(
+                    value: value,
+                    selected: value == selected,
+                    label: labelFor(value),
+                    onSelected: onSelected,
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-class _AutoApplyChoiceTile<T> extends StatelessWidget {
+class _AutoApplyChoiceTile<T> extends StatefulWidget {
   const _AutoApplyChoiceTile({
     required this.value,
     required this.selected,
@@ -1526,46 +1543,91 @@ class _AutoApplyChoiceTile<T> extends StatelessWidget {
   final ValueChanged<T> onSelected;
 
   @override
+  State<_AutoApplyChoiceTile<T>> createState() =>
+      _AutoApplyChoiceTileState<T>();
+}
+
+class _AutoApplyChoiceTileState<T> extends State<_AutoApplyChoiceTile<T>> {
+  bool _hovered = false;
+
+  @override
   Widget build(BuildContext context) {
     final brand = context.brand;
+    final active = widget.selected || _hovered;
+    final textColor = active ? brand.ink : brand.textMuted;
+    final rowColor = widget.selected
+        ? brand.accent.withValues(alpha: brand.isDark ? 0.16 : 0.13)
+        : _hovered
+        ? brand.surface.withValues(alpha: brand.isDark ? 0.10 : 0.72)
+        : Colors.transparent;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(15),
-        onTap: () => onSelected(value),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    color: selected ? brand.ink : brand.textMuted,
-                    fontSize: 13,
-                    fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
-                    letterSpacing: -0.05,
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => widget.onSelected(widget.value),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOutCubic,
+            margin: const EdgeInsets.symmetric(vertical: 1),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: rowColor,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.label,
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 13,
+                      fontWeight: active ? FontWeight.w900 : FontWeight.w700,
+                      letterSpacing: -0.05,
+                    ),
                   ),
                 ),
-              ),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 160),
-                child: selected
-                    ? Icon(
-                        Icons.check_circle_rounded,
-                        key: const ValueKey('selected'),
-                        size: 17,
-                        color: brand.accent,
-                      )
-                    : Icon(
-                        Icons.circle_outlined,
-                        key: const ValueKey('unselected'),
-                        size: 17,
-                        color: brand.textSoft,
-                      ),
-              ),
-            ],
+                const SizedBox(width: 10),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 150),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeOutCubic,
+                  child: widget.selected
+                      ? Container(
+                          key: const ValueKey('selected'),
+                          width: 18,
+                          height: 18,
+                          decoration: BoxDecoration(
+                            color: brand.accent,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.check_rounded,
+                            size: 13,
+                            color: brand.onAccent,
+                          ),
+                        )
+                      : Container(
+                          key: const ValueKey('unselected'),
+                          width: 18,
+                          height: 18,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: _hovered
+                                  ? brand.accent.withValues(alpha: 0.75)
+                                  : brand.textSoft.withValues(alpha: 0.78),
+                              width: 1.5,
+                            ),
+                          ),
+                        ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1612,23 +1674,45 @@ class _SettingsValueTrail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
+    final tint = expanded ? brand.accent : brand.textMuted;
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(value, style: _settingsValueStyle(context)),
-        const SizedBox(width: 4),
-        AnimatedRotation(
-          turns: expanded ? -0.25 : 0,
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          child: Icon(
-            Icons.chevron_right_rounded,
-            size: 18,
-            color: enabled ? brand.textMuted : brand.textSoft,
-          ),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: expanded
+            ? brand.accent.withValues(alpha: brand.isDark ? 0.13 : 0.10)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(
+          color: expanded
+              ? brand.accent.withValues(alpha: 0.45)
+              : Colors.transparent,
         ),
-      ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            value,
+            style: _settingsValueStyle(
+              context,
+            ).copyWith(color: enabled ? tint : brand.textSoft),
+          ),
+          const SizedBox(width: 4),
+          AnimatedRotation(
+            turns: expanded ? -0.5 : 0,
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            child: Icon(
+              Icons.expand_more_rounded,
+              size: 18,
+              color: enabled ? tint : brand.textSoft,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
