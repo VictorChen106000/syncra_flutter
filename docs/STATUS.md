@@ -98,7 +98,7 @@ ship with one-tap CTAs; morning brief is now opt-in. Remaining:
 - [x] Gmail compose/send OAuth scopes are requested by the Gmail link flow.
 - [x] Email/password auth uses Firebase email/password sign-in and account creation; it no longer falls through to guest mode.
 - [x] Resume upload progress is wired to Firebase Storage transfer progress.
-- [ ] Optional polish pass — animations, snackbar / error consistency.
+- [x] Optional polish pass — bounded auto-apply settings now show confirmation snackbars when guardrails change.
 
 Done 2026-06-05 — **morning brief is controlled by the current router/dev-flag
 flow.** Returning signed-in users can be routed to the morning brief once per app

@@ -1344,8 +1344,77 @@ class _BoundedAutoApplySection extends ConsumerWidget {
     return stops.first;
   }
 
-  void _save(WidgetRef ref, AutoApplySettings settings) {
+  void _save(
+    BuildContext context,
+    WidgetRef ref,
+    AutoApplySettings settings,
+    String message,
+  ) {
     ref.read(userProfileProvider.notifier).setAutoApplySettings(settings);
+    _showSettingsSnack(context, message);
+  }
+
+  void _toggleEnabled(
+    BuildContext context,
+    WidgetRef ref,
+    AutoApplySettings settings,
+  ) {
+    final nextEnabled = !settings.enabled;
+    _save(
+      context,
+      ref,
+      settings.copyWith(enabled: nextEnabled),
+      nextEnabled
+          ? 'Bounded Auto-Apply turned on.'
+          : 'Bounded Auto-Apply turned off.',
+    );
+  }
+
+  void _cycleMinimumQuality(
+    BuildContext context,
+    WidgetRef ref,
+    AutoApplySettings settings,
+  ) {
+    final nextScore = _nextStop(_qualityStops, settings.minQualityScore);
+    _save(
+      context,
+      ref,
+      settings.copyWith(minQualityScore: nextScore),
+      'Minimum quality set to $nextScore%.',
+    );
+  }
+
+  void _cycleDailyLimit(
+    BuildContext context,
+    WidgetRef ref,
+    AutoApplySettings settings,
+  ) {
+    final nextLimit = _nextStop(
+      _dailyLimitStops,
+      settings.maxDailyApplications,
+    );
+    _save(
+      context,
+      ref,
+      settings.copyWith(maxDailyApplications: nextLimit),
+      'Daily auto-apply limit set to $nextLimit.',
+    );
+  }
+
+  void _toggleTrustGate(
+    BuildContext context,
+    WidgetRef ref,
+    AutoApplySettings settings,
+  ) {
+    final nextRequireLowTrust = !settings.requireLowTrust;
+    _save(
+      context,
+      ref,
+      settings.copyWith(requireLowTrust: nextRequireLowTrust),
+      nextRequireLowTrust
+          ? 'Trust gate set to low-risk only.'
+          : 'Trust gate set to bundle review.',
+    );
   }
 
   @override
@@ -1362,13 +1431,10 @@ class _BoundedAutoApplySection extends ConsumerWidget {
           trailing: _LimeToggle(
             active: settings.enabled,
             onToggle: canEdit
-                ? () =>
-                      _save(ref, settings.copyWith(enabled: !settings.enabled))
+                ? () => _toggleEnabled(context, ref, settings)
                 : null,
           ),
-          onTap: canEdit
-              ? () => _save(ref, settings.copyWith(enabled: !settings.enabled))
-              : null,
+          onTap: canEdit ? () => _toggleEnabled(context, ref, settings) : null,
         ),
         const _GroupedDivider(),
         _PreferenceRow(
@@ -1379,15 +1445,7 @@ class _BoundedAutoApplySection extends ConsumerWidget {
             enabled: canEdit,
           ),
           onTap: canEdit
-              ? () => _save(
-                  ref,
-                  settings.copyWith(
-                    minQualityScore: _nextStop(
-                      _qualityStops,
-                      settings.minQualityScore,
-                    ),
-                  ),
-                )
+              ? () => _cycleMinimumQuality(context, ref, settings)
               : null,
         ),
         const _GroupedDivider(),
@@ -1399,15 +1457,7 @@ class _BoundedAutoApplySection extends ConsumerWidget {
             enabled: canEdit,
           ),
           onTap: canEdit
-              ? () => _save(
-                  ref,
-                  settings.copyWith(
-                    maxDailyApplications: _nextStop(
-                      _dailyLimitStops,
-                      settings.maxDailyApplications,
-                    ),
-                  ),
-                )
+              ? () => _cycleDailyLimit(context, ref, settings)
               : null,
         ),
         const _GroupedDivider(),
@@ -1421,10 +1471,7 @@ class _BoundedAutoApplySection extends ConsumerWidget {
             enabled: canEdit,
           ),
           onTap: canEdit
-              ? () => _save(
-                  ref,
-                  settings.copyWith(requireLowTrust: !settings.requireLowTrust),
-                )
+              ? () => _toggleTrustGate(context, ref, settings)
               : null,
         ),
       ],
@@ -1440,6 +1487,21 @@ TextStyle _settingsValueStyle(BuildContext context) {
     fontWeight: FontWeight.w800,
     letterSpacing: -0.05,
   );
+}
+
+void _showSettingsSnack(BuildContext context, String message) {
+  final brand = context.brand;
+
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: brand.ink,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(milliseconds: 1800),
+      ),
+    );
 }
 
 class _SettingsValueTrail extends StatelessWidget {
