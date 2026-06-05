@@ -238,6 +238,24 @@ and application tracker:
 (`trust_risk_level`, `trust_risk_label`, `trust_signals_count`,
 `trust_signals`, `trust_safe_next_step`, `trust_checked_at`), `created_at`.
 
+### Pipeline lifecycle invariant
+
+The active Jobs pipeline must only show unfinished pending work.
+
+Pipeline cards use two separate axes:
+
+- `stage`: progress through `matched`, `tailored`, `drafted`, `sent`, `replied`
+- `status`: active visibility through `pending`, `approved`, `dismissed`
+
+Important invariant:
+
+- `matched`, `tailored`, and `drafted` cards may remain active while `status == pending`.
+- `sent` and `replied` cards are handled work and must not appear in the active pipeline.
+- Advancing a card to `sent` or `replied` must also mark the card `status: approved`.
+- Legacy cards with `status: pending` but terminal stage `sent` or `replied` must still be hidden from the active pipeline.
+
+Do not remove or weaken this behavior without updating `test/pipeline_repository_test.dart`.
+
 **`users/{uid}/learned_facts/{factId}`** — `topic`, `detail`, `source`, `created_at`.
 
 **`jobs/{jobId}`** — global job cache, upserted by `search_jobs`: title,

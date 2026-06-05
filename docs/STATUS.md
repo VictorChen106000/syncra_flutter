@@ -101,6 +101,7 @@ ship with one-tap CTAs; morning brief is now opt-in. Remaining:
 - [x] Resume upload progress is wired to Firebase Storage transfer progress.
 - [x] Optional polish pass — bounded auto-apply settings now show confirmation snackbars when guardrails change.
 - [x] Chat history recovery — saved conversations now have a polished grouped/searchable drawer, rename and pin/unpin actions, delete confirmation, reliable reopen, and hardened text-only snapshot decoding for old or malformed data.
+- [x] Locked pipeline lifecycle regression — handled pipeline cards (`sent` / `replied`) are excluded from the active Jobs pipeline, and terminal stage advancement marks cards `approved`. Covered by `test/pipeline_repository_test.dart`; do not weaken this behavior without updating that test.
 
 Done 2026-06-05 — **morning brief is controlled by the current router/dev-flag
 flow.** Returning signed-in users can be routed to the morning brief once per app

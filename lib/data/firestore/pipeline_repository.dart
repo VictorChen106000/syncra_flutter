@@ -193,11 +193,25 @@ class PipelineRepository {
   }
 }
 
+/// CRITICAL PIPELINE INVARIANT:
+/// The active Jobs pipeline must only show unfinished pending work.
+///
+/// Cards that reached [PipelineStage.sent] or [PipelineStage.replied] are
+/// already handled and must leave the active pipeline even if legacy Firestore
+/// data still says `status: pending`.
+///
+/// Do not weaken this without updating:
+/// - test/pipeline_repository_test.dart
+/// - docs/ARCHITECTURE.md pipeline lifecycle notes
 @visibleForTesting
 bool shouldShowInActivePipeline(PipelineCard card) {
   return card.status == PipelineCardStatus.pending && !card.isSent;
 }
 
+/// CRITICAL PIPELINE INVARIANT:
+/// Advancing a card to `sent` or `replied` completes the pipeline card by
+/// writing `status: approved`. This prevents handled jobs from reappearing in
+/// the active Jobs pipeline after refresh/restart.
 @visibleForTesting
 Map<String, dynamic> pipelineStagePatchFor({
   required PipelineStage current,
