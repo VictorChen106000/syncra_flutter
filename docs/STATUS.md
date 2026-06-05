@@ -34,6 +34,7 @@ Foundation, verified in code:
 - Applications activity-log (drafted / sent / "got reply") · pipeline approve → application
 - Dashboard prompt entry + "Run today's brief" CTA · Settings (autonomy, brief toggle, delete account) · onboarding role capture · router redirects
 - Live notifications inbox subscribed to agent events
+- Chat history recovery complete — polished drawer shell and rows, grouped history sections, local title search, rename, pin/unpin, delete confirmation, reliable reopen of transcript / selected resume attachments / optional job-thread context, and safe degradation for old or malformed saved conversation data
 
 ## 🔲 Remaining work
 
@@ -99,6 +100,7 @@ ship with one-tap CTAs; morning brief is now opt-in. Remaining:
 - [x] Email/password auth uses Firebase email/password sign-in and account creation; it no longer falls through to guest mode.
 - [x] Resume upload progress is wired to Firebase Storage transfer progress.
 - [x] Optional polish pass — bounded auto-apply settings now show confirmation snackbars when guardrails change.
+- [x] Chat history recovery — saved conversations now have a polished grouped/searchable drawer, rename and pin/unpin actions, delete confirmation, reliable reopen, and hardened text-only snapshot decoding for old or malformed data.
 
 Done 2026-06-05 — **morning brief is controlled by the current router/dev-flag
 flow.** Returning signed-in users can be routed to the morning brief once per app

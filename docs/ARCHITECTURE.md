@@ -244,8 +244,18 @@ and application tracker:
 company, location, salary, description, source, source_url.
 
 **`users/{uid}/conversations/{conversationId}`** — persisted chat history:
-conversation title, updated timestamp, and serialized chat items for the history
-drawer/reopen flow.
+conversation title, updated timestamp, optional `pinned` bool, optional
+`threadJob` snapshot, and serialized chat items for the history drawer/reopen
+flow. The drawer supports grouped history sections, local title search, rename,
+pin/unpin, and delete confirmation. Reopening restores the text transcript,
+selected resume attachments saved on user turns, and the optional job-thread
+context.
+
+Chat history snapshots are intentionally conservative. The repository persists
+text-first conversation history for reopen reliability; it does not promise
+full-fidelity round-trip serialization for every advanced agent UI block. Old,
+unknown, malformed, or advanced block shapes should degrade to text when a text
+summary is present, or be skipped safely without crashing.
 
 ## 5. Firebase Storage
 
