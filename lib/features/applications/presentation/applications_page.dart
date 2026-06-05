@@ -11,6 +11,7 @@ import '../../../core/theme/brand_theme.dart';
 import '../../../data/models/tracked_application.dart';
 import '../../../features/jobs/services/application_quality_meter.dart';
 import '../../../shared/widgets/app_header.dart';
+import '../services/application_bundle_summary.dart';
 import '../../../shared/widgets/empty_state_card.dart';
 import '../state/applications_notifier.dart';
 import 'widgets/application_detail_sheet.dart';
@@ -463,6 +464,8 @@ class _TrackerCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 _ApplicationQualityMeter(app: app),
+                const SizedBox(height: 10),
+                _ApplicationBundleCard(app: app),
                 if (app.trustRiskLevel != 'unchecked') ...[
                   const SizedBox(height: 10),
                   _ApplicationTrustTag(app: app),
@@ -499,6 +502,112 @@ class _TrackerCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ApplicationBundleCard extends StatelessWidget {
+  const _ApplicationBundleCard({required this.app});
+
+  final TrackedApplication app;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final bundle = evaluateApplicationBundle(app);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: brand.surfaceMuted.withValues(alpha: brand.isDark ? 0.72 : 0.9),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: brand.border.withValues(alpha: 0.75)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.inventory_2_outlined, size: 15, color: brand.ink),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  'Application bundle',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w900,
+                    color: brand.ink,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+              ),
+              Text(
+                '${bundle.completeCount}/${bundle.totalCount} · ${bundle.statusLabel}',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w800,
+                  color: bundle.hasBlocker ? brand.warning : brand.success,
+                  letterSpacing: -0.05,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              for (final item in bundle.items) _BundleItemChip(item: item),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BundleItemChip extends StatelessWidget {
+  const _BundleItemChip({required this.item});
+
+  final ApplicationBundleItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final color = item.isBlocking
+        ? brand.warning
+        : item.isComplete
+        ? brand.success
+        : brand.textMuted;
+    final icon = item.isBlocking
+        ? Icons.error_outline_rounded
+        : item.isComplete
+        ? Icons.check_circle_rounded
+        : Icons.radio_button_unchecked_rounded;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: brand.isDark ? 0.16 : 0.1),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12.5, color: color),
+          const SizedBox(width: 5),
+          Text(
+            '${item.label}: ${item.detail}',
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w900,
+              color: color,
+              letterSpacing: -0.05,
+            ),
+          ),
+        ],
       ),
     );
   }
