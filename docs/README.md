@@ -136,6 +136,17 @@ Each teammate should run through:
 7. Check Applications for quality, bundle, trust, and bounded auto-apply status.
 8. Reset account only after confirming the demo path works.
 
+### Post-demo shutdown
+
+After the live demo:
+
+1. Rotate the Anthropic API key used for `ANTHROPIC_API_KEY`.
+2. Rotate the RapidAPI key used for `RAPIDAPI_KEY`.
+3. Remove old keys from local terminal history, screenshots, notes, and team chat.
+4. Check provider usage dashboards and confirm spend caps were not exceeded.
+5. Delete the temporary `cors.json` file if it was created outside the repo.
+6. Rebuild only with the new keys if the team needs another demo build.
+
 ## What makes Syncra different
 
 - **One agent, two triggers — both user-initiated.** One Claude agent, one tool
