@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/job.dart';
 import 'firestore_paths.dart';
@@ -74,10 +75,7 @@ class PipelineRepository {
         .map(
           (snap) => snap.docs
               .map(_fromDoc)
-              .where(
-                (card) =>
-                    card.status == PipelineCardStatus.pending && !card.isSent,
-              )
+              .where(shouldShowInActivePipeline)
               .toList(growable: false),
         );
   }
@@ -91,9 +89,7 @@ class PipelineRepository {
 
     return snap.docs
         .map(_fromDoc)
-        .where(
-          (card) => card.status == PipelineCardStatus.pending && !card.isSent,
-        )
+        .where(shouldShowInActivePipeline)
         .toList(growable: false);
   }
 
@@ -143,23 +139,11 @@ class PipelineRepository {
         .get();
     if (snap.docs.isEmpty) return;
 
-    final target = _stageRank(stage);
-    final completesPipeline =
-        stage == PipelineStage.sent || stage == PipelineStage.replied;
-
     for (final doc in snap.docs) {
       final current = _stageFromName(doc.data()['stage'] as String?);
-      final shouldAdvanceStage = _stageRank(current) < target;
+      final patch = pipelineStagePatchFor(current: current, target: stage);
 
-      if (!shouldAdvanceStage && !completesPipeline) continue;
-
-      final patch = <String, dynamic>{};
-      if (shouldAdvanceStage) {
-        patch['stage'] = _stageToName(stage);
-      }
-      if (completesPipeline) {
-        patch['status'] = 'approved';
-      }
+      if (patch.isEmpty) continue;
 
       await doc.reference.update(patch);
     }
@@ -207,6 +191,30 @@ class PipelineRepository {
       'created_at': FieldValue.serverTimestamp(),
     });
   }
+}
+
+@visibleForTesting
+bool shouldShowInActivePipeline(PipelineCard card) {
+  return card.status == PipelineCardStatus.pending && !card.isSent;
+}
+
+@visibleForTesting
+Map<String, dynamic> pipelineStagePatchFor({
+  required PipelineStage current,
+  required PipelineStage target,
+}) {
+  final shouldAdvanceStage = _stageRank(current) < _stageRank(target);
+  final completesPipeline =
+      target == PipelineStage.sent || target == PipelineStage.replied;
+
+  if (!shouldAdvanceStage && !completesPipeline) {
+    return const {};
+  }
+
+  return {
+    if (shouldAdvanceStage) 'stage': _stageToName(target),
+    if (completesPipeline) 'status': 'approved',
+  };
 }
 
 String _categoryToName(JobCategory c) => switch (c) {
