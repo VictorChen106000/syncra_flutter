@@ -202,7 +202,7 @@ and application tracker:
 **`users/{uid}/applications/{appId}` — activity log**
 
 | Field | Type | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `job` | map | embedded Job snapshot |
 | `resume_id` | string | tailored resume used |
 | `drafted_at` | Timestamp | |
@@ -221,7 +221,7 @@ and application tracker:
 **`users/{uid}/resumes/{resumeId}` — resume metadata**
 
 | Field | Type | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `name`, `mime_type` | string | |
 | `size` | int | |
 | `source` | `manual \| tailored` | |
