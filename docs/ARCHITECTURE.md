@@ -261,35 +261,45 @@ Do not remove or weaken this behavior without updating `test/pipeline_repository
 **`jobs/{jobId}`** — global job cache, upserted by `search_jobs`: title,
 company, location, salary, description, source, source_url.
 
-**`users/{uid}/conversations/{conversationId}`** — persisted chat history:
-conversation title, updated timestamp, optional `pinned` bool, optional
-`threadJob` snapshot, and serialized chat items for the history drawer/reopen
-flow. The drawer supports grouped history sections, local title search, rename,
-pin/unpin, and delete confirmation. Reopening restores the text transcript,
-selected resume attachments saved on user turns, and the optional job-thread
-context.
+**`users/{uid}/conversations/{conversationId}`** — versioned chat workspace
+snapshot. Current writes use `schemaVersion: 2` and store `title`,
+`renamedTitle`, `lastPreview`, `pinned`, `updatedAt`, optional `threadJob`, and
+serialized `items`.
 
-Chat history snapshots are intentionally conservative. The repository persists
-text-first conversation history for reopen reliability; it does not promise
-full-fidelity round-trip serialization for every advanced agent UI block. Old,
-unknown, malformed, or advanced block shapes should degrade to text when a text
-summary is present, or be skipped safely without crashing.
+`items` are encoded through `ChatSnapshotCodec` and can recover user bubbles,
+resume attachment chips, agent text, tool-call rows, job-card rails,
+proposed-edits cards, built-resume draft cards, input-request cards, action
+proposal cards, and email draft cards. The drawer supports grouped history
+sections, title/preview search, rename, pin/unpin, delete confirmation, and
+preview text under each row.
+
+Legacy text-only history is still supported. Unknown or malformed items/blocks
+must skip safely rather than crashing the drawer or reopen flow. Running
+stream/tool states are restored as stopped/failed snapshots, not resumed live.
+After restore, `AnthropicChatService.restoreConversationContext()` rebuilds a
+compact model-readable context summary from visible transcript blocks so the
+next user message can continue naturally without pretending the tools reran.
 
 ## 5. Firebase Storage
 
+````markdown
 ```text
-
-gs://{bucket}/users/{uid}/resumes/
-  ├── {manual-resumeId}.pdf|.docx|.doc   ← uploaded by the user
-  └── {tailored-resumeId}.pdf            ← rendered by apply_resume_edits
-
+gs://{bucket}/users/{uid}/
+  ├── resumes/
+  │   ├── {manual-resumeId}.pdf|.docx|.doc   ← uploaded by the user
+  │   └── {tailored-resumeId}.pdf            ← saved generated resume
+  └── conversation_previews/
+      └── {conversationId}/{blockId}.pdf     ← unsaved chat preview PDF
 ```
 
-Firestore resume docs carry `storage_path`. On **Flutter Web**, Firebase Storage
-CORS must allow browser downloads from the app origin — without it, parsing and
-preview fail with `ClientException: Failed to fetch`. iOS / Android use native
-SDKs and need no CORS. All platforms need Storage security rules. Legacy docs
-without `storage_path` resolve to `null` bytes — the UI offers re-upload.
+Firestore resume docs carry `storage_path`. Unsaved chat preview PDFs are stored
+only as `previewStoragePath` on the recovered chat block; no resume-library
+Firestore doc is created until the user taps Save. On **Flutter Web**, Firebase
+Storage CORS must allow browser downloads from the app origin — without it,
+parsing and preview fail with `ClientException: Failed to fetch`. iOS / Android
+use native SDKs and need no CORS. All platforms need Storage security rules.
+Legacy docs without `storage_path` resolve to `null` bytes — the UI offers
+re-upload.
 
 ## 6. External APIs
 
@@ -339,8 +349,9 @@ text, never touches layout. Don't change the template without a team vote.
 
 - `firestore.rules` (deployed): `jobs/{jobId}` — any signed-in user read/write;
   `users/{uid}/**` — owner-only.
-- `storage.rules` (deployed): `users/{uid}/resumes/**` — owner-only; writes
-  capped at 5 MB and restricted to `application/*` content types.
+- `storage.rules` (deployed): `users/{uid}/resumes/**` and
+  `users/{uid}/conversation_previews/**` — owner-only; writes capped at 5 MB and
+  restricted to `application/*` content types.
 - API keys ship compiled into the client via `--dart-define`. **Rotate every key
   after the demo** and set spend caps in every provider console. Server-grade
   key management is out of scope (it would need a server).

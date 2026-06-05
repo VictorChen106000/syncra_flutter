@@ -176,11 +176,12 @@ After the live demo:
   application cards. It never claims a job is guaranteed safe.
 - **Walk-away support.** Leave the chat mid-task and agent updates land in the
   in-app notifications inbox — answer or approve from there.
-- **Persistent chat history.** Conversations are saved in Firestore and can be
-  reopened from a polished drawer with date grouping, local title search,
-  rename, pin/unpin, and delete confirmation. Reopen restores the text
-  transcript, selected resume attachments, and job-thread context when present;
-  advanced chat UI blocks degrade or skip safely rather than fully replaying.
+- **Persistent chat workspace.** Conversations are saved as versioned Firestore
+  snapshots and reopen from a polished drawer with date grouping, preview text,
+  local title/search, rename, pin/unpin, and delete confirmation. Reopen restores
+  user bubbles, selected resume attachments, tool rows, job cards, proposal
+  cards, resume preview cards, email draft cards, job-thread context, and compact
+  model-side context so the next message can continue naturally.
 - **Human-in-the-loop.** The agent never sends external traffic without an
   explicit user tap. Missing context → it pauses and asks.
 - **Honest scope.** The Applications page is an activity log (drafted / sent /
