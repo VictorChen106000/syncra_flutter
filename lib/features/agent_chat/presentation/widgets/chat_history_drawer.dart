@@ -250,7 +250,7 @@ class _NewChatButton extends StatelessWidget {
   }
 }
 
-class _ConversationRow extends StatelessWidget {
+class _ConversationRow extends StatefulWidget {
   const _ConversationRow({
     required this.summary,
     required this.active,
@@ -264,86 +264,168 @@ class _ConversationRow extends StatelessWidget {
   final VoidCallback onDelete;
 
   @override
+  State<_ConversationRow> createState() => _ConversationRowState();
+}
+
+class _ConversationRowState extends State<_ConversationRow> {
+  bool _rowHovered = false;
+  bool _deleteHovered = false;
+
+  @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    return Material(
-      color: brand.surface,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: active ? brand.ink : brand.border,
-              width: active ? 1.4 : 1,
-            ),
+    final active = widget.active;
+    final rowRadius = BorderRadius.circular(18);
+    final deleteColor = _deleteHovered
+        ? brand.danger
+        : brand.textSoft.withValues(alpha: brand.isDark ? 0.72 : 0.58);
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _rowHovered = true),
+      onExit: (_) => setState(() {
+        _rowHovered = false;
+        _deleteHovered = false;
+      }),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOutCubic,
+        decoration: BoxDecoration(
+          color: active ? brand.accentMuted : brand.surface,
+          borderRadius: rowRadius,
+          border: Border.all(
+            color: active
+                ? brand.accent.withValues(alpha: brand.isDark ? 0.7 : 0.95)
+                : (_rowHovered ? brand.outline : brand.border),
+            width: active ? 1.4 : 1,
           ),
-          child: Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: active ? brand.ink : brand.surfaceMuted,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  Icons.chat_bubble_outline_rounded,
-                  size: 16,
-                  color: active ? brand.accent : brand.textMuted,
-                ),
+          boxShadow: [
+            if (active || _rowHovered)
+              BoxShadow(
+                color: active
+                    ? brand.accent.withValues(alpha: brand.isDark ? 0.12 : 0.16)
+                    : brand.shadow,
+                blurRadius: active ? 16 : 12,
+                offset: const Offset(0, 8),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      summary.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w800,
-                        color: brand.ink,
-                        letterSpacing: -0.15,
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: rowRadius,
+          child: InkWell(
+            onTap: widget.onTap,
+            borderRadius: rowRadius,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
+              child: Row(
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 140),
+                    curve: Curves.easeOutCubic,
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: active ? brand.accent : brand.surfaceMuted,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: active
+                            ? brand.accentBright
+                            : brand.border.withValues(alpha: 0.7),
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      DateFormatter.relativeShort(summary.updatedAt),
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: brand.textSoft,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Semantics(
-                label: 'Delete chat',
-                button: true,
-                child: InkResponse(
-                  onTap: onDelete,
-                  radius: 22,
-                  child: SizedBox(
-                    width: 44,
-                    height: 44,
+                    alignment: Alignment.center,
                     child: Icon(
-                      Icons.delete_outline_rounded,
-                      size: 18,
-                      color: brand.textSoft,
+                      Icons.chat_bubble_outline_rounded,
+                      size: 17,
+                      color: active ? brand.onAccent : brand.textMuted,
                     ),
                   ),
-                ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          widget.summary.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            height: 1.18,
+                            fontWeight: FontWeight.w900,
+                            color: brand.ink,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.schedule_rounded,
+                              size: 13,
+                              color: brand.textSoft,
+                            ),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                DateFormatter.relativeShort(
+                                  widget.summary.updatedAt,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: brand.textMuted,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  MouseRegion(
+                    onEnter: (_) => setState(() => _deleteHovered = true),
+                    onExit: (_) => setState(() => _deleteHovered = false),
+                    child: Semantics(
+                      label: 'Delete chat',
+                      button: true,
+                      child: Tooltip(
+                        message: 'Delete chat',
+                        child: InkResponse(
+                          onTap: widget.onDelete,
+                          radius: 22,
+                          hoverColor: brand.danger.withValues(alpha: 0.08),
+                          highlightColor: brand.danger.withValues(alpha: 0.1),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 120),
+                            curve: Curves.easeOutCubic,
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: _deleteHovered
+                                  ? brand.danger.withValues(
+                                      alpha: brand.isDark ? 0.14 : 0.08,
+                                    )
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            alignment: Alignment.center,
+                            child: Icon(
+                              Icons.delete_outline_rounded,
+                              size: 18,
+                              color: deleteColor,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
