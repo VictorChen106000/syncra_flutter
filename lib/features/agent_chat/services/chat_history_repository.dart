@@ -60,7 +60,7 @@ class ChatHistoryRepository {
     QueryDocumentSnapshot<Map<String, dynamic>> doc,
   ) {
     final data = doc.data();
-    final rawItems = (data['items'] as List?) ?? const [];
+    final rawItems = _listValue(data, 'items');
     // Skip empty shells so the drawer never renders a blank row.
     if (rawItems.isEmpty) return null;
     final renamedTitle = (data['renamedTitle'] as String?)?.trim();
@@ -171,24 +171,23 @@ class ChatHistoryRepository {
     final items = <ChatItem>[];
     for (final entry in raw) {
       if (entry is! Map) continue;
-      final map = entry.cast<String, dynamic>();
-      final kind = map['kind'] as String?;
-      final id = map['id'] as String?;
-      final text = (map['text'] as String?) ?? '';
-      if (id == null || text.isEmpty) continue;
+      final kind = _stringValue(entry, 'kind');
+      final id = _stringValue(entry, 'id');
+      if (id == null || id.trim().isEmpty) continue;
       switch (kind) {
         case 'user':
-          final attachmentList = (map['attachments'] as List?) ?? const [];
-          final attachments = <ChatAttachment>[
-            for (final a in attachmentList)
-              if (a is Map && a['id'] is String && a['name'] is String)
-                ChatAttachment(
-                  id: a['id'] as String,
-                  name: a['name'] as String,
-                ),
-          ];
-          items.add(UserMessage(id: id, text: text, attachments: attachments));
+          final text = _stringValue(entry, 'text')?.trim();
+          if (text == null || text.isEmpty) continue;
+          items.add(
+            UserMessage(
+              id: id,
+              text: text,
+              attachments: _decodeAttachments(entry['attachments']),
+            ),
+          );
         case 'agent':
+          final text = _agentText(entry);
+          if (text == null || text.isEmpty) continue;
           items.add(
             AgentTurn(
               id: id,
@@ -199,6 +198,54 @@ class ChatHistoryRepository {
       }
     }
     return items;
+  }
+
+  static String? _stringValue(Map<dynamic, dynamic> map, String key) {
+    final value = map[key];
+    return value is String ? value : null;
+  }
+
+  static List<dynamic> _listValue(Map<dynamic, dynamic> map, String key) {
+    final value = map[key];
+    return value is List ? value : const [];
+  }
+
+  static List<ChatAttachment> _decodeAttachments(Object? raw) {
+    if (raw is! List) return const [];
+    final attachments = <ChatAttachment>[];
+    for (final entry in raw) {
+      if (entry is! Map) continue;
+      final id = _stringValue(entry, 'id')?.trim();
+      final name = _stringValue(entry, 'name')?.trim();
+      if (id == null || id.isEmpty || name == null || name.isEmpty) continue;
+      attachments.add(ChatAttachment(id: id, name: name));
+    }
+    return attachments;
+  }
+
+  static String? _agentText(Map<dynamic, dynamic> map) {
+    final text = _stringValue(map, 'text')?.trim();
+    if (text != null && text.isNotEmpty) return text;
+
+    final blocks = map['blocks'];
+    if (blocks is! List) return null;
+
+    final buffer = StringBuffer();
+    for (final block in blocks) {
+      if (block is! Map) continue;
+      final kind = (_stringValue(block, 'kind') ?? _stringValue(block, 'type'))
+          ?.trim()
+          .toLowerCase();
+      if (kind != null && kind != 'text' && kind != 'textblock') continue;
+
+      final blockText = _stringValue(block, 'text')?.trim();
+      if (blockText == null || blockText.isEmpty) continue;
+      if (buffer.isNotEmpty) buffer.write('\n\n');
+      buffer.write(blockText);
+    }
+
+    final value = buffer.toString();
+    return value.isEmpty ? null : value;
   }
 
   static List<Map<String, dynamic>> _encode(List<ChatItem> items) {
@@ -245,7 +292,7 @@ class SavedConversation {
     if (data == null) return const SavedConversation(items: []);
     return SavedConversation(
       items: ChatHistoryRepository._decode(
-        (data['items'] as List?) ?? const [],
+        ChatHistoryRepository._listValue(data, 'items'),
       ),
       threadJob: ChatHistoryRepository._decodeThreadJob(data['threadJob']),
     );

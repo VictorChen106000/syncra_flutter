@@ -69,11 +69,17 @@ class Job {
     'why': why,
   };
 
-  static JobCategory _categoryFromString(String value) => switch (value) {
-    'ready' => JobCategory.ready,
-    'input_needed' => JobCategory.inputNeeded,
-    'inputNeeded' => JobCategory.inputNeeded,
-    'exploration' => JobCategory.exploration,
-    _ => JobCategory.ready,
-  };
+  static JobCategory _categoryFromString(String value) {
+    final normalized = value
+        .trim()
+        .toLowerCase()
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_');
+    return switch (normalized) {
+      'ready' => JobCategory.ready,
+      'input_needed' || 'inputneeded' => JobCategory.inputNeeded,
+      'exploration' => JobCategory.exploration,
+      _ => JobCategory.ready,
+    };
+  }
 }
