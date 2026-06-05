@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../data/firestore/firestore_paths.dart';
+import '../../../data/models/job.dart';
 import '../models/agent_block.dart';
 import '../models/chat_message.dart';
 import '../models/conversation_summary.dart';
@@ -18,6 +19,7 @@ import '../models/conversation_summary.dart';
 ///   - `title`: short label derived from the first user message
 ///   - `renamedTitle`: optional user-provided title override
 ///   - `pinned`: optional bool; missing means unpinned
+///   - `threadJob`: optional job context for conversations opened from a job
 ///   - `updatedAt`: server timestamp (also the history sort key)
 ///   - `items`: [{ kind: 'user'|'agent', id, text, attachments? }]
 class ChatHistoryRepository {
@@ -96,10 +98,16 @@ class ChatHistoryRepository {
   }
 
   Future<List<ChatItem>> load(String uid, String conversationId) async {
+    return (await loadConversation(uid, conversationId)).items;
+  }
+
+  Future<SavedConversation> loadConversation(
+    String uid,
+    String conversationId,
+  ) async {
     final snap = await _doc(uid, conversationId).get();
     final data = snap.data();
-    if (data == null) return const [];
-    return _decode((data['items'] as List?) ?? const []);
+    return SavedConversation.fromMap(data);
   }
 
   Future<void> save(
@@ -107,12 +115,16 @@ class ChatHistoryRepository {
     String conversationId, {
     required List<ChatItem> items,
     required String title,
+    Job? threadJob,
   }) async {
     final payload = _encode(items);
     if (payload.isEmpty) return;
     await _doc(uid, conversationId).set({
       'items': payload,
       'title': title,
+      'threadJob': threadJob == null
+          ? FieldValue.delete()
+          : _encodeThreadJob(threadJob),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
@@ -140,6 +152,19 @@ class ChatHistoryRepository {
 
   Future<void> delete(String uid, String conversationId) async {
     await _doc(uid, conversationId).delete();
+  }
+
+  static Map<String, dynamic> _encodeThreadJob(Job job) {
+    return job.toJson();
+  }
+
+  static Job? _decodeThreadJob(Object? raw) {
+    if (raw is! Map) return null;
+    try {
+      return Job.fromJson(Map<String, dynamic>.from(raw));
+    } catch (_) {
+      return null;
+    }
   }
 
   static List<ChatItem> _decode(List<dynamic> raw) {
@@ -211,4 +236,21 @@ class ChatHistoryRepository {
     }
     return payload;
   }
+}
+
+class SavedConversation {
+  const SavedConversation({required this.items, this.threadJob});
+
+  factory SavedConversation.fromMap(Map<String, dynamic>? data) {
+    if (data == null) return const SavedConversation(items: []);
+    return SavedConversation(
+      items: ChatHistoryRepository._decode(
+        (data['items'] as List?) ?? const [],
+      ),
+      threadJob: ChatHistoryRepository._decodeThreadJob(data['threadJob']),
+    );
+  }
+
+  final List<ChatItem> items;
+  final Job? threadJob;
 }

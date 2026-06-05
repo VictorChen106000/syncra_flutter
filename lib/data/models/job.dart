@@ -34,45 +34,46 @@ class Job {
   /// only one of these three labels. [matchScore] is retained internally for
   /// legacy persistence/sorting but is never surfaced.
   String get matchLabel => switch (category) {
-        JobCategory.ready => 'All Match',
-        JobCategory.inputNeeded => 'Several Match',
-        JobCategory.exploration => 'No Match',
-      };
+    JobCategory.ready => 'All Match',
+    JobCategory.inputNeeded => 'Several Match',
+    JobCategory.exploration => 'No Match',
+  };
 
   factory Job.fromJson(Map<String, dynamic> json) => Job(
-        id: json['id'].toString(),
-        title: json['title'] as String,
-        company: json['company'] as String,
-        location: json['location'] as String,
-        salary: json['salary'] as String,
-        category: _categoryFromString(json['category'] as String),
-        matchScore: json['match'] as int,
-        agentAction: json['agent_action'] as String,
-        agentJustification: json['agent_justification'] as String,
-        skills: List<String>.from(json['skills'] as List),
-        missingSkills: List<String>.from(json['missing'] as List),
-        why: json['why'] as String,
-      );
+    id: json['id'].toString(),
+    title: json['title'] as String,
+    company: json['company'] as String,
+    location: json['location'] as String,
+    salary: json['salary'] as String,
+    category: _categoryFromString(json['category'] as String),
+    matchScore: json['match'] as int,
+    agentAction: json['agent_action'] as String,
+    agentJustification: json['agent_justification'] as String,
+    skills: List<String>.from(json['skills'] as List),
+    missingSkills: List<String>.from(json['missing'] as List),
+    why: json['why'] as String,
+  );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'company': company,
-        'location': location,
-        'salary': salary,
-        'category': category.name,
-        'match': matchScore,
-        'agent_action': agentAction,
-        'agent_justification': agentJustification,
-        'skills': skills,
-        'missing': missingSkills,
-        'why': why,
-      };
+    'id': id,
+    'title': title,
+    'company': company,
+    'location': location,
+    'salary': salary,
+    'category': category.name,
+    'match': matchScore,
+    'agent_action': agentAction,
+    'agent_justification': agentJustification,
+    'skills': skills,
+    'missing': missingSkills,
+    'why': why,
+  };
 
   static JobCategory _categoryFromString(String value) => switch (value) {
-        'ready' => JobCategory.ready,
-        'input_needed' => JobCategory.inputNeeded,
-        'exploration' => JobCategory.exploration,
-        _ => JobCategory.ready,
-      };
+    'ready' => JobCategory.ready,
+    'input_needed' => JobCategory.inputNeeded,
+    'inputNeeded' => JobCategory.inputNeeded,
+    'exploration' => JobCategory.exploration,
+    _ => JobCategory.ready,
+  };
 }

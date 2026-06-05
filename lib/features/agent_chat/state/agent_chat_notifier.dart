@@ -164,14 +164,18 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
           current.threadJob == null;
       if (!isUntouched) return;
       final mostRecent = convos.first;
-      final saved = await _history.load(uid, mostRecent.id);
-      if (saved.isEmpty) return;
+      final saved = await _history.loadConversation(uid, mostRecent.id);
+      if (saved.items.isEmpty) return;
       state = AgentChatState(
-        items: _restoreHistoryItems(saved),
+        items: _restoreHistoryItems(saved.items),
         conversationId: mostRecent.id,
+        threadJob: saved.threadJob,
       );
       // Make sure subsequent IDs don't collide with hydrated ones.
-      _seq = saved.length + 1;
+      _seq = saved.items.length + 1;
+      ref
+          .read(resumeProvider.notifier)
+          .setSelectedResumes(_resumeIdsFromHistory(saved.items));
     } catch (_) {
       // Best-effort hydration; failures are silent so a flaky network never
       // blocks the chat from working.
@@ -195,6 +199,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
         state.conversationId,
         items: items,
         title: _deriveTitle(items, fallbackJob: state.threadJob),
+        threadJob: state.threadJob,
       ),
     );
   }
@@ -449,19 +454,20 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     if (uid == null) return;
     _service.resetConversation();
     _threadPipelineMarkedComplete = false;
-    final saved = await _history.load(uid, conversationId);
+    final saved = await _history.loadConversation(uid, conversationId);
     state = AgentChatState(
-      items: _restoreHistoryItems(saved),
+      items: _restoreHistoryItems(saved.items),
       conversationId: conversationId,
+      threadJob: saved.threadJob,
     );
     // Make sure subsequent IDs don't collide with loaded ones.
-    _seq = saved.length + 1;
+    _seq = saved.items.length + 1;
     // Continue the chat with the resume it was already using — sync the
     // attachment selection to that conversation's latest user message so
     // the "RESUME IN USE" card (and the next send) stay consistent.
     ref
         .read(resumeProvider.notifier)
-        .setSelectedResumes(_resumeIdsFromHistory(saved));
+        .setSelectedResumes(_resumeIdsFromHistory(saved.items));
   }
 
   /// Resume ids attached to the most recent [UserMessage] in a loaded
