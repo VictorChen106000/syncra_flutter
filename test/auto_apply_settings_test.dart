@@ -50,6 +50,22 @@ void main() {
       expect(settings.requireLowTrust, isFalse);
     });
 
+    test('copyWith changes selected guardrails', () {
+      const settings = AutoApplySettings();
+
+      final updated = settings.copyWith(
+        enabled: true,
+        minQualityScore: 90,
+        maxDailyApplications: 5,
+        requireLowTrust: false,
+      );
+
+      expect(updated.enabled, isTrue);
+      expect(updated.minQualityScore, 90);
+      expect(updated.maxDailyApplications, 5);
+      expect(updated.requireLowTrust, isFalse);
+    });
+
     test('falls back when the saved value is missing or malformed', () {
       expect(AutoApplySettings.fromMap(null), const AutoApplySettings());
 

@@ -1334,10 +1334,25 @@ class _IntegrationSection extends ConsumerWidget {
 class _BoundedAutoApplySection extends ConsumerWidget {
   const _BoundedAutoApplySection();
 
+  static const _qualityStops = [80, 85, 90, 95];
+  static const _dailyLimitStops = [1, 2, 3, 5, 10];
+
+  int _nextStop(List<int> stops, int current) {
+    for (final stop in stops) {
+      if (stop > current) return stop;
+    }
+    return stops.first;
+  }
+
+  void _save(WidgetRef ref, AutoApplySettings settings) {
+    ref.read(userProfileProvider.notifier).setAutoApplySettings(settings);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(userProfileProvider);
     final settings = profile?.autoApplySettings ?? const AutoApplySettings();
+    final canEdit = profile != null;
 
     return _GroupedCard(
       children: [
@@ -1346,43 +1361,71 @@ class _BoundedAutoApplySection extends ConsumerWidget {
           title: 'Bounded Auto-Apply',
           trailing: _LimeToggle(
             active: settings.enabled,
-            onToggle: profile == null
-                ? null
-                : () {
-                    ref
-                        .read(userProfileProvider.notifier)
-                        .setAutoApplySettings(
-                          settings.copyWith(enabled: !settings.enabled),
-                        );
-                  },
+            onToggle: canEdit
+                ? () =>
+                      _save(ref, settings.copyWith(enabled: !settings.enabled))
+                : null,
           ),
+          onTap: canEdit
+              ? () => _save(ref, settings.copyWith(enabled: !settings.enabled))
+              : null,
         ),
         const _GroupedDivider(),
         _PreferenceRow(
           icon: Icons.speed_rounded,
           title: 'Minimum quality',
-          trailing: Text(
-            '${settings.minQualityScore}%',
-            style: _settingsValueStyle(context),
+          trailing: _SettingsValueTrail(
+            value: '${settings.minQualityScore}%',
+            enabled: canEdit,
           ),
+          onTap: canEdit
+              ? () => _save(
+                  ref,
+                  settings.copyWith(
+                    minQualityScore: _nextStop(
+                      _qualityStops,
+                      settings.minQualityScore,
+                    ),
+                  ),
+                )
+              : null,
         ),
         const _GroupedDivider(),
         _PreferenceRow(
           icon: Icons.today_rounded,
           title: 'Daily limit',
-          trailing: Text(
-            '${settings.maxDailyApplications}/day',
-            style: _settingsValueStyle(context),
+          trailing: _SettingsValueTrail(
+            value: '${settings.maxDailyApplications}/day',
+            enabled: canEdit,
           ),
+          onTap: canEdit
+              ? () => _save(
+                  ref,
+                  settings.copyWith(
+                    maxDailyApplications: _nextStop(
+                      _dailyLimitStops,
+                      settings.maxDailyApplications,
+                    ),
+                  ),
+                )
+              : null,
         ),
         const _GroupedDivider(),
         _PreferenceRow(
           icon: Icons.verified_user_outlined,
           title: 'Trust gate',
-          trailing: Text(
-            settings.requireLowTrust ? 'Low-risk only' : 'Needs review',
-            style: _settingsValueStyle(context),
+          trailing: _SettingsValueTrail(
+            value: settings.requireLowTrust
+                ? 'Low-risk only'
+                : 'Bundle review decides',
+            enabled: canEdit,
           ),
+          onTap: canEdit
+              ? () => _save(
+                  ref,
+                  settings.copyWith(requireLowTrust: !settings.requireLowTrust),
+                )
+              : null,
         ),
       ],
     );
@@ -1397,6 +1440,31 @@ TextStyle _settingsValueStyle(BuildContext context) {
     fontWeight: FontWeight.w800,
     letterSpacing: -0.05,
   );
+}
+
+class _SettingsValueTrail extends StatelessWidget {
+  const _SettingsValueTrail({required this.value, required this.enabled});
+
+  final String value;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(value, style: _settingsValueStyle(context)),
+        const SizedBox(width: 4),
+        Icon(
+          Icons.chevron_right_rounded,
+          size: 18,
+          color: enabled ? brand.textMuted : brand.textSoft,
+        ),
+      ],
+    );
+  }
 }
 
 class _IntegrationTile extends StatelessWidget {
