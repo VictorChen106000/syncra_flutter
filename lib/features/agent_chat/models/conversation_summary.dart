@@ -5,6 +5,7 @@ class ConversationSummary {
     required this.id,
     required this.title,
     required this.updatedAt,
+    this.pinned = false,
   });
 
   /// Firestore document id under `users/{uid}/conversations`.
@@ -15,4 +16,10 @@ class ConversationSummary {
 
   /// Last time the conversation received a message — the history sort key.
   final DateTime updatedAt;
+
+  /// Whether this conversation should be surfaced above regular history.
+  ///
+  /// Old Firestore documents do not have this field and are treated as
+  /// unpinned.
+  final bool pinned;
 }

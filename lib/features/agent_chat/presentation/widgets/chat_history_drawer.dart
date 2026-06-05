@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -99,7 +101,10 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
                   if (list.isEmpty) return const _EmptyState();
                   final filtered = _filterConversations(list, _query);
                   if (filtered.isEmpty) return const _SearchEmptyState();
-                  final groups = _groupConversationsByDate(filtered);
+                  final pinned = _pinnedConversations(filtered);
+                  final groups = _groupConversationsByDate(
+                    _unpinnedConversations(filtered),
+                  );
                   return ListView(
                     padding: const EdgeInsets.fromLTRB(
                       AppConstants.screenHorizontalPadding,
@@ -108,6 +113,27 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
                       40,
                     ),
                     children: [
+                      if (pinned.isNotEmpty)
+                        _ConversationSection(
+                          group: _ConversationGroup(
+                            label: 'Pinned',
+                            conversations: pinned,
+                          ),
+                          currentId: currentId,
+                          onOpen: (c) {
+                            Navigator.of(context).maybePop();
+                            notifier.switchConversation(c.id);
+                          },
+                          onRename: (c) =>
+                              unawaited(_renameConversation(context, c)),
+                          onTogglePinned: (c) => unawaited(
+                            notifier.setConversationPinned(
+                              c.id,
+                              pinned: !c.pinned,
+                            ),
+                          ),
+                          onDelete: (c) => _confirmDelete(context, c),
+                        ),
                       for (final group in groups)
                         _ConversationSection(
                           group: group,
@@ -116,6 +142,14 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
                             Navigator.of(context).maybePop();
                             notifier.switchConversation(c.id);
                           },
+                          onRename: (c) =>
+                              unawaited(_renameConversation(context, c)),
+                          onTogglePinned: (c) => unawaited(
+                            notifier.setConversationPinned(
+                              c.id,
+                              pinned: !c.pinned,
+                            ),
+                          ),
                           onDelete: (c) => _confirmDelete(context, c),
                         ),
                     ],
@@ -154,6 +188,100 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
       await ref.read(agentChatProvider.notifier).deleteConversation(c.id);
     }
   }
+
+  Future<void> _renameConversation(
+    BuildContext context,
+    ConversationSummary c,
+  ) async {
+    final title = await _showRenameDialog(context, c);
+    if (!mounted || title == null) return;
+    final cleanTitle = title.trim();
+    if (cleanTitle.isEmpty || cleanTitle == c.title.trim()) return;
+    await ref
+        .read(agentChatProvider.notifier)
+        .renameConversation(c.id, cleanTitle);
+  }
+
+  Future<String?> _showRenameDialog(
+    BuildContext context,
+    ConversationSummary c,
+  ) async {
+    final controller = TextEditingController(text: c.title);
+    var draft = c.title;
+    try {
+      return await showDialog<String>(
+        context: context,
+        builder: (ctx) {
+          final brand = ctx.brand;
+          return StatefulBuilder(
+            builder: (ctx, setDialogState) {
+              final canSave = draft.trim().isNotEmpty;
+              return AlertDialog(
+                backgroundColor: brand.surface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                title: Text(
+                  'Rename chat',
+                  style: TextStyle(
+                    color: brand.ink,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                content: TextField(
+                  controller: controller,
+                  autofocus: true,
+                  textInputAction: TextInputAction.done,
+                  maxLength: 80,
+                  style: TextStyle(
+                    color: brand.ink,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  cursorColor: brand.accent,
+                  decoration: InputDecoration(
+                    labelText: 'Chat title',
+                    labelStyle: TextStyle(color: brand.textMuted),
+                    filled: true,
+                    fillColor: brand.surfaceMuted,
+                    counterStyle: TextStyle(color: brand.textSoft),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(color: brand.border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(color: brand.accent, width: 1.4),
+                    ),
+                  ),
+                  onChanged: (value) => setDialogState(() => draft = value),
+                  onSubmitted: (_) {
+                    final cleanTitle = controller.text.trim();
+                    if (cleanTitle.isNotEmpty) {
+                      Navigator.of(ctx).pop(cleanTitle);
+                    }
+                  },
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                  TextButton(
+                    onPressed: canSave
+                        ? () => Navigator.of(ctx).pop(controller.text.trim())
+                        : null,
+                    child: const Text('Save'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      controller.dispose();
+    }
+  }
 }
 
 class _ConversationSection extends StatelessWidget {
@@ -161,12 +289,16 @@ class _ConversationSection extends StatelessWidget {
     required this.group,
     required this.currentId,
     required this.onOpen,
+    required this.onRename,
+    required this.onTogglePinned,
     required this.onDelete,
   });
 
   final _ConversationGroup group;
   final String currentId;
   final ValueChanged<ConversationSummary> onOpen;
+  final ValueChanged<ConversationSummary> onRename;
+  final ValueChanged<ConversationSummary> onTogglePinned;
   final ValueChanged<ConversationSummary> onDelete;
 
   @override
@@ -188,6 +320,9 @@ class _ConversationSection extends StatelessWidget {
                         summary: group.conversations[i],
                         active: group.conversations[i].id == currentId,
                         onTap: () => onOpen(group.conversations[i]),
+                        onRename: () => onRename(group.conversations[i]),
+                        onTogglePinned: () =>
+                            onTogglePinned(group.conversations[i]),
                         onDelete: () => onDelete(group.conversations[i]),
                       )
                       .animate(delay: (i * 35).ms)
@@ -291,6 +426,24 @@ List<ConversationSummary> _filterConversations(
   return [
     for (final conversation in conversations)
       if (conversation.title.toLowerCase().contains(cleanQuery)) conversation,
+  ];
+}
+
+List<ConversationSummary> _pinnedConversations(
+  List<ConversationSummary> conversations,
+) {
+  return [
+    for (final conversation in conversations)
+      if (conversation.pinned) conversation,
+  ];
+}
+
+List<ConversationSummary> _unpinnedConversations(
+  List<ConversationSummary> conversations,
+) {
+  return [
+    for (final conversation in conversations)
+      if (!conversation.pinned) conversation,
   ];
 }
 
@@ -498,12 +651,16 @@ class _ConversationRow extends StatefulWidget {
     required this.summary,
     required this.active,
     required this.onTap,
+    required this.onRename,
+    required this.onTogglePinned,
     required this.onDelete,
   });
 
   final ConversationSummary summary;
   final bool active;
   final VoidCallback onTap;
+  final VoidCallback onRename;
+  final VoidCallback onTogglePinned;
   final VoidCallback onDelete;
 
   @override
@@ -512,22 +669,22 @@ class _ConversationRow extends StatefulWidget {
 
 class _ConversationRowState extends State<_ConversationRow> {
   bool _rowHovered = false;
-  bool _deleteHovered = false;
+  bool _menuHovered = false;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
     final active = widget.active;
     final rowRadius = BorderRadius.circular(18);
-    final deleteColor = _deleteHovered
-        ? brand.danger
+    final menuColor = _menuHovered
+        ? brand.ink
         : brand.textSoft.withValues(alpha: brand.isDark ? 0.72 : 0.58);
 
     return MouseRegion(
       onEnter: (_) => setState(() => _rowHovered = true),
       onExit: (_) => setState(() {
         _rowHovered = false;
-        _deleteHovered = false;
+        _menuHovered = false;
       }),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 140),
@@ -630,40 +787,14 @@ class _ConversationRowState extends State<_ConversationRow> {
                     ),
                   ),
                   MouseRegion(
-                    onEnter: (_) => setState(() => _deleteHovered = true),
-                    onExit: (_) => setState(() => _deleteHovered = false),
-                    child: Semantics(
-                      label: 'Delete chat',
-                      button: true,
-                      child: Tooltip(
-                        message: 'Delete chat',
-                        child: InkResponse(
-                          onTap: widget.onDelete,
-                          radius: 22,
-                          hoverColor: brand.danger.withValues(alpha: 0.08),
-                          highlightColor: brand.danger.withValues(alpha: 0.1),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 120),
-                            curve: Curves.easeOutCubic,
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: _deleteHovered
-                                  ? brand.danger.withValues(
-                                      alpha: brand.isDark ? 0.14 : 0.08,
-                                    )
-                                  : Colors.transparent,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            alignment: Alignment.center,
-                            child: Icon(
-                              Icons.delete_outline_rounded,
-                              size: 18,
-                              color: deleteColor,
-                            ),
-                          ),
-                        ),
-                      ),
+                    onEnter: (_) => setState(() => _menuHovered = true),
+                    onExit: (_) => setState(() => _menuHovered = false),
+                    child: _ConversationActionsButton(
+                      pinned: widget.summary.pinned,
+                      color: menuColor,
+                      onRename: widget.onRename,
+                      onTogglePinned: widget.onTogglePinned,
+                      onDelete: widget.onDelete,
                     ),
                   ),
                 ],
@@ -675,6 +806,107 @@ class _ConversationRowState extends State<_ConversationRow> {
     );
   }
 }
+
+class _ConversationActionsButton extends StatelessWidget {
+  const _ConversationActionsButton({
+    required this.pinned,
+    required this.color,
+    required this.onRename,
+    required this.onTogglePinned,
+    required this.onDelete,
+  });
+
+  final bool pinned;
+  final Color color;
+  final VoidCallback onRename;
+  final VoidCallback onTogglePinned;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return PopupMenuButton<_ConversationAction>(
+      tooltip: 'Chat actions',
+      color: brand.surface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 8,
+      position: PopupMenuPosition.under,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      onSelected: (action) {
+        switch (action) {
+          case _ConversationAction.rename:
+            onRename();
+            return;
+          case _ConversationAction.togglePinned:
+            onTogglePinned();
+            return;
+          case _ConversationAction.delete:
+            onDelete();
+            return;
+        }
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: _ConversationAction.rename,
+          child: _ConversationMenuItem(
+            icon: Icons.drive_file_rename_outline_rounded,
+            label: 'Rename',
+            color: brand.ink,
+          ),
+        ),
+        PopupMenuItem(
+          value: _ConversationAction.togglePinned,
+          child: _ConversationMenuItem(
+            icon: pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+            label: pinned ? 'Unpin' : 'Pin',
+            color: brand.ink,
+          ),
+        ),
+        PopupMenuItem(
+          value: _ConversationAction.delete,
+          child: _ConversationMenuItem(
+            icon: Icons.delete_outline_rounded,
+            label: 'Delete',
+            color: brand.danger,
+          ),
+        ),
+      ],
+      child: SizedBox(
+        width: 40,
+        height: 40,
+        child: Icon(Icons.more_horiz_rounded, size: 20, color: color),
+      ),
+    );
+  }
+}
+
+class _ConversationMenuItem extends StatelessWidget {
+  const _ConversationMenuItem({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 10),
+        Text(
+          label,
+          style: TextStyle(fontWeight: FontWeight.w700, color: color),
+        ),
+      ],
+    );
+  }
+}
+
+enum _ConversationAction { rename, togglePinned, delete }
 
 class _LoadingState extends StatelessWidget {
   const _LoadingState();

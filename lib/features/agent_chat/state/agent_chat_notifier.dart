@@ -487,6 +487,22 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     }
   }
 
+  Future<void> renameConversation(String conversationId, String title) async {
+    final uid = _uid;
+    final cleanTitle = title.trim();
+    if (uid == null || cleanTitle.isEmpty) return;
+    await _history.rename(uid, conversationId, title: cleanTitle);
+  }
+
+  Future<void> setConversationPinned(
+    String conversationId, {
+    required bool pinned,
+  }) async {
+    final uid = _uid;
+    if (uid == null) return;
+    await _history.setPinned(uid, conversationId, pinned: pinned);
+  }
+
   String _nextId(String prefix) {
     _seq += 1;
     return '$prefix-$_seq';

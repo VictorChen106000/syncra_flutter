@@ -16,6 +16,8 @@ import '../models/conversation_summary.dart';
 ///
 /// Schema: `users/{uid}/conversations/{conversationId}` — each doc holds:
 ///   - `title`: short label derived from the first user message
+///   - `renamedTitle`: optional user-provided title override
+///   - `pinned`: optional bool; missing means unpinned
 ///   - `updatedAt`: server timestamp (also the history sort key)
 ///   - `items`: [{ kind: 'user'|'agent', id, text, attachments? }]
 class ChatHistoryRepository {
@@ -59,15 +61,27 @@ class ChatHistoryRepository {
     final rawItems = (data['items'] as List?) ?? const [];
     // Skip empty shells so the drawer never renders a blank row.
     if (rawItems.isEmpty) return null;
+    final renamedTitle = (data['renamedTitle'] as String?)?.trim();
     final title = (data['title'] as String?)?.trim();
     final ts = data['updatedAt'];
     return ConversationSummary(
       id: doc.id,
-      title: (title != null && title.isNotEmpty)
-          ? title
-          : _deriveTitleFromRaw(rawItems),
+      title: _displayTitle(renamedTitle, title, rawItems),
       updatedAt: ts is Timestamp ? ts.toDate() : DateTime.now(),
+      pinned: data['pinned'] == true,
     );
+  }
+
+  static String _displayTitle(
+    String? renamedTitle,
+    String? title,
+    List<dynamic> rawItems,
+  ) {
+    if (renamedTitle != null && renamedTitle.isNotEmpty) {
+      return renamedTitle;
+    }
+    if (title != null && title.isNotEmpty) return title;
+    return _deriveTitleFromRaw(rawItems);
   }
 
   /// Fallback title for legacy docs written before `title` was stored.
@@ -100,7 +114,28 @@ class ChatHistoryRepository {
       'items': payload,
       'title': title,
       'updatedAt': FieldValue.serverTimestamp(),
-    });
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> rename(
+    String uid,
+    String conversationId, {
+    required String title,
+  }) async {
+    final cleanTitle = title.trim();
+    if (cleanTitle.isEmpty) return;
+    await _doc(
+      uid,
+      conversationId,
+    ).update({'title': cleanTitle, 'renamedTitle': cleanTitle});
+  }
+
+  Future<void> setPinned(
+    String uid,
+    String conversationId, {
+    required bool pinned,
+  }) async {
+    await _doc(uid, conversationId).update({'pinned': pinned});
   }
 
   Future<void> delete(String uid, String conversationId) async {
