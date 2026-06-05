@@ -45,7 +45,7 @@ The propose path and accepted-edit preview/save path work. Remaining engine poli
 - [x] Accepted edits can render a tailored PDF preview and save it as a tailored resume.
 - [x] Cascade-delete tailored children when a manual resume is deleted (`ResumeNotifier.deleteResume`).
 - [x] Parser retry — `ResumeParserService` retries once with a stricter prompt when Claude returns malformed resume JSON, then surfaces an actionable parse error if retry still fails.
-- [ ] Scanned-PDF: when text extraction returns empty, surface "upload a text PDF" instead of falling back to the sample resume.
+- [x] Scanned-PDF / empty text guard: parser and tailor flow surface an actionable text-PDF error instead of falling back to a sample resume.
 
 ### Resume Diff UI
 
