@@ -11,8 +11,11 @@ import '../../../core/theme/brand_theme.dart';
 import '../../../data/models/tracked_application.dart';
 import '../../../features/jobs/services/application_quality_meter.dart';
 import '../../../shared/widgets/app_header.dart';
-import '../services/application_bundle_summary.dart';
 import '../../../shared/widgets/empty_state_card.dart';
+import '../../auth/models/user_profile.dart';
+import '../../auth/state/user_profile_notifier.dart';
+import '../services/application_bundle_summary.dart';
+import '../services/auto_apply_eligibility.dart';
 import '../state/applications_notifier.dart';
 import 'widgets/application_detail_sheet.dart';
 
@@ -36,6 +39,10 @@ class ApplicationsPage extends ConsumerWidget {
     final notifier = ref.read(applicationsProvider.notifier);
     final filtered = state.filtered;
     final allItems = state.items;
+    final profile = ref.watch(userProfileProvider);
+    final autoApplySettings =
+        profile?.autoApplySettings ?? const AutoApplySettings();
+    final autoApplySentToday = _sentTodayCount(allItems);
     final bundleReviewCount = allItems
         .where((app) => evaluateApplicationBundle(app).hasBlocker)
         .length;
@@ -112,6 +119,8 @@ class ApplicationsPage extends ConsumerWidget {
                       (entry) =>
                           _TrackerCard(
                                 app: entry.value,
+                                autoApplySettings: autoApplySettings,
+                                autoApplySentToday: autoApplySentToday,
                                 onTap: () => ApplicationDetailSheet.show(
                                   context,
                                   entry.value,
@@ -131,6 +140,19 @@ class ApplicationsPage extends ConsumerWidget {
       ),
     );
   }
+}
+
+int _sentTodayCount(List<TrackedApplication> apps) {
+  final now = DateTime.now();
+
+  return apps.where((app) {
+    final sentAt = app.sentAt;
+    if (sentAt == null) return false;
+
+    return sentAt.year == now.year &&
+        sentAt.month == now.month &&
+        sentAt.day == now.day;
+  }).length;
 }
 
 class _SummaryStrip extends StatelessWidget {
@@ -457,11 +479,15 @@ class _EmptyFiltered extends StatelessWidget {
 class _TrackerCard extends StatelessWidget {
   const _TrackerCard({
     required this.app,
+    required this.autoApplySettings,
+    required this.autoApplySentToday,
     required this.onTap,
     required this.onToggleReply,
   });
 
   final TrackedApplication app;
+  final AutoApplySettings autoApplySettings;
+  final int autoApplySentToday;
   final VoidCallback onTap;
   final ValueChanged<bool> onToggleReply;
 
@@ -543,6 +569,12 @@ class _TrackerCard extends StatelessWidget {
                 _ApplicationQualityMeter(app: app),
                 const SizedBox(height: 10),
                 _ApplicationBundleCard(app: app),
+                const SizedBox(height: 10),
+                _AutoApplyEligibilityCard(
+                  app: app,
+                  settings: autoApplySettings,
+                  sentToday: autoApplySentToday,
+                ),
                 if (app.trustRiskLevel != 'unchecked') ...[
                   const SizedBox(height: 10),
                   _ApplicationTrustTag(app: app),
@@ -579,6 +611,103 @@ class _TrackerCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _AutoApplyEligibilityCard extends StatelessWidget {
+  const _AutoApplyEligibilityCard({
+    required this.app,
+    required this.settings,
+    required this.sentToday,
+  });
+
+  final TrackedApplication app;
+  final AutoApplySettings settings;
+  final int sentToday;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final result = evaluateAutoApplyEligibility(
+      app: app,
+      settings: settings,
+      sentToday: sentToday,
+    );
+
+    final color = result.isEligible
+        ? brand.success
+        : settings.enabled
+        ? brand.warning
+        : brand.textMuted;
+    final icon = result.isEligible
+        ? Icons.task_alt_rounded
+        : settings.enabled
+        ? Icons.rule_rounded
+        : Icons.pause_circle_outline_rounded;
+    final title = result.isEligible
+        ? 'Auto-apply eligible'
+        : settings.enabled
+        ? 'Auto-apply blocked'
+        : 'Auto-apply off';
+    final detail = result.isEligible
+        ? '${result.qualityScore}% quality · $sentToday/${settings.maxDailyApplications} used today'
+        : result.statusLabel;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: brand.isDark ? 0.14 : 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.26)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Bounded auto-apply',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    color: brand.textMuted,
+                    letterSpacing: -0.05,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w900,
+                    color: brand.ink,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              detail,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+                color: color,
+                letterSpacing: -0.05,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
