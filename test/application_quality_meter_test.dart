@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syncra/data/firestore/pipeline_repository.dart';
 import 'package:syncra/data/models/job.dart';
+import 'package:syncra/data/models/tracked_application.dart';
 import 'package:syncra/features/jobs/services/application_quality_meter.dart';
 
 void main() {
@@ -77,6 +78,16 @@ void main() {
       expect(result.reasons, contains('Missing Web3, GraphQL'));
     });
   });
+
+  test('evaluates tracked applications using their current phase', () {
+    final result = evaluateTrackedApplicationQuality(
+      _trackedApplication(phase: ApplicationPhase.sent, trustRiskLevel: 'low'),
+    );
+
+    expect(result.score, 100);
+    expect(result.label, 'Application quality · Ready');
+    expect(result.reasons, contains('Already sent'));
+  });
 }
 
 PipelineCard _card({
@@ -106,6 +117,28 @@ PipelineCard _card({
       missingSkills: missingSkills,
       why: 'Build AI career tools.',
     ),
+  );
+}
+
+TrackedApplication _trackedApplication({
+  ApplicationPhase phase = ApplicationPhase.draft,
+  String trustRiskLevel = 'low',
+}) {
+  final draftedAt = DateTime(2026, 6, 5, 9);
+  final sentAt = switch (phase) {
+    ApplicationPhase.draft => null,
+    ApplicationPhase.sent ||
+    ApplicationPhase.replied => DateTime(2026, 6, 5, 10),
+  };
+
+  return TrackedApplication(
+    id: 'app_1',
+    job: _card(trustRiskLevel: trustRiskLevel).job,
+    draftedAt: draftedAt,
+    sentAt: sentAt,
+    gotReply: phase == ApplicationPhase.replied,
+    trustRiskLevel: trustRiskLevel,
+    trustRiskLabel: _trustLabel(trustRiskLevel),
   );
 }
 

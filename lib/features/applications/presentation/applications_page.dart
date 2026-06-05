@@ -9,6 +9,7 @@ import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../data/models/tracked_application.dart';
+import '../../../features/jobs/services/application_quality_meter.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/empty_state_card.dart';
 import '../state/applications_notifier.dart';
@@ -460,6 +461,8 @@ class _TrackerCard extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                const SizedBox(height: 10),
+                _ApplicationQualityMeter(app: app),
                 if (app.trustRiskLevel != 'unchecked') ...[
                   const SizedBox(height: 10),
                   _ApplicationTrustTag(app: app),
@@ -499,6 +502,93 @@ class _TrackerCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ApplicationQualityMeter extends StatelessWidget {
+  const _ApplicationQualityMeter({required this.app});
+
+  final TrackedApplication app;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final quality = evaluateTrackedApplicationQuality(app);
+    final color = _applicationQualityColor(quality.score, brand);
+    final reason = quality.reasons.take(2).join(' · ');
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: brand.isDark ? 0.12 : 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.speed_rounded, size: 15, color: color),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  quality.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.1,
+                    color: brand.ink,
+                  ),
+                ),
+              ),
+              Text(
+                '${quality.score}%',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  color: color,
+                  letterSpacing: -0.1,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(
+              value: quality.score / 100,
+              minHeight: 5,
+              backgroundColor: brand.border.withValues(alpha: 0.55),
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+          if (reason.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              reason,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: brand.textMuted,
+                letterSpacing: -0.05,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+Color _applicationQualityColor(int score, BrandTheme brand) {
+  if (score >= 80) return brand.success;
+  if (score >= 60) return brand.warning;
+  if (score >= 40) return brand.textMuted;
+  return brand.danger;
 }
 
 class _ApplicationTrustTag extends StatelessWidget {
