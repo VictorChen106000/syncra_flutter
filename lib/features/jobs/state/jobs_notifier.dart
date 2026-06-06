@@ -178,15 +178,13 @@ class JobsNotifier extends Notifier<JobsState> {
   void hide(String id, {String label = ''}) {
     state = state.copyWith(
       hiddenIds: {...state.hiddenIds, id},
-      dismissedIds: {...state.dismissedIds, id},
       lastMessage: label.isEmpty ? 'Hidden' : 'Hidden $label',
     );
   }
 
   void unhide(String id) {
     final h = {...state.hiddenIds}..remove(id);
-    final d = {...state.dismissedIds}..remove(id);
-    state = state.copyWith(hiddenIds: h, dismissedIds: d);
+    state = state.copyWith(hiddenIds: h);
   }
 
   Future<void> dismiss(String id, {String label = ''}) async {
@@ -223,6 +221,43 @@ class JobsNotifier extends Notifier<JobsState> {
       signals: card.trustSignals,
       safeNextStep: card.trustSafeNextStep,
     );
+  }
+
+  Future<void> markDraftedJob(Job job, {String? resumeId}) async {
+    final jobId = job.id.trim();
+    if (jobId.isEmpty) return;
+
+    final card = state.cards.where((c) => c.job.id == jobId).firstOrNull;
+    if (card != null) {
+      await markDraftedByJobId(jobId, resumeId: resumeId);
+      return;
+    }
+
+    final user = ref.read(authProvider).appUser;
+    final uid = user?.uid;
+    if (uid == null || user!.isGuest) return;
+
+    try {
+      final trust = evaluateJobTrust(job);
+
+      await _applications.createApplication(
+        uid: uid,
+        job: job,
+        resumeId: resumeId,
+        trustRiskLevel: trust.riskLevel,
+        trustRiskLabel: trust.riskLabel,
+        trustSignalsCount: trust.signalsCount,
+        trustSignals: trust.signals,
+        trustSafeNextStep: trust.safeNextStep,
+      );
+
+      state = state.copyWith(
+        lastMessage: '${job.company} moved to Applications',
+      );
+    } catch (e) {
+      debugPrint('draft application tracking failed: $e');
+      state = state.copyWith(lastMessage: 'Could not track this draft');
+    }
   }
 
   /// Completes the active pipeline card after the user reviewed/saved an

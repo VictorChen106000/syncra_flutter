@@ -75,6 +75,8 @@ class ChatSnapshotCodec {
           'dismissedJobIds': block.dismissedJobIds.toList(),
         if (block.hiddenJobIds.isNotEmpty)
           'hiddenJobIds': block.hiddenJobIds.toList(),
+        if (block.handledJobIds.isNotEmpty)
+          'handledJobIds': block.handledJobIds.toList(),
       },
       ProposedEditsBlock() => _encodeProposedEditsBlock(block),
       ResumeDraftBlock() => _encodeResumeDraftBlock(block),
@@ -131,6 +133,7 @@ class ChatSnapshotCodec {
           jobs: jobs,
           dismissedJobIds: _stringSet(map['dismissedJobIds']),
           hiddenJobIds: _stringSet(map['hiddenJobIds']),
+          handledJobIds: _stringSet(map['handledJobIds']),
         );
       case 'proposed_edits':
       case 'proposed_edits_block':

@@ -69,29 +69,35 @@ void main() {
       expect(jobs.jobs.single.category, JobCategory.ready);
       expect(jobs.dismissedJobIds, isEmpty);
       expect(jobs.hiddenJobIds, isEmpty);
+      expect(jobs.handledJobIds, isEmpty);
 
       final text = restored.blocks[2] as TextBlock;
       expect(text.text, 'I found a strong match.');
     });
 
-    test('round-trips dismissed and hidden job ids on job blocks', () {
-      final block = JobsBlock(
-        id: 'jobs-1',
-        jobs: [_job()],
-        dismissedJobIds: {'job-1'},
-        hiddenJobIds: {'job-1'},
-      );
+    test(
+      'round-trips dismissed, hidden, and handled job ids on job blocks',
+      () {
+        final block = JobsBlock(
+          id: 'jobs-1',
+          jobs: [_job()],
+          dismissedJobIds: {'job-1'},
+          hiddenJobIds: {'hidden-job'},
+          handledJobIds: {'handled-job'},
+        );
 
-      final decoded = ChatSnapshotCodec.decodeBlock(
-        ChatSnapshotCodec.encodeBlock(block),
-      );
+        final decoded = ChatSnapshotCodec.decodeBlock(
+          ChatSnapshotCodec.encodeBlock(block),
+        );
 
-      expect(decoded, isA<JobsBlock>());
-      final restored = decoded as JobsBlock;
-      expect(restored.jobs.single.id, 'job-1');
-      expect(restored.dismissedJobIds, {'job-1'});
-      expect(restored.hiddenJobIds, {'job-1'});
-    });
+        expect(decoded, isA<JobsBlock>());
+        final restored = decoded as JobsBlock;
+        expect(restored.jobs.single.id, 'job-1');
+        expect(restored.dismissedJobIds, {'job-1'});
+        expect(restored.hiddenJobIds, {'hidden-job'});
+        expect(restored.handledJobIds, {'handled-job'});
+      },
+    );
 
     test('round-trips proposed edits block state', () {
       final block =

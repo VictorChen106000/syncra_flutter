@@ -17,22 +17,33 @@ class JobActionSheet {
     Job job, {
     VoidCallback? onHide,
     VoidCallback? onDismiss,
+    VoidCallback? onDrafted,
   }) {
     return showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (sheetCtx) =>
-          _JobActionSheetBody(job: job, onHide: onHide, onDismiss: onDismiss),
+      builder: (sheetCtx) => _JobActionSheetBody(
+        job: job,
+        onHide: onHide,
+        onDismiss: onDismiss,
+        onDrafted: onDrafted,
+      ),
     );
   }
 }
 
 class _JobActionSheetBody extends ConsumerWidget {
-  const _JobActionSheetBody({required this.job, this.onHide, this.onDismiss});
+  const _JobActionSheetBody({
+    required this.job,
+    this.onHide,
+    this.onDismiss,
+    this.onDrafted,
+  });
 
   final Job job;
   final VoidCallback? onHide;
   final VoidCallback? onDismiss;
+  final VoidCallback? onDrafted;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -79,7 +90,7 @@ class _JobActionSheetBody extends ConsumerWidget {
             _ActionTile(
               icon: Icons.drafts_outlined,
               label: 'Draft application email',
-              onTap: () => _draftEmail(context, job),
+              onTap: () => _draftEmail(context, ref, job, onDrafted: onDrafted),
             ),
             _ActionTile(
               icon: isSaved
@@ -174,7 +185,12 @@ Future<bool?> _confirmTrustGuardProceed(
 /// Opens the email review sheet pre-filled with a starter draft for [job],
 /// then saves it to the user's Gmail Drafts (nothing is sent). The recipient
 /// is a best-effort guess the user confirms in the sheet.
-Future<void> _draftEmail(BuildContext context, Job job) async {
+Future<void> _draftEmail(
+  BuildContext context,
+  WidgetRef ref,
+  Job job, {
+  VoidCallback? onDrafted,
+}) async {
   final trust = evaluateJobTrust(job);
 
   if (trust.needsVerification) {
@@ -207,10 +223,14 @@ Future<void> _draftEmail(BuildContext context, Job job) async {
   );
 
   if (!(result?.draftCreated ?? false)) return;
+
+  await ref.read(jobsProvider.notifier).markDraftedJob(job);
+  onDrafted?.call();
+
   if (!parentContext.mounted) return;
 
   ScaffoldMessenger.of(parentContext).showSnackBar(
-    const SnackBar(content: Text('Draft saved to your Gmail Drafts.')),
+    const SnackBar(content: Text('Draft saved and moved to Applications.')),
   );
 }
 

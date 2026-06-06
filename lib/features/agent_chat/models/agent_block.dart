@@ -68,8 +68,10 @@ class JobsBlock extends AgentBlock {
     required this.jobs,
     Set<String>? dismissedJobIds,
     Set<String>? hiddenJobIds,
+    Set<String>? handledJobIds,
   }) : dismissedJobIds = dismissedJobIds ?? <String>{},
-       hiddenJobIds = hiddenJobIds ?? <String>{};
+       hiddenJobIds = hiddenJobIds ?? <String>{},
+       handledJobIds = handledJobIds ?? <String>{};
 
   /// Mutable so `match_jobs` can re-score the rail in place — see
   /// [JobsBlockUpdated]. A fresh search still mints a new block.
@@ -83,17 +85,31 @@ class JobsBlock extends AgentBlock {
   /// Jobs the user explicitly hid from this specific chat result set.
   Set<String> hiddenJobIds;
 
+  /// Jobs already acted on from this result set, such as draft created.
+  Set<String> handledJobIds;
+
   void dismissJob(String jobId) {
     final clean = jobId.trim();
     if (clean.isEmpty) return;
     dismissedJobIds = {...dismissedJobIds, clean};
+    hiddenJobIds = {...hiddenJobIds}..remove(clean);
   }
 
   void hideJob(String jobId) {
     final clean = jobId.trim();
     if (clean.isEmpty) return;
     hiddenJobIds = {...hiddenJobIds, clean};
-    dismissedJobIds = {...dismissedJobIds, clean};
+  }
+
+  void unhideAllJobs() {
+    hiddenJobIds = <String>{};
+  }
+
+  void markJobHandled(String jobId) {
+    final clean = jobId.trim();
+    if (clean.isEmpty) return;
+    handledJobIds = {...handledJobIds, clean};
+    hiddenJobIds = {...hiddenJobIds}..remove(clean);
   }
 }
 

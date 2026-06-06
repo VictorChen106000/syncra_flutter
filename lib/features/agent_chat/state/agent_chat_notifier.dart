@@ -1812,6 +1812,31 @@ Hard constraints:
     _persistNow();
   }
 
+  void unhideAllJobsInBlock(String blockId) {
+    final block = _findJobsBlock(blockId);
+    if (block == null) return;
+
+    final hiddenIds = {...block.hiddenJobIds};
+    block.unhideAllJobs();
+
+    final jobsNotifier = ref.read(jobsProvider.notifier);
+    for (final id in hiddenIds) {
+      jobsNotifier.unhide(id);
+    }
+
+    state = state.copyWith(items: [...state.items]);
+    _persistNow();
+  }
+
+  void markJobHandledInBlock(String blockId, String jobId) {
+    final block = _findJobsBlock(blockId);
+    if (block == null) return;
+
+    block.markJobHandled(jobId);
+    state = state.copyWith(items: [...state.items]);
+    _persistNow();
+  }
+
   JobsBlock? _findJobsBlock(String blockId) {
     for (final item in state.items) {
       if (item is! AgentTurn) continue;

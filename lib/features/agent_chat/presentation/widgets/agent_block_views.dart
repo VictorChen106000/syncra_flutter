@@ -78,27 +78,36 @@ class JobsBlockView extends ConsumerWidget {
     final brand = context.brand;
     final jobsState = ref.watch(jobsProvider);
 
-    final inactiveIds = <String>{
+    final dismissedIds = <String>{
       ...block.dismissedJobIds,
-      ...block.hiddenJobIds,
       ...jobsState.dismissedIds,
-      ...jobsState.hiddenIds,
     };
+    final hiddenIds = <String>{...block.hiddenJobIds, ...jobsState.hiddenIds}
+      ..removeAll(dismissedIds);
+    final handledIds = <String>{...block.handledJobIds};
+
+    final inactiveIds = <String>{...dismissedIds, ...hiddenIds, ...handledIds};
 
     final jobs = block.jobs
         .where((job) => !inactiveIds.contains(job.id))
         .toList(growable: false);
 
-    final dismissedCount = block.jobs
-        .where((job) => inactiveIds.contains(job.id))
-        .length;
     final totalCount = block.jobs.length;
+    final dismissedCount = block.jobs
+        .where((job) => dismissedIds.contains(job.id))
+        .length;
+    final hiddenCount = block.jobs
+        .where((job) => hiddenIds.contains(job.id))
+        .length;
+    final handledCount = block.jobs
+        .where((job) => handledIds.contains(job.id))
+        .length;
 
     if (jobs.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Text(
-          'All $totalCount roles in this result set were dismissed.',
+          'No visible roles left in this result set.',
           style: TextStyle(
             color: brand.textMuted,
             fontSize: 13,
@@ -118,6 +127,8 @@ class JobsBlockView extends ConsumerWidget {
               visibleCount: jobs.length,
               totalCount: totalCount,
               dismissedCount: dismissedCount,
+              hiddenCount: hiddenCount,
+              handledCount: handledCount,
             ),
             style: TextStyle(
               fontSize: 11,
@@ -127,6 +138,23 @@ class JobsBlockView extends ConsumerWidget {
             ),
           ),
         ),
+        if (hiddenCount > 0) ...[
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => ref
+                  .read(agentChatProvider.notifier)
+                  .unhideAllJobsInBlock(block.id),
+              icon: const Icon(Icons.visibility_outlined, size: 15),
+              label: Text(
+                hiddenCount == 1
+                    ? 'Show 1 hidden role'
+                    : 'Show $hiddenCount hidden roles',
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
         SizedBox(
           height: 210,
           child: ListView.separated(
@@ -145,6 +173,9 @@ class JobsBlockView extends ConsumerWidget {
                     onDismiss: () => ref
                         .read(agentChatProvider.notifier)
                         .dismissJobInBlock(block.id, jobs[i].id),
+                    onDrafted: () => ref
+                        .read(agentChatProvider.notifier)
+                        .markJobHandledInBlock(block.id, jobs[i].id),
                   )
                   .animate(delay: (i * 70).ms)
                   .fadeIn(duration: 300.ms)
@@ -163,14 +194,24 @@ String _jobsHeader({
   required int visibleCount,
   required int totalCount,
   required int dismissedCount,
+  required int hiddenCount,
+  required int handledCount,
 }) {
   final roleLabel = visibleCount == 1 ? 'ROLE' : 'ROLES';
-  if (dismissedCount <= 0) {
-    return '$visibleCount $roleLabel FOUND · SWIPE';
+  final parts = <String>['$visibleCount OF $totalCount $roleLabel'];
+
+  if (dismissedCount > 0) {
+    parts.add('$dismissedCount DISMISSED');
+  }
+  if (hiddenCount > 0) {
+    parts.add('$hiddenCount HIDDEN');
+  }
+  if (handledCount > 0) {
+    parts.add('$handledCount HANDLED');
   }
 
-  final dismissedLabel = dismissedCount == 1 ? 'DISMISSED' : 'DISMISSED';
-  return '$visibleCount OF $totalCount $roleLabel · $dismissedCount $dismissedLabel · SWIPE';
+  parts.add('SWIPE');
+  return parts.join(' · ');
 }
 
 /// Footer CTA under the job rail — jumps to the full Jobs page where every
@@ -226,11 +267,13 @@ class _JobMatchCard extends StatelessWidget {
     required this.job,
     required this.onHide,
     required this.onDismiss,
+    required this.onDrafted,
   });
 
   final Job job;
   final VoidCallback onHide;
   final VoidCallback onDismiss;
+  final VoidCallback onDrafted;
 
   @override
   Widget build(BuildContext context) {
@@ -258,6 +301,7 @@ class _JobMatchCard extends StatelessWidget {
           job,
           onHide: onHide,
           onDismiss: onDismiss,
+          onDrafted: onDrafted,
         ),
         borderRadius: BorderRadius.circular(24),
         child: Container(
