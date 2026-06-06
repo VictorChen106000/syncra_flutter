@@ -25,6 +25,7 @@ import '../../auth/state/auth_notifier.dart';
 import '../../auth/state/user_profile_notifier.dart';
 import '../../resumes/presentation/widgets/resume_fit_chart.dart';
 import '../../resumes/state/resume_notifier.dart';
+import '../../agent_chat/state/agent_chat_notifier.dart';
 
 class _CareerMemoryFact {
   const _CareerMemoryFact({
@@ -1889,6 +1890,8 @@ class _AccountSection extends ConsumerWidget {
     // Firestore data, then snap the profile back to first-run — the router
     // redirect keys off `hasCompletedOnboarding` and routes us to onboarding,
     // so no manual navigation (or success snackbar) is needed here.
+    ref.read(agentChatProvider.notifier).resetAfterAccountReset();
+    ref.invalidate(conversationListProvider);
     ref.read(resumeProvider.notifier).clearSelectedResumes();
     ref.read(userProfileProvider.notifier).resetToFirstRun();
   }

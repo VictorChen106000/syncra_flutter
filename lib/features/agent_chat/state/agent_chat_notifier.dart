@@ -535,6 +535,34 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     );
   }
 
+  /// Clears the live chat after account reset without saving the old transcript.
+  ///
+  /// Account reset already deletes Firestore conversations. This method only
+  /// clears the in-memory chat/provider state so a deleted conversation does not
+  /// remain visible until app restart.
+  void resetAfterAccountReset() {
+    _activeSub?.cancel();
+    _activeSub = null;
+    _activeTurn = null;
+    _persistDebounce?.cancel();
+    _persistDebounce = null;
+
+    _service.resetConversation();
+    _threadPipelineMarkedComplete = false;
+    _pendingIntegrityRepairBlockId = null;
+    _activeIntegrityRepairSourceBlockId = null;
+    _seq = 0;
+
+    ref.read(composerDraftProvider.notifier).state = null;
+    ref.read(resumeProvider.notifier).clearSelectedResumes();
+    _runningTask.dismiss();
+
+    state = AgentChatState(
+      items: [_buildOpener(null)],
+      conversationId: _newConversationId(),
+    );
+  }
+
   /// Starts a brand-new generic chat and immediately sends [prompt].
   ///
   /// Used by entry points like Resumes → Build with AI that must not append
