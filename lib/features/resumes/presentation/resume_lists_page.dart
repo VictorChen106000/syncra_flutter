@@ -68,7 +68,9 @@ class ResumeListsPage extends ConsumerWidget {
                   _TopActions(
                     onUpload: notifier.pickAndUploadResumes,
                     onBuild: () {
-                      ref.read(agentChatProvider.notifier).sendPrompt(
+                      ref
+                          .read(agentChatProvider.notifier)
+                          .startFreshPrompt(
                             prompt: 'Help me build a resume from scratch.',
                           );
                       context.go(RouteNames.agentChat);
@@ -93,14 +95,15 @@ class ResumeListsPage extends ConsumerWidget {
                       for (final r in uploads)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 12),
-                          child: ResumeUploadCard(
-                            resume: r,
-                            onOpen: () => _openPreview(context, r),
-                            onDelete: () => notifier.deleteResume(r.id),
-                          )
-                              .animate()
-                              .fadeIn(duration: 220.ms)
-                              .moveY(begin: 8, end: 0),
+                          child:
+                              ResumeUploadCard(
+                                    resume: r,
+                                    onOpen: () => _openPreview(context, r),
+                                    onDelete: () => notifier.deleteResume(r.id),
+                                  )
+                                  .animate()
+                                  .fadeIn(duration: 220.ms)
+                                  .moveY(begin: 8, end: 0),
                         ),
                     ],
                     if (tailored.isNotEmpty) ...[
@@ -109,13 +112,14 @@ class ResumeListsPage extends ConsumerWidget {
                       for (final r in tailored)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 12),
-                          child: ResumeUploadCard(
-                            resume: r,
-                            onOpen: () => _openPreview(context, r),
-                          )
-                              .animate()
-                              .fadeIn(duration: 220.ms)
-                              .moveY(begin: 8, end: 0),
+                          child:
+                              ResumeUploadCard(
+                                    resume: r,
+                                    onOpen: () => _openPreview(context, r),
+                                  )
+                                  .animate()
+                                  .fadeIn(duration: 220.ms)
+                                  .moveY(begin: 8, end: 0),
                         ),
                     ] else if (uploads.isNotEmpty) ...[
                       const SizedBox(height: 12),

@@ -532,6 +532,27 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     );
   }
 
+  /// Starts a brand-new generic chat and immediately sends [prompt].
+  ///
+  /// Used by entry points like Resumes → Build with AI that must not append
+  /// their prompt into a restored/history conversation.
+  void startFreshPrompt({
+    required String prompt,
+    List<ChatAttachment> attachments = const [],
+  }) {
+    if (state.isStreaming) return;
+
+    _persistNow();
+    _service.resetConversation();
+    _threadPipelineMarkedComplete = false;
+    state = AgentChatState(
+      items: [_buildOpener(null)],
+      conversationId: _newConversationId(),
+    );
+
+    sendPrompt(prompt: prompt, attachments: attachments);
+  }
+
   /// Loads a saved conversation from history into the live transcript.
   Future<void> switchConversation(String conversationId) async {
     if (state.isStreaming) return;
@@ -1152,6 +1173,30 @@ Use the user's answer to continue:
   ''');
   }
 
+  void _continueAfterRestoredInputAnswer(
+    InputRequestBlock block,
+    String answer,
+  ) {
+    if (!_serviceReady) return;
+
+    _startContinuationPrompt('''
+The user answered an input request from a restored or resumed Syncra chat.
+
+Question:
+${block.question}
+
+User answer:
+$answer
+
+Continue the workflow from here without asking the same question again.
+Use the answer as context for the next safe step.
+Use tools when needed.
+If building a resume from scratch, continue collecting the missing resume details or call build_resume once enough information exists.
+If the next step needs user approval, call ask_user with 2-3 clear suggestion chips.
+Do not call send_email.
+''');
+  }
+
   void dismissProposal(String blockId) {
     final block = _findProposal(blockId);
     if (block == null) return;
@@ -1558,7 +1603,10 @@ Use the user's answer to continue:
       return;
     }
 
-    _service.provideUserAnswer(blockId, trimmed);
+    final handled = _service.provideUserAnswer(blockId, trimmed);
+    if (!handled) {
+      _continueAfterRestoredInputAnswer(block, trimmed);
+    }
   }
 }
 

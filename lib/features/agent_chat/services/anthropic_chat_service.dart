@@ -528,11 +528,13 @@ Progress and style:
   }
 
   @override
-  void provideUserAnswer(String blockId, String answer) {
+  bool provideUserAnswer(String blockId, String answer) {
     final completer = _pendingAsks.remove(blockId);
     if (completer != null && !completer.isCompleted) {
       completer.complete(answer);
+      return true;
     }
+    return false;
   }
 
   @override

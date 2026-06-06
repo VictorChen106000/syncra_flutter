@@ -70,7 +70,7 @@ abstract class AgentService {
   /// Called by the controller when the user submits an answer to an
   /// `ask_user` prompt. Implementations that don't support tool use can
   /// no-op (default).
-  void provideUserAnswer(String blockId, String answer) {}
+  bool provideUserAnswer(String blockId, String answer) => false;
 
   /// Restores a compact model-readable context from a saved chat UI snapshot.
   ///
