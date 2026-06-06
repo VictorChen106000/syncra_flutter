@@ -14,6 +14,7 @@ import 'pdf_text_extractor.dart';
 import 'resume_diff_service.dart';
 import 'resume_integrity_service.dart';
 import 'resume_parser_service.dart';
+import 'resume_quality_service.dart';
 
 /// One-shot orchestrator: load resume → (lazy) parse → tailor for a job →
 /// render to PDF via the fixed template → save to local disk + Firestore.
@@ -29,6 +30,7 @@ class ResumeTailorOrchestrator {
     ResumePdfTemplate? template,
     ResumeDiffService? diff,
     ResumeIntegrityService? integrity,
+    ResumeQualityService? quality,
     FirebaseFirestore? db,
   }) : _resumes = resumesRepository,
        _jobs = jobsRepository,
@@ -37,6 +39,7 @@ class ResumeTailorOrchestrator {
        _template = template ?? const ResumePdfTemplate(),
        _diff = diff ?? const ResumeDiffService(),
        _integrity = integrity ?? const ResumeIntegrityService(),
+       _quality = quality ?? const ResumeQualityService(),
        _paths = FirestorePaths(db ?? FirebaseFirestore.instance);
 
   final ResumesRepository _resumes;
@@ -46,6 +49,7 @@ class ResumeTailorOrchestrator {
   final ResumePdfTemplate _template;
   final ResumeDiffService _diff;
   final ResumeIntegrityService _integrity;
+  final ResumeQualityService _quality;
   final FirestorePaths _paths;
 
   /// Reads a resume from Firestore, parses lazily if needed, returns the
@@ -121,18 +125,19 @@ class ResumeTailorOrchestrator {
 
     final original = await readResumeJson(uid: uid, resumeId: resumeId);
     final diff = _diff.apply(original, acceptedEdits);
+    final tailored = _quality.cleanTailoredResume(diff.resume);
     final integrity = _integrity.verify(
       original: original,
-      tailored: diff.resume,
+      tailored: tailored,
       acceptedEdits: acceptedEdits,
       appliedCount: diff.applied.length,
       skippedCount: diff.skipped.length,
     );
 
-    final bytes = await _template.render(diff.resume);
+    final bytes = await _template.render(tailored);
     return RenderEditsResult(
       bytes: bytes,
-      resume: diff.resume,
+      resume: tailored,
       appliedCount: diff.applied.length,
       skippedCount: diff.skipped.length,
       integrity: integrity,

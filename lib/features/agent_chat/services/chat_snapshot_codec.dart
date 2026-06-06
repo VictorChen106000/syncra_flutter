@@ -215,6 +215,12 @@ class ChatSnapshotCodec {
       'skippedCount': block.skippedCount,
       if (block.integrity != null)
         'integrity_result': block.integrity!.toJson(),
+      if (block.integrityRepairAttempted)
+        'integrityRepairAttempted': block.integrityRepairAttempted,
+      if (block.integrityAutoRepairing)
+        'integrityAutoRepairing': block.integrityAutoRepairing,
+      if (_clean(block.supersededByBlockId) != null)
+        'supersededByBlockId': block.supersededByBlockId,
       if (_clean(block.applyError) != null) 'applyError': block.applyError,
       if (_clean(block.previewStoragePath) != null)
         'previewStoragePath': block.previewStoragePath,
@@ -245,6 +251,9 @@ class ChatSnapshotCodec {
     block.integrity = _decodeIntegrityResult(
       map['integrity_result'] ?? map['integrity'],
     );
+    block.integrityRepairAttempted = _bool(map['integrityRepairAttempted']);
+    block.integrityAutoRepairing = _bool(map['integrityAutoRepairing']);
+    block.supersededByBlockId = _clean(_string(map, 'supersededByBlockId'));
     block.applyError = _clean(_string(map, 'applyError'));
     block.previewStoragePath = _clean(_string(map, 'previewStoragePath'));
     block.previewResume = _decodeResumeJson(map['previewResume']);
@@ -577,6 +586,11 @@ class ChatSnapshotCodec {
     if (raw is int) return raw;
     if (raw is num) return raw.toInt();
     return int.tryParse(raw?.toString() ?? '') ?? 0;
+  }
+
+  static bool _bool(Object? raw) {
+    if (raw is bool) return raw;
+    return raw?.toString().trim().toLowerCase() == 'true';
   }
 
   static List<String> _stringList(Object? raw) {

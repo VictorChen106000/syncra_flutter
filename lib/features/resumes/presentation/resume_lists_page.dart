@@ -116,6 +116,7 @@ class ResumeListsPage extends ConsumerWidget {
                               ResumeUploadCard(
                                     resume: r,
                                     onOpen: () => _openPreview(context, r),
+                                    onDelete: () => notifier.deleteResume(r.id),
                                   )
                                   .animate()
                                   .fadeIn(duration: 220.ms)

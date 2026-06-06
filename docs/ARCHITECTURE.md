@@ -24,7 +24,7 @@ this file, fix the code (or change this file by PR). Product context is in
 | Human-in-the-loop | Agent never sends external traffic without an explicit user tap |
 | Resume canonical form | `ResumeJSON` in Firestore, lazy-populated on first parse |
 | PDF template | One fixed single-column ATS-safe layout |
-| Resume integrity | Pure Dart check after accepted edits render; no extra LLM call or external PDF editor |
+| Resume integrity | Pure Dart check after accepted edits render, with deterministic skill cleanup and one guarded repair pass; no extra PDF editor |
 | State management | `flutter_riverpod` — every controller a `Notifier<T>` with immutable state |
 
 **Decisions settled from earlier open questions:** PDF may overflow to page 2;
@@ -132,22 +132,31 @@ Each tool is declared in `tool_registry.dart` (`name`, `description`,
    proposed_text, reason }] }`. `target_path` is a JSON path into `ResumeJSON`
    (e.g. `experience[0].bullets[2]`); `original_text` must match the resume
    verbatim — mismatches are dropped. **3–8 edits, bullet-level, never invents
-   experience, employers, dates, or metrics.**
+   experience, employers, dates, metrics, tools, skills, or duplicate skill-list
+   artifacts.**
 2. The loop **pauses** — Claude must not auto-call `apply_resume_edits` or
    `draft_email`.
 3. The user reviews edits in the inline `ProposedEditsBlock` and taps
    "Apply N edits".
-4. The UI applies the accepted subset via `ResumeDiffService.apply`, renders an
-   unsaved preview, then runs `ResumeIntegrityService.verify` against the
-   original `ResumeJSON`, tailored `ResumeJSON`, accepted edits, and
-   applied/skipped counts.
+4. The UI applies the accepted subset via `ResumeDiffService.apply`, runs
+   `ResumeQualityService.cleanTailoredResume` to remove duplicate skills and
+   repeated skill-list artifacts, renders an unsaved preview, then runs
+   `ResumeIntegrityService.verify` against the original `ResumeJSON`, tailored
+   `ResumeJSON`, accepted edits, and applied/skipped counts.
 5. The integrity result is deterministic and pure Dart. It checks protected
    identity/contact facts, unsupported companies/roles/schools/dates/metrics,
    skipped edits, and obvious section loss. It does **not** call Claude and does
    **not** use an external PDF editor.
-6. `verified` can save normally. `needsReview` warns but can still save.
-   `blocked` disables saving and keeps the preview visible for inspection.
-7. Once the user taps Save, a new Firestore resume doc is created
+6. `verified` can save normally. `needsReview` or `blocked` automatically queues
+   one threaded repair turn that must call `tailor_resume` again for the same
+   source resume/job and then stop at a replacement diff. Save is disabled while
+   that repair is running. If the replacement still returns `needsReview`, the
+   user may manually review/save with warning copy; if it still returns
+   `blocked`, saving remains disabled and the preview stays visible.
+7. "Fix with Syncra" from the tailored preview uses the same continuation path:
+   pop back to chat, ask for a replacement `tailor_resume` diff, and forbid
+   `apply_resume_edits`, `draft_email`, or `send_email` during the repair turn.
+8. Once the user taps Save, a new Firestore resume doc is created
    (`source: 'tailored'`, `parent_resume_id`, `tailored_for_job_id`) and the
    saved resume id feeds back into the loop; Claude proceeds (typically to
    `draft_email`).
@@ -277,8 +286,8 @@ serialized `items`.
 
 `items` are encoded through `ChatSnapshotCodec` and can recover user bubbles,
 resume attachment chips, agent text, tool-call rows, job-card rails,
-proposed-edits cards with integrity results, built-resume draft cards, input-request cards, action
-proposal cards, and email draft cards. The drawer supports grouped history
+proposed-edits cards with integrity results and repair flags, built-resume draft
+cards, input-request cards, action proposal cards, and email draft cards. The drawer supports grouped history
 sections, title/preview search, rename, pin/unpin, delete confirmation, and
 preview text under each row.
 

@@ -129,6 +129,12 @@ Resume tailoring:
 - The `tailor_resume` tool only proposes edits. It does not apply edits, render PDFs, or save files.
 - After `tailor_resume` returns proposed edits, stop and wait. The user reviews the edits in the diff viewer.
 - Do not call `apply_resume_edits`, `draft_email`, or `send_email` until the user has accepted edits.
+- Preserve supported resume facts only. Do not add unsupported employers, roles, dates, degrees, certifications,
+  tools, skills, metrics, years of experience, or achievements just because a job description mentions them.
+- Keep skill changes deduplicated. Do not add a skill that already appears elsewhere, and never output a bracketed
+  repeated skill list as one skill item.
+- If the app asks you to repair a tailored resume after an integrity check, call `tailor_resume` again for the same
+  source resume and job, then stop at the replacement diff. Do not use `apply_resume_edits` for repairs.
 - If the app later tells you the user approved and saved a tailored resume, continue the original workflow from there without asking the user to repeat the task.
 
 Building a resume from scratch:

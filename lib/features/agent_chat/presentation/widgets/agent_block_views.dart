@@ -847,11 +847,14 @@ class _EditsFooter extends ConsumerWidget {
         // resume already — the button opens the full-screen live resume where
         // the changed lines glow and the user saves or keeps editing.
         final saved = block.isSaved;
+        final repairing = block.integrityAutoRepairing;
         final applied = block.appliedCount;
         final skipped = block.skippedCount > 0
             ? ' · ${block.skippedCount} skipped'
             : '';
-        final status = saved
+        final status = repairing
+            ? 'Integrity check found issues'
+            : saved
             ? 'Saved to your resumes'
             : applied > 0
             ? '$applied improvement${applied == 1 ? '' : 's'}'
@@ -863,11 +866,17 @@ class _EditsFooter extends ConsumerWidget {
             Row(
               children: [
                 Icon(
-                  saved
+                  repairing
+                      ? Icons.autorenew_rounded
+                      : saved
                       ? Icons.check_circle_rounded
                       : Icons.auto_awesome_rounded,
                   size: 15,
-                  color: saved ? brand.success : brand.ink,
+                  color: repairing
+                      ? brand.warning
+                      : saved
+                      ? brand.success
+                      : brand.ink,
                 ),
                 const SizedBox(width: 7),
                 Expanded(
@@ -885,7 +894,7 @@ class _EditsFooter extends ConsumerWidget {
             ),
             if (block.integrity != null) ...[
               const SizedBox(height: 8),
-              _IntegrityLine(result: block.integrity!),
+              _IntegrityLine(block: block),
             ],
             const SizedBox(height: 10),
             SizedBox(
@@ -1001,30 +1010,48 @@ class _ErrorLine extends StatelessWidget {
 }
 
 class _IntegrityLine extends StatelessWidget {
-  const _IntegrityLine({required this.result});
+  const _IntegrityLine({required this.block});
 
-  final ResumeIntegrityResult result;
+  final ProposedEditsBlock block;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final (icon, color, text) = switch (result.status) {
-      ResumeIntegrityStatus.verified => (
-        Icons.verified_rounded,
-        brand.success,
-        'Integrity verified — accepted edits landed and original facts were preserved.',
-      ),
-      ResumeIntegrityStatus.needsReview => (
-        Icons.warning_amber_rounded,
-        brand.warning,
-        'Needs review — Syncra found possible unsupported claims. Review before saving.',
-      ),
-      ResumeIntegrityStatus.blocked => (
-        Icons.block_rounded,
-        brand.danger,
-        'Blocked — Syncra found a serious integrity issue. Saving is disabled.',
-      ),
-    };
+    final result = block.integrity!;
+    final repaired = block.integrityRepairAttempted;
+    final (icon, color, text) = block.supersededByBlockId != null
+        ? (
+            Icons.auto_awesome_rounded,
+            brand.success,
+            'A safer revision is ready below.',
+          )
+        : block.integrityAutoRepairing
+        ? (
+            Icons.autorenew_rounded,
+            brand.warning,
+            'Integrity check found issues — Syncra is repairing this automatically.',
+          )
+        : switch (result.status) {
+            ResumeIntegrityStatus.verified => (
+              Icons.verified_rounded,
+              brand.success,
+              'Integrity verified — accepted edits landed and original facts were preserved.',
+            ),
+            ResumeIntegrityStatus.needsReview => (
+              Icons.warning_amber_rounded,
+              brand.warning,
+              repaired
+                  ? 'Needs review — Syncra tried one safer pass. Review before saving.'
+                  : 'Needs review — Syncra found possible unsupported claims. Review before saving.',
+            ),
+            ResumeIntegrityStatus.blocked => (
+              Icons.block_rounded,
+              brand.danger,
+              repaired
+                  ? 'Blocked — Syncra could not safely repair this. Saving is disabled.'
+                  : 'Blocked — Syncra found a serious integrity issue. Saving is disabled.',
+            ),
+          };
 
     return Container(
       width: double.infinity,
@@ -1144,7 +1171,9 @@ class _StatusPill extends StatelessWidget {
     final brand = context.brand;
     final (label, fg, bg) = switch (block.state) {
       ProposedEditsState.applied =>
-        block.isSaved
+        block.integrityAutoRepairing
+            ? ('Repairing…', brand.ink, brand.warning.withValues(alpha: 0.16))
+            : block.isSaved
             ? ('Saved', brand.onAccent, brand.accent)
             : ('Preview ready', brand.onAccent, brand.accent),
       ProposedEditsState.applying => (

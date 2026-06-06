@@ -28,7 +28,7 @@ Foundation, verified in code:
 - Tool registry with real job-search, resume, memory, Trust Guard, pipeline, tracker, and email tools
 - Resume upload (Storage blob + Firestore metadata) · PDF text extraction · lazy resume parser → `ResumeJSON`
 - Fixed PDF template · resume tailor orchestrator
-- Resume Integrity Check for tailored previews — pure Dart, no extra Claude call or external PDF editor, blocks saving on serious unsupported changes
+- Resume Integrity Check for tailored previews — pure Dart, no external PDF editor, deterministic skill cleanup before render, one guarded repair pass for warnings/blocks, blocks saving on serious unsupported changes
 - `tailor_resume` proposes edits and the loop pauses · read-only `ProposedEditsBlock` preview in chat
 - `read_resume`, `match_jobs`, `check_job_risk`, `save_to_pipeline`, `save_to_tracker`, `remember_fact` — real implementations
 - Trust Guard checks obvious job red flags, persists results on pipeline/application records, surfaces badges/details in UI, and has unit tests
@@ -49,6 +49,7 @@ The propose path and accepted-edit preview/save path work. Remaining engine poli
 - [x] Parser retry — `ResumeParserService` retries once with a stricter prompt when Claude returns malformed resume JSON, then surfaces an actionable parse error if retry still fails.
 - [x] Scanned-PDF / empty text guard: parser and tailor flow surface an actionable text-PDF error instead of falling back to a sample resume.
 - [x] Resume Integrity Check runs after accepted edits apply and before save, comparing original/tailored `ResumeJSON`, accepted edits, applied/skipped counts, protected facts, unsupported claims, skipped edits, and section loss.
+- [x] Tailored resume quality cleanup removes duplicate skills and repeated skill-list artifacts before integrity check and PDF render.
 
 ### Resume Diff UI
 
@@ -56,9 +57,10 @@ The inline proposed-edits card is now interactive.
 
 - [x] `ProposedEditsBlock` renders the current read-only proposed-edits card state with accepted counter, Dismiss all, Apply N edits, preview-ready state, and current widget tests.
 - [x] Applying accepted edits renders an in-memory tailored PDF preview.
-- [x] Tailored previews show an integrity badge/banner; blocked results disable saving while leaving the preview visible.
+- [x] Tailored previews show an integrity badge/banner; warnings/blocks trigger one automatic safer `tailor_resume` pass, saving is disabled while repair runs, and blocked results keep saving disabled while leaving the preview visible.
 - [x] Saving the preview persists the tailored resume to Firebase Storage / Firestore and returns a saved resume id.
 - [x] After save, the agent loop resumes through the saved-resume continuation bridge.
+- [x] Agent-tailored resumes in the list use the shared delete/bin action and existing `deleteResume` cascade.
 
 Remaining / delegated:
 
@@ -86,7 +88,7 @@ Loop, prompts, and tools are in place. Current status:
 - [x] After a tailored resume is saved, `tailored_resume_id` is fed back into the threaded conversation so the agent can continue the workflow.
 - [x] `ActionProposalBlock` approvals now carry a hidden continuation prompt and resume the agent loop after the user taps Accept.
 - [x] Main agent prompt is regression-tested for goal-oriented workflow behavior, approval gates, saved-resume continuation, and `send_email` safety.
-- [x] `tailor_resume` prompt is regression-tested: no full-section rewrites, every `original_text` must be verbatim, and no invented experience.
+- [x] `tailor_resume` prompt is regression-tested: no full-section rewrites, every `original_text` must be verbatim, no invented experience, no unsupported claims, and no duplicate skill artifacts.
 - [x] Morning brief Trust Guard prompt is regression-tested: `check_job_risk` runs before `save_to_pipeline`, medium/high-risk jobs are skipped, no outreach is attempted, no user questions are asked, and the no-resume fallback still runs Trust Guard.
 - [x] `draft_email` uses real selected/uploaded resume context through `_loadResumeContextForAgent`, defaults to the latest manual resume, and attaches the chosen or tailored PDF.
 

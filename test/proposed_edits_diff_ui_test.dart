@@ -155,6 +155,29 @@ void main() {
       );
     });
 
+    test('auto-repairing integrity prevents saving', () async {
+      final seed =
+          ProposedEditsBlock(
+              id: 'b',
+              edits: [_edit('a')],
+              decisions: [EditDecision.accepted],
+              state: ProposedEditsState.applied,
+            )
+            ..previewBytes = Uint8List.fromList([1, 2, 3])
+            ..previewResume = _previewResume
+            ..integrity = _integrity(ResumeIntegrityStatus.needsReview)
+            ..integrityAutoRepairing = true;
+      final c = containerWith(seed);
+
+      await c.read(agentChatProvider.notifier).savePreviewedResume('b');
+
+      expect(_currentBlock(c).isSaved, isFalse);
+      expect(
+        _currentBlock(c).applyError,
+        contains('Syncra is repairing this resume'),
+      );
+    });
+
     test('settled cards ignore further decisions', () {
       final seed = ProposedEditsBlock(id: 'b', edits: [_edit('a')]);
       final c = containerWith(seed);
@@ -253,6 +276,68 @@ void main() {
       expect(
         find.text(
           'Integrity verified — accepted edits landed and original facts were preserved.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('shows auto-repairing integrity copy', (tester) async {
+      final seed =
+          ProposedEditsBlock(
+              id: 'b',
+              edits: [_edit('a')],
+              decisions: [EditDecision.accepted],
+              state: ProposedEditsState.applied,
+            )
+            ..appliedCount = 1
+            ..integrity = _integrity(ResumeIntegrityStatus.needsReview)
+            ..integrityRepairAttempted = true
+            ..integrityAutoRepairing = true;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            agentChatProvider.overrideWith(() => _SeededChatNotifier(seed)),
+          ],
+          child: const _Harness(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Repairing…'), findsOneWidget);
+      expect(
+        find.text(
+          'Integrity check found issues — Syncra is repairing this automatically.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('shows one-pass repair fallback copy', (tester) async {
+      final seed =
+          ProposedEditsBlock(
+              id: 'b',
+              edits: [_edit('a')],
+              decisions: [EditDecision.accepted],
+              state: ProposedEditsState.applied,
+            )
+            ..appliedCount = 1
+            ..integrity = _integrity(ResumeIntegrityStatus.needsReview)
+            ..integrityRepairAttempted = true;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            agentChatProvider.overrideWith(() => _SeededChatNotifier(seed)),
+          ],
+          child: const _Harness(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'Needs review — Syncra tried one safer pass. Review before saving.',
         ),
         findsOneWidget,
       );

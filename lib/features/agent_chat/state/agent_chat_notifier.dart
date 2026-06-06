@@ -11,6 +11,7 @@ import '../../auth/state/auth_notifier.dart';
 import '../../notifications/models/app_notification.dart';
 import '../../notifications/state/notifications_notifier.dart';
 import '../../jobs/state/jobs_notifier.dart';
+import '../../resumes/models/resume_integrity_result.dart';
 import '../../resumes/services/resume_parser_service.dart';
 import '../../resumes/services/resume_tailor_orchestrator.dart';
 import '../../resumes/state/resume_notifier.dart';
@@ -108,6 +109,8 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
   bool _persistenceReady = false;
   bool _serviceReady = false;
   bool _threadPipelineMarkedComplete = false;
+  String? _pendingIntegrityRepairBlockId;
+  String? _activeIntegrityRepairSourceBlockId;
 
   @override
   AgentChatState build() {
@@ -682,7 +685,11 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
 
     _activeSub = _service
         .runPrompt(prompt: clean, threaded: true)
-        .listen(_handleEvent, onDone: _finishTurn);
+        .listen(
+          _handleEvent,
+          onDone: _finishTurn,
+          onError: (Object e) => _failActiveTurn('Something went wrong. $e'),
+        );
   }
 
   void _continueAfterSavedResume(ProposedEditsBlock block) {
@@ -728,6 +735,9 @@ Do not call send_email. Sending still requires explicit user approval.
       case BlockAdded(:final block):
         turn.blocks.add(block);
         _reflectRunningTask(block);
+        if (block is ProposedEditsBlock) {
+          _markIntegrityRepairReplacement(block);
+        }
         // A freshly-tailored edits card arrives already "applied" but with no
         // rendered PDF — render it now so its preview has bytes to show.
         if (block is ProposedEditsBlock &&
@@ -1065,7 +1075,69 @@ Use the user's answer to continue:
     _activeSub = null;
     state = state.copyWith(items: [...state.items], isStreaming: false);
     _runningTask.complete();
+    _clearActiveIntegrityRepairIfStalled();
     _persistNow();
+    _startPendingIntegrityRepair();
+  }
+
+  void _markIntegrityRepairReplacement(ProposedEditsBlock replacement) {
+    final sourceId = _activeIntegrityRepairSourceBlockId;
+    if (sourceId == null || replacement.id == sourceId) return;
+
+    final source = _findProposedEdits(sourceId);
+    if (source != null) {
+      source.integrityAutoRepairing = false;
+      source.supersededByBlockId = replacement.id;
+      source.applyError = null;
+    }
+
+    replacement.integrityRepairAttempted = true;
+    replacement.integrityAutoRepairing = false;
+    _activeIntegrityRepairSourceBlockId = null;
+    _pendingIntegrityRepairBlockId = null;
+  }
+
+  void _clearActiveIntegrityRepairIfStalled({String? message}) {
+    final sourceId = _activeIntegrityRepairSourceBlockId;
+    if (sourceId == null) return;
+
+    _activeIntegrityRepairSourceBlockId = null;
+    final source = _findProposedEdits(sourceId);
+    if (source == null) return;
+
+    source.integrityAutoRepairing = false;
+    source.applyError ??=
+        message ??
+        'Syncra could not produce a safer revision. Try Fix with Syncra again.';
+    state = state.copyWith(items: [...state.items]);
+  }
+
+  void _clearPendingIntegrityRepair({String? message}) {
+    final pendingId = _pendingIntegrityRepairBlockId;
+    if (pendingId == null) return;
+
+    _pendingIntegrityRepairBlockId = null;
+    final source = _findProposedEdits(pendingId);
+    if (source == null) return;
+
+    source.integrityAutoRepairing = false;
+    source.applyError ??=
+        message ??
+        'Syncra could not start a safer revision. Try Fix with Syncra again.';
+    state = state.copyWith(items: [...state.items]);
+  }
+
+  void _startPendingIntegrityRepair() {
+    final pendingId = _pendingIntegrityRepairBlockId;
+    if (pendingId == null || state.isStreaming) return;
+
+    final block = _findProposedEdits(pendingId);
+    if (block == null || !block.integrityAutoRepairing) {
+      _pendingIntegrityRepairBlockId = null;
+      return;
+    }
+
+    _beginIntegrityRepair(block);
   }
 
   void _failActiveTurn(String message) {
@@ -1079,6 +1151,13 @@ Use the user's answer to continue:
     _activeSub = null;
     state = state.copyWith(items: [...state.items], isStreaming: false);
     _runningTask.fail();
+    _clearPendingIntegrityRepair(
+      message: 'Syncra could not start the safer revision.',
+    );
+    _clearActiveIntegrityRepairIfStalled(
+      message:
+          'Syncra could not finish the safer revision. Try Fix with Syncra again.',
+    );
     _persistNow();
   }
 
@@ -1091,6 +1170,12 @@ Use the user's answer to continue:
     _activeSub = null;
     state = state.copyWith(items: [...state.items], isStreaming: false);
     _runningTask.dismiss();
+    _clearPendingIntegrityRepair(
+      message: 'Safer revision stopped before Syncra could start it.',
+    );
+    _clearActiveIntegrityRepairIfStalled(
+      message: 'Safer revision stopped before Syncra could finish it.',
+    );
     _persistNow();
   }
 
@@ -1221,6 +1306,26 @@ Do not call send_email.
   ProposedEditsBlock? proposedEditsBlock(String blockId) =>
       _findProposedEdits(blockId);
 
+  /// Starts an agentic revision of a rendered tailored resume from the preview
+  /// screen. The agent must call `tailor_resume` again and stop at a replacement
+  /// diff, preserving the same source resume and job context.
+  bool requestTailoredResumeRevision(String blockId) {
+    final block = _findProposedEdits(blockId);
+    if (block == null) return false;
+    if (block.state != ProposedEditsState.applied) return false;
+    if (block.integrityAutoRepairing) return false;
+    if (!_serviceReady || state.isStreaming) return false;
+
+    block.integrityRepairAttempted = true;
+    block.integrityAutoRepairing = true;
+    block.applyError = null;
+    block.supersededByBlockId = null;
+    state = state.copyWith(items: [...state.items]);
+    _persistNow();
+
+    return _beginIntegrityRepair(block);
+  }
+
   ProposedEditsBlock? _findProposedEdits(String blockId) {
     for (final item in state.items) {
       if (item is! AgentTurn) continue;
@@ -1229,6 +1334,92 @@ Do not call send_email.
       }
     }
     return null;
+  }
+
+  void _maybeStartIntegrityRepair(ProposedEditsBlock block) {
+    final integrity = block.integrity;
+    if (integrity == null) return;
+    if (integrity.status == ResumeIntegrityStatus.verified) return;
+    if (block.integrityRepairAttempted || block.integrityAutoRepairing) return;
+    if (block.isSaved) return;
+    if (!_serviceReady) return;
+
+    block.integrityRepairAttempted = true;
+    block.integrityAutoRepairing = true;
+    block.applyError = null;
+    block.supersededByBlockId = null;
+    state = state.copyWith(items: [...state.items]);
+    _persistNow();
+
+    _beginIntegrityRepair(block);
+  }
+
+  bool _beginIntegrityRepair(ProposedEditsBlock block) {
+    if (!_serviceReady) return false;
+    if (state.isStreaming) {
+      _pendingIntegrityRepairBlockId = block.id;
+      return true;
+    }
+
+    _pendingIntegrityRepairBlockId = null;
+    _activeIntegrityRepairSourceBlockId = block.id;
+    _startContinuationPrompt(_tailoredResumeRevisionPrompt(block));
+    return true;
+  }
+
+  String _tailoredResumeRevisionPrompt(ProposedEditsBlock block) {
+    final resolvedResumeId =
+        block.resolvedResumeId ?? block.resumeId ?? 'unknown';
+    final sourceResumeId = block.resumeId ?? resolvedResumeId;
+    final jobId = block.jobId ?? 'unknown';
+    final integrity = block.integrity;
+    final integrityStatus = integrity?.status.name ?? 'not_run';
+    final integritySummary =
+        integrity?.summary ?? 'No Resume Integrity Check result was attached.';
+    final trigger = integrity == null
+        ? 'The user chose to keep editing the tailored resume.'
+        : 'The Resume Integrity Check found issues in the tailored resume.';
+
+    return '''
+$trigger
+
+Revision target:
+- source_resume_id: $sourceResumeId
+- resolved_resume_id: $resolvedResumeId
+- job_id: $jobId
+- applied_count: ${block.appliedCount}
+- skipped_count: ${block.skippedCount}
+
+Resume Integrity Check:
+- status: $integrityStatus
+- summary: $integritySummary
+
+Integrity signals:
+${_integritySignalsText(block)}
+
+Task:
+Call `tailor_resume` again for the same source resume and job. Use the integrity signals to produce a safer replacement proposed-edits block.
+
+Hard constraints:
+- Preserve original resume facts. Do not add unsupported companies, roles, dates, degrees, certifications, tools, skills, metrics, years of experience, or achievements.
+- If a job requirement is not supported by the resume, learned_facts, or explicit user context, do not insert it as a skill or achievement.
+- Do not create duplicate skills or repeated bracketed skill lists. If a skill already exists, leave it alone unless you are improving that exact item.
+- Use `tailor_resume`; do not call `apply_resume_edits`, `draft_email`, or `send_email`.
+- Stop after `tailor_resume` returns so the user can review the replacement diff.
+''';
+  }
+
+  String _integritySignalsText(ProposedEditsBlock block) {
+    final signals = block.integrity?.signals ?? const [];
+    if (signals.isEmpty) return '- none';
+
+    return signals
+        .take(6)
+        .map(
+          (signal) =>
+              '- ${signal.severity.name}: ${signal.label} - ${signal.detail}',
+        )
+        .join('\n');
   }
 
   /// Settles an [EmailDraftBlock] once the user has saved it to Gmail Drafts
@@ -1345,6 +1536,9 @@ Do not call send_email.
     }
     state = state.copyWith(items: [...state.items]);
     _persistNow();
+    if (error == null) {
+      _maybeStartIntegrityRepair(block);
+    }
   }
 
   /// Renders the tailored PDF for [block]'s accepted edits and stores the
@@ -1422,6 +1616,9 @@ Do not call send_email.
     }
     state = state.copyWith(items: [...state.items]);
     _persistNow();
+    if (error == null) {
+      _maybeStartIntegrityRepair(block);
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -1511,6 +1708,13 @@ Do not call send_email.
     if (block.state != ProposedEditsState.applied) return;
     if (block.previewBytes == null || block.previewResume == null) return;
     if (block.isSaved) return;
+    if (block.integrityAutoRepairing) {
+      block.applyError =
+          'Syncra is repairing this resume after the integrity check. Save will unlock when the safer revision is ready.';
+      state = state.copyWith(items: [...state.items]);
+      _persistNow();
+      return;
+    }
     if (block.integrity?.isBlocked == true) {
       block.applyError =
           'Resume Integrity Check blocked saving: ${block.integrity!.summary}';

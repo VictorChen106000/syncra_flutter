@@ -168,6 +168,15 @@ class ProposedEditsBlock extends AgentBlock {
   /// old conversations or cards that have not rendered yet.
   ResumeIntegrityResult? integrity;
 
+  /// The app gets one automatic integrity repair attempt per rendered card.
+  bool integrityRepairAttempted = false;
+
+  /// True while the app is asking the agent to propose a safer revision.
+  bool integrityAutoRepairing = false;
+
+  /// When a repair creates a replacement card, this points to that block id.
+  String? supersededByBlockId;
+
   /// Last apply/save error, surfaced in the card so the user can retry.
   String? applyError;
 

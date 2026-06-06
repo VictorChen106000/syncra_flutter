@@ -100,6 +100,9 @@ void main() {
                 ),
               ],
             )
+            ..integrityRepairAttempted = true
+            ..integrityAutoRepairing = true
+            ..supersededByBlockId = 'edits-2'
             ..previewResume = _resume();
 
       final decoded = ChatSnapshotCodec.decodeBlock(
@@ -120,6 +123,9 @@ void main() {
       expect(restored.decisions.single, EditDecision.accepted);
       expect(restored.edits.single.targetPath, 'experience[0].bullets[0]');
       expect(restored.integrity?.status, ResumeIntegrityStatus.needsReview);
+      expect(restored.integrityRepairAttempted, isTrue);
+      expect(restored.integrityAutoRepairing, isTrue);
+      expect(restored.supersededByBlockId, 'edits-2');
       expect(
         restored.integrity?.signals.single.label,
         'Some accepted edits were skipped',
@@ -139,7 +145,11 @@ void main() {
       );
 
       expect(decoded, isA<ProposedEditsBlock>());
-      expect((decoded as ProposedEditsBlock).integrity, isNull);
+      final restored = decoded as ProposedEditsBlock;
+      expect(restored.integrity, isNull);
+      expect(restored.integrityRepairAttempted, isFalse);
+      expect(restored.integrityAutoRepairing, isFalse);
+      expect(restored.supersededByBlockId, isNull);
     });
 
     test('round-trips resume draft block state', () {

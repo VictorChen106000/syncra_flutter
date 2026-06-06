@@ -66,13 +66,20 @@ class _TailoredChangesPageState extends ConsumerState<TailoredChangesPage> {
   }
 
   void _keepEditing() {
+    final started = ref
+        .read(agentChatProvider.notifier)
+        .requestTailoredResumeRevision(widget.blockId);
     final messenger = ScaffoldMessenger.of(context);
     Navigator.of(context).maybePop();
     messenger
       ..clearSnackBars()
       ..showSnackBar(
-        const SnackBar(
-          content: Text('Tell me what to change and I\'ll re-tailor it.'),
+        SnackBar(
+          content: Text(
+            started
+                ? 'Syncra is preparing a tailored revision.'
+                : 'Syncra is already working. Try again in a moment.',
+          ),
         ),
       );
   }
@@ -88,7 +95,13 @@ class _TailoredChangesPageState extends ConsumerState<TailoredChangesPage> {
     final resume = block?.previewResume;
     final isSaved = block?.isSaved ?? false;
     final integrity = block?.integrity;
-    final canSave = integrity?.canSave ?? true;
+    final autoRepairing = block?.integrityAutoRepairing ?? false;
+    final canSave = (integrity?.canSave ?? true) && !autoRepairing;
+    final canKeepEditing = !autoRepairing;
+    final keepEditingLabel =
+        integrity != null && integrity.status != ResumeIntegrityStatus.verified
+        ? 'Fix with Syncra'
+        : 'Keep editing';
 
     // The set of changed leaves, keyed by the canonicalized proposed text. A
     // skipped edit's text never lands in [previewResume], so it simply won't
@@ -109,10 +122,10 @@ class _TailoredChangesPageState extends ConsumerState<TailoredChangesPage> {
         child: Column(
           children: [
             _Header(isSaved: isSaved, improvements: improvements),
-            if (integrity != null) ...[
+            if (block != null && integrity != null) ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                child: _IntegrityBanner(result: integrity),
+                child: _IntegrityBanner(block: block),
               ),
             ],
             Expanded(
@@ -127,6 +140,8 @@ class _TailoredChangesPageState extends ConsumerState<TailoredChangesPage> {
               isSaved: isSaved,
               saving: _saving,
               canSave: canSave,
+              canKeepEditing: canKeepEditing,
+              keepEditingLabel: keepEditingLabel,
               onSave: _save,
               onKeepEditing: _keepEditing,
               onDone: () => Navigator.of(context).maybePop(),
@@ -222,30 +237,48 @@ class _Rendering extends StatelessWidget {
 }
 
 class _IntegrityBanner extends StatelessWidget {
-  const _IntegrityBanner({required this.result});
+  const _IntegrityBanner({required this.block});
 
-  final ResumeIntegrityResult result;
+  final ProposedEditsBlock block;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final (icon, color, text) = switch (result.status) {
-      ResumeIntegrityStatus.verified => (
-        Icons.verified_rounded,
-        brand.success,
-        'Integrity verified — accepted edits landed and original facts were preserved.',
-      ),
-      ResumeIntegrityStatus.needsReview => (
-        Icons.warning_amber_rounded,
-        brand.warning,
-        'Needs review — Syncra found possible unsupported claims. Review before saving.',
-      ),
-      ResumeIntegrityStatus.blocked => (
-        Icons.block_rounded,
-        brand.danger,
-        'Blocked — Syncra found a serious integrity issue. Saving is disabled.',
-      ),
-    };
+    final result = block.integrity!;
+    final repaired = block.integrityRepairAttempted;
+    final (icon, color, text) = block.supersededByBlockId != null
+        ? (
+            Icons.auto_awesome_rounded,
+            brand.success,
+            'A safer revision is ready in chat.',
+          )
+        : block.integrityAutoRepairing
+        ? (
+            Icons.autorenew_rounded,
+            brand.warning,
+            'Integrity check found issues — Syncra is repairing this automatically.',
+          )
+        : switch (result.status) {
+            ResumeIntegrityStatus.verified => (
+              Icons.verified_rounded,
+              brand.success,
+              'Integrity verified — accepted edits landed and original facts were preserved.',
+            ),
+            ResumeIntegrityStatus.needsReview => (
+              Icons.warning_amber_rounded,
+              brand.warning,
+              repaired
+                  ? 'Needs review — Syncra tried one safer pass. Review carefully before saving.'
+                  : 'Needs review — Syncra found possible unsupported claims. Review before saving.',
+            ),
+            ResumeIntegrityStatus.blocked => (
+              Icons.block_rounded,
+              brand.danger,
+              repaired
+                  ? 'Blocked — Syncra could not safely repair this. Saving is disabled.'
+                  : 'Blocked — Syncra found a serious integrity issue. Saving is disabled.',
+            ),
+          };
 
     return Container(
       width: double.infinity,
@@ -785,6 +818,8 @@ class _ActionBar extends StatelessWidget {
     required this.isSaved,
     required this.saving,
     required this.canSave,
+    required this.canKeepEditing,
+    required this.keepEditingLabel,
     required this.onSave,
     required this.onKeepEditing,
     required this.onDone,
@@ -793,6 +828,8 @@ class _ActionBar extends StatelessWidget {
   final bool isSaved;
   final bool saving;
   final bool canSave;
+  final bool canKeepEditing;
+  final String keepEditingLabel;
   final VoidCallback onSave;
   final VoidCallback onKeepEditing;
   final VoidCallback onDone;
@@ -817,9 +854,9 @@ class _ActionBar extends StatelessWidget {
               children: [
                 Expanded(
                   child: _BarButton(
-                    label: 'Keep editing',
+                    label: keepEditingLabel,
                     filled: false,
-                    onTap: saving ? null : onKeepEditing,
+                    onTap: saving || !canKeepEditing ? null : onKeepEditing,
                   ),
                 ),
                 const SizedBox(width: 10),

@@ -766,8 +766,11 @@ void _registerTailorResume(
           'Proposes targeted PR-style edits to the user\'s resume for a '
           'specific job. Does not modify the resume, render a PDF, save a file, '
           'or overwrite anything. The user reviews each proposed edit in a diff '
-          'viewer before accepted edits are applied. Returns '
-          '{ proposed_edits: [...] }. NEVER invents experience.',
+          'viewer before accepted edits are applied. Preserve supported resume '
+          'facts only; never add unsupported employers, titles, dates, metrics, '
+          'tools, certifications, degrees, skills, or achievements. Avoid '
+          'duplicate skills and bracketed repeated skill-list artifacts. Returns '
+          '{ proposed_edits: [...] }.',
       inputSchema: {
         'type': 'object',
         'properties': {
