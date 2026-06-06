@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/firestore/applications_repository.dart';
 import '../../../data/models/tracked_application.dart';
 import '../../auth/state/auth_notifier.dart';
+import '../../jobs/services/job_trust_guard.dart';
 import '../services/application_bundle_summary.dart';
 
 enum ApplicationsFilter {
@@ -172,6 +173,59 @@ class ApplicationsNotifier extends Notifier<ApplicationsState> {
     if (trimmed.isEmpty) return;
     await _repository.addNote(uid, applicationId, trimmed);
     state = state.copyWith(lastMessage: 'Note added to ${app.job.company}');
+  }
+
+  Future<void> updateNote(
+    String applicationId,
+    String noteId,
+    String body,
+  ) async {
+    final uid = _boundUid;
+    final app = _find(applicationId);
+    if (uid == null || app == null) return;
+
+    final trimmed = body.trim();
+    if (trimmed.isEmpty) return;
+
+    await _repository.updateNote(
+      uid,
+      applicationId,
+      app.notes,
+      noteId,
+      trimmed,
+    );
+    state = state.copyWith(lastMessage: 'Note updated');
+  }
+
+  Future<void> deleteNote(String applicationId, String noteId) async {
+    final uid = _boundUid;
+    final app = _find(applicationId);
+    if (uid == null || app == null) return;
+
+    await _repository.deleteNote(uid, applicationId, app.notes, noteId);
+    state = state.copyWith(lastMessage: 'Note deleted');
+  }
+
+  Future<void> runTrustGuard(String applicationId) async {
+    final uid = _boundUid;
+    final app = _find(applicationId);
+    if (uid == null || app == null) return;
+
+    final trust = evaluateJobTrust(app.job);
+
+    await _repository.setTrustGuard(
+      uid,
+      applicationId,
+      trustRiskLevel: trust.riskLevel,
+      trustRiskLabel: trust.riskLabel,
+      trustSignalsCount: trust.signalsCount,
+      trustSignals: trust.signals,
+      trustSafeNextStep: trust.safeNextStep,
+    );
+
+    state = state.copyWith(
+      lastMessage: '${app.job.company}: ${trust.riskLabel}',
+    );
   }
 }
 

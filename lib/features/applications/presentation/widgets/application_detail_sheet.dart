@@ -60,6 +60,47 @@ class _ApplicationDetailSheetState
     FocusScope.of(context).unfocus();
   }
 
+  Future<void> _editNote(
+    ApplicationsNotifier notifier,
+    TrackedApplicationNote note,
+  ) async {
+    final controller = TextEditingController(text: note.body);
+
+    try {
+      final next = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('Edit note'),
+            content: TextField(
+              controller: controller,
+              autofocus: true,
+              minLines: 1,
+              maxLines: 5,
+              decoration: const InputDecoration(hintText: 'Note'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () =>
+                    Navigator.of(dialogContext).pop(controller.text),
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (next == null) return;
+      await notifier.updateNote(widget.application.id, note.id, next);
+    } finally {
+      controller.dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
@@ -140,7 +181,10 @@ class _ApplicationDetailSheetState
               const SizedBox(height: 20),
               const _SectionHeader(label: 'TRUST GUARD'),
               const SizedBox(height: 10),
-              _TrustGuardPanel(app: app),
+              _TrustGuardPanel(
+                app: app,
+                onRunCheck: () => notifier.runTrustGuard(app.id),
+              ),
               const SizedBox(height: 20),
               const _SectionHeader(label: 'STATUS'),
               const SizedBox(height: 10),
@@ -170,7 +214,12 @@ class _ApplicationDetailSheetState
                 )
               else ...[
                 const SizedBox(height: 10),
-                for (final note in app.notes) _NoteRow(note: note),
+                for (final note in app.notes)
+                  _NoteRow(
+                    note: note,
+                    onEdit: () => _editNote(notifier, note),
+                    onDelete: () => notifier.deleteNote(app.id, note.id),
+                  ),
               ],
             ],
           ),
@@ -542,9 +591,10 @@ class _AutoApplyRuleChip extends StatelessWidget {
 }
 
 class _TrustGuardPanel extends StatelessWidget {
-  const _TrustGuardPanel({required this.app});
+  const _TrustGuardPanel({required this.app, required this.onRunCheck});
 
   final TrackedApplication app;
+  final VoidCallback onRunCheck;
 
   @override
   Widget build(BuildContext context) {
@@ -628,6 +678,19 @@ class _TrustGuardPanel extends StatelessWidget {
                 color: brand.ink,
                 fontWeight: FontWeight.w700,
                 height: 1.4,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: onRunCheck,
+              icon: const Icon(Icons.verified_user_outlined, size: 17),
+              label: Text(
+                app.trustRiskLevel == 'unchecked'
+                    ? 'Run Trust Guard check'
+                    : 'Run check again',
               ),
             ),
           ),
@@ -949,14 +1012,21 @@ class _NoteComposer extends StatelessWidget {
 }
 
 class _NoteRow extends StatelessWidget {
-  const _NoteRow({required this.note});
+  const _NoteRow({
+    required this.note,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   final TrackedApplicationNote note;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
     final fmt = DateFormat('MMM d · h:mm a').format(note.createdAt);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
@@ -968,14 +1038,39 @@ class _NoteRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            note.body,
-            style: TextStyle(
-              fontSize: 13,
-              color: brand.ink,
-              height: 1.4,
-              fontWeight: FontWeight.w500,
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  note.body,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: brand.ink,
+                    height: 1.4,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Edit note',
+                onPressed: onEdit,
+                icon: Icon(
+                  Icons.edit_rounded,
+                  size: 16,
+                  color: brand.textMuted,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Delete note',
+                onPressed: onDelete,
+                icon: Icon(
+                  Icons.delete_outline_rounded,
+                  size: 17,
+                  color: brand.danger,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 4),
           Text(

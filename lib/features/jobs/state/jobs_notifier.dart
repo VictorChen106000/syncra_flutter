@@ -7,6 +7,7 @@ import '../../../data/firestore/applications_repository.dart';
 import '../../../data/firestore/pipeline_repository.dart';
 import '../../../data/models/job.dart';
 import '../../auth/state/auth_notifier.dart';
+import '../services/job_trust_guard.dart';
 
 @immutable
 class JobsState {
@@ -147,6 +148,8 @@ class JobsNotifier extends Notifier<JobsState> {
     if (alreadyInPipeline) return;
 
     try {
+      final trust = evaluateJobTrust(job);
+
       await _repository.createCard(
         uid: uid,
         job: job,
@@ -160,6 +163,11 @@ class JobsNotifier extends Notifier<JobsState> {
             : job.agentJustification,
         matchedSkills: job.skills,
         missingSkills: job.missingSkills,
+        trustRiskLevel: trust.riskLevel,
+        trustRiskLabel: trust.riskLabel,
+        trustSignalsCount: trust.signalsCount,
+        trustSignals: trust.signals,
+        trustSafeNextStep: trust.safeNextStep,
       );
     } catch (e) {
       debugPrint('save for later failed: $e');
@@ -204,6 +212,19 @@ class JobsNotifier extends Notifier<JobsState> {
     state = state.copyWith(dismissedIds: next);
   }
 
+  JobTrustGuardResult _trustForCard(PipelineCard card) {
+    if (card.trustRiskLevel == 'unchecked') {
+      return evaluateJobTrust(card.job);
+    }
+
+    return JobTrustGuardResult(
+      riskLevel: card.trustRiskLevel,
+      riskLabel: card.trustRiskLabel,
+      signals: card.trustSignals,
+      safeNextStep: card.trustSafeNextStep,
+    );
+  }
+
   /// Completes the active pipeline card after the user reviewed/saved an
   /// outreach draft. This moves the card out of the active queue and creates
   /// a draft application record, but does not mark it as sent.
@@ -216,10 +237,17 @@ class JobsNotifier extends Notifier<JobsState> {
     if (card == null) return;
 
     try {
+      final trust = _trustForCard(card);
+
       await _applications.createApplication(
         uid: uid,
         job: card.job,
         resumeId: resumeId,
+        trustRiskLevel: trust.riskLevel,
+        trustRiskLabel: trust.riskLabel,
+        trustSignalsCount: trust.signalsCount,
+        trustSignals: trust.signals,
+        trustSafeNextStep: trust.safeNextStep,
       );
       await _repository.approve(uid, card.id);
       state = state.copyWith(
@@ -241,9 +269,16 @@ class JobsNotifier extends Notifier<JobsState> {
     final card = state.cards.where((c) => c.job.id == jobId).firstOrNull;
     if (card == null) return;
     try {
+      final trust = _trustForCard(card);
+
       final appId = await _applications.createApplication(
         uid: uid,
         job: card.job,
+        trustRiskLevel: trust.riskLevel,
+        trustRiskLabel: trust.riskLabel,
+        trustSignalsCount: trust.signalsCount,
+        trustSignals: trust.signals,
+        trustSafeNextStep: trust.safeNextStep,
       );
       // Approving from the agent-pipeline screen means "the user accepts
       // this draft and intends to send it" — flip sent_at immediately. For

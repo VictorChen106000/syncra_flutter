@@ -25,10 +25,23 @@ enum ApplicationPhase {
 
 @immutable
 class TrackedApplicationNote {
-  const TrackedApplicationNote({required this.body, required this.createdAt});
+  const TrackedApplicationNote({
+    required this.id,
+    required this.body,
+    required this.createdAt,
+  });
 
+  final String id;
   final String body;
   final DateTime createdAt;
+
+  TrackedApplicationNote copyWith({String? body, DateTime? createdAt}) {
+    return TrackedApplicationNote(
+      id: id,
+      body: body ?? this.body,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
 }
 
 /// Activity-log entry in `users/{uid}/applications/{appId}` (v1.2 schema).
