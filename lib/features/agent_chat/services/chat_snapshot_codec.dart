@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../data/models/job.dart';
 import '../../resumes/models/proposed_edit.dart';
+import '../../resumes/models/resume_integrity_result.dart';
 import '../../resumes/models/resume_json.dart';
 import '../models/agent_block.dart';
 import '../models/chat_message.dart';
@@ -212,6 +213,8 @@ class ChatSnapshotCodec {
       'decisions': [for (final decision in block.decisions) decision.name],
       'appliedCount': block.appliedCount,
       'skippedCount': block.skippedCount,
+      if (block.integrity != null)
+        'integrity_result': block.integrity!.toJson(),
       if (_clean(block.applyError) != null) 'applyError': block.applyError,
       if (_clean(block.previewStoragePath) != null)
         'previewStoragePath': block.previewStoragePath,
@@ -239,6 +242,9 @@ class ChatSnapshotCodec {
     block.savedResumeId = _clean(_string(map, 'savedResumeId'));
     block.appliedCount = _int(map['appliedCount']);
     block.skippedCount = _int(map['skippedCount']);
+    block.integrity = _decodeIntegrityResult(
+      map['integrity_result'] ?? map['integrity'],
+    );
     block.applyError = _clean(_string(map, 'applyError'));
     block.previewStoragePath = _clean(_string(map, 'previewStoragePath'));
     block.previewResume = _decodeResumeJson(map['previewResume']);
@@ -449,6 +455,15 @@ class ChatSnapshotCodec {
     if (raw is! Map) return null;
     try {
       return ResumeJson.fromJson(Map<String, dynamic>.from(raw));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static ResumeIntegrityResult? _decodeIntegrityResult(Object? raw) {
+    if (raw is! Map) return null;
+    try {
+      return ResumeIntegrityResult.fromJson(Map<String, dynamic>.from(raw));
     } catch (_) {
       return null;
     }

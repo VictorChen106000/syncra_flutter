@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,12 +8,26 @@ import 'package:syncra/features/agent_chat/models/chat_message.dart';
 import 'package:syncra/features/agent_chat/presentation/widgets/agent_block_views.dart';
 import 'package:syncra/features/agent_chat/state/agent_chat_notifier.dart';
 import 'package:syncra/features/resumes/models/proposed_edit.dart';
+import 'package:syncra/features/resumes/models/resume_integrity_result.dart';
+import 'package:syncra/features/resumes/models/resume_json.dart';
 
 ProposedEdit _edit(String id) => ProposedEdit(
   targetPath: 'experience.$id',
   originalText: 'old $id',
   proposedText: 'new $id',
   reason: 'because $id',
+);
+
+ResumeIntegrityResult _integrity(ResumeIntegrityStatus status) =>
+    ResumeIntegrityResult(
+      status: status,
+      label: ResumeIntegrityResult.defaultLabel(status),
+      summary: ResumeIntegrityResult.defaultSummary(status),
+    );
+
+const _previewResume = ResumeJson(
+  header: ResumeHeader(name: 'Alex Chen'),
+  summary: 'Product-minded engineer.',
 );
 
 /// Replaces [AgentChatNotifier.build] with a fixed transcript so tests skip the
@@ -117,6 +133,28 @@ void main() {
       expect(_currentBlock(c).state, ProposedEditsState.reviewing);
     });
 
+    test('blocked integrity prevents saving and surfaces an error', () async {
+      final seed =
+          ProposedEditsBlock(
+              id: 'b',
+              edits: [_edit('a')],
+              decisions: [EditDecision.accepted],
+              state: ProposedEditsState.applied,
+            )
+            ..previewBytes = Uint8List.fromList([1, 2, 3])
+            ..previewResume = _previewResume
+            ..integrity = _integrity(ResumeIntegrityStatus.blocked);
+      final c = containerWith(seed);
+
+      await c.read(agentChatProvider.notifier).savePreviewedResume('b');
+
+      expect(_currentBlock(c).isSaved, isFalse);
+      expect(
+        _currentBlock(c).applyError,
+        contains('Resume Integrity Check blocked saving'),
+      );
+    });
+
     test('settled cards ignore further decisions', () {
       final seed = ProposedEditsBlock(id: 'b', edits: [_edit('a')]);
       final c = containerWith(seed);
@@ -190,6 +228,35 @@ void main() {
         expect(find.text('Dismiss all'), findsNothing);
       },
     );
+
+    testWidgets('shows integrity badge when preview is ready', (tester) async {
+      final seed =
+          ProposedEditsBlock(
+              id: 'b',
+              edits: [_edit('a')],
+              decisions: [EditDecision.accepted],
+              state: ProposedEditsState.applied,
+            )
+            ..appliedCount = 1
+            ..integrity = _integrity(ResumeIntegrityStatus.verified);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            agentChatProvider.overrideWith(() => _SeededChatNotifier(seed)),
+          ],
+          child: const _Harness(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'Integrity verified — accepted edits landed and original facts were preserved.',
+        ),
+        findsOneWidget,
+      );
+    });
 
     testWidgets('Dismiss all settles to the dismissed outcome', (tester) async {
       final seed = ProposedEditsBlock(id: 'b', edits: [_edit('a')]);

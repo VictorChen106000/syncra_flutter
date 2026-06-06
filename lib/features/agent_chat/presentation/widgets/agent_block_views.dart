@@ -13,6 +13,7 @@ import '../../../../core/utils/motion.dart';
 import '../../../../data/models/job.dart';
 import '../../models/agent_block.dart';
 import '../../state/agent_chat_notifier.dart';
+import '../../../resumes/models/resume_integrity_result.dart';
 import '../../../resumes/presentation/resume_draft_preview_page.dart';
 import '../../../resumes/presentation/tailored_changes_page.dart';
 import '../../../resumes/state/resume_notifier.dart';
@@ -882,6 +883,10 @@ class _EditsFooter extends ConsumerWidget {
                 ),
               ],
             ),
+            if (block.integrity != null) ...[
+              const SizedBox(height: 8),
+              _IntegrityLine(result: block.integrity!),
+            ],
             const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
@@ -991,6 +996,62 @@ class _ErrorLine extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _IntegrityLine extends StatelessWidget {
+  const _IntegrityLine({required this.result});
+
+  final ResumeIntegrityResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final (icon, color, text) = switch (result.status) {
+      ResumeIntegrityStatus.verified => (
+        Icons.verified_rounded,
+        brand.success,
+        'Integrity verified — accepted edits landed and original facts were preserved.',
+      ),
+      ResumeIntegrityStatus.needsReview => (
+        Icons.warning_amber_rounded,
+        brand.warning,
+        'Needs review — Syncra found possible unsupported claims. Review before saving.',
+      ),
+      ResumeIntegrityStatus.blocked => (
+        Icons.block_rounded,
+        brand.danger,
+        'Blocked — Syncra found a serious integrity issue. Saving is disabled.',
+      ),
+    };
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: brand.ink,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -671,6 +671,10 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     final sourceResumeId =
         block.resolvedResumeId ?? block.resumeId ?? 'unknown';
     final jobId = block.jobId ?? 'unknown';
+    final integrity = block.integrity;
+    final integrityStatus = integrity?.status.name ?? 'not_run';
+    final integritySummary =
+        integrity?.summary ?? 'No Resume Integrity Check result was attached.';
 
     _startContinuationPrompt('''
 The user approved the proposed resume edits and saved the tailored resume.
@@ -681,9 +685,14 @@ Approval result:
 - job_id: $jobId
 - applied_count: ${block.appliedCount}
 - skipped_count: ${block.skippedCount}
+- integrity_status: $integrityStatus
+- integrity_summary: $integritySummary
 
 Continue the original application workflow from here without asking the user to repeat the task.
 Use tailored_resume_id as the resume_id for the next steps.
+If integrity_status is verified, continue normally.
+If integrity_status is needsReview, mention that the user saved despite warnings and do not claim the resume is guaranteed safe.
+If integrity_status is blocked, stop and ask the user to review the resume integrity issue; this should be unusual because saving is disabled.
 Now offer outreach: call ask_user to ask whether they want you to draft recruiter outreach for this role, with
 chips like ["Draft recruiter outreach", "Not yet", "Save for later"]. Only call draft_email after the user confirms.
 If they confirm and recipient information is missing, call lookup_hiring_manager or ask_user.
@@ -1258,6 +1267,7 @@ Use the user's answer to continue:
     if (!_serviceReady) {
       block.appliedCount = block.acceptedCount;
       block.skippedCount = 0;
+      block.integrity = null;
       block.applyError = null;
       block.state = ProposedEditsState.applied;
       state = state.copyWith(items: [...state.items]);
@@ -1275,6 +1285,7 @@ Use the user's answer to continue:
 
     block.state = ProposedEditsState.applying;
     block.applyError = null;
+    block.integrity = null;
     state = state.copyWith(items: [...state.items]);
     _schedulePersist();
 
@@ -1322,6 +1333,7 @@ Use the user's answer to continue:
       block.previewResume = rendered.resume;
       block.appliedCount = rendered.appliedCount;
       block.skippedCount = rendered.skippedCount;
+      block.integrity = rendered.integrity;
       block.resolvedResumeId = resumeId;
       await _storePreviewBytes(block, rendered.bytes);
       return null;
@@ -1352,6 +1364,7 @@ Use the user's answer to continue:
 
     block.state = ProposedEditsState.applying;
     block.applyError = null;
+    block.integrity = null;
     state = state.copyWith(items: [...state.items]);
     _schedulePersist();
 
@@ -1453,6 +1466,13 @@ Use the user's answer to continue:
     if (block.state != ProposedEditsState.applied) return;
     if (block.previewBytes == null || block.previewResume == null) return;
     if (block.isSaved) return;
+    if (block.integrity?.isBlocked == true) {
+      block.applyError =
+          'Resume Integrity Check blocked saving: ${block.integrity!.summary}';
+      state = state.copyWith(items: [...state.items]);
+      _persistNow();
+      return;
+    }
 
     final uid = _uid;
     if (uid == null) {

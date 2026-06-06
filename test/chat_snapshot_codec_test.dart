@@ -5,6 +5,7 @@ import 'package:syncra/features/agent_chat/models/agent_block.dart';
 import 'package:syncra/features/agent_chat/models/chat_message.dart';
 import 'package:syncra/features/agent_chat/services/chat_snapshot_codec.dart';
 import 'package:syncra/features/resumes/models/proposed_edit.dart';
+import 'package:syncra/features/resumes/models/resume_integrity_result.dart';
 import 'package:syncra/features/resumes/models/resume_json.dart';
 
 void main() {
@@ -87,6 +88,18 @@ void main() {
                 'users/u1/conversation_previews/conv-1/edits-1.pdf'
             ..appliedCount = 1
             ..skippedCount = 0
+            ..integrity = const ResumeIntegrityResult(
+              status: ResumeIntegrityStatus.needsReview,
+              label: 'Needs review',
+              summary: 'Review skipped edits before saving.',
+              signals: [
+                ResumeIntegritySignal(
+                  severity: ResumeIntegritySignalSeverity.warning,
+                  label: 'Some accepted edits were skipped',
+                  detail: 'One accepted edit did not land.',
+                ),
+              ],
+            )
             ..previewResume = _resume();
 
       final decoded = ChatSnapshotCodec.decodeBlock(
@@ -106,7 +119,27 @@ void main() {
       expect(restored.state, ProposedEditsState.applied);
       expect(restored.decisions.single, EditDecision.accepted);
       expect(restored.edits.single.targetPath, 'experience[0].bullets[0]');
+      expect(restored.integrity?.status, ResumeIntegrityStatus.needsReview);
+      expect(
+        restored.integrity?.signals.single.label,
+        'Some accepted edits were skipped',
+      );
       expect(restored.previewResume?.header.name, 'Alex Chen');
+    });
+
+    test('decodes older proposed edits blocks without integrity data', () {
+      final decoded = ChatSnapshotCodec.decodeBlock(
+        ChatSnapshotCodec.encodeBlock(
+          ProposedEditsBlock(
+            id: 'edits-old',
+            edits: [_edit()],
+            state: ProposedEditsState.applied,
+          ),
+        ),
+      );
+
+      expect(decoded, isA<ProposedEditsBlock>());
+      expect((decoded as ProposedEditsBlock).integrity, isNull);
     });
 
     test('round-trips resume draft block state', () {

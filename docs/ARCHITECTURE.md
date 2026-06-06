@@ -24,6 +24,7 @@ this file, fix the code (or change this file by PR). Product context is in
 | Human-in-the-loop | Agent never sends external traffic without an explicit user tap |
 | Resume canonical form | `ResumeJSON` in Firestore, lazy-populated on first parse |
 | PDF template | One fixed single-column ATS-safe layout |
+| Resume integrity | Pure Dart check after accepted edits render; no extra LLM call or external PDF editor |
 | State management | `flutter_riverpod` — every controller a `Notifier<T>` with immutable state |
 
 **Decisions settled from earlier open questions:** PDF may overflow to page 2;
@@ -61,7 +62,7 @@ trigger: user prompt  OR  canned brief prompt
 Approval continuation works the same way as `ask_user`, but the user action comes
 from an approval UI instead of a typed answer:
 
-- `ProposedEditsBlock` — PR-style resume edits from `tailor_resume`; supports per-edit Accept/Reject decisions, Apply N edits, preview rendering, save-to-library, and saved-resume continuation.
+- `ProposedEditsBlock` — PR-style resume edits from `tailor_resume`; supports per-edit Accept/Reject decisions, Apply N edits, preview rendering, Resume Integrity Check status, save-to-library, and saved-resume continuation.
 - `ActionProposalBlock` — approval card for concrete next actions; may include a hidden `continuationPrompt` that resumes the threaded agent loop after user approval.
 - `send_email` remains gated. The agent may draft outreach, but sending requires the email review UI and an explicit user-confirmation token.
 
@@ -136,11 +137,19 @@ Each tool is declared in `tool_registry.dart` (`name`, `description`,
    `draft_email`.
 3. The user reviews edits in the inline `ProposedEditsBlock` and taps
    "Apply N edits".
-4. The UI calls `apply_resume_edits` with `{ resume_id, accepted_edits }` →
-   `ResumeDiffService.applyEdits` builds the V2 `ResumeJSON` → `pdf_template`
-   renders → a new Firestore resume doc is created (`source: 'tailored'`,
-   `parent_resume_id`, `tailored_for_job_id`) → returns `{ tailored_resume_id }`.
-5. That result feeds back into the loop; Claude proceeds (typically to
+4. The UI applies the accepted subset via `ResumeDiffService.apply`, renders an
+   unsaved preview, then runs `ResumeIntegrityService.verify` against the
+   original `ResumeJSON`, tailored `ResumeJSON`, accepted edits, and
+   applied/skipped counts.
+5. The integrity result is deterministic and pure Dart. It checks protected
+   identity/contact facts, unsupported companies/roles/schools/dates/metrics,
+   skipped edits, and obvious section loss. It does **not** call Claude and does
+   **not** use an external PDF editor.
+6. `verified` can save normally. `needsReview` warns but can still save.
+   `blocked` disables saving and keeps the preview visible for inspection.
+7. Once the user taps Save, a new Firestore resume doc is created
+   (`source: 'tailored'`, `parent_resume_id`, `tailored_for_job_id`) and the
+   saved resume id feeds back into the loop; Claude proceeds (typically to
    `draft_email`).
 
 ### Trust Guard contract
@@ -268,7 +277,7 @@ serialized `items`.
 
 `items` are encoded through `ChatSnapshotCodec` and can recover user bubbles,
 resume attachment chips, agent text, tool-call rows, job-card rails,
-proposed-edits cards, built-resume draft cards, input-request cards, action
+proposed-edits cards with integrity results, built-resume draft cards, input-request cards, action
 proposal cards, and email draft cards. The drawer supports grouped history
 sections, title/preview search, rename, pin/unpin, delete confirmation, and
 preview text under each row.

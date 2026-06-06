@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../../../data/models/job.dart';
 import '../../resumes/models/proposed_edit.dart';
+import '../../resumes/models/resume_integrity_result.dart';
 import '../../resumes/models/resume_json.dart';
 
 /// One unit of agent output inside an [AgentTurn].
@@ -162,6 +163,10 @@ class ProposedEditsBlock extends AgentBlock {
   /// How many accepted edits actually landed / were skipped during render.
   int appliedCount = 0;
   int skippedCount = 0;
+
+  /// Deterministic integrity check for the rendered tailored preview. Null for
+  /// old conversations or cards that have not rendered yet.
+  ResumeIntegrityResult? integrity;
 
   /// Last apply/save error, surfaced in the card so the user can retry.
   String? applyError;

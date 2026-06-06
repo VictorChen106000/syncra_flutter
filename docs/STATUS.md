@@ -28,6 +28,7 @@ Foundation, verified in code:
 - Tool registry with real job-search, resume, memory, Trust Guard, pipeline, tracker, and email tools
 - Resume upload (Storage blob + Firestore metadata) · PDF text extraction · lazy resume parser → `ResumeJSON`
 - Fixed PDF template · resume tailor orchestrator
+- Resume Integrity Check for tailored previews — pure Dart, no extra Claude call or external PDF editor, blocks saving on serious unsupported changes
 - `tailor_resume` proposes edits and the loop pauses · read-only `ProposedEditsBlock` preview in chat
 - `read_resume`, `match_jobs`, `check_job_risk`, `save_to_pipeline`, `save_to_tracker`, `remember_fact` — real implementations
 - Trust Guard checks obvious job red flags, persists results on pipeline/application records, surfaces badges/details in UI, and has unit tests
@@ -47,6 +48,7 @@ The propose path and accepted-edit preview/save path work. Remaining engine poli
 - [x] Cascade-delete tailored children when a manual resume is deleted (`ResumeNotifier.deleteResume`).
 - [x] Parser retry — `ResumeParserService` retries once with a stricter prompt when Claude returns malformed resume JSON, then surfaces an actionable parse error if retry still fails.
 - [x] Scanned-PDF / empty text guard: parser and tailor flow surface an actionable text-PDF error instead of falling back to a sample resume.
+- [x] Resume Integrity Check runs after accepted edits apply and before save, comparing original/tailored `ResumeJSON`, accepted edits, applied/skipped counts, protected facts, unsupported claims, skipped edits, and section loss.
 
 ### Resume Diff UI
 
@@ -54,6 +56,7 @@ The inline proposed-edits card is now interactive.
 
 - [x] `ProposedEditsBlock` renders the current read-only proposed-edits card state with accepted counter, Dismiss all, Apply N edits, preview-ready state, and current widget tests.
 - [x] Applying accepted edits renders an in-memory tailored PDF preview.
+- [x] Tailored previews show an integrity badge/banner; blocked results disable saving while leaving the preview visible.
 - [x] Saving the preview persists the tailored resume to Firebase Storage / Firestore and returns a saved resume id.
 - [x] After save, the agent loop resumes through the saved-resume continuation bridge.
 

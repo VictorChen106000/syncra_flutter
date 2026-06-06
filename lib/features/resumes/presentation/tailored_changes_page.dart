@@ -7,6 +7,7 @@ import '../../../shared/widgets/app_back_button.dart';
 import '../../agent_chat/models/agent_block.dart';
 import '../../agent_chat/state/agent_chat_notifier.dart';
 import '../models/proposed_edit.dart';
+import '../models/resume_integrity_result.dart';
 import '../models/resume_json.dart';
 
 // Resume "paper" is always dark-ink-on-white — a resume reads the same in light
@@ -48,15 +49,14 @@ class _TailoredChangesPageState extends ConsumerState<TailoredChangesPage> {
     if (!mounted) return;
     setState(() => _saving = false);
 
-    final block =
-        ref.read(agentChatProvider.notifier).proposedEditsBlock(widget.blockId);
+    final block = ref
+        .read(agentChatProvider.notifier)
+        .proposedEditsBlock(widget.blockId);
     final messenger = ScaffoldMessenger.of(context);
     if (block != null && block.isSaved) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(
-          const SnackBar(content: Text('Saved to your resumes')),
-        );
+        ..showSnackBar(const SnackBar(content: Text('Saved to your resumes')));
       Navigator.of(context).maybePop();
     } else if (block?.applyError != null) {
       messenger
@@ -82,10 +82,13 @@ class _TailoredChangesPageState extends ConsumerState<TailoredChangesPage> {
     final brand = context.brand;
     // Watch chat state so a save elsewhere reflects here too.
     ref.watch(agentChatProvider);
-    final block =
-        ref.read(agentChatProvider.notifier).proposedEditsBlock(widget.blockId);
+    final block = ref
+        .read(agentChatProvider.notifier)
+        .proposedEditsBlock(widget.blockId);
     final resume = block?.previewResume;
     final isSaved = block?.isSaved ?? false;
+    final integrity = block?.integrity;
+    final canSave = integrity?.canSave ?? true;
 
     // The set of changed leaves, keyed by the canonicalized proposed text. A
     // skipped edit's text never lands in [previewResume], so it simply won't
@@ -95,8 +98,9 @@ class _TailoredChangesPageState extends ConsumerState<TailoredChangesPage> {
         for (final e in block.edits)
           if (e.proposedText.trim().isNotEmpty) _canon(e.proposedText): e,
     };
-    final improvements =
-        (block?.appliedCount ?? 0) > 0 ? block!.appliedCount : changes.length;
+    final improvements = (block?.appliedCount ?? 0) > 0
+        ? block!.appliedCount
+        : changes.length;
 
     return Scaffold(
       backgroundColor: brand.bg,
@@ -105,6 +109,12 @@ class _TailoredChangesPageState extends ConsumerState<TailoredChangesPage> {
         child: Column(
           children: [
             _Header(isSaved: isSaved, improvements: improvements),
+            if (integrity != null) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                child: _IntegrityBanner(result: integrity),
+              ),
+            ],
             Expanded(
               child: resume == null
                   ? _Rendering(brand: brand)
@@ -116,6 +126,7 @@ class _TailoredChangesPageState extends ConsumerState<TailoredChangesPage> {
             _ActionBar(
               isSaved: isSaved,
               saving: _saving,
+              canSave: canSave,
               onSave: _save,
               onKeepEditing: _keepEditing,
               onDone: () => Navigator.of(context).maybePop(),
@@ -139,9 +150,9 @@ class _Header extends StatelessWidget {
     final sub = isSaved
         ? 'Saved to your resumes'
         : improvements == 0
-            ? 'No changes were needed'
-            : '$improvements improvement${improvements == 1 ? '' : 's'} · '
-                'tap a highlight to see the original';
+        ? 'No changes were needed'
+        : '$improvements improvement${improvements == 1 ? '' : 's'} · '
+              'tap a highlight to see the original';
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
       child: Row(
@@ -202,6 +213,62 @@ class _Rendering extends StatelessWidget {
               color: brand.textMuted,
               fontSize: 13,
               fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IntegrityBanner extends StatelessWidget {
+  const _IntegrityBanner({required this.result});
+
+  final ResumeIntegrityResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final (icon, color, text) = switch (result.status) {
+      ResumeIntegrityStatus.verified => (
+        Icons.verified_rounded,
+        brand.success,
+        'Integrity verified — accepted edits landed and original facts were preserved.',
+      ),
+      ResumeIntegrityStatus.needsReview => (
+        Icons.warning_amber_rounded,
+        brand.warning,
+        'Needs review — Syncra found possible unsupported claims. Review before saving.',
+      ),
+      ResumeIntegrityStatus.blocked => (
+        Icons.block_rounded,
+        brand.danger,
+        'Blocked — Syncra found a serious integrity issue. Saving is disabled.',
+      ),
+    };
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: brand.ink,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
+                height: 1.35,
+              ),
             ),
           ),
         ],
@@ -275,33 +342,43 @@ class _ResumePaper extends StatelessWidget {
     final out = <Widget>[];
 
     if ((resume.summary ?? '').trim().isNotEmpty) {
-      out.add(_section('Summary', [
-        _leaf(resume.summary!.trim(), _serif(size: 12.5, h: 1.5), changes),
-      ]));
+      out.add(
+        _section('Summary', [
+          _leaf(resume.summary!.trim(), _serif(size: 12.5, h: 1.5), changes),
+        ]),
+      );
     }
 
     if (resume.education.isNotEmpty) {
-      out.add(_section('Education', [
-        for (final e in resume.education) _educationEntry(e),
-      ]));
+      out.add(
+        _section('Education', [
+          for (final e in resume.education) _educationEntry(e),
+        ]),
+      );
     }
 
     if (resume.experience.isNotEmpty) {
-      out.add(_section('Experience', [
-        for (final e in resume.experience) _experienceEntry(e),
-      ]));
+      out.add(
+        _section('Experience', [
+          for (final e in resume.experience) _experienceEntry(e),
+        ]),
+      );
     }
 
     if (resume.projects.isNotEmpty) {
-      out.add(_section('Projects', [
-        for (final p in resume.projects) _projectEntry(p),
-      ]));
+      out.add(
+        _section('Projects', [
+          for (final p in resume.projects) _projectEntry(p),
+        ]),
+      );
     }
 
     if (resume.certifications.isNotEmpty) {
-      out.add(_section('Achievements & Certifications', [
-        for (final c in resume.certifications) _certificationEntry(c),
-      ]));
+      out.add(
+        _section('Achievements & Certifications', [
+          for (final c in resume.certifications) _certificationEntry(c),
+        ]),
+      );
     }
 
     final skills = _skillsBlock();
@@ -333,16 +410,20 @@ class _ResumePaper extends StatelessWidget {
   Widget _experienceEntry(ResumeExperience e) {
     final end = (e.end ?? '').isEmpty ? 'Present' : e.end!;
     final dates = e.start.isEmpty ? '' : '${e.start} – $end';
-    final subtitle = [e.role, if ((e.location ?? '').isNotEmpty) e.location!]
-        .where((s) => s.isNotEmpty)
-        .join(', ');
+    final subtitle = [
+      e.role,
+      if ((e.location ?? '').isNotEmpty) e.location!,
+    ].where((s) => s.isNotEmpty).join(', ');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _titleDateRow(e.company, dates),
         if (subtitle.isNotEmpty) ...[
           const SizedBox(height: 2),
-          Text(subtitle, style: _serif(size: 11.5, color: _muted, style: FontStyle.italic)),
+          Text(
+            subtitle,
+            style: _serif(size: 11.5, color: _muted, style: FontStyle.italic),
+          ),
         ],
         ..._bullets(e.bullets),
       ],
@@ -350,17 +431,20 @@ class _ResumePaper extends StatelessWidget {
   }
 
   Widget _educationEntry(ResumeEducation e) {
-    final dates = [e.start, e.end]
-        .whereType<String>()
-        .where((s) => s.isNotEmpty)
-        .join(' – ');
+    final dates = [
+      e.start,
+      e.end,
+    ].whereType<String>().where((s) => s.isNotEmpty).join(' – ');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _titleDateRow(e.school, dates),
         if (e.degree.isNotEmpty) ...[
           const SizedBox(height: 2),
-          Text(e.degree, style: _serif(size: 11.5, color: _muted, style: FontStyle.italic)),
+          Text(
+            e.degree,
+            style: _serif(size: 11.5, color: _muted, style: FontStyle.italic),
+          ),
         ],
         if ((e.details ?? '').isNotEmpty) ...[
           const SizedBox(height: 3),
@@ -378,16 +462,21 @@ class _ResumePaper extends StatelessWidget {
         _titleDateRow(p.name, p.date ?? ''),
         if ((p.description ?? '').isNotEmpty) ...[
           const SizedBox(height: 3),
-          _leaf(p.description!.trim(), _serif(size: 12, color: _muted, style: FontStyle.italic, h: 1.4), changes),
+          _leaf(
+            p.description!.trim(),
+            _serif(size: 12, color: _muted, style: FontStyle.italic, h: 1.4),
+            changes,
+          ),
         ],
         ..._bullets(p.bullets),
         if ((p.link ?? '').isNotEmpty) ...[
           const SizedBox(height: 3),
           Text(
             p.link!,
-            style: _serif(size: 11, color: _muted).copyWith(
-              decoration: TextDecoration.underline,
-            ),
+            style: _serif(
+              size: 11,
+              color: _muted,
+            ).copyWith(decoration: TextDecoration.underline),
           ),
         ],
       ],
@@ -418,7 +507,14 @@ class _ResumePaper extends StatelessWidget {
               ),
             ),
             if ((c.date ?? '').isNotEmpty)
-              Text(c.date!, style: _serif(size: 10.5, color: _muted, style: FontStyle.italic)),
+              Text(
+                c.date!,
+                style: _serif(
+                  size: 10.5,
+                  color: _muted,
+                  style: FontStyle.italic,
+                ),
+              ),
           ],
         ),
         ..._bullets(c.bullets),
@@ -430,10 +526,15 @@ class _ResumePaper extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(child: Text(title, style: _serif(size: 13, w: FontWeight.w700))),
+        Expanded(
+          child: Text(title, style: _serif(size: 13, w: FontWeight.w700)),
+        ),
         if (date.isNotEmpty) ...[
           const SizedBox(width: 8),
-          Text(date, style: _serif(size: 10.5, color: _muted, style: FontStyle.italic)),
+          Text(
+            date,
+            style: _serif(size: 10.5, color: _muted, style: FontStyle.italic),
+          ),
         ],
       ],
     );
@@ -441,10 +542,7 @@ class _ResumePaper extends StatelessWidget {
 
   List<Widget> _bullets(List<String> bullets) {
     if (bullets.isEmpty) return const [];
-    return [
-      const SizedBox(height: 4),
-      for (final b in bullets) _bulletRow(b),
-    ];
+    return [const SizedBox(height: 4), for (final b in bullets) _bulletRow(b)];
   }
 
   Widget _bulletRow(String text) {
@@ -457,7 +555,10 @@ class _ResumePaper extends StatelessWidget {
             margin: const EdgeInsets.only(top: 7, right: 9),
             width: 4,
             height: 4,
-            decoration: const BoxDecoration(color: _ink, shape: BoxShape.circle),
+            decoration: const BoxDecoration(
+              color: _ink,
+              shape: BoxShape.circle,
+            ),
           ),
           Expanded(child: _leaf(text, _serif(size: 12.5, h: 1.45), changes)),
         ],
@@ -469,23 +570,24 @@ class _ResumePaper extends StatelessWidget {
   /// an inline green highlighter via a [TextSpan] background — no per-item tap,
   /// since an added keyword is self-evident.
   Widget? _skillsBlock() {
-    final groups =
-        resume.skillGroups.where((g) => g.items.isNotEmpty).toList();
+    final groups = resume.skillGroups.where((g) => g.items.isNotEmpty).toList();
     final base = _serif(size: 12, h: 1.5);
 
     List<InlineSpan> itemsSpan(List<String> items) {
       final spans = <InlineSpan>[];
       for (var i = 0; i < items.length; i++) {
         final changed = changes.containsKey(_canon(items[i]));
-        spans.add(TextSpan(
-          text: items[i],
-          style: changed
-              ? base.copyWith(
-                  color: _changeInk,
-                  background: Paint()..color = _changeWash,
-                )
-              : null,
-        ));
+        spans.add(
+          TextSpan(
+            text: items[i],
+            style: changed
+                ? base.copyWith(
+                    color: _changeInk,
+                    background: Paint()..color = _changeWash,
+                  )
+                : null,
+          ),
+        );
         if (i < items.length - 1) spans.add(const TextSpan(text: ', '));
       }
       return spans;
@@ -579,7 +681,9 @@ class _ChangedTextState extends State<_ChangedText> {
                 Expanded(child: Text(widget.value, style: widget.style)),
                 const SizedBox(width: 6),
                 Icon(
-                  _open ? Icons.expand_less_rounded : Icons.auto_awesome_rounded,
+                  _open
+                      ? Icons.expand_less_rounded
+                      : Icons.auto_awesome_rounded,
                   size: 14,
                   color: _changeBorder,
                 ),
@@ -590,8 +694,9 @@ class _ChangedTextState extends State<_ChangedText> {
             duration: const Duration(milliseconds: 180),
             firstChild: const SizedBox(width: double.infinity),
             secondChild: _RevealPanel(edit: e),
-            crossFadeState:
-                _open ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            crossFadeState: _open
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
           ),
         ],
       ),
@@ -614,17 +719,32 @@ class _RevealPanel extends StatelessWidget {
           if (edit.isAdd)
             Row(
               children: [
-                const Icon(Icons.add_circle_outline_rounded,
-                    size: 13, color: _changeBorder),
+                const Icon(
+                  Icons.add_circle_outline_rounded,
+                  size: 13,
+                  color: _changeBorder,
+                ),
                 const SizedBox(width: 6),
                 Text(
                   'Added for this role',
-                  style: _serif(size: 11.5, color: _changeInk, w: FontWeight.w600),
+                  style: _serif(
+                    size: 11.5,
+                    color: _changeInk,
+                    w: FontWeight.w600,
+                  ),
                 ),
               ],
             )
           else ...[
-            Text('WAS', style: _serif(size: 9.5, color: _oldInk, w: FontWeight.w700, ls: 1.2)),
+            Text(
+              'WAS',
+              style: _serif(
+                size: 9.5,
+                color: _oldInk,
+                w: FontWeight.w700,
+                ls: 1.2,
+              ),
+            ),
             const SizedBox(height: 2),
             Text(
               edit.originalText,
@@ -642,7 +762,12 @@ class _RevealPanel extends StatelessWidget {
                 children: [
                   TextSpan(
                     text: 'Why  ',
-                    style: _serif(size: 9.5, color: _muted, w: FontWeight.w700, ls: 1.0),
+                    style: _serif(
+                      size: 9.5,
+                      color: _muted,
+                      w: FontWeight.w700,
+                      ls: 1.0,
+                    ),
                   ),
                   TextSpan(text: edit.reason.trim()),
                 ],
@@ -659,6 +784,7 @@ class _ActionBar extends StatelessWidget {
   const _ActionBar({
     required this.isSaved,
     required this.saving,
+    required this.canSave,
     required this.onSave,
     required this.onKeepEditing,
     required this.onDone,
@@ -666,6 +792,7 @@ class _ActionBar extends StatelessWidget {
 
   final bool isSaved;
   final bool saving;
+  final bool canSave;
   final VoidCallback onSave;
   final VoidCallback onKeepEditing;
   final VoidCallback onDone;
@@ -698,10 +825,10 @@ class _ActionBar extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _BarButton(
-                    label: 'Save to my resumes',
+                    label: canSave ? 'Save to my resumes' : 'Save blocked',
                     filled: true,
                     loading: saving,
-                    onTap: saving ? null : onSave,
+                    onTap: saving || !canSave ? null : onSave,
                   ),
                 ),
               ],
@@ -782,15 +909,14 @@ TextStyle _serif({
   FontStyle? style,
   double? ls,
   double h = 1.0,
-}) =>
-    GoogleFonts.sourceSerif4(
-      fontSize: size,
-      fontWeight: w,
-      color: color,
-      fontStyle: style,
-      letterSpacing: ls,
-      height: h,
-    );
+}) => GoogleFonts.sourceSerif4(
+  fontSize: size,
+  fontWeight: w,
+  color: color,
+  fontStyle: style,
+  letterSpacing: ls,
+  height: h,
+);
 
 /// Mirrors [ResumeDiffService]'s canonicalization so a changed leaf in the
 /// rendered resume matches the tailor's `proposed_text` despite cosmetic
