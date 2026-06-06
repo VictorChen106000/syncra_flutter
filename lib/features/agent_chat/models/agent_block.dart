@@ -63,11 +63,38 @@ class TextBlock extends AgentBlock {
 /// the dashboard — instead of the agent narrating the roles as prose. The rail
 /// is read-only chrome; tapping a card opens the shared job action sheet.
 class JobsBlock extends AgentBlock {
-  JobsBlock({required super.id, required this.jobs});
+  JobsBlock({
+    required super.id,
+    required this.jobs,
+    Set<String>? dismissedJobIds,
+    Set<String>? hiddenJobIds,
+  }) : dismissedJobIds = dismissedJobIds ?? <String>{},
+       hiddenJobIds = hiddenJobIds ?? <String>{};
 
   /// Mutable so `match_jobs` can re-score the rail in place — see
   /// [JobsBlockUpdated]. A fresh search still mints a new block.
   List<Job> jobs;
+
+  /// Jobs the user dismissed from this specific chat result set.
+  /// This must be part of the chat snapshot so restored conversations do not
+  /// bring dismissed roles back.
+  Set<String> dismissedJobIds;
+
+  /// Jobs the user explicitly hid from this specific chat result set.
+  Set<String> hiddenJobIds;
+
+  void dismissJob(String jobId) {
+    final clean = jobId.trim();
+    if (clean.isEmpty) return;
+    dismissedJobIds = {...dismissedJobIds, clean};
+  }
+
+  void hideJob(String jobId) {
+    final clean = jobId.trim();
+    if (clean.isEmpty) return;
+    hiddenJobIds = {...hiddenJobIds, clean};
+    dismissedJobIds = {...dismissedJobIds, clean};
+  }
 }
 
 /// Where one proposed edit stands in the card lifecycle.

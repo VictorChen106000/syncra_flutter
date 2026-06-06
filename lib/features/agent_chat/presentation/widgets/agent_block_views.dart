@@ -77,18 +77,28 @@ class JobsBlockView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final brand = context.brand;
     final jobsState = ref.watch(jobsProvider);
+
+    final inactiveIds = <String>{
+      ...block.dismissedJobIds,
+      ...block.hiddenJobIds,
+      ...jobsState.dismissedIds,
+      ...jobsState.hiddenIds,
+    };
+
     final jobs = block.jobs
-        .where(
-          (job) =>
-              !jobsState.isDismissed(job.id) && !jobsState.isHidden(job.id),
-        )
+        .where((job) => !inactiveIds.contains(job.id))
         .toList(growable: false);
+
+    final dismissedCount = block.jobs
+        .where((job) => inactiveIds.contains(job.id))
+        .length;
+    final totalCount = block.jobs.length;
 
     if (jobs.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Text(
-          'No visible roles left in this result set.',
+          'All $totalCount roles in this result set were dismissed.',
           style: TextStyle(
             color: brand.textMuted,
             fontSize: 13,
@@ -104,7 +114,11 @@ class JobsBlockView extends ConsumerWidget {
         Padding(
           padding: const EdgeInsets.only(left: 2, bottom: 10),
           child: Text(
-            '${jobs.length} ${jobs.length == 1 ? 'ROLE' : 'ROLES'} FOUND · SWIPE',
+            _jobsHeader(
+              visibleCount: jobs.length,
+              totalCount: totalCount,
+              dismissedCount: dismissedCount,
+            ),
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w900,
@@ -123,7 +137,15 @@ class JobsBlockView extends ConsumerWidget {
             itemCount: jobs.length,
             separatorBuilder: (_, _) => const SizedBox(width: 12),
             itemBuilder: (context, i) {
-              return _JobMatchCard(job: jobs[i])
+              return _JobMatchCard(
+                    job: jobs[i],
+                    onHide: () => ref
+                        .read(agentChatProvider.notifier)
+                        .hideJobInBlock(block.id, jobs[i].id),
+                    onDismiss: () => ref
+                        .read(agentChatProvider.notifier)
+                        .dismissJobInBlock(block.id, jobs[i].id),
+                  )
                   .animate(delay: (i * 70).ms)
                   .fadeIn(duration: 300.ms)
                   .moveX(begin: 18, end: 0, curve: Curves.easeOutCubic);
@@ -135,6 +157,20 @@ class JobsBlockView extends ConsumerWidget {
       ],
     );
   }
+}
+
+String _jobsHeader({
+  required int visibleCount,
+  required int totalCount,
+  required int dismissedCount,
+}) {
+  final roleLabel = visibleCount == 1 ? 'ROLE' : 'ROLES';
+  if (dismissedCount <= 0) {
+    return '$visibleCount $roleLabel FOUND · SWIPE';
+  }
+
+  final dismissedLabel = dismissedCount == 1 ? 'DISMISSED' : 'DISMISSED';
+  return '$visibleCount OF $totalCount $roleLabel · $dismissedCount $dismissedLabel · SWIPE';
 }
 
 /// Footer CTA under the job rail — jumps to the full Jobs page where every
@@ -186,9 +222,15 @@ class _SeeAllJobsButton extends StatelessWidget {
 /// A single tap opens the shared [JobActionSheet] (save, draft an application
 /// email, share, hide, dismiss) without leaving the conversation.
 class _JobMatchCard extends StatelessWidget {
-  const _JobMatchCard({required this.job});
+  const _JobMatchCard({
+    required this.job,
+    required this.onHide,
+    required this.onDismiss,
+  });
 
   final Job job;
+  final VoidCallback onHide;
+  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
@@ -211,7 +253,12 @@ class _JobMatchCard extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => JobActionSheet.show(context, job),
+        onTap: () => JobActionSheet.show(
+          context,
+          job,
+          onHide: onHide,
+          onDismiss: onDismiss,
+        ),
         borderRadius: BorderRadius.circular(24),
         child: Container(
           width: 232,

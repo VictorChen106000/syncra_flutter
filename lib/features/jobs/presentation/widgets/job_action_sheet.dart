@@ -12,19 +12,27 @@ import '../../services/job_trust_guard.dart';
 class JobActionSheet {
   const JobActionSheet._();
 
-  static Future<void> show(BuildContext context, Job job) {
+  static Future<void> show(
+    BuildContext context,
+    Job job, {
+    VoidCallback? onHide,
+    VoidCallback? onDismiss,
+  }) {
     return showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (sheetCtx) => _JobActionSheetBody(job: job),
+      builder: (sheetCtx) =>
+          _JobActionSheetBody(job: job, onHide: onHide, onDismiss: onDismiss),
     );
   }
 }
 
 class _JobActionSheetBody extends ConsumerWidget {
-  const _JobActionSheetBody({required this.job});
+  const _JobActionSheetBody({required this.job, this.onHide, this.onDismiss});
 
   final Job job;
+  final VoidCallback? onHide;
+  final VoidCallback? onDismiss;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -106,6 +114,7 @@ class _JobActionSheetBody extends ConsumerWidget {
                   notifier.unhide(job.id);
                 } else {
                   notifier.hide(job.id, label: label);
+                  onHide?.call();
                 }
                 Navigator.of(context).pop();
               },
@@ -116,6 +125,7 @@ class _JobActionSheetBody extends ConsumerWidget {
               destructive: true,
               onTap: () {
                 notifier.dismiss(job.id, label: label);
+                onDismiss?.call();
                 Navigator.of(context).pop();
               },
             ),

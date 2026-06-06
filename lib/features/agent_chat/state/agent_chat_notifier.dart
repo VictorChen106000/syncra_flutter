@@ -1794,6 +1794,34 @@ Hard constraints:
     return raw.length > 120 ? '${raw.substring(0, 120)}…' : raw;
   }
 
+  void dismissJobInBlock(String blockId, String jobId) {
+    final block = _findJobsBlock(blockId);
+    if (block == null) return;
+
+    block.dismissJob(jobId);
+    state = state.copyWith(items: [...state.items]);
+    _persistNow();
+  }
+
+  void hideJobInBlock(String blockId, String jobId) {
+    final block = _findJobsBlock(blockId);
+    if (block == null) return;
+
+    block.hideJob(jobId);
+    state = state.copyWith(items: [...state.items]);
+    _persistNow();
+  }
+
+  JobsBlock? _findJobsBlock(String blockId) {
+    for (final item in state.items) {
+      if (item is! AgentTurn) continue;
+      for (final block in item.blocks) {
+        if (block is JobsBlock && block.id == blockId) return block;
+      }
+    }
+    return null;
+  }
+
   /// Dismisses a [ProposedEditsBlock] without applying anything.
   void dismissProposedEdits(String blockId) {
     final block = _findProposedEdits(blockId);

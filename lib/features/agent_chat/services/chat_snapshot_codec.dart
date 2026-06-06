@@ -71,6 +71,10 @@ class ChatSnapshotCodec {
         'kind': 'jobs',
         'id': block.id,
         'jobs': [for (final job in block.jobs) job.toJson()],
+        if (block.dismissedJobIds.isNotEmpty)
+          'dismissedJobIds': block.dismissedJobIds.toList(),
+        if (block.hiddenJobIds.isNotEmpty)
+          'hiddenJobIds': block.hiddenJobIds.toList(),
       },
       ProposedEditsBlock() => _encodeProposedEditsBlock(block),
       ResumeDraftBlock() => _encodeResumeDraftBlock(block),
@@ -122,7 +126,12 @@ class ChatSnapshotCodec {
       case 'jobs_block':
         final jobs = _decodeJobs(map['jobs']);
         if (jobs.isEmpty) return null;
-        return JobsBlock(id: id, jobs: jobs);
+        return JobsBlock(
+          id: id,
+          jobs: jobs,
+          dismissedJobIds: _stringSet(map['dismissedJobIds']),
+          hiddenJobIds: _stringSet(map['hiddenJobIds']),
+        );
       case 'proposed_edits':
       case 'proposed_edits_block':
         return _decodeProposedEditsBlock(id, map);
@@ -591,6 +600,15 @@ class ChatSnapshotCodec {
   static bool _bool(Object? raw) {
     if (raw is bool) return raw;
     return raw?.toString().trim().toLowerCase() == 'true';
+  }
+
+  static Set<String> _stringSet(Object? raw) {
+    if (raw is! List) return const {};
+    return raw
+        .whereType<String>()
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .toSet();
   }
 
   static List<String> _stringList(Object? raw) {
