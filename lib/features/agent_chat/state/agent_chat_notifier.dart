@@ -786,12 +786,25 @@ Do not call send_email. Sending still requires explicit user approval.
         :final status,
         :final detail,
       ):
+        ToolCallBlock? completedTool;
+
         for (final b in turn.blocks) {
           if (b is ToolCallBlock && b.id == blockId) {
             b.status = status;
             b.resultSummary = summary;
             if (detail != null) b.detail = detail;
+            completedTool = b;
             break;
+          }
+        }
+
+        if (status == ToolCallStatus.done && completedTool != null) {
+          final toolName = completedTool.name;
+          if (toolName == 'save_to_pipeline' || toolName == 'save_to_tracker') {
+            final jobId = _jobIdFromToolDetail(completedTool.detail);
+            if (jobId != null && jobId.isNotEmpty) {
+              _markJobHandledEverywhere(jobId);
+            }
           }
         }
       case JobsBlockUpdated(:final blockId, :final jobs):
@@ -1463,7 +1476,9 @@ Hard constraints:
     block.savedDraftId = draftId;
 
     state = state.copyWith(items: [...state.items]);
-
+    if (block.jobId != null && block.jobId!.trim().isNotEmpty) {
+      _markJobHandledEverywhere(block.jobId!);
+    }
     _markPipelineDraftProcessed(block);
     _persistNow();
   }
@@ -1835,6 +1850,55 @@ Hard constraints:
     block.markJobHandled(jobId);
     state = state.copyWith(items: [...state.items]);
     _persistNow();
+  }
+
+  void _markJobHandledEverywhere(String jobId) {
+    final clean = jobId.trim();
+    if (clean.isEmpty) return;
+
+    var changed = false;
+
+    for (final item in state.items) {
+      if (item is! AgentTurn) continue;
+
+      for (final block in item.blocks) {
+        if (block is JobsBlock &&
+            block.jobs.any((job) => job.id == clean) &&
+            !block.handledJobIds.contains(clean)) {
+          block.markJobHandled(clean);
+          changed = true;
+        }
+      }
+    }
+
+    final activeTurn = _activeTurn;
+    if (activeTurn != null) {
+      for (final block in activeTurn.blocks) {
+        if (block is JobsBlock &&
+            block.jobs.any((job) => job.id == clean) &&
+            !block.handledJobIds.contains(clean)) {
+          block.markJobHandled(clean);
+          changed = true;
+        }
+      }
+    }
+
+    if (!changed) return;
+
+    state = state.copyWith(items: [...state.items]);
+    _persistNow();
+  }
+
+  String? _jobIdFromToolDetail(String? detail) {
+    if (detail == null || detail.trim().isEmpty) return null;
+
+    final quoted = RegExp(r'"job_id"\s*:\s*"([^"]+)"').firstMatch(detail);
+    if (quoted != null) return quoted.group(1)?.trim();
+
+    final snake = RegExp(
+      r'job_id\s*[:=]\s*([A-Za-z0-9._-]+)',
+    ).firstMatch(detail);
+    return snake?.group(1)?.trim();
   }
 
   JobsBlock? _findJobsBlock(String blockId) {

@@ -192,7 +192,7 @@ Future<void> _draftEmail(
   VoidCallback? onDrafted,
 }) async {
   final trust = evaluateJobTrust(job);
-
+  final jobsNotifier = ref.read(jobsProvider.notifier);
   if (trust.needsVerification) {
     final confirmed = await _confirmTrustGuardProceed(context, trust);
     if (confirmed != true) return;
@@ -224,7 +224,7 @@ Future<void> _draftEmail(
 
   if (!(result?.draftCreated ?? false)) return;
 
-  await ref.read(jobsProvider.notifier).markDraftedJob(job);
+  await jobsNotifier.markDraftedJob(job);
   onDrafted?.call();
 
   if (!parentContext.mounted) return;
