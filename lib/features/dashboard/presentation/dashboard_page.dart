@@ -16,6 +16,7 @@ import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/gooey_orb.dart';
 import '../../agent/state/passive_agent_notifier.dart';
+import '../../applications/state/applications_notifier.dart';
 import '../../agent_chat/state/agent_chat_notifier.dart';
 import '../../jobs/state/jobs_notifier.dart';
 import '../../auth/state/auth_notifier.dart';
@@ -202,12 +203,19 @@ class _AgentSection extends ConsumerWidget {
     final hasMatches = ref.watch(
       jobsProvider.select((s) => s.cards.isNotEmpty),
     );
+    final hasApplications = ref.watch(
+      applicationsProvider.select((s) => s.items.isNotEmpty),
+    );
     final agentActive = ref.watch(
       passiveAgentProvider.select(
         (s) => s.isRunning || s.lastBriefAt != null || s.activity.isNotEmpty,
       ),
     );
-    if (hasMatches || agentActive) return const AgentActivityTimeline();
+
+    if (hasMatches || hasApplications || agentActive) {
+      return const AgentActivityTimeline();
+    }
+
     return const _DashboardAgentEmptyState();
   }
 }

@@ -23,10 +23,9 @@ import '../../../resumes/state/resume_notifier.dart';
 final _learnedFactsCountProvider = StreamProvider.autoDispose<int>((ref) {
   final user = ref.watch(authProvider.select((s) => s.appUser));
   if (user == null || user.isGuest) return Stream.value(0);
-  return FirestorePaths(FirebaseFirestore.instance)
-      .learnedFacts(user.uid)
-      .snapshots()
-      .map((snap) => snap.docs.length);
+  return FirestorePaths(
+    FirebaseFirestore.instance,
+  ).learnedFacts(user.uid).snapshots().map((snap) => snap.docs.length);
 });
 
 /// The dashboard hero: a quiet vertical timeline of what the agent has actually
@@ -47,8 +46,17 @@ class AgentActivityTimeline extends ConsumerWidget {
     final tailoredCount = ref.watch(
       resumeProvider.select((s) => s.tailoredResumes.length),
     );
+    final applicationCount = ref.watch(
+      applicationsProvider.select((s) => s.items.length),
+    );
     final draftCount = ref.watch(
       applicationsProvider.select((s) => s.countOf(ApplicationPhase.draft)),
+    );
+    final sentCount = ref.watch(
+      applicationsProvider.select((s) => s.countOf(ApplicationPhase.sent)),
+    );
+    final repliedCount = ref.watch(
+      applicationsProvider.select((s) => s.countOf(ApplicationPhase.replied)),
     );
     final learnedCount = ref.watch(_learnedFactsCountProvider).value ?? 0;
     final role = (ref.watch(userProfileProvider)?.role ?? '').trim();
@@ -72,7 +80,8 @@ class AgentActivityTimeline extends ConsumerWidget {
       ),
       if (matchCount > 0)
         _Milestone(
-          title: 'Found ${_plural(matchCount, 'strong match', 'strong matches')}',
+          title:
+              'Found ${_plural(matchCount, 'strong match', 'strong matches')}',
           subtitle: 'Review your pipeline',
           time: briefAt,
           active: status == AgentBriefStatus.matching,
@@ -87,20 +96,29 @@ class AgentActivityTimeline extends ConsumerWidget {
         ),
       if (learnedCount > 0)
         _Milestone(
-          title: 'Learned ${_plural(learnedCount, 'thing', 'things')} about you',
+          title:
+              'Learned ${_plural(learnedCount, 'thing', 'things')} about you',
           subtitle: 'Saved to Career Memory',
           time: briefAt,
           route: RouteNames.profile,
         ),
-      if (draftCount > 0)
+      if (applicationCount > 0)
         _Milestone(
-          title: '${_plural(draftCount, 'application', 'applications')} ready',
-          subtitle: 'Open the tracker to send',
+          title: _applicationsTitle(
+            total: applicationCount,
+            draft: draftCount,
+            sent: sentCount,
+            replied: repliedCount,
+          ),
+          subtitle: _applicationsSubtitle(
+            draft: draftCount,
+            sent: sentCount,
+            replied: repliedCount,
+          ),
           time: briefAt,
           route: RouteNames.applications,
         ),
-      if (isRunning)
-        _Milestone(title: liveLabel, active: true),
+      if (isRunning) _Milestone(title: liveLabel, active: true),
     ];
 
     return Padding(
@@ -350,7 +368,10 @@ class _Dot extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         alignment: Alignment.center,
-        children: [_Halo(color: brand.accent, size: size), core],
+        children: [
+          _Halo(color: brand.accent, size: size),
+          core,
+        ],
       ),
     );
   }
@@ -446,6 +467,39 @@ String _liveLabelFor(PassiveAgentState s) {
 }
 
 String _plural(int n, String one, String many) => '$n ${n == 1 ? one : many}';
+
+String _applicationsTitle({
+  required int total,
+  required int draft,
+  required int sent,
+  required int replied,
+}) {
+  if (total <= 0) return 'No applications tracked yet';
+
+  final completed = sent + replied;
+  if (draft == total) {
+    return '${_plural(total, 'application', 'applications')} ready';
+  }
+  if (completed == total) {
+    return '${_plural(total, 'application', 'applications')} sent';
+  }
+  return '${_plural(total, 'application', 'applications')} tracked';
+}
+
+String _applicationsSubtitle({
+  required int draft,
+  required int sent,
+  required int replied,
+}) {
+  final parts = <String>[
+    if (draft > 0) _plural(draft, 'draft', 'drafts'),
+    if (sent > 0) _plural(sent, 'sent', 'sent'),
+    if (replied > 0) _plural(replied, 'reply', 'replies'),
+  ];
+
+  if (parts.isEmpty) return 'Open Application Tracker';
+  return '${parts.join(' · ')} · Open tracker';
+}
 
 String _relativeTime(DateTime t) {
   final d = DateTime.now().difference(t);
