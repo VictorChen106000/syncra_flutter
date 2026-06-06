@@ -130,6 +130,43 @@ class JobsNotifier extends Notifier<JobsState> {
     );
   }
 
+  Future<void> saveForLater(Job job, {String label = ''}) async {
+    final id = job.id.trim();
+    if (id.isEmpty) return;
+
+    state = state.copyWith(
+      savedIds: {...state.savedIds, id},
+      lastMessage: label.isEmpty ? 'Saved for later' : 'Saved $label for later',
+    );
+
+    final user = ref.read(authProvider).appUser;
+    final uid = user?.uid;
+    if (uid == null || user!.isGuest) return;
+
+    final alreadyInPipeline = state.cards.any((c) => c.job.id == id);
+    if (alreadyInPipeline) return;
+
+    try {
+      await _repository.createCard(
+        uid: uid,
+        job: job,
+        category: job.category,
+        matchScore: job.matchScore,
+        agentAction: job.agentAction.isEmpty
+            ? 'Saved for later from job results.'
+            : job.agentAction,
+        agentJustification: job.agentJustification.isEmpty
+            ? (job.why.isEmpty ? 'Saved for later.' : job.why)
+            : job.agentJustification,
+        matchedSkills: job.skills,
+        missingSkills: job.missingSkills,
+      );
+    } catch (e) {
+      debugPrint('save for later failed: $e');
+      state = state.copyWith(lastMessage: 'Could not save this role');
+    }
+  }
+
   void hide(String id, {String label = ''}) {
     state = state.copyWith(
       hiddenIds: {...state.hiddenIds, id},
@@ -152,12 +189,9 @@ class JobsNotifier extends Notifier<JobsState> {
     final user = ref.read(authProvider).appUser;
     final uid = user?.uid;
     if (uid == null || user!.isGuest) return;
-    final card = state.cards.firstWhere(
-      (c) => c.job.id == id,
-      orElse: () => state.cards.isEmpty
-          ? throw StateError('No card $id')
-          : state.cards.first,
-    );
+    final card = state.cards.where((c) => c.job.id == id).firstOrNull;
+    if (card == null) return;
+
     try {
       await _repository.dismiss(uid, card.id);
     } catch (e) {

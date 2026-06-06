@@ -20,6 +20,7 @@ import '../../../resumes/state/resume_notifier.dart';
 import '../../../email/presentation/email_review_page.dart';
 import '../../../email/services/gmail_service.dart';
 import '../../../jobs/presentation/widgets/job_action_sheet.dart';
+import '../../../jobs/state/jobs_notifier.dart';
 
 class AgentBlockView extends StatelessWidget {
   const AgentBlockView({
@@ -67,16 +68,35 @@ class AgentBlockView extends StatelessWidget {
 /// icon chip) showing the match tier, title, company · salary, and the agent's
 /// one-line reasoning. Tapping a card opens the shared [JobActionSheet] (save,
 /// draft an application email, share, dismiss) without leaving the conversation.
-class JobsBlockView extends StatelessWidget {
+class JobsBlockView extends ConsumerWidget {
   const JobsBlockView({super.key, required this.block});
 
   final JobsBlock block;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final brand = context.brand;
-    final jobs = block.jobs;
-    if (jobs.isEmpty) return const SizedBox.shrink();
+    final jobsState = ref.watch(jobsProvider);
+    final jobs = block.jobs
+        .where(
+          (job) =>
+              !jobsState.isDismissed(job.id) && !jobsState.isHidden(job.id),
+        )
+        .toList(growable: false);
+
+    if (jobs.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Text(
+          'No visible roles left in this result set.',
+          style: TextStyle(
+            color: brand.textMuted,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

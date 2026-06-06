@@ -79,7 +79,7 @@ class _JobActionSheetBody extends ConsumerWidget {
                   : Icons.bookmark_border_rounded,
               label: isSaved ? 'Saved' : 'Save for later',
               onTap: () {
-                notifier.toggleSaved(job.id, label: label);
+                notifier.saveForLater(job, label: label);
                 Navigator.of(context).pop();
               },
             ),
