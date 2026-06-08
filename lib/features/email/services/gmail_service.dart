@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
@@ -21,13 +22,14 @@ class EmailAttachment {
   final String mimeType;
 }
 
-/// Sends email from the signed-in user's **own** Gmail account.
+/// Sends email and creates drafts from the signed-in user's **own** Gmail
+/// account.
 ///
 /// Auth model — `google_sign_in` v7 splits the old single step in two:
 ///   1. *Authentication* (identity) happens once at sign-in.
 ///   2. *Authorization* (a per-scope OAuth access token) is requested
 ///      on demand. This service asks the account's `authorizationClient`
-///      for the [sendScope] token, prompting the user the first time.
+///      for the draft/send token it needs, prompting the user the first time.
 ///
 /// We deliberately skip the `googleapis` / `googleapis_auth` packages the
 /// brief suggested: v7 hands us a bare access-token string with no exposed
@@ -36,12 +38,18 @@ class EmailAttachment {
 /// and behaves identically. If the team later needs more Gmail surface,
 /// swapping to `GmailApi` with a custom auth client is the upgrade path.
 ///
-/// Send-only: this never requests `gmail.readonly`. Adding read scope needs
-/// a team vote per api-contract §11.5.
+/// Draft/send only: this never requests `gmail.readonly`. Adding read scope
+/// needs a team vote per api-contract §11.5.
 class GmailService {
-  GmailService({http.Client? client}) : _client = client ?? http.Client();
+  GmailService({
+    http.Client? client,
+    @visibleForTesting
+    Future<String> Function(String scope)? accessTokenProvider,
+  }) : _client = client ?? http.Client(),
+       _accessTokenProvider = accessTokenProvider;
 
   final http.Client _client;
+  final Future<String> Function(String scope)? _accessTokenProvider;
 
   /// Scope for sending mail outright (`messages.send`).
   static const String sendScope = 'https://www.googleapis.com/auth/gmail.send';
@@ -78,6 +86,12 @@ class GmailService {
     final recipient = to.trim();
     if (recipient.isEmpty) {
       throw GmailException('No recipient address.');
+    }
+    if (kIsWeb) {
+      throw GmailException(
+        'Sending email from the web is not supported yet. Save a Gmail draft '
+        'and send it from Gmail.',
+      );
     }
 
     final token = await _accessToken(sendScope);
@@ -148,8 +162,9 @@ class GmailService {
   ///
   /// Returns `true` once the grant is in place (or was already approved), and
   /// `false` — never throwing — when the user declines, isn't signed in with
-  /// Google, or is on web (where the `authorizationClient` path isn't wired).
-  /// The caller treats linking as optional and proceeds regardless.
+  /// Google, or is on web (where draft save asks for compose permission on
+  /// demand through Firebase Auth). The caller treats linking as optional and
+  /// proceeds regardless.
   Future<bool> link() async {
     if (kIsWeb) return false;
 
@@ -166,7 +181,7 @@ class GmailService {
       // Honour an existing grant; otherwise prompt for both scopes at once.
       final authorization =
           await auth.authorizationForScopes(_linkScopes) ??
-              await auth.authorizeScopes(_linkScopes);
+          await auth.authorizeScopes(_linkScopes);
       return authorization.accessToken.isNotEmpty;
     } on GoogleSignInException {
       return false;
@@ -214,13 +229,17 @@ class GmailService {
   /// grant it the first time. The grant triggers Google's unverified-app
   /// warning — expected for the class demo (api-contract §5.3).
   Future<String> _accessToken(String scope) async {
+    final override = _accessTokenProvider;
+    if (override != null) {
+      final token = (await override(scope)).trim();
+      if (token.isEmpty) {
+        throw GmailException('Gmail permission was not granted.');
+      }
+      return token;
+    }
+
     if (kIsWeb) {
-      // Web sign-in goes through Firebase's popup, not `google_sign_in`, so
-      // the `authorizationClient` path below isn't wired there. Sending from
-      // the web build is out of scope for v1.
-      throw GmailException(
-        'Sending email is only supported on the mobile app in this build.',
-      );
+      return _webAccessToken(scope);
     }
 
     GoogleSignInAccount? account;
@@ -242,7 +261,9 @@ class GmailService {
       try {
         authorization = await auth.authorizeScopes([scope]);
       } on GoogleSignInException catch (e) {
-        throw GmailException('Gmail permission was not granted (${e.code.name}).');
+        throw GmailException(
+          'Gmail permission was not granted (${e.code.name}).',
+        );
       }
     }
 
@@ -251,6 +272,63 @@ class GmailService {
       throw GmailException('Gmail permission was not granted.');
     }
     return token;
+  }
+
+  /// Web obtains provider OAuth tokens through Firebase Auth popups. This is
+  /// intentionally compose-only for now: web draft creation is in scope, web
+  /// sending is not.
+  Future<String> _webAccessToken(String scope) async {
+    if (scope == sendScope) {
+      throw GmailException(
+        'Sending email from the web is not supported yet. Save a Gmail draft '
+        'and send it from Gmail.',
+      );
+    }
+
+    final provider = GoogleAuthProvider()
+      ..addScope('email')
+      ..addScope('profile')
+      ..addScope(scope);
+
+    final UserCredential credential;
+    try {
+      final auth = FirebaseAuth.instance;
+      final currentUser = auth.currentUser;
+      credential = currentUser != null
+          ? await currentUser.reauthenticateWithPopup(provider)
+          : await auth.signInWithPopup(provider);
+    } on FirebaseAuthException catch (e) {
+      throw GmailException(_webAuthErrorMessage(e));
+    } catch (_) {
+      throw GmailException(
+        'Could not get Gmail permission. Try linking Gmail again.',
+      );
+    }
+
+    final token = credential.credential?.accessToken?.trim();
+    if (token == null || token.isEmpty) {
+      throw GmailException(
+        'Could not get Gmail permission. Try linking Gmail again.',
+      );
+    }
+    return token;
+  }
+
+  String _webAuthErrorMessage(FirebaseAuthException e) {
+    return switch (e.code) {
+      'popup-closed-by-user' ||
+      'cancelled-popup-request' ||
+      'web-context-cancelled' =>
+        'Gmail permission was not granted. Try again when you are ready.',
+      'user-mismatch' ||
+      'account-exists-with-different-credential' ||
+      'credential-already-in-use' ||
+      'email-already-in-use' =>
+        'Choose the same Google account you use for Syncra, then try again.',
+      'operation-not-allowed' || 'unauthorized-domain' =>
+        'Google sign-in is not configured for Gmail permission on this domain.',
+      _ => 'Could not get Gmail permission. Try linking Gmail again.',
+    };
   }
 
   /// Builds an RFC 2822 message and returns it base64url-encoded, the form
@@ -280,19 +358,20 @@ class GmailService {
       message
         ..write(headers)
         ..write(
-            'Content-Type: multipart/alternative; boundary="$altBoundary"$crlf')
+          'Content-Type: multipart/alternative; boundary="$altBoundary"$crlf',
+        )
         ..write(crlf)
         ..write(_alternativeBody(body, altBoundary));
     } else {
       final mixedBoundary = _boundary('mixed');
       message
         ..write(headers)
-        ..write(
-            'Content-Type: multipart/mixed; boundary="$mixedBoundary"$crlf')
+        ..write('Content-Type: multipart/mixed; boundary="$mixedBoundary"$crlf')
         ..write(crlf)
         ..write('--$mixedBoundary$crlf')
         ..write(
-            'Content-Type: multipart/alternative; boundary="$altBoundary"$crlf')
+          'Content-Type: multipart/alternative; boundary="$altBoundary"$crlf',
+        )
         ..write(crlf)
         ..write(_alternativeBody(body, altBoundary))
         ..write(crlf);
@@ -344,11 +423,15 @@ class GmailService {
   /// formatted Gmail message: blank lines become paragraphs, single newlines
   /// become `<br>`. All text is HTML-escaped first.
   String _bodyToHtml(String body) {
-    final paragraphs =
-        body.replaceAll('\r\n', '\n').trim().split(RegExp(r'\n{2,}'));
+    final paragraphs = body
+        .replaceAll('\r\n', '\n')
+        .trim()
+        .split(RegExp(r'\n{2,}'));
     final blocks = paragraphs
-        .map((p) =>
-            '<p style="margin:0 0 12px;">${_escapeHtml(p).replaceAll('\n', '<br>')}</p>')
+        .map(
+          (p) =>
+              '<p style="margin:0 0 12px;">${_escapeHtml(p).replaceAll('\n', '<br>')}</p>',
+        )
         .join();
     return '<!DOCTYPE html><html><body style="font-family:-apple-system,'
         'Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:14px;'
@@ -375,7 +458,9 @@ class GmailService {
     if (base64Text.length <= width) return base64Text;
     final buf = StringBuffer();
     for (var i = 0; i < base64Text.length; i += width) {
-      final end = (i + width < base64Text.length) ? i + width : base64Text.length;
+      final end = (i + width < base64Text.length)
+          ? i + width
+          : base64Text.length;
       if (i > 0) buf.write('\r\n');
       buf.write(base64Text.substring(i, end));
     }
@@ -387,12 +472,12 @@ class GmailService {
       final decoded = jsonDecode(body) as Map<String, dynamic>;
       final error = decoded['error'];
       if (error is Map && error['message'] is String) {
-        return 'Gmail send failed: ${error['message']}';
+        return 'Gmail request failed: ${error['message']}';
       }
     } catch (_) {
       // Fall through to the generic message.
     }
-    return 'Gmail send failed (HTTP $status).';
+    return 'Gmail request failed (HTTP $status).';
   }
 
   void dispose() => _client.close();

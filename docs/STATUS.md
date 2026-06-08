@@ -73,7 +73,7 @@ Service layer complete — JSearch, Gmail, and the email review modal all ship.
 One cross-workstream wire remains (see below).
 
 - [x] `jsearch_service.dart` — live RapidAPI search, `jobs/` upsert, 1h cache; `search_jobs` uses it (falls back to the seeded catalogue with no key).
-- [x] `gmail_service.dart` + `lib/features/email/` — raw `users.messages.send`, OAuth via `google_sign_in` v7; `gmail.send` scope hinted at sign-in.
+- [x] `gmail_service.dart` + `lib/features/email/` — real Gmail drafts via `gmail.compose` on web/mobile, confirmed sends via `gmail.send`; web draft OAuth uses Firebase Auth popup, non-web uses `google_sign_in` v7.
 - [x] `email_send_service.dart` — one-shot confirmation-token gate; the real `send_email` handler refuses tokenless (autonomous) calls.
 - [x] `email_review_page.dart` — editable review sheet that mints the token and sends.
 - [x] `lookup_hiring_manager` — returns the company's `careers@` address; no named-contact lookup (Hunter.io considered and dropped 2026-05-21).
@@ -101,7 +101,7 @@ Remaining / delegated:
 Effectively complete. Empty states (resume / pipeline / applications) already
 ship with one-tap CTAs; morning brief is now opt-in. Remaining:
 
-- [x] Gmail compose/send OAuth scopes are requested by the Gmail link flow.
+- [x] Gmail compose/send OAuth scopes are requested by the Gmail link flow or on-demand draft/save flow.
 - [x] Email/password auth uses Firebase email/password sign-in and account creation; it no longer falls through to guest mode.
 - [x] Resume upload progress is wired to Firebase Storage transfer progress.
 - [x] Optional polish pass — bounded auto-apply settings now show confirmation snackbars when guardrails change.
@@ -137,7 +137,7 @@ and key configuration.
 - **`ProposedEdit` + `ResumeDiffService` signatures** — Resume Engine ships them; Resume Diff UI imports them. Lock day one; UI builds against a fixture until then.
 - **`apply_resume_edits` result → loop** — Resume Diff UI dispatches the tool; Agent Reasoning feeds the `tailored_resume_id` tool_result back into the conversation. Agree how the synthetic result re-enters the loop.
 - **Email confirmation token** — the email modal generates a one-shot UUID; `send_email` validates it. Integrations owns both ends.
-- **`gmail.send` OAuth scope** — App Shell adds it to Google Sign-In; Integrations consumes it.
+- **Gmail compose/send OAuth scopes** — App Shell keeps sign-in lightweight; Integrations requests compose/send on demand and never requests Gmail read scope.
 - **Agent event stream** — already wired: `AgentChatNotifier` forwards every event to `NotificationsNotifier.onAgentEvent`.
 
 ## Demo-day checklist

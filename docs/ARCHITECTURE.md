@@ -16,7 +16,7 @@ this file, fix the code (or change this file by PR). Product context is in
 | File storage | Firebase Storage for resume bytes; Firestore holds metadata |
 | LLM | Anthropic Claude (Haiku 4.5), called directly from Flutter |
 | Job source | JSearch via RapidAPI, direct from Flutter |
-| Email | Gmail API — user's own account, `gmail.send` scope only |
+| Email | Gmail API — user's own account; `gmail.compose` for drafts, `gmail.send` for confirmed sends; never read scope |
 | Hiring-manager lookup | None — outreach uses the company's generic `careers@` address |
 | Job Trust Guard | Heuristic red-flag screen only; never certifies a job as legitimate |
 | Secrets | `--dart-define=KEY=...` at build time; rotate after demo |
@@ -30,7 +30,7 @@ this file, fix the code (or change this file by PR). Product context is in
 **Decisions settled from earlier open questions:** PDF may overflow to page 2;
 tailoring feeds Claude the full job description; malformed parse JSON retries
 once then surfaces an error; deleting a manual resume cascade-deletes its
-tailored children; Gmail scope is `gmail.send` only; email/password auth is
+tailored children; Gmail scopes are compose/send only; email/password auth is
 wired through Firebase instead of guest fallback.
 
 ## 1. The agent loop
@@ -332,11 +332,16 @@ Key: `ANTHROPIC_API_KEY`.
 `x-rapidapi-key`, `x-rapidapi-host: jsearch.p.rapidapi.com`. Key: `RAPIDAPI_KEY`.
 Free tier 200 req/month — cache results in `jobs/`.
 
-**Gmail** — the existing Google Sign-In credential plus scope
-`https://www.googleapis.com/auth/gmail.send`, requested on demand through
-`google_sign_in` v7's `authorizationClient`. Sends a raw POST to
-`users.messages.send` with a base64url-encoded MIME message (no `googleapis`
-package needed); the PDF resume rides as an `application/pdf` part.
+**Gmail** — creates drafts with
+`https://www.googleapis.com/auth/gmail.compose` on web and mobile after user
+authorization, and sends only through the explicit review/tap path with
+`https://www.googleapis.com/auth/gmail.send`. Web draft authorization uses
+Firebase Auth's Google popup/reauth popup to obtain the provider OAuth access
+token; non-web uses `google_sign_in` v7's `authorizationClient`. Draft creation
+POSTs a base64url-encoded MIME message to `users/me/drafts`; confirmed sends POST
+the same MIME payload to `users.messages.send`. Attachments, including resume
+PDFs, ride as MIME parts. Syncra never requests Gmail read scopes and adds no
+backend for Gmail.
 
 Run locally:
 

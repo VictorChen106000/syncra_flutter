@@ -40,8 +40,9 @@ tape between them. **Syncra is the duct tape, automated.**
    then save the tailored resume or dismiss it.
 7. Agent runs Trust Guard for obvious job red flags, then drafts a cold-outreach
    email if the role looks normal or you approve continuing.
-8. You review, tap **Send** → email goes out via your own Gmail. The application
-   appears on the Applications page.
+8. You review the email and save it to Gmail Drafts on web or mobile. If using
+   send mode, a separate explicit tap is still required before anything is
+   delivered.
 
 End to end in ~2 minutes, with the user reviewing — never blindly trusting — at
 two explicit gates: the diff viewer and the email modal.
@@ -146,7 +147,7 @@ Each teammate should run through:
 3. Ask Syncra to find matching jobs.
 4. Open a role, run Trust Guard, and save it.
 5. Tailor a resume and preview the generated PDF.
-6. Draft outreach, review the email, and confirm no email is sent without a tap.
+6. Draft outreach, save a Gmail draft, and confirm no email is sent without a tap.
 7. Check Applications for quality, bundle, trust, and bounded auto-apply status.
 8. Reset account only after confirming the demo path works.
 
@@ -197,7 +198,8 @@ After the live demo:
 - **Firebase Auth** (Google Sign-In + email/password) · **Cloud Firestore** (Spark) · **Firebase Storage** (resume files)
 - **Anthropic Claude** (Haiku 4.5) — agent brain, called directly from Flutter
 - **JSearch / RapidAPI** — live job listings
-- **Gmail API** — send drafted emails from the user's own account
+- **Gmail API** — save Gmail drafts with `gmail.compose` and send confirmed emails
+  with `gmail.send`; never Gmail read scope
 
 No Railway, FastAPI, Render, Heroku, or custom Python backend is used. v1 keeps
 external API calls in Flutter for the final demo; Firebase Cloud Functions is a

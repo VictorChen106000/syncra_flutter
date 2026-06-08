@@ -123,34 +123,33 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
   /// into a second duplicate draft.
   String? _draftId;
   bool get _isDraftMode => widget.mode == EmailReviewMode.draft;
-  bool get _isWebDraftFallback => kIsWeb && _isDraftMode;
 
   String get _reviewTitle {
     if (_draftId != null) {
-      return _isWebDraftFallback ? 'Draft reviewed' : 'Draft saved';
+      return 'Draft saved';
     }
     return _isDraftMode ? 'Review draft' : 'Review email';
   }
 
   String get _reviewDescription {
     if (_draftId != null) {
-      return _isWebDraftFallback
-          ? 'Marked reviewed for this web demo. Nothing was delivered — finish from Gmail/mobile later if needed.'
-          : 'Saved to your Gmail Drafts. Open Gmail to review and send it yourself — nothing was delivered.';
+      return 'Saved to your Gmail Drafts. Open Gmail to review and send it yourself — nothing was delivered.';
     }
 
-    if (_isWebDraftFallback) {
-      return 'Web can review this draft, but Gmail draft saving is only supported on mobile in this build. Mark it reviewed to complete this mission — nothing is sent.';
+    if (!_isDraftMode) {
+      return 'Nothing is sent until you tap Send — the agent never sends on its own.';
     }
 
-    return _isDraftMode
-        ? 'This saves a draft to your Gmail. Nothing is sent — you finish and send it from Gmail.'
-        : 'Nothing is sent until you tap Send — the agent never sends on its own.';
+    if (kIsWeb) {
+      return 'This saves a draft to your Gmail Drafts. Google may ask for Gmail compose permission. Nothing is sent.';
+    }
+
+    return 'This saves a draft to your Gmail. Nothing is sent — you finish and send it from Gmail.';
   }
 
   String get _primaryActionLabel {
     if (!_isDraftMode) return 'Send email';
-    return _isWebDraftFallback ? 'Mark draft reviewed' : 'Save to Gmail drafts';
+    return 'Save to Gmail drafts';
   }
 
   @override
@@ -200,16 +199,6 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
     required String subject,
     required String body,
   }) async {
-    if (_isWebDraftFallback) {
-      if (!mounted) return;
-
-      setState(() {
-        _busy = false;
-        _draftId = 'web-reviewed-${DateTime.now().millisecondsSinceEpoch}';
-      });
-      return;
-    }
-
     final draftId = await EmailSendService.instance.createDraft(
       to: recipient,
       subject: subject,
@@ -256,6 +245,9 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
     if (e is GmailException) return e.message;
     if (e is EmailNotConfirmedException) {
       return 'Confirmation expired. Tap Send again.';
+    }
+    if (_isDraftMode) {
+      return "Couldn't save the draft. Check your connection and try again.";
     }
     return "Couldn't send the email. Check your connection and try again.";
   }
