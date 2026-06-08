@@ -5,7 +5,7 @@ a UX role at an AI startup, ready to send by tonight"* — and it searches jobs,
 matches them to your resume, proposes targeted resume edits, drafts the outreach
 email, and lines it up for one tap to send. You review and approve at every step.
 
-**Demo day:** June 16, 2026 · **Stack:** Flutter + Firebase + Claude · **No backend server.**
+**Demo day:** June 16, 2026 · **Stack:** Flutter + Firebase + Claude · **Firebase-only backend.**
 
 ## Docs
 
@@ -34,9 +34,10 @@ tape between them. **Syncra is the duct tape, automated.**
 3. Open chat. Type: *"Help me apply to a senior UX role at an AI startup, remote."*
 4. Agent searches jobs → ranks them qualitatively → asks *"Linear is the top
    match. Tailor for them?"* → you tap **Yes**.
-5. Agent reads your resume → proposes 3–8 targeted edits. You see each as a
-   PR-style diff (original, rewrite, one-line reason) and accept or reject each.
-6. Tap **Apply N edits** → a new tailored PDF renders from the accepted subset.
+5. Agent reads your resume → proposes 3–8 targeted edits. You see a PR-style
+   change log with the original text, rewrite, and one-line reason.
+6. Syncra renders an unsaved tailored PDF preview. You inspect the changes,
+   then save the tailored resume or dismiss it.
 7. Agent runs Trust Guard for obvious job red flags, then drafts a cold-outreach
    email if the role looks normal or you approve continuing.
 8. You review, tap **Send** → email goes out via your own Gmail. The application
@@ -179,9 +180,10 @@ After the live demo:
 - **Persistent chat workspace.** Conversations are saved as versioned Firestore
   snapshots and reopen from a polished drawer with date grouping, preview text,
   local title/search, rename, pin/unpin, and delete confirmation. Reopen restores
-  user bubbles, selected resume attachments, tool rows, job cards, proposal
-  cards, resume preview cards, email draft cards, job-thread context, and compact
-  model-side context so the next message can continue naturally.
+  user bubbles, selected resume attachments, tool rows, job cards, dismissed /
+  hidden / already-handled job results, proposal cards, resume preview cards,
+  email draft cards, job-thread context, and compact model-side context so the
+  next message can continue naturally.
 - **Human-in-the-loop.** The agent never sends external traffic without an
   explicit user tap. Missing context → it pauses and asks.
 - **Honest scope.** The Applications page is an activity log (drafted / sent /
@@ -197,7 +199,9 @@ After the live demo:
 - **JSearch / RapidAPI** — live job listings
 - **Gmail API** — send drafted emails from the user's own account
 
-No FastAPI, no Cloud Functions. Course rule: Flutter + Firebase only.
+No Railway, FastAPI, Render, Heroku, or custom Python backend is used. v1 keeps
+external API calls in Flutter for the final demo; Firebase Cloud Functions is a
+future Firebase-only backend extension, not part of this build.
 
 ## Out of scope for v1
 

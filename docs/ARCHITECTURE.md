@@ -10,7 +10,7 @@ this file, fix the code (or change this file by PR). Product context is in
 | Area | Decision |
 | --- | --- |
 | Platform | Flutter — iOS / Android / Web |
-| Server | None. No FastAPI, no Cloud Functions. |
+| Server | No non-Firebase backend. No Railway/FastAPI/custom Python server. Firebase Cloud Functions is deferred and not used in v1. |
 | Auth | Firebase Auth — Google Sign-In + email/password |
 | Database | Cloud Firestore (Spark plan) |
 | File storage | Firebase Storage for resume bytes; Firestore holds metadata |
@@ -87,7 +87,7 @@ outside a notifier; never expose mutable lists/maps in a state class.
 | `authProvider` | `AuthState` — `appUser`, `isLoading`, `error` | `signInWithGoogle`, `signOut`, `continueAsGuest`, `deleteAccount` |
 | `userProfileProvider` | `UserProfile?` — `role`, `autonomyLevel`, `morningBriefEnabled`, `gmailConnected` | `setAutonomyLevel`, `setMorningBriefEnabled`, `setRole`, `setAgentActive` |
 | `resumeProvider` | `ResumeState` — `allResumes`, `resumes`, `tailoredResumes`, `uploadQueue`, `selectedResumeIds` | `pickAndUploadResumes`, `deleteResume`, `toggleSelectedResume` |
-| `applicationsProvider` | `ApplicationsState` — `items`, `filtered`, `filter` | `setFilter`, `markSent`, `addNote` |
+| `applicationsProvider` | `ApplicationsState` — `items`, `filtered`, `filter` | `setFilter`, `markSent`, `addNote`, `updateNote`, `deleteNote` |
 | `jobsProvider` | `JobsState` — `cards`, `pendingCards`, `savedIds` | `toggleSaved`, `hide`, `dismiss`, `approveByJobId` |
 | `passiveAgentProvider` | `PassiveAgentState` — `status`, `pipeline`, `lastBriefAt` | `runBrief` (user-tap only) |
 | `notificationsProvider` | `NotificationsState` — `items`, `unreadCount` | `setFilter`, `markRead`, `onAgentEvent` |
@@ -99,10 +99,12 @@ Auth-derived providers (`resumeProvider`, `jobsProvider`, etc.) `ref.watch(authP
 in `build()` so their Firestore streams rebind on user change. Adding a provider
 updates this table.
 
-**Diff-viewer state (to build).** `ResumeState` must additionally hold the diff
-session: `original` (V1, never mutated), `proposed` (V2 = original + accepted
-edits), `pendingEdits`, `acceptedPaths`. `acceptEdit` / `rejectEdit` recompute
-`proposed` via `ResumeDiffService.applyEdits`. See STATUS.md → Resume Diff UI.
+**Proposed-edits state.** The current tailor flow renders a read-only
+`ProposedEditsBlock` change log. Edits are shown with original text, proposed
+text, and reason; the app renders an unsaved tailored preview and lets the user
+save or dismiss the result. Per-edit accept/reject state is retained in the data
+shape for future review support, but v1 does not require the user to accept each
+edit individually.
 
 ## 3. Tools
 
@@ -136,10 +138,10 @@ Each tool is declared in `tool_registry.dart` (`name`, `description`,
    artifacts.**
 2. The loop **pauses** — Claude must not auto-call `apply_resume_edits` or
    `draft_email`.
-3. The user reviews edits in the inline `ProposedEditsBlock` and taps
-   "Apply N edits".
-4. The UI applies the accepted subset via `ResumeDiffService.apply`, runs
-   `ResumeQualityService.cleanTailoredResume` to remove duplicate skills and
+3. The user reviews edits in the inline `ProposedEditsBlock` change log.
+4. The UI applies the proposed edits into an unsaved tailored preview via
+   `ResumeDiffService.apply`, runs `ResumeQualityService.cleanTailoredResume`
+   to remove duplicate skills and
    repeated skill-list artifacts, renders an unsaved preview, then runs
    `ResumeIntegrityService.verify` against the original `ResumeJSON`, tailored
    `ResumeJSON`, accepted edits, and applied/skipped counts.
@@ -363,13 +365,27 @@ text, never touches layout. Don't change the template without a team vote.
 | Bounded auto-apply | eligibility/settings only in v1; no autonomous external submit/send |
 | Anthropic | $5/month spend cap in the console |
 
-## 9. Security
+## 9. Chat job-result persistence
+
+`JobsBlock` snapshots preserve three per-chat result sets:
+
+- `dismissedJobIds` — roles the user dismissed from that chat result.
+- `hiddenJobIds` — roles hidden from the current visible rail.
+- `handledJobIds` — roles already acted on, such as saved to pipeline or used
+  for an outreach draft.
+
+Restored conversations must not bring dismissed or already-handled roles back as
+fresh actions. This keeps old job rails consistent after refresh/restart and
+matches the handled-job lifecycle used by the chat action sheet.
+
+## 10. Security
 
 - `firestore.rules` (deployed): `jobs/{jobId}` — any signed-in user read/write;
   `users/{uid}/**` — owner-only.
 - `storage.rules` (deployed): `users/{uid}/resumes/**` and
   `users/{uid}/conversation_previews/**` — owner-only; writes capped at 5 MB and
   restricted to `application/*` content types.
-- API keys ship compiled into the client via `--dart-define`. **Rotate every key
-  after the demo** and set spend caps in every provider console. Server-grade
-  key management is out of scope (it would need a server).
+- API keys ship compiled into the client via `--dart-define` for the v1 demo.
+  **Rotate every key after the demo** and set spend caps in every provider
+  console. Server-grade key management is deferred to a future Firebase Cloud
+  Functions layer, not a non-Firebase backend.

@@ -1,6 +1,6 @@
 # Syncra — Status & Plan
 
-**Demo day:** June 16, 2026 · **Today:** 2026-06-06 · **~10 days out.**
+**Demo day:** June 16, 2026 · **Today:** 2026-06-08 · **~8 days out.**
 
 The live tracker of what's done, what's left, and who owns it. Update this as
 work lands. Product context: [README.md](./README.md). Technical contract:
@@ -13,7 +13,7 @@ Five workstreams, one owner each (5-person team). Plain names — no codes.
 | Workstream | Scope |
 | --- | --- |
 | **Resume Engine** | Resume models, parsing, diff engine, PDF render, `tailor_resume` + `apply_resume_edits` tools |
-| **Resume Diff UI** | The inline accept/reject diff block, resume list/preview, `ResumeState` V1/V2 |
+| **Resume Diff UI** | The inline proposed-edits change log, tailored preview, resume list/preview |
 | **Agent Reasoning** | Claude tool-use loop, prompts, tool descriptions, brief reasoner |
 | **App Shell** | Riverpod, navigation, auth/onboarding, dashboard, settings, applications, notifications |
 | **Integrations** | JSearch, Gmail send, email review modal |
@@ -32,10 +32,10 @@ Foundation, verified in code:
 - `tailor_resume` proposes edits and the loop pauses · read-only `ProposedEditsBlock` preview in chat
 - `read_resume`, `match_jobs`, `check_job_risk`, `save_to_pipeline`, `save_to_tracker`, `remember_fact` — real implementations
 - Trust Guard checks obvious job red flags, persists results on pipeline/application records, surfaces badges/details in UI, and has unit tests
-- Applications activity-log (drafted / sent / "got reply") · pipeline approve → application
+- Applications activity-log (drafted / sent / "got reply") · pipeline approve → application · editable application notes
 - Dashboard prompt entry + "Run today's brief" CTA · Settings (autonomy, brief toggle, delete account) · onboarding role capture · router redirects
 - Live notifications inbox subscribed to agent events
-- Chat history recovery complete — versioned full UI snapshots, polished grouped drawer with row previews and title/preview search, rename, pin/unpin, delete confirmation, reliable reopen of user bubbles / selected resume attachments / tool rows / job cards / proposed edits / resume drafts / email drafts / optional job-thread context, restored model-side continuation context, preview-PDF rehydration from Storage, and safe degradation for old or malformed saved conversation data
+- Chat history recovery complete — versioned full UI snapshots, polished grouped drawer with row previews and title/preview search, rename, pin/unpin, delete confirmation, reliable reopen of user bubbles / selected resume attachments / tool rows / job cards / dismissed, hidden, and handled job-result state / proposed edits / resume drafts / email drafts / optional job-thread context, restored model-side continuation context, preview-PDF rehydration from Storage, and safe degradation for old or malformed saved conversation data
 
 ## 🔲 Remaining work
 
@@ -53,7 +53,7 @@ The propose path and accepted-edit preview/save path work. Remaining engine poli
 
 ### Resume Diff UI
 
-The inline proposed-edits card is now interactive.
+The inline proposed-edits card is a read-only change log with preview, save, and dismiss actions.
 
 - [x] `ProposedEditsBlock` renders the current read-only proposed-edits card state with accepted counter, Dismiss all, Apply N edits, preview-ready state, and current widget tests.
 - [x] Applying accepted edits renders an in-memory tailored PDF preview.
@@ -64,7 +64,7 @@ The inline proposed-edits card is now interactive.
 
 Remaining / delegated:
 
-- [ ] Polish final diff-session state ownership if the team still wants the decisions mirrored in `ResumeState`.
+- [ ] Decide whether future per-edit accept/reject should return; v1 keeps the proposed-edits card as a read-only change log.
 - [ ] Confirm final preview / save UX with Resume Diff UI owner.
 
 ### Integrations
