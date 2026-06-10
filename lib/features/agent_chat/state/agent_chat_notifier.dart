@@ -1070,6 +1070,24 @@ Use the user's answer to continue:
     _markPipelineDraftProcessed(block);
   }
 
+  /// Settles an [EmailDraftBlock] once the user actually sent it from the
+  /// review sheet (send mode). Flips the card to its terminal "sent" state and
+  /// runs the same pipeline bookkeeping as a saved draft. The Gmail send itself
+  /// already happened inside the review sheet (behind the confirmation token);
+  /// this only mirrors the outcome onto the card.
+  void markEmailDraftSent(String blockId, String? messageId) {
+    final block = _findEmailDraft(blockId);
+    if (block == null) return;
+    if (block.status == EmailDraftStatus.sent) return;
+
+    block.status = EmailDraftStatus.sent;
+    block.savedDraftId = messageId;
+
+    state = state.copyWith(items: [...state.items]);
+
+    _markPipelineDraftProcessed(block);
+  }
+
   void _markPipelineDraftProcessed(EmailDraftBlock block) {
     final jobId = (block.jobId ?? state.threadJob?.id)?.trim();
     if (jobId == null || jobId.isEmpty) return;

@@ -323,9 +323,10 @@ class _JobMatchCard extends StatelessWidget {
 }
 
 /// Inline card for an [EmailDraftBlock]. Shows the drafted recipient/subject/
-/// body and a single action that opens the review sheet in **draft mode** —
-/// the user edits and saves it to their Gmail Drafts there. Nothing is ever
-/// sent from the chat; the user finishes the send from Gmail.
+/// body and a single action that opens the review sheet in **send mode** — the
+/// user edits the recipient/subject/body and taps Send, which mints the one-shot
+/// confirmation token and delivers via Gmail. The agent still never sends on its
+/// own; the send only happens on the user's explicit tap inside the sheet.
 class EmailDraftBlockView extends ConsumerWidget {
   const EmailDraftBlockView({super.key, required this.block});
 
@@ -343,13 +344,15 @@ class EmailDraftBlockView extends ConsumerWidget {
       recipient: block.recipient,
       subject: block.subject,
       body: block.body,
-      mode: EmailReviewMode.draft,
+      mode: EmailReviewMode.send,
       attachments: attachments,
     );
-    if (result?.draftCreated ?? false) {
-      ref
-          .read(agentChatProvider.notifier)
-          .markEmailDraftSaved(block.id, result!.draftId);
+    if (!context.mounted) return;
+    final notifier = ref.read(agentChatProvider.notifier);
+    if (result?.sent ?? false) {
+      notifier.markEmailDraftSent(block.id, result!.messageId);
+    } else if (result?.draftCreated ?? false) {
+      notifier.markEmailDraftSaved(block.id, result!.draftId);
     }
   }
 
@@ -388,7 +391,9 @@ class EmailDraftBlockView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final brand = context.brand;
+    final sent = block.status == EmailDraftStatus.sent;
     final saved = block.status == EmailDraftStatus.saved;
+    final settled = sent || saved;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -435,7 +440,7 @@ class EmailDraftBlockView extends ConsumerWidget {
                   ),
                 ),
               ),
-              if (saved)
+              if (settled)
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 9,
@@ -446,7 +451,7 @@ class EmailDraftBlockView extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(99),
                   ),
                   child: Text(
-                    'Saved',
+                    sent ? 'Sent' : 'Saved',
                     style: TextStyle(
                       color: brand.onAccent,
                       fontSize: 11,
@@ -481,7 +486,7 @@ class EmailDraftBlockView extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 14),
-          if (saved)
+          if (settled)
             Row(
               children: [
                 Icon(
@@ -492,7 +497,9 @@ class EmailDraftBlockView extends ConsumerWidget {
                 const SizedBox(width: 7),
                 Expanded(
                   child: Text(
-                    'Saved to Gmail Drafts — review and send it from Gmail.',
+                    sent
+                        ? 'Email sent to ${block.recipient}.'
+                        : 'Saved to Gmail Drafts — review and send it from Gmail.',
                     style: TextStyle(
                       color: brand.ink,
                       fontSize: 12.5,
@@ -505,7 +512,7 @@ class EmailDraftBlockView extends ConsumerWidget {
             )
           else
             _FooterButton(
-              label: 'Review & save draft',
+              label: 'Review & send',
               filled: true,
               enabled: true,
               onTap: () => _review(context, ref),

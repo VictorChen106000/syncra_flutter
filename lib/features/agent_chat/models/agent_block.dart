@@ -275,10 +275,10 @@ class ActionProposalBlock extends AgentBlock {
 }
 
 /// Lifecycle of an [EmailDraftBlock]. While [reviewing] the user can open the
-/// review sheet; once they save it to Gmail Drafts the card settles to
-/// [saved]. There is no "sent" state — the chat path only ever saves drafts;
-/// the user finishes and sends from Gmail themselves.
-enum EmailDraftStatus { reviewing, saved }
+/// review sheet; from there they either send it outright (the card settles to
+/// [sent]) or save it to Gmail Drafts to finish later (the card settles to
+/// [saved]). Both are terminal.
+enum EmailDraftStatus { reviewing, saved, sent }
 
 /// An outreach email the agent drafted via `draft_email`. Surfaced inline so
 /// the user can open the review sheet, edit the recipient/subject/body, and
@@ -318,11 +318,11 @@ class EmailDraftBlock extends AgentBlock {
   /// Null when there is no attachment.
   final String? attachmentFilename;
 
-  /// Whole-card lifecycle. Mutable so the notifier can flip it to [saved]
-  /// once the draft lands in Gmail and re-emit the chat state.
+  /// Whole-card lifecycle. Mutable so the notifier can flip it to [saved] or
+  /// [sent] once the review sheet resolves and re-emit the chat state.
   EmailDraftStatus status;
 
-  /// The Gmail draft id, set once the draft has been created. While null,
-  /// nothing has been saved yet.
+  /// The Gmail id set once the review sheet resolves — the draft id when saved,
+  /// or the sent message id when sent. While null, nothing has happened yet.
   String? savedDraftId;
 }
