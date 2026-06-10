@@ -18,8 +18,8 @@ class AnthropicParaphraseService {
     http.Client? client,
     this.model = 'claude-haiku-4-5-20251001',
     this.tailorModel = 'claude-sonnet-4-6',
-  })  : _apiKey = apiKey ?? const String.fromEnvironment('ANTHROPIC_API_KEY'),
-        _client = client ?? http.Client();
+  }) : _apiKey = apiKey ?? const String.fromEnvironment('ANTHROPIC_API_KEY'),
+       _client = client ?? http.Client();
 
   static const _endpoint = 'https://api.anthropic.com/v1/messages';
   static const _version = '2023-06-01';
@@ -62,7 +62,8 @@ class AnthropicParaphraseService {
     required Map<String, dynamic> resumeJson,
     required Job job,
   }) async {
-    final userPrompt = '''
+    final userPrompt =
+        '''
   Resume (JSON):
   ${const JsonEncoder.withIndent('  ').convert(resumeJson)}
 
@@ -100,7 +101,8 @@ class AnthropicParaphraseService {
       debugPrint('tailorResume edits malformed — retrying once (strict)');
       final retry = await _call(
         system: tailorSystemPrompt,
-        user: 'Your previous response was not valid JSON. Return ONLY the '
+        user:
+            'Your previous response was not valid JSON. Return ONLY the '
             'raw JSON object — no markdown fences, no commentary.\n\n'
             '$userPrompt',
         maxTokens: 1200,
@@ -143,7 +145,8 @@ class AnthropicParaphraseService {
   }) async {
     final response = await _call(
       system: _onboardingInferSystem,
-      user: '''
+      user:
+          '''
 Resume (JSON):
 ${const JsonEncoder.withIndent('  ').convert(resumeJson)}
 
@@ -173,7 +176,10 @@ Return ONLY the JSON object described in the system prompt.''',
             if (rationale.isNotEmpty) 'rationale': rationale,
           };
         })
-        .where((m) => (m['label'] as String).isNotEmpty && (m['percent'] as double) > 0)
+        .where(
+          (m) =>
+              (m['label'] as String).isNotEmpty && (m['percent'] as double) > 0,
+        )
         .toList();
 
     return {'role': role, 'segments': rawSegments};
@@ -188,7 +194,8 @@ Return ONLY the JSON object described in the system prompt.''',
   }) async {
     final response = await _call(
       system: _emailSystem,
-      user: '''
+      user:
+          '''
 Candidate (ResumeJSON):
 ${const JsonEncoder.withIndent('  ').convert(resumeJson)}
 
@@ -265,8 +272,9 @@ Return ONLY a JSON object: {"subject": "...", "body": "..."}.''',
 
         if (response.statusCode == 200) return response;
 
-        final error =
-            Exception(_extractError(response.body, response.statusCode));
+        final error = Exception(
+          _extractError(response.body, response.statusCode),
+        );
         if (!_isRetryableStatus(response.statusCode) ||
             attempt == _maxApiAttempts) {
           throw error;
@@ -321,8 +329,8 @@ Return ONLY a JSON object: {"subject": "...", "body": "..."}.''',
     }
   }
 
-/// System prompt for `tailor_resume`. Public so prompt-contract regression
-/// tests can assert the verbatim / no-full-rewrite guardrails stay in place.
+  /// System prompt for `tailor_resume`. Public so prompt-contract regression
+  /// tests can assert the verbatim / no-full-rewrite guardrails stay in place.
   static const tailorSystemPrompt = '''
 You are Syncra's resume tailoring assistant.
 
@@ -352,6 +360,10 @@ Rules:
   the worst outcome — keep everything that's there.
 - Never invent employers, titles, dates, metrics, tools, certifications, degrees, or achievements.
 - If the resume does not support a stronger claim, keep the proposed text close to the original.
+- Do not add unsupported claims about companies, roles, dates, degrees,
+  certifications, tools, skills, years of experience, metrics, or achievements.
+- If the job asks for something the resume, learned_facts, or explicit user
+  context does not support, do not insert it as a skill or achievement.
 - `reason` must be one sentence explaining why the edit helps for this specific job.
 
 Writing quality (apply to every `proposed_text`):
@@ -369,6 +381,12 @@ Adding new content (op: "add"):
 - Only add information the user has explicitly confirmed: a `learned_facts`
   entry on the resume, or something they stated earlier in the conversation.
   If it is not confirmed, do not add it — never invent experience.
+- Skill edits must stay deduplicated. If a skill already appears anywhere in
+  `skills` or `skill_groups`, do not add it again under another category,
+  casing, or punctuation variant.
+- Never output a bracketed or comma-joined repeated skill list as one skill
+  item (for example, do not add "[Python, SQL, Python]").
+- Do not rewrite a whole skill group by appending a duplicate copy of its items.
 - For an `add` edit: omit `original_text` (there is nothing to replace) and put
   the new text in `proposed_text`. `target_path` is either:
   - a list, to append an item: `skills` or `experience[0].bullets`; or

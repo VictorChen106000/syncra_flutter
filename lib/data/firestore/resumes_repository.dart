@@ -12,8 +12,8 @@ import 'firestore_paths.dart';
 /// that successfully landed in Storage.
 class ResumesRepository {
   ResumesRepository({FirebaseFirestore? db, FirebaseStorage? storage})
-      : _paths = FirestorePaths(db ?? FirebaseFirestore.instance),
-        _storage = storage ?? FirebaseStorage.instance;
+    : _paths = FirestorePaths(db ?? FirebaseFirestore.instance),
+      _storage = storage ?? FirebaseStorage.instance;
 
   final FirestorePaths _paths;
   final FirebaseStorage _storage;
@@ -35,8 +35,11 @@ class ResumesRepository {
     void Function(int percent)? onProgress,
   }) async {
     final docRef = _paths.resumes(uid).doc();
-    final storagePath =
-        _storagePathFor(uid: uid, resumeId: docRef.id, name: name);
+    final storagePath = _storagePathFor(
+      uid: uid,
+      resumeId: docRef.id,
+      name: name,
+    );
 
     await _uploadBytesToStorage(
       path: storagePath,
@@ -93,8 +96,11 @@ class ResumesRepository {
     String? tailoredForJobId,
   }) async {
     final docRef = _paths.resumes(uid).doc();
-    final storagePath =
-        _storagePathFor(uid: uid, resumeId: docRef.id, name: name);
+    final storagePath = _storagePathFor(
+      uid: uid,
+      resumeId: docRef.id,
+      name: name,
+    );
 
     await _uploadBytesToStorage(
       path: storagePath,
@@ -135,7 +141,9 @@ class ResumesRepository {
   /// blob is missing (e.g. legacy Firestore doc from before the migration).
   Future<Uint8List?> downloadBytes(String storagePath) async {
     try {
-      return await _storage.ref(storagePath).getData(
+      return await _storage
+          .ref(storagePath)
+          .getData(
             // Storage rules cap uploads at 5MB; allow slack for tailored
             // PDFs that may grow slightly after rendering.
             10 * 1024 * 1024,
@@ -145,16 +153,44 @@ class ResumesRepository {
     }
   }
 
+  /// Stores a rendered-but-unsaved chat preview PDF. This is separate from the
+  /// resume library: no Firestore resume doc is created, and the user still has
+  /// to tap Save before the preview becomes a real resume.
+  Future<String> uploadConversationPreview({
+    required String uid,
+    required String conversationId,
+    required String blockId,
+    required Uint8List bytes,
+    String contentType = 'application/pdf',
+  }) async {
+    final storagePath =
+        'users/${_safePathSegment(uid)}/conversation_previews/'
+        '${_safePathSegment(conversationId)}/${_safePathSegment(blockId)}.pdf';
+
+    await _uploadBytesToStorage(
+      path: storagePath,
+      bytes: bytes,
+      contentType: contentType,
+    );
+
+    return storagePath;
+  }
+
+  /// Downloads an unsaved chat preview PDF previously written by
+  /// [uploadConversationPreview].
+  Future<Uint8List?> downloadConversationPreview(String storagePath) {
+    return downloadBytes(storagePath);
+  }
+
   Future<void> _uploadBytesToStorage({
     required String path,
     required Uint8List bytes,
     required String contentType,
     void Function(int percent)? onProgress,
   }) async {
-    final task = _storage.ref(path).putData(
-          bytes,
-          SettableMetadata(contentType: contentType),
-        );
+    final task = _storage
+        .ref(path)
+        .putData(bytes, SettableMetadata(contentType: contentType));
 
     // Stream real byte-transfer progress, capped at 95% — the final 5% is
     // reserved for the Firestore metadata write the caller does next, so the
@@ -190,6 +226,11 @@ class ResumesRepository {
     required String name,
   }) {
     return 'users/$uid/resumes/$resumeId${_extensionFor(name)}';
+  }
+
+  String _safePathSegment(String value) {
+    final clean = value.trim().replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    return clean.isEmpty ? 'unknown' : clean;
   }
 
   String _extensionFor(String name) {

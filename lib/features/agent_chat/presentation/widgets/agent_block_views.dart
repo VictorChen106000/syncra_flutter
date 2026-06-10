@@ -13,12 +13,14 @@ import '../../../../core/utils/motion.dart';
 import '../../../../data/models/job.dart';
 import '../../models/agent_block.dart';
 import '../../state/agent_chat_notifier.dart';
+import '../../../resumes/models/resume_integrity_result.dart';
 import '../../../resumes/presentation/resume_draft_preview_page.dart';
 import '../../../resumes/presentation/tailored_changes_page.dart';
 import '../../../resumes/state/resume_notifier.dart';
 import '../../../email/presentation/email_review_page.dart';
 import '../../../email/services/gmail_service.dart';
 import '../../../jobs/presentation/widgets/job_action_sheet.dart';
+import '../../../jobs/state/jobs_notifier.dart';
 
 class AgentBlockView extends StatelessWidget {
   const AgentBlockView({
@@ -66,16 +68,54 @@ class AgentBlockView extends StatelessWidget {
 /// icon chip) showing the match tier, title, company · salary, and the agent's
 /// one-line reasoning. Tapping a card opens the shared [JobActionSheet] (save,
 /// draft an application email, share, dismiss) without leaving the conversation.
-class JobsBlockView extends StatelessWidget {
+class JobsBlockView extends ConsumerWidget {
   const JobsBlockView({super.key, required this.block});
 
   final JobsBlock block;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final brand = context.brand;
-    final jobs = block.jobs;
-    if (jobs.isEmpty) return const SizedBox.shrink();
+    final jobsState = ref.watch(jobsProvider);
+
+    final dismissedIds = <String>{
+      ...block.dismissedJobIds,
+      ...jobsState.dismissedIds,
+    };
+    final hiddenIds = <String>{...block.hiddenJobIds, ...jobsState.hiddenIds}
+      ..removeAll(dismissedIds);
+    final handledIds = <String>{...block.handledJobIds};
+
+    final inactiveIds = <String>{...dismissedIds, ...hiddenIds, ...handledIds};
+
+    final jobs = block.jobs
+        .where((job) => !inactiveIds.contains(job.id))
+        .toList(growable: false);
+
+    final totalCount = block.jobs.length;
+    final dismissedCount = block.jobs
+        .where((job) => dismissedIds.contains(job.id))
+        .length;
+    final hiddenCount = block.jobs
+        .where((job) => hiddenIds.contains(job.id))
+        .length;
+    final handledCount = block.jobs
+        .where((job) => handledIds.contains(job.id))
+        .length;
+
+    if (jobs.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Text(
+          'No visible roles left in this result set.',
+          style: TextStyle(
+            color: brand.textMuted,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -83,7 +123,13 @@ class JobsBlockView extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(left: 2, bottom: 10),
           child: Text(
-            '${jobs.length} ${jobs.length == 1 ? 'ROLE' : 'ROLES'} FOUND · SWIPE',
+            _jobsHeader(
+              visibleCount: jobs.length,
+              totalCount: totalCount,
+              dismissedCount: dismissedCount,
+              hiddenCount: hiddenCount,
+              handledCount: handledCount,
+            ),
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w900,
@@ -92,6 +138,23 @@ class JobsBlockView extends StatelessWidget {
             ),
           ),
         ),
+        if (hiddenCount > 0) ...[
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => ref
+                  .read(agentChatProvider.notifier)
+                  .unhideAllJobsInBlock(block.id),
+              icon: const Icon(Icons.visibility_outlined, size: 15),
+              label: Text(
+                hiddenCount == 1
+                    ? 'Show 1 hidden role'
+                    : 'Show $hiddenCount hidden roles',
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
         SizedBox(
           height: 210,
           child: ListView.separated(
@@ -102,7 +165,18 @@ class JobsBlockView extends StatelessWidget {
             itemCount: jobs.length,
             separatorBuilder: (_, _) => const SizedBox(width: 12),
             itemBuilder: (context, i) {
-              return _JobMatchCard(job: jobs[i])
+              return _JobMatchCard(
+                    job: jobs[i],
+                    onHide: () => ref
+                        .read(agentChatProvider.notifier)
+                        .hideJobInBlock(block.id, jobs[i].id),
+                    onDismiss: () => ref
+                        .read(agentChatProvider.notifier)
+                        .dismissJobInBlock(block.id, jobs[i].id),
+                    onDrafted: () => ref
+                        .read(agentChatProvider.notifier)
+                        .markJobHandledInBlock(block.id, jobs[i].id),
+                  )
                   .animate(delay: (i * 70).ms)
                   .fadeIn(duration: 300.ms)
                   .moveX(begin: 18, end: 0, curve: Curves.easeOutCubic);
@@ -114,6 +188,30 @@ class JobsBlockView extends StatelessWidget {
       ],
     );
   }
+}
+
+String _jobsHeader({
+  required int visibleCount,
+  required int totalCount,
+  required int dismissedCount,
+  required int hiddenCount,
+  required int handledCount,
+}) {
+  final roleLabel = visibleCount == 1 ? 'ROLE' : 'ROLES';
+  final parts = <String>['$visibleCount OF $totalCount $roleLabel'];
+
+  if (dismissedCount > 0) {
+    parts.add('$dismissedCount DISMISSED');
+  }
+  if (hiddenCount > 0) {
+    parts.add('$hiddenCount HIDDEN');
+  }
+  if (handledCount > 0) {
+    parts.add('$handledCount HANDLED');
+  }
+
+  parts.add('SWIPE');
+  return parts.join(' · ');
 }
 
 /// Footer CTA under the job rail — jumps to the full Jobs page where every
@@ -165,9 +263,17 @@ class _SeeAllJobsButton extends StatelessWidget {
 /// A single tap opens the shared [JobActionSheet] (save, draft an application
 /// email, share, hide, dismiss) without leaving the conversation.
 class _JobMatchCard extends StatelessWidget {
-  const _JobMatchCard({required this.job});
+  const _JobMatchCard({
+    required this.job,
+    required this.onHide,
+    required this.onDismiss,
+    required this.onDrafted,
+  });
 
   final Job job;
+  final VoidCallback onHide;
+  final VoidCallback onDismiss;
+  final VoidCallback onDrafted;
 
   @override
   Widget build(BuildContext context) {
@@ -190,7 +296,13 @@ class _JobMatchCard extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => JobActionSheet.show(context, job),
+        onTap: () => JobActionSheet.show(
+          context,
+          job,
+          onHide: onHide,
+          onDismiss: onDismiss,
+          onDrafted: onDrafted,
+        ),
         borderRadius: BorderRadius.circular(24),
         child: Container(
           width: 232,
@@ -853,11 +965,14 @@ class _EditsFooter extends ConsumerWidget {
         // resume already — the button opens the full-screen live resume where
         // the changed lines glow and the user saves or keeps editing.
         final saved = block.isSaved;
+        final repairing = block.integrityAutoRepairing;
         final applied = block.appliedCount;
         final skipped = block.skippedCount > 0
             ? ' · ${block.skippedCount} skipped'
             : '';
-        final status = saved
+        final status = repairing
+            ? 'Integrity check found issues'
+            : saved
             ? 'Saved to your resumes'
             : applied > 0
             ? '$applied improvement${applied == 1 ? '' : 's'}'
@@ -869,11 +984,17 @@ class _EditsFooter extends ConsumerWidget {
             Row(
               children: [
                 Icon(
-                  saved
+                  repairing
+                      ? Icons.autorenew_rounded
+                      : saved
                       ? Icons.check_circle_rounded
                       : Icons.auto_awesome_rounded,
                   size: 15,
-                  color: saved ? brand.success : brand.ink,
+                  color: repairing
+                      ? brand.warning
+                      : saved
+                      ? brand.success
+                      : brand.ink,
                 ),
                 const SizedBox(width: 7),
                 Expanded(
@@ -889,6 +1010,10 @@ class _EditsFooter extends ConsumerWidget {
                 ),
               ],
             ),
+            if (block.integrity != null) ...[
+              const SizedBox(height: 8),
+              _IntegrityLine(block: block),
+            ],
             const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
@@ -1002,6 +1127,80 @@ class _ErrorLine extends StatelessWidget {
   }
 }
 
+class _IntegrityLine extends StatelessWidget {
+  const _IntegrityLine({required this.block});
+
+  final ProposedEditsBlock block;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final result = block.integrity!;
+    final repaired = block.integrityRepairAttempted;
+    final (icon, color, text) = block.supersededByBlockId != null
+        ? (
+            Icons.auto_awesome_rounded,
+            brand.success,
+            'A safer revision is ready below.',
+          )
+        : block.integrityAutoRepairing
+        ? (
+            Icons.autorenew_rounded,
+            brand.warning,
+            'Integrity check found issues — Syncra is repairing this automatically.',
+          )
+        : switch (result.status) {
+            ResumeIntegrityStatus.verified => (
+              Icons.verified_rounded,
+              brand.success,
+              'Integrity verified — accepted edits landed and original facts were preserved.',
+            ),
+            ResumeIntegrityStatus.needsReview => (
+              Icons.warning_amber_rounded,
+              brand.warning,
+              repaired
+                  ? 'Needs review — Syncra tried one safer pass. Review before saving.'
+                  : 'Needs review — Syncra found possible unsupported claims. Review before saving.',
+            ),
+            ResumeIntegrityStatus.blocked => (
+              Icons.block_rounded,
+              brand.danger,
+              repaired
+                  ? 'Blocked — Syncra could not safely repair this. Saving is disabled.'
+                  : 'Blocked — Syncra found a serious integrity issue. Saving is disabled.',
+            ),
+          };
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: brand.ink,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// The magnifying-glass affordance that opens the tailored-PDF preview.
 class _PreviewIconButton extends StatelessWidget {
   const _PreviewIconButton({required this.onTap});
@@ -1090,7 +1289,9 @@ class _StatusPill extends StatelessWidget {
     final brand = context.brand;
     final (label, fg, bg) = switch (block.state) {
       ProposedEditsState.applied =>
-        block.isSaved
+        block.integrityAutoRepairing
+            ? ('Repairing…', brand.ink, brand.warning.withValues(alpha: 0.16))
+            : block.isSaved
             ? ('Saved', brand.onAccent, brand.accent)
             : ('Preview ready', brand.onAccent, brand.accent),
       ProposedEditsState.applying => (

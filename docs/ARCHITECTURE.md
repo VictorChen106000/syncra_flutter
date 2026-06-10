@@ -8,15 +8,15 @@ this file, fix the code (or change this file by PR). Product context is in
 ## 0. Locked decisions
 
 | Area | Decision |
-|---|---|
+| --- | --- |
 | Platform | Flutter — iOS / Android / Web |
-| Server | None. No FastAPI, no Cloud Functions. |
+| Server | No non-Firebase backend. No Railway/FastAPI/custom Python server. Firebase Cloud Functions is deferred and not used in v1. |
 | Auth | Firebase Auth — Google Sign-In + email/password |
 | Database | Cloud Firestore (Spark plan) |
 | File storage | Firebase Storage for resume bytes; Firestore holds metadata |
 | LLM | Anthropic Claude (Haiku 4.5), called directly from Flutter |
 | Job source | JSearch via RapidAPI, direct from Flutter |
-| Email | Gmail API — user's own account, `gmail.send` scope only |
+| Email | Gmail API — user's own account; `gmail.compose` for drafts, `gmail.send` for confirmed sends; never read scope |
 | Hiring-manager lookup | None — outreach uses the company's generic `careers@` address |
 | Job Trust Guard | Heuristic red-flag screen only; never certifies a job as legitimate |
 | Secrets | `--dart-define=KEY=...` at build time; rotate after demo |
@@ -24,12 +24,13 @@ this file, fix the code (or change this file by PR). Product context is in
 | Human-in-the-loop | Agent never sends external traffic without an explicit user tap |
 | Resume canonical form | `ResumeJSON` in Firestore, lazy-populated on first parse |
 | PDF template | One fixed single-column ATS-safe layout |
+| Resume integrity | Pure Dart check after accepted edits render, with deterministic skill cleanup and one guarded repair pass; no extra PDF editor |
 | State management | `flutter_riverpod` — every controller a `Notifier<T>` with immutable state |
 
 **Decisions settled from earlier open questions:** PDF may overflow to page 2;
 tailoring feeds Claude the full job description; malformed parse JSON retries
 once then surfaces an error; deleting a manual resume cascade-deletes its
-tailored children; Gmail scope is `gmail.send` only; email/password auth is
+tailored children; Gmail scopes are compose/send only; email/password auth is
 wired through Firebase instead of guest fallback.
 
 ## 1. The agent loop
@@ -61,7 +62,7 @@ trigger: user prompt  OR  canned brief prompt
 Approval continuation works the same way as `ask_user`, but the user action comes
 from an approval UI instead of a typed answer:
 
-- `ProposedEditsBlock` — PR-style resume edits from `tailor_resume`; supports per-edit Accept/Reject decisions, Apply N edits, preview rendering, save-to-library, and saved-resume continuation.
+- `ProposedEditsBlock` — PR-style resume edits from `tailor_resume`; supports per-edit Accept/Reject decisions, Apply N edits, preview rendering, Resume Integrity Check status, save-to-library, and saved-resume continuation.
 - `ActionProposalBlock` — approval card for concrete next actions; may include a hidden `continuationPrompt` that resumes the threaded agent loop after user approval.
 - `send_email` remains gated. The agent may draft outreach, but sending requires the email review UI and an explicit user-confirmation token.
 
@@ -82,11 +83,11 @@ in `_notifier.dart`. Widgets use `ref.watch(xProvider)` for state and
 outside a notifier; never expose mutable lists/maps in a state class.
 
 | Provider | State (key fields) | Key notifier methods |
-|---|---|---|
+| --- | --- | --- |
 | `authProvider` | `AuthState` — `appUser`, `isLoading`, `error` | `signInWithGoogle`, `signOut`, `continueAsGuest`, `deleteAccount` |
 | `userProfileProvider` | `UserProfile?` — `role`, `autonomyLevel`, `morningBriefEnabled`, `gmailConnected` | `setAutonomyLevel`, `setMorningBriefEnabled`, `setRole`, `setAgentActive` |
 | `resumeProvider` | `ResumeState` — `allResumes`, `resumes`, `tailoredResumes`, `uploadQueue`, `selectedResumeIds` | `pickAndUploadResumes`, `deleteResume`, `toggleSelectedResume` |
-| `applicationsProvider` | `ApplicationsState` — `items`, `filtered`, `filter` | `setFilter`, `markSent`, `addNote` |
+| `applicationsProvider` | `ApplicationsState` — `items`, `filtered`, `filter` | `setFilter`, `markSent`, `addNote`, `updateNote`, `deleteNote` |
 | `jobsProvider` | `JobsState` — `cards`, `pendingCards`, `savedIds` | `toggleSaved`, `hide`, `dismiss`, `approveByJobId` |
 | `passiveAgentProvider` | `PassiveAgentState` — `status`, `pipeline`, `lastBriefAt` | `runBrief` (user-tap only) |
 | `notificationsProvider` | `NotificationsState` — `items`, `unreadCount` | `setFilter`, `markRead`, `onAgentEvent` |
@@ -98,10 +99,12 @@ Auth-derived providers (`resumeProvider`, `jobsProvider`, etc.) `ref.watch(authP
 in `build()` so their Firestore streams rebind on user change. Adding a provider
 updates this table.
 
-**Diff-viewer state (to build).** `ResumeState` must additionally hold the diff
-session: `original` (V1, never mutated), `proposed` (V2 = original + accepted
-edits), `pendingEdits`, `acceptedPaths`. `acceptEdit` / `rejectEdit` recompute
-`proposed` via `ResumeDiffService.applyEdits`. See STATUS.md → Resume Diff UI.
+**Proposed-edits state.** The current tailor flow renders a read-only
+`ProposedEditsBlock` change log. Edits are shown with original text, proposed
+text, and reason; the app renders an unsaved tailored preview and lets the user
+save or dismiss the result. Per-edit accept/reject state is retained in the data
+shape for future review support, but v1 does not require the user to accept each
+edit individually.
 
 ## 3. Tools
 
@@ -110,7 +113,7 @@ Each tool is declared in `tool_registry.dart` (`name`, `description`,
 `builtin_tools.dart`.
 
 | Tool | Purpose | Gating |
-|---|---|---|
+| --- | --- | --- |
 | `search_jobs` | Search live listings; returns ≤25 `Job`s | auto |
 | `read_resume` | Load the user's `ResumeJSON`; lazy-parses the PDF on first call | auto |
 | `match_jobs` | Score jobs vs resume → category, score, justification, missing skills | auto |
@@ -121,7 +124,7 @@ Each tool is declared in `tool_registry.dart` (`name`, `description`,
 | `lookup_hiring_manager` | The company's generic `careers@` address (no named-contact lookup) | auto |
 | `remember_fact` | Persist a reusable fact about the user → `learned_facts` | auto |
 | `save_to_pipeline` | Write a scored match as a pipeline card, including Trust Guard result | auto |
-| `save_to_tracker` | Persist an application record to the Applications page, including Trust Guard result | depends on `autonomy_level` |
+| `save_to_tracker` | Persist an application record to the Applications page, including Trust Guard result | auto; external sends still require the `send_email` user gate |
 | `send_email` | Send the drafted email via Gmail | **always requires a user tap** |
 | `ask_user` | Ask the user a question and pause; optional suggestion chips | pauses the loop |
 
@@ -131,16 +134,33 @@ Each tool is declared in `tool_registry.dart` (`name`, `description`,
    proposed_text, reason }] }`. `target_path` is a JSON path into `ResumeJSON`
    (e.g. `experience[0].bullets[2]`); `original_text` must match the resume
    verbatim — mismatches are dropped. **3–8 edits, bullet-level, never invents
-   experience, employers, dates, or metrics.**
+   experience, employers, dates, metrics, tools, skills, or duplicate skill-list
+   artifacts.**
 2. The loop **pauses** — Claude must not auto-call `apply_resume_edits` or
    `draft_email`.
-3. The user reviews edits in the inline `ProposedEditsBlock` and taps
-   "Apply N edits".
-4. The UI calls `apply_resume_edits` with `{ resume_id, accepted_edits }` →
-   `ResumeDiffService.applyEdits` builds the V2 `ResumeJSON` → `pdf_template`
-   renders → a new Firestore resume doc is created (`source: 'tailored'`,
-   `parent_resume_id`, `tailored_for_job_id`) → returns `{ tailored_resume_id }`.
-5. That result feeds back into the loop; Claude proceeds (typically to
+3. The user reviews edits in the inline `ProposedEditsBlock` change log.
+4. The UI applies the proposed edits into an unsaved tailored preview via
+   `ResumeDiffService.apply`, runs `ResumeQualityService.cleanTailoredResume`
+   to remove duplicate skills and
+   repeated skill-list artifacts, renders an unsaved preview, then runs
+   `ResumeIntegrityService.verify` against the original `ResumeJSON`, tailored
+   `ResumeJSON`, accepted edits, and applied/skipped counts.
+5. The integrity result is deterministic and pure Dart. It checks protected
+   identity/contact facts, unsupported companies/roles/schools/dates/metrics,
+   skipped edits, and obvious section loss. It does **not** call Claude and does
+   **not** use an external PDF editor.
+6. `verified` can save normally. `needsReview` or `blocked` automatically queues
+   one threaded repair turn that must call `tailor_resume` again for the same
+   source resume/job and then stop at a replacement diff. Save is disabled while
+   that repair is running. If the replacement still returns `needsReview`, the
+   user may manually review/save with warning copy; if it still returns
+   `blocked`, saving remains disabled and the preview stays visible.
+7. "Fix with Syncra" from the tailored preview uses the same continuation path:
+   pop back to chat, ask for a replacement `tailor_resume` diff, and forbid
+   `apply_resume_edits`, `draft_email`, or `send_email` during the repair turn.
+8. Once the user taps Save, a new Firestore resume doc is created
+   (`source: 'tailored'`, `parent_resume_id`, `tailored_for_job_id`) and the
+   saved resume id feeds back into the loop; Claude proceeds (typically to
    `draft_email`).
 
 ### Trust Guard contract
@@ -163,15 +183,16 @@ and application tracker:
   ],
   "safe_next_step": "..."
 }
+```
 
 ### Tool input notes
 
 - **`draft_email`** — `{ job_id, resume_id, recipient_email?, recipient_name?,
   tone? }`. Drafts against the tailored resume identified by `resume_id`.
 - **`save_to_tracker`** — `{ job_id, resume_id?, mark_sent? }`. `mark_sent` is a
-  bool, default `false` (there is no `status` enum). In `auto_apply` mode after a
-  successful send the agent passes `mark_sent: true`; in `ask_first` mode it
-  saves a draft and the user taps "Mark as sent".
+  bool, default `false` (there is no `status` enum). In v1 this records prepared
+  or sent work in the Applications activity log; actual external sending still
+  goes through the `send_email` confirmation-token gate or a manual "Mark as sent".
 - **`send_email`** — `{ to, subject, body, attachments? }`. On success the
   handler calls `applicationsRepo.markSent(uid, appId, sentEmailId: messageId)`.
 
@@ -180,18 +201,28 @@ and application tracker:
 **`users/{uid}` — profile**
 
 | Field | Type | Notes |
-|---|---|---|
-| `name`, `email`, `avatar_url`, `role` | string | `role` captured in onboarding |
-| `autonomy_level` | `suggest \| ask_first \| auto_apply` | default `ask_first`; set in Settings |
-| `morning_brief_enabled` | bool | default `false`; gates the dashboard CTA + the after-sign-in brief — never auto-fires on app open |
-| `gmail_connected` | bool | |
-| `last_brief_at` | Timestamp? | display-only |
+| --- | --- | --- |
+| `name`, `email`, `avatar_url`, `role` | string | `role` captured in onboarding; empty role is allowed after Skip |
+| `is_agent_active` | bool | Settings toggle for active agent behavior |
+| `gmail_connected` | bool | Records Gmail connection/intent state |
+| `has_completed_onboarding` | bool | Router gate for first-run onboarding |
+| `resume_fit` | map? | persisted onboarding fit chart snapshot |
+| `auto_apply` | map | bounded auto-apply guardrails; defaults disabled |
 | `created_at` | Timestamp | |
+
+`auto_apply` map:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `enabled` | bool | default `false`; does not send/apply by itself |
+| `min_quality_score` | int | default `85`; clamped 60–100 |
+| `max_daily_applications` | int | default `3`; clamped 1–10 |
+| `require_low_trust` | bool | default `true`; requires Trust Guard `low` before eligibility |
 
 **`users/{uid}/applications/{appId}` — activity log**
 
 | Field | Type | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `job` | map | embedded Job snapshot |
 | `resume_id` | string | tailored resume used |
 | `drafted_at` | Timestamp | |
@@ -210,7 +241,7 @@ and application tracker:
 **`users/{uid}/resumes/{resumeId}` — resume metadata**
 
 | Field | Type | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `name`, `mime_type` | string | |
 | `size` | int | |
 | `source` | `manual \| tailored` | |
@@ -227,26 +258,68 @@ and application tracker:
 (`trust_risk_level`, `trust_risk_label`, `trust_signals_count`,
 `trust_signals`, `trust_safe_next_step`, `trust_checked_at`), `created_at`.
 
+### Pipeline lifecycle invariant
+
+The active Jobs pipeline must only show unfinished pending work.
+
+Pipeline cards use two separate axes:
+
+- `stage`: progress through `matched`, `tailored`, `drafted`, `sent`, `replied`
+- `status`: active visibility through `pending`, `approved`, `dismissed`
+
+Important invariant:
+
+- `matched`, `tailored`, and `drafted` cards may remain active while `status == pending`.
+- `sent` and `replied` cards are handled work and must not appear in the active pipeline.
+- Advancing a card to `sent` or `replied` must also mark the card `status: approved`.
+- Legacy cards with `status: pending` but terminal stage `sent` or `replied` must still be hidden from the active pipeline.
+
+Do not remove or weaken this behavior without updating `test/pipeline_repository_test.dart`.
+
 **`users/{uid}/learned_facts/{factId}`** — `topic`, `detail`, `source`, `created_at`.
 
 **`jobs/{jobId}`** — global job cache, upserted by `search_jobs`: title,
 company, location, salary, description, source, source_url.
 
-Chat history is in-memory in v1 (a `conversations/` schema is reserved for v2).
+**`users/{uid}/conversations/{conversationId}`** — versioned chat workspace
+snapshot. Current writes use `schemaVersion: 2` and store `title`,
+`renamedTitle`, `lastPreview`, `pinned`, `updatedAt`, optional `threadJob`, and
+serialized `items`.
+
+`items` are encoded through `ChatSnapshotCodec` and can recover user bubbles,
+resume attachment chips, agent text, tool-call rows, job-card rails,
+proposed-edits cards with integrity results and repair flags, built-resume draft
+cards, input-request cards, action proposal cards, and email draft cards. The drawer supports grouped history
+sections, title/preview search, rename, pin/unpin, delete confirmation, and
+preview text under each row.
+
+Legacy text-only history is still supported. Unknown or malformed items/blocks
+must skip safely rather than crashing the drawer or reopen flow. Running
+stream/tool states are restored as stopped/failed snapshots, not resumed live.
+After restore, `AnthropicChatService.restoreConversationContext()` rebuilds a
+compact model-readable context summary from visible transcript blocks so the
+next user message can continue naturally without pretending the tools reran.
 
 ## 5. Firebase Storage
 
-```
-gs://<bucket>/users/{uid}/resumes/
-  ├── {manual-resumeId}.pdf|.docx|.doc   ← uploaded by the user
-  └── {tailored-resumeId}.pdf            ← rendered by apply_resume_edits
+````markdown
+```text
+gs://{bucket}/users/{uid}/
+  ├── resumes/
+  │   ├── {manual-resumeId}.pdf|.docx|.doc   ← uploaded by the user
+  │   └── {tailored-resumeId}.pdf            ← saved generated resume
+  └── conversation_previews/
+      └── {conversationId}/{blockId}.pdf     ← unsaved chat preview PDF
 ```
 
-Firestore resume docs carry `storage_path`. On **Flutter Web**, Firebase Storage
-CORS must allow browser downloads from the app origin — without it, parsing and
-preview fail with `ClientException: Failed to fetch`. iOS / Android use native
-SDKs and need no CORS. All platforms need Storage security rules. Legacy docs
-without `storage_path` resolve to `null` bytes — the UI offers re-upload.
+Firestore resume docs carry `storage_path`. Unsaved chat preview PDFs are stored
+only as `previewStoragePath` on the recovered chat block; no resume-library
+Firestore doc is created until the user taps Save. On **Flutter Web**, Firebase
+Storage CORS must allow browser downloads from the app origin — without it,
+parsing and preview fail with `ClientException: Failed to fetch`. iOS / Android
+use native SDKs and need no CORS. All platforms need Storage security rules.
+Legacy docs without `storage_path` resolve to `null` bytes — the UI offers
+re-upload.
 
 ## 6. External APIs
 
@@ -259,11 +332,16 @@ Key: `ANTHROPIC_API_KEY`.
 `x-rapidapi-key`, `x-rapidapi-host: jsearch.p.rapidapi.com`. Key: `RAPIDAPI_KEY`.
 Free tier 200 req/month — cache results in `jobs/`.
 
-**Gmail** — the existing Google Sign-In credential plus scope
-`https://www.googleapis.com/auth/gmail.send`, requested on demand through
-`google_sign_in` v7's `authorizationClient`. Sends a raw POST to
-`users.messages.send` with a base64url-encoded MIME message (no `googleapis`
-package needed); the PDF resume rides as an `application/pdf` part.
+**Gmail** — creates drafts with
+`https://www.googleapis.com/auth/gmail.compose` on web and mobile after user
+authorization, and sends only through the explicit review/tap path with
+`https://www.googleapis.com/auth/gmail.send`. Web draft authorization uses
+Firebase Auth's Google popup/reauth popup to obtain the provider OAuth access
+token; non-web uses `google_sign_in` v7's `authorizationClient`. Draft creation
+POSTs a base64url-encoded MIME message to `users/me/drafts`; confirmed sends POST
+the same MIME payload to `users.messages.send`. Attachments, including resume
+PDFs, ride as MIME parts. Syncra never requests Gmail read scopes and adds no
+backend for Gmail.
 
 Run locally:
 
@@ -284,19 +362,35 @@ text, never touches layout. Don't change the template without a team vote.
 ## 8. Rate limits & cost guards
 
 | Surface | Cap |
-|---|---|
+| --- | --- |
 | `search_jobs` (JSearch) | cache `jobs/` for 1h — stay under 200/month |
 | `match_jobs` | ≤25 jobs per call |
 | `tailor_resume` | one in-flight per session |
 | `send_email` | hard-blocked without a user tap |
+| Bounded auto-apply | eligibility/settings only in v1; no autonomous external submit/send |
 | Anthropic | $5/month spend cap in the console |
 
-## 9. Security
+## 9. Chat job-result persistence
+
+`JobsBlock` snapshots preserve three per-chat result sets:
+
+- `dismissedJobIds` — roles the user dismissed from that chat result.
+- `hiddenJobIds` — roles hidden from the current visible rail.
+- `handledJobIds` — roles already acted on, such as saved to pipeline or used
+  for an outreach draft.
+
+Restored conversations must not bring dismissed or already-handled roles back as
+fresh actions. This keeps old job rails consistent after refresh/restart and
+matches the handled-job lifecycle used by the chat action sheet.
+
+## 10. Security
 
 - `firestore.rules` (deployed): `jobs/{jobId}` — any signed-in user read/write;
   `users/{uid}/**` — owner-only.
-- `storage.rules` (deployed): `users/{uid}/resumes/**` — owner-only; writes
-  capped at 5 MB and restricted to `application/*` content types.
-- API keys ship compiled into the client via `--dart-define`. **Rotate every key
-  after the demo** and set spend caps in every provider console. Server-grade
-  key management is out of scope (it would need a server).
+- `storage.rules` (deployed): `users/{uid}/resumes/**` and
+  `users/{uid}/conversation_previews/**` — owner-only; writes capped at 5 MB and
+  restricted to `application/*` content types.
+- API keys ship compiled into the client via `--dart-define` for the v1 demo.
+  **Rotate every key after the demo** and set spend caps in every provider
+  console. Server-grade key management is deferred to a future Firebase Cloud
+  Functions layer, not a non-Firebase backend.

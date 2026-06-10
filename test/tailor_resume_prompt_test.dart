@@ -36,6 +36,16 @@ void main() {
     test('caps the edit count so it stays a small PR-style diff', () {
       expect(prompt, contains('3 to 8 edits'));
     });
+
+    test('blocks unsupported claims and duplicate skill artifacts', () {
+      expect(prompt, contains('do not add unsupported claims'));
+      expect(prompt, contains('tools, skills, years of experience'));
+      expect(prompt, contains('do not insert it as a skill or achievement'));
+      expect(prompt, contains('skill edits must stay deduplicated'));
+      expect(prompt, contains('do not add it again under another category'));
+      expect(prompt, contains('bracketed or comma-joined repeated skill list'));
+      expect(prompt, contains('duplicate copy of its items'));
+    });
   });
 
   group('main agent system prompt', () {
@@ -88,6 +98,16 @@ void main() {
       expect(prompt, contains('save_to_tracker'));
       expect(prompt, contains('high risk'));
       expect(prompt, contains('never mark a job as safe'));
+    });
+
+    test('blocks unsupported claims and duplicate skill artifacts', () {
+      expect(prompt, contains('preserve supported resume facts only'));
+      expect(prompt, contains('do not add unsupported employers'));
+      expect(prompt, contains('tools, skills, metrics, years of experience'));
+      expect(prompt, contains('keep skill changes deduplicated'));
+      expect(prompt, contains('bracketed repeated skill list'));
+      expect(prompt, contains('call `tailor_resume` again'));
+      expect(prompt, contains('do not use `apply_resume_edits` for repairs'));
     });
 
     test('drives the search → tailor → email sequence via ask_user offers', () {

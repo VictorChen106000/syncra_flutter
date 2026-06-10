@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../../../data/models/job.dart';
 import '../../resumes/models/proposed_edit.dart';
+import '../../resumes/models/resume_integrity_result.dart';
 import '../../resumes/models/resume_json.dart';
 
 /// One unit of agent output inside an [AgentTurn].
@@ -62,11 +63,54 @@ class TextBlock extends AgentBlock {
 /// the dashboard — instead of the agent narrating the roles as prose. The rail
 /// is read-only chrome; tapping a card opens the shared job action sheet.
 class JobsBlock extends AgentBlock {
-  JobsBlock({required super.id, required this.jobs});
+  JobsBlock({
+    required super.id,
+    required this.jobs,
+    Set<String>? dismissedJobIds,
+    Set<String>? hiddenJobIds,
+    Set<String>? handledJobIds,
+  }) : dismissedJobIds = dismissedJobIds ?? <String>{},
+       hiddenJobIds = hiddenJobIds ?? <String>{},
+       handledJobIds = handledJobIds ?? <String>{};
 
   /// Mutable so `match_jobs` can re-score the rail in place — see
   /// [JobsBlockUpdated]. A fresh search still mints a new block.
   List<Job> jobs;
+
+  /// Jobs the user dismissed from this specific chat result set.
+  /// This must be part of the chat snapshot so restored conversations do not
+  /// bring dismissed roles back.
+  Set<String> dismissedJobIds;
+
+  /// Jobs the user explicitly hid from this specific chat result set.
+  Set<String> hiddenJobIds;
+
+  /// Jobs already acted on from this result set, such as draft created.
+  Set<String> handledJobIds;
+
+  void dismissJob(String jobId) {
+    final clean = jobId.trim();
+    if (clean.isEmpty) return;
+    dismissedJobIds = {...dismissedJobIds, clean};
+    hiddenJobIds = {...hiddenJobIds}..remove(clean);
+  }
+
+  void hideJob(String jobId) {
+    final clean = jobId.trim();
+    if (clean.isEmpty) return;
+    hiddenJobIds = {...hiddenJobIds, clean};
+  }
+
+  void unhideAllJobs() {
+    hiddenJobIds = <String>{};
+  }
+
+  void markJobHandled(String jobId) {
+    final clean = jobId.trim();
+    if (clean.isEmpty) return;
+    handledJobIds = {...handledJobIds, clean};
+    hiddenJobIds = {...hiddenJobIds}..remove(clean);
+  }
 }
 
 /// Where one proposed edit stands in the card lifecycle.
@@ -137,7 +181,15 @@ class ProposedEditsBlock extends AgentBlock {
   /// [ProposedEditsState.applied]. The preview screen reads this; it's only
   /// persisted to the resume library when the user taps Save (see
   /// [savedResumeId]). Mutable so the notifier can fill it in after rendering.
+  ///
+  /// Bytes are runtime-only. To survive app refresh/restart, the notifier also
+  /// uploads them to [previewStoragePath] and rehydrates [previewBytes] when
+  /// restoring chat history.
   Uint8List? previewBytes;
+
+  /// Firebase Storage path for the unsaved preview PDF. Stored in the chat
+  /// snapshot so old preview cards can recover their PDF bytes after restart.
+  String? previewStoragePath;
 
   /// The [ResumeJson] behind [previewBytes] — handed to the orchestrator's
   /// save step so the new resume doc caches its parsed structure.
@@ -154,6 +206,19 @@ class ProposedEditsBlock extends AgentBlock {
   /// How many accepted edits actually landed / were skipped during render.
   int appliedCount = 0;
   int skippedCount = 0;
+
+  /// Deterministic integrity check for the rendered tailored preview. Null for
+  /// old conversations or cards that have not rendered yet.
+  ResumeIntegrityResult? integrity;
+
+  /// The app gets one automatic integrity repair attempt per rendered card.
+  bool integrityRepairAttempted = false;
+
+  /// True while the app is asking the agent to propose a safer revision.
+  bool integrityAutoRepairing = false;
+
+  /// When a repair creates a replacement card, this points to that block id.
+  String? supersededByBlockId;
 
   /// Last apply/save error, surfaced in the card so the user can retry.
   String? applyError;
@@ -203,7 +268,15 @@ class ResumeDraftBlock extends AgentBlock {
 
   /// The rendered-but-unsaved PDF, set once the render completes. The preview
   /// screen reads this; null until then (or if rendering failed).
+  ///
+  /// Bytes are runtime-only. To survive app refresh/restart, the notifier also
+  /// uploads them to [previewStoragePath] and rehydrates [previewBytes] when
+  /// restoring chat history.
   Uint8List? previewBytes;
+
+  /// Firebase Storage path for the unsaved preview PDF. Stored in the chat
+  /// snapshot so old preview cards can recover their PDF bytes after restart.
+  String? previewStoragePath;
 
   /// Set once the previewed PDF has been saved to the resume library. While
   /// null, the draft exists only in memory.

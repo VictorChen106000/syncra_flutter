@@ -5,6 +5,39 @@ import 'package:syncra/features/applications/state/applications_notifier.dart';
 
 void main() {
   group('ApplicationsState filters', () {
+    test('bundle review filter includes only applications with blockers', () {
+      final missingResume = _app(
+        id: 'missing_resume',
+        company: 'No Resume Co',
+        resumeId: null,
+        trustRiskLevel: 'low',
+        draftedAt: DateTime(2026, 6, 5, 12),
+      );
+      final highRisk = _app(
+        id: 'high_risk',
+        company: 'Risky Co',
+        resumeId: 'resume_1',
+        trustRiskLevel: 'high',
+        draftedAt: DateTime(2026, 6, 5, 13),
+      );
+      final ready = _app(
+        id: 'ready',
+        company: 'Ready Co',
+        resumeId: 'resume_1',
+        trustRiskLevel: 'low',
+        sentAt: DateTime(2026, 6, 5, 14),
+      );
+
+      final state = ApplicationsState(
+        items: [missingResume, highRisk, ready],
+        filter: ApplicationsFilter.bundleReview,
+      );
+
+      expect(state.filtered.map((app) => app.id), [
+        'high_risk',
+        'missing_resume',
+      ]);
+    });
     test(
       'trust review filter includes only medium and high risk applications',
       () {
@@ -108,13 +141,15 @@ void main() {
 TrackedApplication _app({
   required String id,
   String company = 'Acme',
-  String trustRiskLevel = 'low',
+  String? resumeId = 'resume_1',
   DateTime? draftedAt,
   DateTime? sentAt,
   bool gotReply = false,
+  String trustRiskLevel = 'low',
 }) {
   return TrackedApplication(
     id: id,
+    resumeId: resumeId,
     job: _job(id: 'job_$id', company: company),
     draftedAt: draftedAt ?? DateTime(2026, 6, 5),
     sentAt: sentAt,

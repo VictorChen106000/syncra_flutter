@@ -7,6 +7,7 @@ import '../../../data/firestore/applications_repository.dart';
 import '../../../data/firestore/pipeline_repository.dart';
 import '../../../data/models/job.dart';
 import '../../auth/state/auth_notifier.dart';
+import '../services/job_trust_guard.dart';
 
 @immutable
 class JobsState {
@@ -130,18 +131,60 @@ class JobsNotifier extends Notifier<JobsState> {
     );
   }
 
+  Future<void> saveForLater(Job job, {String label = ''}) async {
+    final id = job.id.trim();
+    if (id.isEmpty) return;
+
+    state = state.copyWith(
+      savedIds: {...state.savedIds, id},
+      lastMessage: label.isEmpty ? 'Saved for later' : 'Saved $label for later',
+    );
+
+    final user = ref.read(authProvider).appUser;
+    final uid = user?.uid;
+    if (uid == null || user!.isGuest) return;
+
+    final alreadyInPipeline = state.cards.any((c) => c.job.id == id);
+    if (alreadyInPipeline) return;
+
+    try {
+      final trust = evaluateJobTrust(job);
+
+      await _repository.createCard(
+        uid: uid,
+        job: job,
+        category: job.category,
+        matchScore: job.matchScore,
+        agentAction: job.agentAction.isEmpty
+            ? 'Saved for later from job results.'
+            : job.agentAction,
+        agentJustification: job.agentJustification.isEmpty
+            ? (job.why.isEmpty ? 'Saved for later.' : job.why)
+            : job.agentJustification,
+        matchedSkills: job.skills,
+        missingSkills: job.missingSkills,
+        trustRiskLevel: trust.riskLevel,
+        trustRiskLabel: trust.riskLabel,
+        trustSignalsCount: trust.signalsCount,
+        trustSignals: trust.signals,
+        trustSafeNextStep: trust.safeNextStep,
+      );
+    } catch (e) {
+      debugPrint('save for later failed: $e');
+      state = state.copyWith(lastMessage: 'Could not save this role');
+    }
+  }
+
   void hide(String id, {String label = ''}) {
     state = state.copyWith(
       hiddenIds: {...state.hiddenIds, id},
-      dismissedIds: {...state.dismissedIds, id},
       lastMessage: label.isEmpty ? 'Hidden' : 'Hidden $label',
     );
   }
 
   void unhide(String id) {
     final h = {...state.hiddenIds}..remove(id);
-    final d = {...state.dismissedIds}..remove(id);
-    state = state.copyWith(hiddenIds: h, dismissedIds: d);
+    state = state.copyWith(hiddenIds: h);
   }
 
   Future<void> dismiss(String id, {String label = ''}) async {
@@ -152,12 +195,9 @@ class JobsNotifier extends Notifier<JobsState> {
     final user = ref.read(authProvider).appUser;
     final uid = user?.uid;
     if (uid == null || user!.isGuest) return;
-    final card = state.cards.firstWhere(
-      (c) => c.job.id == id,
-      orElse: () => state.cards.isEmpty
-          ? throw StateError('No card $id')
-          : state.cards.first,
-    );
+    final card = state.cards.where((c) => c.job.id == id).firstOrNull;
+    if (card == null) return;
+
     try {
       await _repository.dismiss(uid, card.id);
     } catch (e) {
@@ -168,6 +208,56 @@ class JobsNotifier extends Notifier<JobsState> {
   void undismiss(String id) {
     final next = {...state.dismissedIds}..remove(id);
     state = state.copyWith(dismissedIds: next);
+  }
+
+  JobTrustGuardResult _trustForCard(PipelineCard card) {
+    if (card.trustRiskLevel == 'unchecked') {
+      return evaluateJobTrust(card.job);
+    }
+
+    return JobTrustGuardResult(
+      riskLevel: card.trustRiskLevel,
+      riskLabel: card.trustRiskLabel,
+      signals: card.trustSignals,
+      safeNextStep: card.trustSafeNextStep,
+    );
+  }
+
+  Future<void> markDraftedJob(Job job, {String? resumeId}) async {
+    final jobId = job.id.trim();
+    if (jobId.isEmpty) return;
+
+    final card = state.cards.where((c) => c.job.id == jobId).firstOrNull;
+    if (card != null) {
+      await markDraftedByJobId(jobId, resumeId: resumeId);
+      return;
+    }
+
+    final user = ref.read(authProvider).appUser;
+    final uid = user?.uid;
+    if (uid == null || user!.isGuest) return;
+
+    try {
+      final trust = evaluateJobTrust(job);
+
+      await _applications.createApplication(
+        uid: uid,
+        job: job,
+        resumeId: resumeId,
+        trustRiskLevel: trust.riskLevel,
+        trustRiskLabel: trust.riskLabel,
+        trustSignalsCount: trust.signalsCount,
+        trustSignals: trust.signals,
+        trustSafeNextStep: trust.safeNextStep,
+      );
+
+      state = state.copyWith(
+        lastMessage: '${job.company} moved to Applications',
+      );
+    } catch (e) {
+      debugPrint('draft application tracking failed: $e');
+      state = state.copyWith(lastMessage: 'Could not track this draft');
+    }
   }
 
   /// Completes the active pipeline card after the user reviewed/saved an
@@ -182,10 +272,17 @@ class JobsNotifier extends Notifier<JobsState> {
     if (card == null) return;
 
     try {
+      final trust = _trustForCard(card);
+
       await _applications.createApplication(
         uid: uid,
         job: card.job,
         resumeId: resumeId,
+        trustRiskLevel: trust.riskLevel,
+        trustRiskLabel: trust.riskLabel,
+        trustSignalsCount: trust.signalsCount,
+        trustSignals: trust.signals,
+        trustSafeNextStep: trust.safeNextStep,
       );
       await _repository.approve(uid, card.id);
       state = state.copyWith(
@@ -207,9 +304,16 @@ class JobsNotifier extends Notifier<JobsState> {
     final card = state.cards.where((c) => c.job.id == jobId).firstOrNull;
     if (card == null) return;
     try {
+      final trust = _trustForCard(card);
+
       final appId = await _applications.createApplication(
         uid: uid,
         job: card.job,
+        trustRiskLevel: trust.riskLevel,
+        trustRiskLabel: trust.riskLabel,
+        trustSignalsCount: trust.signalsCount,
+        trustSignals: trust.signals,
+        trustSafeNextStep: trust.safeNextStep,
       );
       // Approving from the agent-pipeline screen means "the user accepts
       // this draft and intends to send it" — flip sent_at immediately. For

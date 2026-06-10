@@ -11,6 +11,7 @@ import '../../auth/state/auth_notifier.dart';
 import '../../notifications/models/app_notification.dart';
 import '../../notifications/state/notifications_notifier.dart';
 import '../../jobs/state/jobs_notifier.dart';
+import '../../resumes/models/resume_integrity_result.dart';
 import '../../resumes/services/resume_parser_service.dart';
 import '../../resumes/services/resume_tailor_orchestrator.dart';
 import '../../resumes/state/resume_notifier.dart';
@@ -22,6 +23,7 @@ import '../services/anthropic_chat_service.dart';
 import '../services/chat_history_repository.dart';
 import '../tools/builtin_tools.dart';
 import '../tools/tool_registry.dart';
+import 'dart:typed_data';
 
 /// The active [AgentService] for the app — Claude via the tool-use loop.
 /// Requires an `ANTHROPIC_API_KEY`; without one the agent surfaces an error
@@ -32,8 +34,8 @@ final agentServiceProvider = Provider<AgentService>((ref) {
   return AnthropicChatService(registry: registry);
 });
 
-/// Persists the text-only transcript so chats survive app restarts. Scoped
-/// to the signed-in user's Firestore subtree.
+/// Persists the recoverable full chat UI snapshot so chats survive app
+/// restarts. Scoped to the signed-in user's Firestore subtree.
 final chatHistoryRepositoryProvider = Provider<ChatHistoryRepository>(
   (ref) => ChatHistoryRepository(),
 );
@@ -97,29 +99,38 @@ class AgentChatState {
 class AgentChatNotifier extends Notifier<AgentChatState> {
   late AgentService _service;
   late ChatHistoryRepository _history;
+  late ResumesRepository _resumesRepository;
   late ResumeTailorOrchestrator _orchestrator;
   StreamSubscription<AgentEvent>? _activeSub;
   AgentTurn? _activeTurn;
+  Timer? _persistDebounce;
   int _seq = 0;
   bool _hydrating = false;
+  bool _persistenceReady = false;
   bool _serviceReady = false;
   bool _threadPipelineMarkedComplete = false;
+  String? _pendingIntegrityRepairBlockId;
+  String? _activeIntegrityRepairSourceBlockId;
 
   @override
   AgentChatState build() {
     _service = ref.watch(agentServiceProvider);
     _serviceReady = true;
     _history = ref.watch(chatHistoryRepositoryProvider);
+    _resumesRepository = ResumesRepository();
     _orchestrator = ResumeTailorOrchestrator(
-      resumesRepository: ResumesRepository(),
+      resumesRepository: _resumesRepository,
       jobsRepository: JobsRepository(),
       parser: ResumeParserService(),
     );
+    _persistenceReady = true;
     _seq = 0;
     _threadPipelineMarkedComplete = false;
     ref.onDispose(() {
       _serviceReady = false;
+      _persistenceReady = false;
       _activeSub?.cancel();
+      _persistDebounce?.cancel();
     });
 
     // Hydrate the most recent saved conversation in the background. We start
@@ -164,14 +175,23 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
           current.threadJob == null;
       if (!isUntouched) return;
       final mostRecent = convos.first;
-      final saved = await _history.load(uid, mostRecent.id);
-      if (saved.isEmpty) return;
+      final saved = await _history.loadConversation(uid, mostRecent.id);
+      if (saved.items.isEmpty) return;
       state = AgentChatState(
-        items: _restoreHistoryItems(saved),
+        items: _restoreHistoryItems(saved.items),
         conversationId: mostRecent.id,
+        threadJob: saved.threadJob,
       );
       // Make sure subsequent IDs don't collide with hydrated ones.
-      _seq = saved.length + 1;
+      _seq = saved.items.length + 1;
+      ref
+          .read(resumeProvider.notifier)
+          .setSelectedResumes(_resumeIdsFromHistory(saved.items));
+      _service.restoreConversationContext(
+        saved.items,
+        threadJob: saved.threadJob,
+      );
+      unawaited(_restorePreviewBytesFromStorage());
     } catch (_) {
       // Best-effort hydration; failures are silent so a flaky network never
       // blocks the chat from working.
@@ -180,8 +200,21 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     }
   }
 
-  void _persist() {
-    if (_hydrating) return;
+  /// Debounced snapshot write for high-frequency UI changes such as streamed
+  /// blocks, tool completion updates, and card-state transitions.
+  void _schedulePersist() {
+    if (_hydrating || !_persistenceReady) return;
+    _persistDebounce?.cancel();
+    _persistDebounce = Timer(const Duration(milliseconds: 450), _persistNow);
+  }
+
+  /// Immediate snapshot write for durable boundaries: user sends a prompt,
+  /// a turn ends/fails/stops, or the user settles a card/action.
+  void _persistNow() {
+    _persistDebounce?.cancel();
+    _persistDebounce = null;
+
+    if (_hydrating || !_persistenceReady) return;
     final uid = _uid;
     if (uid == null) return;
 
@@ -195,8 +228,81 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
         state.conversationId,
         items: items,
         title: _deriveTitle(items, fallbackJob: state.threadJob),
+        threadJob: state.threadJob,
       ),
     );
+  }
+
+  Future<void> _storePreviewBytes(AgentBlock block, List<int> bytes) async {
+    final uid = _uid;
+    if (uid == null || bytes.isEmpty) return;
+
+    try {
+      final path = await _resumesRepository.uploadConversationPreview(
+        uid: uid,
+        conversationId: state.conversationId,
+        blockId: block.id,
+        bytes: Uint8List.fromList(bytes),
+      );
+
+      switch (block) {
+        case ProposedEditsBlock():
+          block.previewStoragePath = path;
+        case ResumeDraftBlock():
+          block.previewStoragePath = path;
+        default:
+          return;
+      }
+    } catch (e) {
+      debugPrint('chat preview upload failed: $e');
+    }
+  }
+
+  Future<void> _restorePreviewBytesFromStorage() async {
+    final uid = _uid;
+    if (uid == null) return;
+
+    var changed = false;
+
+    for (final item in state.items) {
+      if (item is! AgentTurn) continue;
+
+      for (final block in item.blocks) {
+        if (block is ProposedEditsBlock) {
+          final path = block.previewStoragePath;
+          if (block.previewBytes != null || path == null || path.isEmpty) {
+            continue;
+          }
+
+          final bytes = await _resumesRepository.downloadConversationPreview(
+            path,
+          );
+          if (bytes == null || bytes.isEmpty) continue;
+
+          block.previewBytes = bytes;
+          changed = true;
+          continue;
+        }
+
+        if (block is ResumeDraftBlock) {
+          final path = block.previewStoragePath;
+          if (block.previewBytes != null || path == null || path.isEmpty) {
+            continue;
+          }
+
+          final bytes = await _resumesRepository.downloadConversationPreview(
+            path,
+          );
+          if (bytes == null || bytes.isEmpty) continue;
+
+          block.previewBytes = bytes;
+          changed = true;
+        }
+      }
+    }
+
+    if (!changed) return;
+    state = state.copyWith(items: [...state.items]);
   }
 
   List<ChatItem> _itemsForHistory(List<ChatItem> items) {
@@ -391,23 +497,9 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     );
   }
 
-  AgentTurn _buildHistoryNotice() {
-    return AgentTurn(
-      id: 'turn-history-notice',
-      blocks: [
-        TextBlock(
-          id: 'history-notice-text',
-          text:
-              'Restored transcript. Tool cards, resume diffs, and email review buttons are saved as text summaries in history. Continue below or start a new chat for a live workflow.',
-        ),
-      ],
-      isStreaming: false,
-    );
-  }
-
   List<ChatItem> _restoreHistoryItems(List<ChatItem> saved) {
     if (saved.isEmpty) return [_buildOpener(null)];
-    return [_buildHistoryNotice(), ...saved];
+    return [...saved];
   }
 
   /// Scopes the chat to [job] and replaces the opener with a contextual
@@ -420,6 +512,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
       return;
     }
 
+    _persistNow();
     _service.resetConversation();
     _threadPipelineMarkedComplete = false;
     state = AgentChatState(
@@ -433,6 +526,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
   /// to history (if it had content), so nothing is lost — no confirm needed.
   void newConversation() {
     if (state.isStreaming) return;
+    _persistNow();
     _service.resetConversation();
     _threadPipelineMarkedComplete = false;
     state = AgentChatState(
@@ -441,27 +535,83 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     );
   }
 
+  /// Clears the live chat after account reset without saving the old transcript.
+  ///
+  /// Account reset already deletes Firestore conversations. This method only
+  /// clears the in-memory chat/provider state so a deleted conversation does not
+  /// remain visible until app restart.
+  void resetAfterAccountReset() {
+    _activeSub?.cancel();
+    _activeSub = null;
+    _activeTurn = null;
+    _persistDebounce?.cancel();
+    _persistDebounce = null;
+
+    _service.resetConversation();
+    _threadPipelineMarkedComplete = false;
+    _pendingIntegrityRepairBlockId = null;
+    _activeIntegrityRepairSourceBlockId = null;
+    _seq = 0;
+
+    ref.read(composerDraftProvider.notifier).state = null;
+    ref.read(resumeProvider.notifier).clearSelectedResumes();
+    _runningTask.dismiss();
+
+    state = AgentChatState(
+      items: [_buildOpener(null)],
+      conversationId: _newConversationId(),
+    );
+  }
+
+  /// Starts a brand-new generic chat and immediately sends [prompt].
+  ///
+  /// Used by entry points like Resumes → Build with AI that must not append
+  /// their prompt into a restored/history conversation.
+  void startFreshPrompt({
+    required String prompt,
+    List<ChatAttachment> attachments = const [],
+  }) {
+    if (state.isStreaming) return;
+
+    _persistNow();
+    _service.resetConversation();
+    _threadPipelineMarkedComplete = false;
+    state = AgentChatState(
+      items: [_buildOpener(null)],
+      conversationId: _newConversationId(),
+    );
+
+    sendPrompt(prompt: prompt, attachments: attachments);
+  }
+
   /// Loads a saved conversation from history into the live transcript.
   Future<void> switchConversation(String conversationId) async {
     if (state.isStreaming) return;
     if (conversationId == state.conversationId) return;
     final uid = _uid;
     if (uid == null) return;
+    _persistNow();
     _service.resetConversation();
     _threadPipelineMarkedComplete = false;
-    final saved = await _history.load(uid, conversationId);
+    final saved = await _history.loadConversation(uid, conversationId);
     state = AgentChatState(
-      items: _restoreHistoryItems(saved),
+      items: _restoreHistoryItems(saved.items),
       conversationId: conversationId,
+      threadJob: saved.threadJob,
     );
     // Make sure subsequent IDs don't collide with loaded ones.
-    _seq = saved.length + 1;
+    _seq = saved.items.length + 1;
     // Continue the chat with the resume it was already using — sync the
     // attachment selection to that conversation's latest user message so
     // the "RESUME IN USE" card (and the next send) stay consistent.
     ref
         .read(resumeProvider.notifier)
-        .setSelectedResumes(_resumeIdsFromHistory(saved));
+        .setSelectedResumes(_resumeIdsFromHistory(saved.items));
+    _service.restoreConversationContext(
+      saved.items,
+      threadJob: saved.threadJob,
+    );
+    unawaited(_restorePreviewBytesFromStorage());
   }
 
   /// Resume ids attached to the most recent [UserMessage] in a loaded
@@ -483,8 +633,29 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     if (uid == null) return;
     await _history.delete(uid, conversationId);
     if (conversationId == state.conversationId) {
-      newConversation();
+      _service.resetConversation();
+      _threadPipelineMarkedComplete = false;
+      state = AgentChatState(
+        items: [_buildOpener(null)],
+        conversationId: _newConversationId(),
+      );
     }
+  }
+
+  Future<void> renameConversation(String conversationId, String title) async {
+    final uid = _uid;
+    final cleanTitle = title.trim();
+    if (uid == null || cleanTitle.isEmpty) return;
+    await _history.rename(uid, conversationId, title: cleanTitle);
+  }
+
+  Future<void> setConversationPinned(
+    String conversationId, {
+    required bool pinned,
+  }) async {
+    final uid = _uid;
+    if (uid == null) return;
+    await _history.setPinned(uid, conversationId, pinned: pinned);
   }
 
   String _nextId(String prefix) {
@@ -506,6 +677,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     final turn = AgentTurn(id: _nextId('turn'));
     _activeTurn = turn;
     state = state.copyWith(items: [...next, turn], isStreaming: true);
+    _persistNow();
     _runningTask.start(
       'Prompt is running…',
       // Stay quiet on the agent chat and the resume-flow surfaces — the user
@@ -537,10 +709,15 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     _activeTurn = turn;
 
     state = state.copyWith(items: [...state.items, turn], isStreaming: true);
+    _persistNow();
 
     _activeSub = _service
         .runPrompt(prompt: clean, threaded: true)
-        .listen(_handleEvent, onDone: _finishTurn);
+        .listen(
+          _handleEvent,
+          onDone: _finishTurn,
+          onError: (Object e) => _failActiveTurn('Something went wrong. $e'),
+        );
   }
 
   void _continueAfterSavedResume(ProposedEditsBlock block) {
@@ -550,6 +727,10 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     final sourceResumeId =
         block.resolvedResumeId ?? block.resumeId ?? 'unknown';
     final jobId = block.jobId ?? 'unknown';
+    final integrity = block.integrity;
+    final integrityStatus = integrity?.status.name ?? 'not_run';
+    final integritySummary =
+        integrity?.summary ?? 'No Resume Integrity Check result was attached.';
 
     _startContinuationPrompt('''
 The user approved the proposed resume edits and saved the tailored resume.
@@ -560,9 +741,14 @@ Approval result:
 - job_id: $jobId
 - applied_count: ${block.appliedCount}
 - skipped_count: ${block.skippedCount}
+- integrity_status: $integrityStatus
+- integrity_summary: $integritySummary
 
 Continue the original application workflow from here without asking the user to repeat the task.
 Use tailored_resume_id as the resume_id for the next steps.
+If integrity_status is verified, continue normally.
+If integrity_status is needsReview, mention that the user saved despite warnings and do not claim the resume is guaranteed safe.
+If integrity_status is blocked, stop and ask the user to review the resume integrity issue; this should be unusual because saving is disabled.
 Now offer outreach: call ask_user to ask whether they want you to draft recruiter outreach for this role, with
 chips like ["Draft recruiter outreach", "Not yet", "Save for later"]. Only call draft_email after the user confirms.
 If they confirm and recipient information is missing, call lookup_hiring_manager or ask_user.
@@ -577,6 +763,9 @@ Do not call send_email. Sending still requires explicit user approval.
       case BlockAdded(:final block):
         turn.blocks.add(block);
         _reflectRunningTask(block);
+        if (block is ProposedEditsBlock) {
+          _markIntegrityRepairReplacement(block);
+        }
         // A freshly-tailored edits card arrives already "applied" but with no
         // rendered PDF — render it now so its preview has bytes to show.
         if (block is ProposedEditsBlock &&
@@ -597,12 +786,25 @@ Do not call send_email. Sending still requires explicit user approval.
         :final status,
         :final detail,
       ):
+        ToolCallBlock? completedTool;
+
         for (final b in turn.blocks) {
           if (b is ToolCallBlock && b.id == blockId) {
             b.status = status;
             b.resultSummary = summary;
             if (detail != null) b.detail = detail;
+            completedTool = b;
             break;
+          }
+        }
+
+        if (status == ToolCallStatus.done && completedTool != null) {
+          final toolName = completedTool.name;
+          if (toolName == 'save_to_pipeline' || toolName == 'save_to_tracker') {
+            final jobId = _jobIdFromToolDetail(completedTool.detail);
+            if (jobId != null && jobId.isNotEmpty) {
+              _markJobHandledEverywhere(jobId);
+            }
           }
         }
       case JobsBlockUpdated(:final blockId, :final jobs):
@@ -627,6 +829,7 @@ Do not call send_email. Sending still requires explicit user approval.
     _mirrorToInbox(event, turn);
     // Rebuild the outer items list so Riverpod sees a new reference.
     state = state.copyWith(items: [...state.items]);
+    _schedulePersist();
   }
 
   /// Mirrors *actionable* agent events onto the inbox. Only events that
@@ -913,7 +1116,69 @@ Use the user's answer to continue:
     _activeSub = null;
     state = state.copyWith(items: [...state.items], isStreaming: false);
     _runningTask.complete();
-    _persist();
+    _clearActiveIntegrityRepairIfStalled();
+    _persistNow();
+    _startPendingIntegrityRepair();
+  }
+
+  void _markIntegrityRepairReplacement(ProposedEditsBlock replacement) {
+    final sourceId = _activeIntegrityRepairSourceBlockId;
+    if (sourceId == null || replacement.id == sourceId) return;
+
+    final source = _findProposedEdits(sourceId);
+    if (source != null) {
+      source.integrityAutoRepairing = false;
+      source.supersededByBlockId = replacement.id;
+      source.applyError = null;
+    }
+
+    replacement.integrityRepairAttempted = true;
+    replacement.integrityAutoRepairing = false;
+    _activeIntegrityRepairSourceBlockId = null;
+    _pendingIntegrityRepairBlockId = null;
+  }
+
+  void _clearActiveIntegrityRepairIfStalled({String? message}) {
+    final sourceId = _activeIntegrityRepairSourceBlockId;
+    if (sourceId == null) return;
+
+    _activeIntegrityRepairSourceBlockId = null;
+    final source = _findProposedEdits(sourceId);
+    if (source == null) return;
+
+    source.integrityAutoRepairing = false;
+    source.applyError ??=
+        message ??
+        'Syncra could not produce a safer revision. Try Fix with Syncra again.';
+    state = state.copyWith(items: [...state.items]);
+  }
+
+  void _clearPendingIntegrityRepair({String? message}) {
+    final pendingId = _pendingIntegrityRepairBlockId;
+    if (pendingId == null) return;
+
+    _pendingIntegrityRepairBlockId = null;
+    final source = _findProposedEdits(pendingId);
+    if (source == null) return;
+
+    source.integrityAutoRepairing = false;
+    source.applyError ??=
+        message ??
+        'Syncra could not start a safer revision. Try Fix with Syncra again.';
+    state = state.copyWith(items: [...state.items]);
+  }
+
+  void _startPendingIntegrityRepair() {
+    final pendingId = _pendingIntegrityRepairBlockId;
+    if (pendingId == null || state.isStreaming) return;
+
+    final block = _findProposedEdits(pendingId);
+    if (block == null || !block.integrityAutoRepairing) {
+      _pendingIntegrityRepairBlockId = null;
+      return;
+    }
+
+    _beginIntegrityRepair(block);
   }
 
   void _failActiveTurn(String message) {
@@ -927,7 +1192,14 @@ Use the user's answer to continue:
     _activeSub = null;
     state = state.copyWith(items: [...state.items], isStreaming: false);
     _runningTask.fail();
-    _persist();
+    _clearPendingIntegrityRepair(
+      message: 'Syncra could not start the safer revision.',
+    );
+    _clearActiveIntegrityRepairIfStalled(
+      message:
+          'Syncra could not finish the safer revision. Try Fix with Syncra again.',
+    );
+    _persistNow();
   }
 
   void stopStreaming() {
@@ -939,7 +1211,13 @@ Use the user's answer to continue:
     _activeSub = null;
     state = state.copyWith(items: [...state.items], isStreaming: false);
     _runningTask.dismiss();
-    _persist();
+    _clearPendingIntegrityRepair(
+      message: 'Safer revision stopped before Syncra could start it.',
+    );
+    _clearActiveIntegrityRepairIfStalled(
+      message: 'Safer revision stopped before Syncra could finish it.',
+    );
+    _persistNow();
   }
 
   /// Drops the most recent [AgentTurn] and re-runs the user prompt that
@@ -971,6 +1249,7 @@ Use the user's answer to continue:
     block.state = ActionState.accepted;
     ref.read(notificationsProvider.notifier).markReadByTargetBlock(blockId);
     state = state.copyWith(items: [...state.items]);
+    _persistNow();
 
     _continueAfterAcceptedProposal(block);
   }
@@ -1020,12 +1299,37 @@ Use the user's answer to continue:
   ''');
   }
 
+  void _continueAfterRestoredInputAnswer(
+    InputRequestBlock block,
+    String answer,
+  ) {
+    if (!_serviceReady) return;
+
+    _startContinuationPrompt('''
+The user answered an input request from a restored or resumed Syncra chat.
+
+Question:
+${block.question}
+
+User answer:
+$answer
+
+Continue the workflow from here without asking the same question again.
+Use the answer as context for the next safe step.
+Use tools when needed.
+If building a resume from scratch, continue collecting the missing resume details or call build_resume once enough information exists.
+If the next step needs user approval, call ask_user with 2-3 clear suggestion chips.
+Do not call send_email.
+''');
+  }
+
   void dismissProposal(String blockId) {
     final block = _findProposal(blockId);
     if (block == null) return;
     block.state = ActionState.dismissed;
     ref.read(notificationsProvider.notifier).markReadByTargetBlock(blockId);
     state = state.copyWith(items: [...state.items]);
+    _persistNow();
   }
 
   ActionProposalBlock? _findProposal(String blockId) {
@@ -1043,6 +1347,26 @@ Use the user's answer to continue:
   ProposedEditsBlock? proposedEditsBlock(String blockId) =>
       _findProposedEdits(blockId);
 
+  /// Starts an agentic revision of a rendered tailored resume from the preview
+  /// screen. The agent must call `tailor_resume` again and stop at a replacement
+  /// diff, preserving the same source resume and job context.
+  bool requestTailoredResumeRevision(String blockId) {
+    final block = _findProposedEdits(blockId);
+    if (block == null) return false;
+    if (block.state != ProposedEditsState.applied) return false;
+    if (block.integrityAutoRepairing) return false;
+    if (!_serviceReady || state.isStreaming) return false;
+
+    block.integrityRepairAttempted = true;
+    block.integrityAutoRepairing = true;
+    block.applyError = null;
+    block.supersededByBlockId = null;
+    state = state.copyWith(items: [...state.items]);
+    _persistNow();
+
+    return _beginIntegrityRepair(block);
+  }
+
   ProposedEditsBlock? _findProposedEdits(String blockId) {
     for (final item in state.items) {
       if (item is! AgentTurn) continue;
@@ -1051,6 +1375,92 @@ Use the user's answer to continue:
       }
     }
     return null;
+  }
+
+  void _maybeStartIntegrityRepair(ProposedEditsBlock block) {
+    final integrity = block.integrity;
+    if (integrity == null) return;
+    if (integrity.status == ResumeIntegrityStatus.verified) return;
+    if (block.integrityRepairAttempted || block.integrityAutoRepairing) return;
+    if (block.isSaved) return;
+    if (!_serviceReady) return;
+
+    block.integrityRepairAttempted = true;
+    block.integrityAutoRepairing = true;
+    block.applyError = null;
+    block.supersededByBlockId = null;
+    state = state.copyWith(items: [...state.items]);
+    _persistNow();
+
+    _beginIntegrityRepair(block);
+  }
+
+  bool _beginIntegrityRepair(ProposedEditsBlock block) {
+    if (!_serviceReady) return false;
+    if (state.isStreaming) {
+      _pendingIntegrityRepairBlockId = block.id;
+      return true;
+    }
+
+    _pendingIntegrityRepairBlockId = null;
+    _activeIntegrityRepairSourceBlockId = block.id;
+    _startContinuationPrompt(_tailoredResumeRevisionPrompt(block));
+    return true;
+  }
+
+  String _tailoredResumeRevisionPrompt(ProposedEditsBlock block) {
+    final resolvedResumeId =
+        block.resolvedResumeId ?? block.resumeId ?? 'unknown';
+    final sourceResumeId = block.resumeId ?? resolvedResumeId;
+    final jobId = block.jobId ?? 'unknown';
+    final integrity = block.integrity;
+    final integrityStatus = integrity?.status.name ?? 'not_run';
+    final integritySummary =
+        integrity?.summary ?? 'No Resume Integrity Check result was attached.';
+    final trigger = integrity == null
+        ? 'The user chose to keep editing the tailored resume.'
+        : 'The Resume Integrity Check found issues in the tailored resume.';
+
+    return '''
+$trigger
+
+Revision target:
+- source_resume_id: $sourceResumeId
+- resolved_resume_id: $resolvedResumeId
+- job_id: $jobId
+- applied_count: ${block.appliedCount}
+- skipped_count: ${block.skippedCount}
+
+Resume Integrity Check:
+- status: $integrityStatus
+- summary: $integritySummary
+
+Integrity signals:
+${_integritySignalsText(block)}
+
+Task:
+Call `tailor_resume` again for the same source resume and job. Use the integrity signals to produce a safer replacement proposed-edits block.
+
+Hard constraints:
+- Preserve original resume facts. Do not add unsupported companies, roles, dates, degrees, certifications, tools, skills, metrics, years of experience, or achievements.
+- If a job requirement is not supported by the resume, learned_facts, or explicit user context, do not insert it as a skill or achievement.
+- Do not create duplicate skills or repeated bracketed skill lists. If a skill already exists, leave it alone unless you are improving that exact item.
+- Use `tailor_resume`; do not call `apply_resume_edits`, `draft_email`, or `send_email`.
+- Stop after `tailor_resume` returns so the user can review the replacement diff.
+''';
+  }
+
+  String _integritySignalsText(ProposedEditsBlock block) {
+    final signals = block.integrity?.signals ?? const [];
+    if (signals.isEmpty) return '- none';
+
+    return signals
+        .take(6)
+        .map(
+          (signal) =>
+              '- ${signal.severity.name}: ${signal.label} - ${signal.detail}',
+        )
+        .join('\n');
   }
 
   /// Settles an [EmailDraftBlock] once the user has saved it to Gmail Drafts
@@ -1066,8 +1476,11 @@ Use the user's answer to continue:
     block.savedDraftId = draftId;
 
     state = state.copyWith(items: [...state.items]);
-
+    if (block.jobId != null && block.jobId!.trim().isNotEmpty) {
+      _markJobHandledEverywhere(block.jobId!);
+    }
     _markPipelineDraftProcessed(block);
+    _persistNow();
   }
 
   /// Settles an [EmailDraftBlock] once the user actually sent it from the
@@ -1132,6 +1545,7 @@ Use the user's answer to continue:
     if (block.decisions[editIndex] == decision) return;
     block.decisions[editIndex] = decision;
     state = state.copyWith(items: [...state.items]);
+    _schedulePersist();
   }
 
   /// Renders the tailored PDF for the accepted edits and moves the card into a
@@ -1150,9 +1564,11 @@ Use the user's answer to continue:
     if (!_serviceReady) {
       block.appliedCount = block.acceptedCount;
       block.skippedCount = 0;
+      block.integrity = null;
       block.applyError = null;
       block.state = ProposedEditsState.applied;
       state = state.copyWith(items: [...state.items]);
+      _persistNow();
       return;
     }
 
@@ -1160,12 +1576,15 @@ Use the user's answer to continue:
     if (uid == null) {
       block.applyError = 'Sign in to apply resume edits.';
       state = state.copyWith(items: [...state.items]);
+      _persistNow();
       return;
     }
 
     block.state = ProposedEditsState.applying;
     block.applyError = null;
+    block.integrity = null;
     state = state.copyWith(items: [...state.items]);
+    _schedulePersist();
 
     final error = await _renderEditsPreview(block, uid);
     if (error == null) {
@@ -1177,6 +1596,10 @@ Use the user's answer to continue:
       block.applyError = error;
     }
     state = state.copyWith(items: [...state.items]);
+    _persistNow();
+    if (error == null) {
+      _maybeStartIntegrityRepair(block);
+    }
   }
 
   /// Renders the tailored PDF for [block]'s accepted edits and stores the
@@ -1210,7 +1633,9 @@ Use the user's answer to continue:
       block.previewResume = rendered.resume;
       block.appliedCount = rendered.appliedCount;
       block.skippedCount = rendered.skippedCount;
+      block.integrity = rendered.integrity;
       block.resolvedResumeId = resumeId;
+      await _storePreviewBytes(block, rendered.bytes);
       return null;
     } catch (e) {
       return _shortError(e);
@@ -1239,7 +1664,9 @@ Use the user's answer to continue:
 
     block.state = ProposedEditsState.applying;
     block.applyError = null;
+    block.integrity = null;
     state = state.copyWith(items: [...state.items]);
+    _schedulePersist();
 
     final error = await _renderEditsPreview(block, uid);
     if (error == null) {
@@ -1249,6 +1676,10 @@ Use the user's answer to continue:
       block.applyError = error;
     }
     state = state.copyWith(items: [...state.items]);
+    _persistNow();
+    if (error == null) {
+      _maybeStartIntegrityRepair(block);
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -1279,13 +1710,16 @@ Use the user's answer to continue:
     if (block.previewBytes != null) return;
 
     try {
-      block.previewBytes = await _orchestrator.renderResume(block.resume);
+      final bytes = await _orchestrator.renderResume(block.resume);
+      block.previewBytes = bytes;
+      await _storePreviewBytes(block, bytes);
       block.error = null;
     } catch (e) {
       block.error = _shortError(e);
     }
     block.state = ResumeDraftState.ready;
     state = state.copyWith(items: [...state.items]);
+    _persistNow();
   }
 
   /// Persists a previewed from-scratch resume as a new `source: manual` base
@@ -1301,6 +1735,7 @@ Use the user's answer to continue:
     if (uid == null) {
       block.error = 'Sign in to save resumes.';
       state = state.copyWith(items: [...state.items]);
+      _persistNow();
       return;
     }
 
@@ -1317,9 +1752,11 @@ Use the user's answer to continue:
           .read(resumeProvider.notifier)
           .primeBytes(saved.id, block.previewBytes!);
       state = state.copyWith(items: [...state.items]);
+      _persistNow();
     } catch (e) {
       block.error = _shortError(e);
       state = state.copyWith(items: [...state.items]);
+      _persistNow();
     }
   }
 
@@ -1332,11 +1769,26 @@ Use the user's answer to continue:
     if (block.state != ProposedEditsState.applied) return;
     if (block.previewBytes == null || block.previewResume == null) return;
     if (block.isSaved) return;
+    if (block.integrityAutoRepairing) {
+      block.applyError =
+          'Syncra is repairing this resume after the integrity check. Save will unlock when the safer revision is ready.';
+      state = state.copyWith(items: [...state.items]);
+      _persistNow();
+      return;
+    }
+    if (block.integrity?.isBlocked == true) {
+      block.applyError =
+          'Resume Integrity Check blocked saving: ${block.integrity!.summary}';
+      state = state.copyWith(items: [...state.items]);
+      _persistNow();
+      return;
+    }
 
     final uid = _uid;
     if (uid == null) {
       block.applyError = 'Sign in to save resumes.';
       state = state.copyWith(items: [...state.items]);
+      _persistNow();
       return;
     }
 
@@ -1355,11 +1807,13 @@ Use the user's answer to continue:
           .read(resumeProvider.notifier)
           .primeBytes(saved.id, block.previewBytes!);
       state = state.copyWith(items: [...state.items]);
+      _persistNow();
 
       _continueAfterSavedResume(block);
     } catch (e) {
       block.applyError = _shortError(e);
       state = state.copyWith(items: [...state.items]);
+      _persistNow();
     }
   }
 
@@ -1373,6 +1827,108 @@ Use the user's answer to continue:
     return raw.length > 120 ? '${raw.substring(0, 120)}…' : raw;
   }
 
+  void dismissJobInBlock(String blockId, String jobId) {
+    final block = _findJobsBlock(blockId);
+    if (block == null) return;
+
+    block.dismissJob(jobId);
+    state = state.copyWith(items: [...state.items]);
+    _persistNow();
+  }
+
+  void hideJobInBlock(String blockId, String jobId) {
+    final block = _findJobsBlock(blockId);
+    if (block == null) return;
+
+    block.hideJob(jobId);
+    state = state.copyWith(items: [...state.items]);
+    _persistNow();
+  }
+
+  void unhideAllJobsInBlock(String blockId) {
+    final block = _findJobsBlock(blockId);
+    if (block == null) return;
+
+    final hiddenIds = {...block.hiddenJobIds};
+    block.unhideAllJobs();
+
+    final jobsNotifier = ref.read(jobsProvider.notifier);
+    for (final id in hiddenIds) {
+      jobsNotifier.unhide(id);
+    }
+
+    state = state.copyWith(items: [...state.items]);
+    _persistNow();
+  }
+
+  void markJobHandledInBlock(String blockId, String jobId) {
+    final block = _findJobsBlock(blockId);
+    if (block == null) return;
+
+    block.markJobHandled(jobId);
+    state = state.copyWith(items: [...state.items]);
+    _persistNow();
+  }
+
+  void _markJobHandledEverywhere(String jobId) {
+    final clean = jobId.trim();
+    if (clean.isEmpty) return;
+
+    var changed = false;
+
+    for (final item in state.items) {
+      if (item is! AgentTurn) continue;
+
+      for (final block in item.blocks) {
+        if (block is JobsBlock &&
+            block.jobs.any((job) => job.id == clean) &&
+            !block.handledJobIds.contains(clean)) {
+          block.markJobHandled(clean);
+          changed = true;
+        }
+      }
+    }
+
+    final activeTurn = _activeTurn;
+    if (activeTurn != null) {
+      for (final block in activeTurn.blocks) {
+        if (block is JobsBlock &&
+            block.jobs.any((job) => job.id == clean) &&
+            !block.handledJobIds.contains(clean)) {
+          block.markJobHandled(clean);
+          changed = true;
+        }
+      }
+    }
+
+    if (!changed) return;
+
+    state = state.copyWith(items: [...state.items]);
+    _persistNow();
+  }
+
+  String? _jobIdFromToolDetail(String? detail) {
+    if (detail == null || detail.trim().isEmpty) return null;
+
+    final quoted = RegExp(r'"job_id"\s*:\s*"([^"]+)"').firstMatch(detail);
+    if (quoted != null) return quoted.group(1)?.trim();
+
+    final snake = RegExp(
+      r'job_id\s*[:=]\s*([A-Za-z0-9._-]+)',
+    ).firstMatch(detail);
+    return snake?.group(1)?.trim();
+  }
+
+  JobsBlock? _findJobsBlock(String blockId) {
+    for (final item in state.items) {
+      if (item is! AgentTurn) continue;
+      for (final block in item.blocks) {
+        if (block is JobsBlock && block.id == blockId) return block;
+      }
+    }
+    return null;
+  }
+
   /// Dismisses a [ProposedEditsBlock] without applying anything.
   void dismissProposedEdits(String blockId) {
     final block = _findProposedEdits(blockId);
@@ -1380,6 +1936,7 @@ Use the user's answer to continue:
     if (block.state != ProposedEditsState.reviewing) return;
     block.state = ProposedEditsState.dismissed;
     state = state.copyWith(items: [...state.items]);
+    _persistNow();
   }
 
   InputRequestBlock? _findInputRequest(String blockId) {
@@ -1405,6 +1962,7 @@ Use the user's answer to continue:
     block.answer = trimmed;
     ref.read(notificationsProvider.notifier).markReadByTargetBlock(blockId);
     state = state.copyWith(items: [...state.items]);
+    _persistNow();
 
     final continuation = block.continuationPrompt?.trim();
     if (continuation != null && continuation.isNotEmpty) {
@@ -1412,7 +1970,10 @@ Use the user's answer to continue:
       return;
     }
 
-    _service.provideUserAnswer(blockId, trimmed);
+    final handled = _service.provideUserAnswer(blockId, trimmed);
+    if (!handled) {
+      _continueAfterRestoredInputAnswer(block, trimmed);
+    }
   }
 }
 

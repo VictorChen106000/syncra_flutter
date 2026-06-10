@@ -5,14 +5,28 @@ class ConversationSummary {
     required this.id,
     required this.title,
     required this.updatedAt,
+    this.preview = '',
+    this.pinned = false,
   });
 
   /// Firestore document id under `users/{uid}/conversations`.
   final String id;
 
-  /// Short label, derived from the first user message.
+  /// Short label, derived from the first user message or a renamed title.
   final String title;
+
+  /// Latest useful transcript preview shown under the title in the drawer.
+  ///
+  /// Old Firestore documents do not have this field and fall back to an empty
+  /// string or a derived preview from recoverable items.
+  final String preview;
 
   /// Last time the conversation received a message — the history sort key.
   final DateTime updatedAt;
+
+  /// Whether this conversation should be surfaced above regular history.
+  ///
+  /// Old Firestore documents do not have this field and are treated as
+  /// unpinned.
+  final bool pinned;
 }

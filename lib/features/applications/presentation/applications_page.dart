@@ -9,8 +9,13 @@ import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../data/models/tracked_application.dart';
+import '../../../features/jobs/services/application_quality_meter.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/empty_state_card.dart';
+import '../../auth/models/user_profile.dart';
+import '../../auth/state/user_profile_notifier.dart';
+import '../services/application_bundle_summary.dart';
+import '../services/auto_apply_eligibility.dart';
 import '../state/applications_notifier.dart';
 import 'widgets/application_detail_sheet.dart';
 
@@ -34,6 +39,13 @@ class ApplicationsPage extends ConsumerWidget {
     final notifier = ref.read(applicationsProvider.notifier);
     final filtered = state.filtered;
     final allItems = state.items;
+    final profile = ref.watch(userProfileProvider);
+    final autoApplySettings =
+        profile?.autoApplySettings ?? const AutoApplySettings();
+    final autoApplySentToday = _sentTodayCount(allItems);
+    final bundleReviewCount = allItems
+        .where((app) => evaluateApplicationBundle(app).hasBlocker)
+        .length;
     final trustReviewCount = allItems
         .where((app) => app.needsTrustReview)
         .length;
@@ -58,6 +70,14 @@ class ApplicationsPage extends ConsumerWidget {
                 ),
                 children: [
                   _SummaryStrip(apps: allItems),
+                  if (bundleReviewCount > 0) ...[
+                    const SizedBox(height: 12),
+                    _BundleReviewBanner(
+                      count: bundleReviewCount,
+                      onTap: () =>
+                          notifier.setFilter(ApplicationsFilter.bundleReview),
+                    ),
+                  ],
                   if (trustReviewCount > 0) ...[
                     const SizedBox(height: 12),
                     _TrustReviewBanner(
@@ -99,6 +119,8 @@ class ApplicationsPage extends ConsumerWidget {
                       (entry) =>
                           _TrackerCard(
                                 app: entry.value,
+                                autoApplySettings: autoApplySettings,
+                                autoApplySentToday: autoApplySentToday,
                                 onTap: () => ApplicationDetailSheet.show(
                                   context,
                                   entry.value,
@@ -118,6 +140,19 @@ class ApplicationsPage extends ConsumerWidget {
       ),
     );
   }
+}
+
+int _sentTodayCount(List<TrackedApplication> apps) {
+  final now = DateTime.now();
+
+  return apps.where((app) {
+    final sentAt = app.sentAt;
+    if (sentAt == null) return false;
+
+    return sentAt.year == now.year &&
+        sentAt.month == now.month &&
+        sentAt.day == now.day;
+  }).length;
 }
 
 class _SummaryStrip extends StatelessWidget {
@@ -209,6 +244,72 @@ class _SummaryTile extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _BundleReviewBanner extends StatelessWidget {
+  const _BundleReviewBanner({required this.count, required this.onTap});
+
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final noun = count == 1 ? 'application bundle' : 'application bundles';
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: brand.warning.withValues(alpha: brand.isDark ? 0.18 : 0.11),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: brand.warning.withValues(alpha: 0.34)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: brand.warning.withValues(
+                    alpha: brand.isDark ? 0.22 : 0.14,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: brand.warning.withValues(alpha: 0.38),
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.inventory_2_outlined,
+                  size: 18,
+                  color: brand.warning,
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Text(
+                  '$count $noun need review',
+                  style: TextStyle(
+                    color: brand.ink,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    height: 1.25,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.arrow_forward_rounded, size: 18, color: brand.warning),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -378,11 +479,15 @@ class _EmptyFiltered extends StatelessWidget {
 class _TrackerCard extends StatelessWidget {
   const _TrackerCard({
     required this.app,
+    required this.autoApplySettings,
+    required this.autoApplySentToday,
     required this.onTap,
     required this.onToggleReply,
   });
 
   final TrackedApplication app;
+  final AutoApplySettings autoApplySettings;
+  final int autoApplySentToday;
   final VoidCallback onTap;
   final ValueChanged<bool> onToggleReply;
 
@@ -460,6 +565,16 @@ class _TrackerCard extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                const SizedBox(height: 10),
+                _ApplicationQualityMeter(app: app),
+                const SizedBox(height: 10),
+                _ApplicationBundleCard(app: app),
+                const SizedBox(height: 10),
+                _AutoApplyEligibilityCard(
+                  app: app,
+                  settings: autoApplySettings,
+                  sentToday: autoApplySentToday,
+                ),
                 if (app.trustRiskLevel != 'unchecked') ...[
                   const SizedBox(height: 10),
                   _ApplicationTrustTag(app: app),
@@ -499,6 +614,296 @@ class _TrackerCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _AutoApplyEligibilityCard extends StatelessWidget {
+  const _AutoApplyEligibilityCard({
+    required this.app,
+    required this.settings,
+    required this.sentToday,
+  });
+
+  final TrackedApplication app;
+  final AutoApplySettings settings;
+  final int sentToday;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final result = evaluateAutoApplyEligibility(
+      app: app,
+      settings: settings,
+      sentToday: sentToday,
+    );
+
+    final color = result.isEligible
+        ? brand.success
+        : settings.enabled
+        ? brand.warning
+        : brand.textMuted;
+    final icon = result.isEligible
+        ? Icons.task_alt_rounded
+        : settings.enabled
+        ? Icons.rule_rounded
+        : Icons.pause_circle_outline_rounded;
+    final title = result.isEligible
+        ? 'Auto-apply eligible'
+        : settings.enabled
+        ? 'Auto-apply blocked'
+        : 'Auto-apply off';
+    final detail = result.isEligible
+        ? '${result.qualityScore}% quality · $sentToday/${settings.maxDailyApplications} used today'
+        : result.statusLabel;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: brand.isDark ? 0.14 : 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.26)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Bounded auto-apply',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    color: brand.textMuted,
+                    letterSpacing: -0.05,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w900,
+                    color: brand.ink,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              detail,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+                color: color,
+                letterSpacing: -0.05,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ApplicationBundleCard extends StatelessWidget {
+  const _ApplicationBundleCard({required this.app});
+
+  final TrackedApplication app;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final bundle = evaluateApplicationBundle(app);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: brand.surfaceMuted.withValues(alpha: brand.isDark ? 0.72 : 0.9),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: brand.border.withValues(alpha: 0.75)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.inventory_2_outlined, size: 15, color: brand.ink),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  'Application bundle',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w900,
+                    color: brand.ink,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+              ),
+              Text(
+                '${bundle.completeCount}/${bundle.totalCount} · ${bundle.statusLabel}',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w800,
+                  color: bundle.hasBlocker ? brand.warning : brand.success,
+                  letterSpacing: -0.05,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              for (final item in bundle.items) _BundleItemChip(item: item),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BundleItemChip extends StatelessWidget {
+  const _BundleItemChip({required this.item});
+
+  final ApplicationBundleItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final color = item.isBlocking
+        ? brand.warning
+        : item.isComplete
+        ? brand.success
+        : brand.textMuted;
+    final icon = item.isBlocking
+        ? Icons.error_outline_rounded
+        : item.isComplete
+        ? Icons.check_circle_rounded
+        : Icons.radio_button_unchecked_rounded;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: brand.isDark ? 0.16 : 0.1),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12.5, color: color),
+          const SizedBox(width: 5),
+          Text(
+            '${item.label}: ${item.detail}',
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w900,
+              color: color,
+              letterSpacing: -0.05,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ApplicationQualityMeter extends StatelessWidget {
+  const _ApplicationQualityMeter({required this.app});
+
+  final TrackedApplication app;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final quality = evaluateTrackedApplicationQuality(app);
+    final color = _applicationQualityColor(quality.score, brand);
+    final reason = quality.reasons.take(2).join(' · ');
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: brand.isDark ? 0.12 : 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.speed_rounded, size: 15, color: color),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  quality.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.1,
+                    color: brand.ink,
+                  ),
+                ),
+              ),
+              Text(
+                '${quality.score}%',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  color: color,
+                  letterSpacing: -0.1,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(
+              value: quality.score / 100,
+              minHeight: 5,
+              backgroundColor: brand.border.withValues(alpha: 0.55),
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+          if (reason.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              reason,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: brand.textMuted,
+                letterSpacing: -0.05,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+Color _applicationQualityColor(int score, BrandTheme brand) {
+  if (score >= 80) return brand.success;
+  if (score >= 60) return brand.warning;
+  if (score >= 40) return brand.textMuted;
+  return brand.danger;
 }
 
 class _ApplicationTrustTag extends StatelessWidget {

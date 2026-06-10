@@ -5,6 +5,26 @@ import 'package:syncra/features/resumes/services/resume_parser_service.dart';
 void main() {
   group('ResumeParserService', () {
     test(
+      'throws a scanned-PDF parse exception for empty resume text',
+      () async {
+        final client = _FakeAnthropicClient([_validResumeJson]);
+        final service = ResumeParserService(client: client);
+
+        await expectLater(
+          service.parse('   \n\t  '),
+          throwsA(
+            isA<ResumeParseException>().having(
+              (error) => error.message,
+              'message',
+              contains('scanned image'),
+            ),
+          ),
+        );
+
+        expect(client.requests, isEmpty);
+      },
+    );
+    test(
       'retries once when the first resume JSON response is malformed',
       () async {
         final client = _FakeAnthropicClient(['not json', _validResumeJson]);

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/job.dart';
 import 'firestore_paths.dart';
@@ -74,7 +75,7 @@ class PipelineRepository {
         .map(
           (snap) => snap.docs
               .map(_fromDoc)
-              .where((card) => card.status == PipelineCardStatus.pending)
+              .where(shouldShowInActivePipeline)
               .toList(growable: false),
         );
   }
@@ -88,7 +89,7 @@ class PipelineRepository {
 
     return snap.docs
         .map(_fromDoc)
-        .where((card) => card.status == PipelineCardStatus.pending)
+        .where(shouldShowInActivePipeline)
         .toList(growable: false);
   }
 
@@ -98,6 +99,23 @@ class PipelineRepository {
 
   Future<void> approve(String uid, String cardId) {
     return _paths.pipeline(uid).doc(cardId).update({'status': 'approved'});
+  }
+
+  Future<void> approveByJobId({
+    required String uid,
+    required String jobId,
+  }) async {
+    final cleanJobId = jobId.trim();
+    if (cleanJobId.isEmpty) return;
+
+    final snap = await _paths
+        .pipeline(uid)
+        .where('job.id', isEqualTo: cleanJobId)
+        .get();
+
+    for (final doc in snap.docs) {
+      await doc.reference.update({'status': 'approved'});
+    }
   }
 
   /// Moves the pipeline card(s) for [jobId] forward to [stage] — this is what
@@ -112,17 +130,22 @@ class PipelineRepository {
     required String jobId,
     required PipelineStage stage,
   }) async {
+    final cleanJobId = jobId.trim();
+    if (cleanJobId.isEmpty) return;
+
     final snap = await _paths
         .pipeline(uid)
-        .where('job.id', isEqualTo: jobId)
+        .where('job.id', isEqualTo: cleanJobId)
         .get();
     if (snap.docs.isEmpty) return;
 
-    final target = _stageRank(stage);
     for (final doc in snap.docs) {
       final current = _stageFromName(doc.data()['stage'] as String?);
-      if (_stageRank(current) >= target) continue;
-      await doc.reference.update({'stage': _stageToName(stage)});
+      final patch = pipelineStagePatchFor(current: current, target: stage);
+
+      if (patch.isEmpty) continue;
+
+      await doc.reference.update(patch);
     }
   }
 
@@ -168,6 +191,44 @@ class PipelineRepository {
       'created_at': FieldValue.serverTimestamp(),
     });
   }
+}
+
+/// CRITICAL PIPELINE INVARIANT:
+/// The active Jobs pipeline must only show unfinished pending work.
+///
+/// Cards that reached [PipelineStage.sent] or [PipelineStage.replied] are
+/// already handled and must leave the active pipeline even if legacy Firestore
+/// data still says `status: pending`.
+///
+/// Do not weaken this without updating:
+/// - test/pipeline_repository_test.dart
+/// - docs/ARCHITECTURE.md pipeline lifecycle notes
+@visibleForTesting
+bool shouldShowInActivePipeline(PipelineCard card) {
+  return card.status == PipelineCardStatus.pending && !card.isSent;
+}
+
+/// CRITICAL PIPELINE INVARIANT:
+/// Advancing a card to `sent` or `replied` completes the pipeline card by
+/// writing `status: approved`. This prevents handled jobs from reappearing in
+/// the active Jobs pipeline after refresh/restart.
+@visibleForTesting
+Map<String, dynamic> pipelineStagePatchFor({
+  required PipelineStage current,
+  required PipelineStage target,
+}) {
+  final shouldAdvanceStage = _stageRank(current) < _stageRank(target);
+  final completesPipeline =
+      target == PipelineStage.sent || target == PipelineStage.replied;
+
+  if (!shouldAdvanceStage && !completesPipeline) {
+    return const {};
+  }
+
+  return {
+    if (shouldAdvanceStage) 'stage': _stageToName(target),
+    if (completesPipeline) 'status': 'approved',
+  };
 }
 
 String _categoryToName(JobCategory c) => switch (c) {

@@ -12,19 +12,38 @@ import '../../services/job_trust_guard.dart';
 class JobActionSheet {
   const JobActionSheet._();
 
-  static Future<void> show(BuildContext context, Job job) {
+  static Future<void> show(
+    BuildContext context,
+    Job job, {
+    VoidCallback? onHide,
+    VoidCallback? onDismiss,
+    VoidCallback? onDrafted,
+  }) {
     return showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (sheetCtx) => _JobActionSheetBody(job: job),
+      builder: (sheetCtx) => _JobActionSheetBody(
+        job: job,
+        onHide: onHide,
+        onDismiss: onDismiss,
+        onDrafted: onDrafted,
+      ),
     );
   }
 }
 
 class _JobActionSheetBody extends ConsumerWidget {
-  const _JobActionSheetBody({required this.job});
+  const _JobActionSheetBody({
+    required this.job,
+    this.onHide,
+    this.onDismiss,
+    this.onDrafted,
+  });
 
   final Job job;
+  final VoidCallback? onHide;
+  final VoidCallback? onDismiss;
+  final VoidCallback? onDrafted;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -71,7 +90,7 @@ class _JobActionSheetBody extends ConsumerWidget {
             _ActionTile(
               icon: Icons.drafts_outlined,
               label: 'Draft application email',
-              onTap: () => _draftEmail(context, job),
+              onTap: () => _draftEmail(context, ref, job, onDrafted: onDrafted),
             ),
             _ActionTile(
               icon: isSaved
@@ -79,7 +98,7 @@ class _JobActionSheetBody extends ConsumerWidget {
                   : Icons.bookmark_border_rounded,
               label: isSaved ? 'Saved' : 'Save for later',
               onTap: () {
-                notifier.toggleSaved(job.id, label: label);
+                notifier.saveForLater(job, label: label);
                 Navigator.of(context).pop();
               },
             ),
@@ -106,6 +125,7 @@ class _JobActionSheetBody extends ConsumerWidget {
                   notifier.unhide(job.id);
                 } else {
                   notifier.hide(job.id, label: label);
+                  onHide?.call();
                 }
                 Navigator.of(context).pop();
               },
@@ -116,6 +136,7 @@ class _JobActionSheetBody extends ConsumerWidget {
               destructive: true,
               onTap: () {
                 notifier.dismiss(job.id, label: label);
+                onDismiss?.call();
                 Navigator.of(context).pop();
               },
             ),
@@ -164,9 +185,14 @@ Future<bool?> _confirmTrustGuardProceed(
 /// Opens the email review sheet pre-filled with a starter draft for [job],
 /// then saves it to the user's Gmail Drafts (nothing is sent). The recipient
 /// is a best-effort guess the user confirms in the sheet.
-Future<void> _draftEmail(BuildContext context, Job job) async {
+Future<void> _draftEmail(
+  BuildContext context,
+  WidgetRef ref,
+  Job job, {
+  VoidCallback? onDrafted,
+}) async {
   final trust = evaluateJobTrust(job);
-
+  final jobsNotifier = ref.read(jobsProvider.notifier);
   if (trust.needsVerification) {
     final confirmed = await _confirmTrustGuardProceed(context, trust);
     if (confirmed != true) return;
@@ -197,10 +223,14 @@ Future<void> _draftEmail(BuildContext context, Job job) async {
   );
 
   if (!(result?.draftCreated ?? false)) return;
+
+  await jobsNotifier.markDraftedJob(job);
+  onDrafted?.call();
+
   if (!parentContext.mounted) return;
 
   ScaffoldMessenger.of(parentContext).showSnackBar(
-    const SnackBar(content: Text('Draft saved to your Gmail Drafts.')),
+    const SnackBar(content: Text('Draft saved and moved to Applications.')),
   );
 }
 

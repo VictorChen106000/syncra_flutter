@@ -1,26 +1,25 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../data/firestore/firestore_paths.dart';
+import '../../../data/models/job.dart';
 import '../models/agent_block.dart';
 import '../models/chat_message.dart';
 import '../models/conversation_summary.dart';
+import 'chat_snapshot_codec.dart';
 
-/// Persists *text-only* snapshots of chat transcripts — one Firestore document
-/// per conversation — so the history drawer can list and reopen past chats as
-/// readable transcripts.
+/// Persists versioned chat transcript snapshots — one Firestore document per
+/// conversation — so the history drawer can list and reopen past chats.
 ///
-/// The full reasoning timeline (thinking, tool calls, action proposals, resume
-/// diffs, and email draft buttons) is deliberately *not* round-tripped — it's
-/// transient by design and rebuilding the exact UI state from JSON is more
-/// failure surface than this demo needs.
+/// v2 stores the full recoverable chat UI model through [ChatSnapshotCodec]:
+/// user bubbles, attachments, agent turns, tool rows, job cards, proposed
+/// edits, resume drafts, input requests, action proposals, and email drafts.
 ///
-/// Schema: `users/{uid}/conversations/{conversationId}` — each doc holds:
-///   - `title`: short label derived from the first user message
-///   - `updatedAt`: server timestamp (also the history sort key)
-///   - `items`: [{ kind: 'user'|'agent', id, text, attachments? }]
+/// Legacy v1 text-only documents are still supported by the same decoder.
 class ChatHistoryRepository {
   ChatHistoryRepository({FirebaseFirestore? db})
     : _paths = FirestorePaths(db ?? FirebaseFirestore.instance);
+
+  static const int schemaVersion = 2;
 
   final FirestorePaths _paths;
 
@@ -56,36 +55,161 @@ class ChatHistoryRepository {
     QueryDocumentSnapshot<Map<String, dynamic>> doc,
   ) {
     final data = doc.data();
-    final rawItems = (data['items'] as List?) ?? const [];
-    // Skip empty shells so the drawer never renders a blank row.
+    final rawItems = _listValue(data, 'items');
+
+    // Skip empty or fully malformed shells so the drawer never renders a
+    // blank row. The codec keeps this compatible with both v1 and v2.
     if (rawItems.isEmpty) return null;
-    final title = (data['title'] as String?)?.trim();
+
+    final decodedItems = rawItems
+        .map(ChatSnapshotCodec.decodeItem)
+        .whereType<ChatItem>()
+        .toList(growable: false);
+
+    if (decodedItems.isEmpty) return null;
+
+    final renamedTitle = _stringValue(data, 'renamedTitle')?.trim();
+    final title = _stringValue(data, 'title')?.trim();
+    final lastPreview = _stringValue(data, 'lastPreview')?.trim();
     final ts = data['updatedAt'];
+
     return ConversationSummary(
       id: doc.id,
-      title: (title != null && title.isNotEmpty)
-          ? title
-          : _deriveTitleFromRaw(rawItems),
+      title: _displayTitle(renamedTitle, title, rawItems),
+      preview: _displayPreview(lastPreview, decodedItems),
       updatedAt: ts is Timestamp ? ts.toDate() : DateTime.now(),
+      pinned: data['pinned'] == true,
     );
+  }
+
+  static String _displayTitle(
+    String? renamedTitle,
+    String? title,
+    List<dynamic> rawItems,
+  ) {
+    if (renamedTitle != null && renamedTitle.isNotEmpty) {
+      return renamedTitle;
+    }
+    if (title != null && title.isNotEmpty) return title;
+    return _deriveTitleFromRaw(rawItems);
   }
 
   /// Fallback title for legacy docs written before `title` was stored.
   static String _deriveTitleFromRaw(List<dynamic> rawItems) {
     for (final entry in rawItems) {
-      if (entry is Map && entry['kind'] == 'user') {
-        final text = (entry['text'] as String?)?.trim() ?? '';
-        if (text.isNotEmpty) return text;
-      }
+      if (entry is! Map) continue;
+      final kind = _stringValue(entry, 'kind')?.trim().toLowerCase();
+      if (kind != 'user' && kind != 'user_message') continue;
+
+      final text = _stringValue(entry, 'text')?.trim() ?? '';
+      if (text.isEmpty) continue;
+      return text.length > 48 ? '${text.substring(0, 48)}…' : text;
     }
     return 'New chat';
   }
 
+  static String _displayPreview(String? storedPreview, List<ChatItem> items) {
+    final cleanStored = _cleanPreview(storedPreview);
+    if (cleanStored != null) return _clipPreview(cleanStored);
+    return deriveConversationPreview(items);
+  }
+
+  static String deriveConversationPreview(List<ChatItem> items) {
+    for (final item in items.reversed) {
+      switch (item) {
+        case UserMessage():
+          final text = _cleanPreview(item.text);
+          if (text != null) return 'You: ${_clipPreview(text)}';
+
+        case AgentTurn():
+          for (final block in item.blocks.reversed) {
+            final preview = _previewForBlock(block);
+            if (preview != null) return preview;
+          }
+
+          final error = _cleanPreview(item.errorMessage);
+          if (error != null) return 'Error: ${_clipPreview(error)}';
+      }
+    }
+
+    return '';
+  }
+
+  static String? _previewForBlock(AgentBlock block) {
+    switch (block) {
+      case ThinkingBlock():
+        return null;
+
+      case TextBlock():
+        final text = _cleanPreview(block.text);
+        return text == null ? null : _clipPreview(text);
+
+      case ToolCallBlock():
+        final result = _cleanPreview(block.resultSummary);
+        if (result != null) return 'Tool result: ${_clipPreview(result)}';
+
+        final label = _cleanPreview(block.label);
+        return label == null ? null : 'Tool: ${_clipPreview(label)}';
+
+      case JobsBlock():
+        if (block.jobs.isEmpty) return null;
+        final label = block.jobs.length == 1 ? 'match' : 'matches';
+        return 'Showed ${block.jobs.length} job $label';
+
+      case ProposedEditsBlock():
+        final stateLabel = switch (block.state) {
+          ProposedEditsState.reviewing => 'for review',
+          ProposedEditsState.applying => 'rendering',
+          ProposedEditsState.applied => 'preview ready',
+          ProposedEditsState.dismissed => 'dismissed',
+        };
+        final label = block.edits.length == 1 ? 'change' : 'changes';
+        return 'Resume edits $stateLabel · ${block.edits.length} $label';
+
+      case ResumeDraftBlock():
+        final prefix = switch (block.state) {
+          ResumeDraftState.rendering => 'Rendering resume draft',
+          ResumeDraftState.ready => 'Resume draft ready',
+        };
+        return '$prefix: ${_clipPreview(block.fileName)}';
+
+      case InputRequestBlock():
+        if (block.state == InputRequestState.answered) {
+          final answer = _cleanPreview(block.answer);
+          if (answer != null) return 'Answered: ${_clipPreview(answer)}';
+        }
+        return 'Asked: ${_clipPreview(block.question)}';
+
+      case ActionProposalBlock():
+        return 'Action proposal: ${_clipPreview(block.title)}';
+
+      case EmailDraftBlock():
+        return 'Email draft: ${_clipPreview(block.subject)}';
+    }
+  }
+
+  static String? _cleanPreview(String? value) {
+    final clean = value?.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (clean == null || clean.isEmpty) return null;
+    return clean;
+  }
+
+  static String _clipPreview(String value, {int max = 96}) {
+    final clean = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (clean.length <= max) return clean;
+    return '${clean.substring(0, max)}…';
+  }
+
   Future<List<ChatItem>> load(String uid, String conversationId) async {
+    return (await loadConversation(uid, conversationId)).items;
+  }
+
+  Future<SavedConversation> loadConversation(
+    String uid,
+    String conversationId,
+  ) async {
     final snap = await _doc(uid, conversationId).get();
-    final data = snap.data();
-    if (data == null) return const [];
-    return _decode((data['items'] as List?) ?? const []);
+    return SavedConversation.fromMap(snap.data());
   }
 
   Future<void> save(
@@ -93,87 +217,107 @@ class ChatHistoryRepository {
     String conversationId, {
     required List<ChatItem> items,
     required String title,
+    Job? threadJob,
   }) async {
     final payload = _encode(items);
     if (payload.isEmpty) return;
+
     await _doc(uid, conversationId).set({
+      'schemaVersion': schemaVersion,
       'items': payload,
       'title': title,
+      'lastPreview': deriveConversationPreview(items),
+      'threadJob': threadJob == null
+          ? FieldValue.delete()
+          : _encodeThreadJob(threadJob),
       'updatedAt': FieldValue.serverTimestamp(),
-    });
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> rename(
+    String uid,
+    String conversationId, {
+    required String title,
+  }) async {
+    final cleanTitle = title.trim();
+    if (cleanTitle.isEmpty) return;
+    await _doc(
+      uid,
+      conversationId,
+    ).update({'title': cleanTitle, 'renamedTitle': cleanTitle});
+  }
+
+  Future<void> setPinned(
+    String uid,
+    String conversationId, {
+    required bool pinned,
+  }) async {
+    await _doc(uid, conversationId).update({'pinned': pinned});
   }
 
   Future<void> delete(String uid, String conversationId) async {
     await _doc(uid, conversationId).delete();
   }
 
-  static List<ChatItem> _decode(List<dynamic> raw) {
-    final items = <ChatItem>[];
-    for (final entry in raw) {
-      if (entry is! Map) continue;
-      final map = entry.cast<String, dynamic>();
-      final kind = map['kind'] as String?;
-      final id = map['id'] as String?;
-      final text = (map['text'] as String?) ?? '';
-      if (id == null || text.isEmpty) continue;
-      switch (kind) {
-        case 'user':
-          final attachmentList = (map['attachments'] as List?) ?? const [];
-          final attachments = <ChatAttachment>[
-            for (final a in attachmentList)
-              if (a is Map && a['id'] is String && a['name'] is String)
-                ChatAttachment(
-                  id: a['id'] as String,
-                  name: a['name'] as String,
-                ),
-          ];
-          items.add(UserMessage(id: id, text: text, attachments: attachments));
-        case 'agent':
-          items.add(
-            AgentTurn(
-              id: id,
-              blocks: [TextBlock(id: '$id-text', text: text)],
-              status: AgentTurnStatus.done,
-            ),
-          );
-      }
+  static Map<String, dynamic> _encodeThreadJob(Job job) {
+    return job.toJson();
+  }
+
+  static Job? _decodeThreadJob(Object? raw) {
+    if (raw is! Map) return null;
+    try {
+      return Job.fromJson(Map<String, dynamic>.from(raw));
+    } catch (_) {
+      return null;
     }
-    return items;
+  }
+
+  static List<ChatItem> _decode(List<dynamic> raw) {
+    return raw
+        .map(ChatSnapshotCodec.decodeItem)
+        .whereType<ChatItem>()
+        .toList(growable: false);
   }
 
   static List<Map<String, dynamic>> _encode(List<ChatItem> items) {
     final payload = <Map<String, dynamic>>[];
+
     for (final item in items) {
-      switch (item) {
-        case UserMessage():
-          payload.add({
-            'kind': 'user',
-            'id': item.id,
-            'text': item.text,
-            if (item.attachments.isNotEmpty)
-              'attachments': [
-                for (final a in item.attachments) {'id': a.id, 'name': a.name},
-              ],
-          });
-        case AgentTurn():
-          // Skip turns that are still streaming or failed — only completed
-          // text-only summaries persist.
-          if (item.status != AgentTurnStatus.done &&
-              item.status != AgentTurnStatus.stopped) {
-            continue;
-          }
-          final buf = StringBuffer();
-          for (final block in item.blocks) {
-            if (block is TextBlock) {
-              if (buf.isNotEmpty) buf.write('\n\n');
-              buf.write(block.text);
-            }
-          }
-          final text = buf.toString();
-          if (text.isEmpty) continue;
-          payload.add({'kind': 'agent', 'id': item.id, 'text': text});
-      }
+      // Do not persist the empty initial assistant turn used only to keep the
+      // empty chat shell mounted.
+      if (item is AgentTurn && item.blocks.isEmpty) continue;
+
+      payload.add(ChatSnapshotCodec.encodeItem(item));
     }
+
     return payload;
   }
+
+  static String? _stringValue(Map<dynamic, dynamic> map, String key) {
+    final value = map[key];
+    return value is String ? value : null;
+  }
+
+  static List<dynamic> _listValue(Map<dynamic, dynamic> map, String key) {
+    final value = map[key];
+    return value is List ? value : const [];
+  }
+}
+
+class SavedConversation {
+  const SavedConversation({required this.items, this.threadJob});
+
+  factory SavedConversation.fromMap(Map<String, dynamic>? data) {
+    if (data == null) return const SavedConversation(items: []);
+
+    return SavedConversation(
+      items: ChatHistoryRepository._decode(
+        ChatHistoryRepository._listValue(data, 'items'),
+      ),
+      threadJob: ChatHistoryRepository._decodeThreadJob(data['threadJob']),
+    );
+  }
+
+  final List<ChatItem> items;
+  final Job? threadJob;
 }

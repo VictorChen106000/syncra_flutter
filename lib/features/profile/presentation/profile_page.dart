@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/dev/demo_readiness.dart';
 import '../../../core/dev/dev_flags_notifier.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
@@ -19,10 +20,12 @@ import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/section_title.dart';
+import '../../auth/models/user_profile.dart';
 import '../../auth/state/auth_notifier.dart';
 import '../../auth/state/user_profile_notifier.dart';
 import '../../resumes/presentation/widgets/resume_fit_chart.dart';
 import '../../resumes/state/resume_notifier.dart';
+import '../../agent_chat/state/agent_chat_notifier.dart';
 
 class _CareerMemoryFact {
   const _CareerMemoryFact({
@@ -223,6 +226,9 @@ class ProfilePage extends StatelessWidget {
                 const SizedBox(height: 24),
                 const SectionTitle(title: 'Connections'),
                 const _IntegrationSection(),
+                const SizedBox(height: 24),
+                const SectionTitle(title: 'Bounded Auto-Apply'),
+                const _BoundedAutoApplySection(),
                 const SizedBox(height: 24),
                 const SectionTitle(title: 'Appearance'),
                 const _AppearanceSection(),
@@ -1327,6 +1333,380 @@ class _IntegrationSection extends ConsumerWidget {
   }
 }
 
+enum _AutoApplyMenu { minimumQuality, dailyLimit, trustGate }
+
+class _BoundedAutoApplySection extends ConsumerStatefulWidget {
+  const _BoundedAutoApplySection();
+
+  @override
+  ConsumerState<_BoundedAutoApplySection> createState() =>
+      _BoundedAutoApplySectionState();
+}
+
+class _BoundedAutoApplySectionState
+    extends ConsumerState<_BoundedAutoApplySection> {
+  static const _qualityStops = [80, 85, 90, 95];
+  static const _dailyLimitStops = [1, 2, 3, 5, 10];
+
+  _AutoApplyMenu? _openMenu;
+
+  void _toggleMenu(_AutoApplyMenu menu) {
+    setState(() {
+      _openMenu = _openMenu == menu ? null : menu;
+    });
+  }
+
+  void _save(AutoApplySettings settings, String message) {
+    ref.read(userProfileProvider.notifier).setAutoApplySettings(settings);
+    setState(() => _openMenu = null);
+    _showSettingsSnack(context, message);
+  }
+
+  void _toggleEnabled(AutoApplySettings settings) {
+    final nextEnabled = !settings.enabled;
+    _save(
+      settings.copyWith(enabled: nextEnabled),
+      nextEnabled
+          ? 'Bounded Auto-Apply turned on.'
+          : 'Bounded Auto-Apply turned off.',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = ref.watch(userProfileProvider);
+    final settings = profile?.autoApplySettings ?? const AutoApplySettings();
+    final canEdit = profile != null;
+
+    return _GroupedCard(
+      children: [
+        _PreferenceRow(
+          icon: Icons.auto_awesome_rounded,
+          title: 'Bounded Auto-Apply',
+          trailing: _LimeToggle(
+            active: settings.enabled,
+            onToggle: canEdit ? () => _toggleEnabled(settings) : null,
+          ),
+          onTap: canEdit ? () => _toggleEnabled(settings) : null,
+        ),
+        const _GroupedDivider(),
+        _PreferenceRow(
+          icon: Icons.speed_rounded,
+          title: 'Minimum quality',
+          trailing: _SettingsValueTrail(
+            value: '${settings.minQualityScore}%',
+            enabled: canEdit,
+            expanded: _openMenu == _AutoApplyMenu.minimumQuality,
+          ),
+          onTap: canEdit
+              ? () => _toggleMenu(_AutoApplyMenu.minimumQuality)
+              : null,
+        ),
+        if (_openMenu == _AutoApplyMenu.minimumQuality)
+          _AutoApplyChoiceList<int>(
+            values: _qualityStops,
+            selected: settings.minQualityScore,
+            labelFor: (value) => '$value%',
+            onSelected: (value) => _save(
+              settings.copyWith(minQualityScore: value),
+              'Minimum quality set to $value%.',
+            ),
+          ),
+        const _GroupedDivider(),
+        _PreferenceRow(
+          icon: Icons.today_rounded,
+          title: 'Daily limit',
+          trailing: _SettingsValueTrail(
+            value: '${settings.maxDailyApplications}/day',
+            enabled: canEdit,
+            expanded: _openMenu == _AutoApplyMenu.dailyLimit,
+          ),
+          onTap: canEdit ? () => _toggleMenu(_AutoApplyMenu.dailyLimit) : null,
+        ),
+        if (_openMenu == _AutoApplyMenu.dailyLimit)
+          _AutoApplyChoiceList<int>(
+            values: _dailyLimitStops,
+            selected: settings.maxDailyApplications,
+            labelFor: (value) => '$value/day',
+            onSelected: (value) => _save(
+              settings.copyWith(maxDailyApplications: value),
+              'Daily auto-apply limit set to $value.',
+            ),
+          ),
+        const _GroupedDivider(),
+        _PreferenceRow(
+          icon: Icons.verified_user_outlined,
+          title: 'Trust gate',
+          trailing: _SettingsValueTrail(
+            value: settings.requireLowTrust
+                ? 'Low-risk only'
+                : 'Bundle review decides',
+            enabled: canEdit,
+            expanded: _openMenu == _AutoApplyMenu.trustGate,
+          ),
+          onTap: canEdit ? () => _toggleMenu(_AutoApplyMenu.trustGate) : null,
+        ),
+        if (_openMenu == _AutoApplyMenu.trustGate)
+          _AutoApplyChoiceList<bool>(
+            values: const [true, false],
+            selected: settings.requireLowTrust,
+            labelFor: (value) =>
+                value ? 'Low-risk only' : 'Bundle review decides',
+            onSelected: (value) => _save(
+              settings.copyWith(requireLowTrust: value),
+              value
+                  ? 'Trust gate set to low-risk only.'
+                  : 'Trust gate set to bundle review.',
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _AutoApplyChoiceList<T> extends StatelessWidget {
+  const _AutoApplyChoiceList({
+    required this.values,
+    required this.selected,
+    required this.labelFor,
+    required this.onSelected,
+  });
+
+  final List<T> values;
+  final T selected;
+  final String Function(T value) labelFor;
+  final ValueChanged<T> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(72, 0, 16, 12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        width: double.infinity,
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: brand.surfaceMuted.withValues(alpha: brand.isDark ? 0.86 : 1),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: brand.accent.withValues(alpha: brand.isDark ? 0.38 : 0.46),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: brand.shadow.withValues(alpha: brand.isDark ? 0.42 : 0.14),
+              blurRadius: 22,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final value in values)
+              _AutoApplyChoiceTile<T>(
+                value: value,
+                selected: value == selected,
+                label: labelFor(value),
+                onSelected: onSelected,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AutoApplyChoiceTile<T> extends StatefulWidget {
+  const _AutoApplyChoiceTile({
+    required this.value,
+    required this.selected,
+    required this.label,
+    required this.onSelected,
+  });
+
+  final T value;
+  final bool selected;
+  final String label;
+  final ValueChanged<T> onSelected;
+
+  @override
+  State<_AutoApplyChoiceTile<T>> createState() =>
+      _AutoApplyChoiceTileState<T>();
+}
+
+class _AutoApplyChoiceTileState<T> extends State<_AutoApplyChoiceTile<T>> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final active = widget.selected || _hovered;
+    final textColor = active ? brand.ink : brand.textMuted;
+    final rowColor = widget.selected
+        ? brand.accent.withValues(alpha: brand.isDark ? 0.16 : 0.13)
+        : _hovered
+        ? brand.surface.withValues(alpha: brand.isDark ? 0.10 : 0.72)
+        : Colors.transparent;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => widget.onSelected(widget.value),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOutCubic,
+            margin: const EdgeInsets.symmetric(vertical: 1),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: rowColor,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.label,
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 13,
+                      fontWeight: active ? FontWeight.w900 : FontWeight.w700,
+                      letterSpacing: -0.05,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 150),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeOutCubic,
+                  child: widget.selected
+                      ? Container(
+                          key: const ValueKey('selected'),
+                          width: 18,
+                          height: 18,
+                          decoration: BoxDecoration(
+                            color: brand.accent,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.check_rounded,
+                            size: 13,
+                            color: brand.onAccent,
+                          ),
+                        )
+                      : Container(
+                          key: const ValueKey('unselected'),
+                          width: 18,
+                          height: 18,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: _hovered
+                                  ? brand.accent.withValues(alpha: 0.75)
+                                  : brand.textSoft.withValues(alpha: 0.78),
+                              width: 1.5,
+                            ),
+                          ),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+TextStyle _settingsValueStyle(BuildContext context) {
+  final brand = context.brand;
+  return TextStyle(
+    color: brand.textMuted,
+    fontSize: 12.5,
+    fontWeight: FontWeight.w800,
+    letterSpacing: -0.05,
+  );
+}
+
+void _showSettingsSnack(BuildContext context, String message) {
+  final brand = context.brand;
+
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: brand.ink,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(milliseconds: 1800),
+      ),
+    );
+}
+
+class _SettingsValueTrail extends StatelessWidget {
+  const _SettingsValueTrail({
+    required this.value,
+    required this.enabled,
+    this.expanded = false,
+  });
+
+  final String value;
+  final bool enabled;
+  final bool expanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final tint = expanded ? brand.accent : brand.textMuted;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: expanded
+            ? brand.accent.withValues(alpha: brand.isDark ? 0.13 : 0.10)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(
+          color: expanded
+              ? brand.accent.withValues(alpha: 0.45)
+              : Colors.transparent,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            value,
+            style: _settingsValueStyle(
+              context,
+            ).copyWith(color: enabled ? tint : brand.textSoft),
+          ),
+          const SizedBox(width: 4),
+          AnimatedRotation(
+            turns: expanded ? -0.5 : 0,
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            child: Icon(
+              Icons.expand_more_rounded,
+              size: 18,
+              color: enabled ? tint : brand.textSoft,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _IntegrationTile extends StatelessWidget {
   const _IntegrationTile({
     required this.icon,
@@ -1510,6 +1890,8 @@ class _AccountSection extends ConsumerWidget {
     // Firestore data, then snap the profile back to first-run — the router
     // redirect keys off `hasCompletedOnboarding` and routes us to onboarding,
     // so no manual navigation (or success snackbar) is needed here.
+    ref.read(agentChatProvider.notifier).resetAfterAccountReset();
+    ref.invalidate(conversationListProvider);
     ref.read(resumeProvider.notifier).clearSelectedResumes();
     ref.read(userProfileProvider.notifier).resetToFirstRun();
   }
@@ -1565,7 +1947,9 @@ class _DevFlagsSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final flags = ref.watch(devFlagsProvider);
     final notifier = ref.read(devFlagsProvider.notifier);
+    final readiness = evaluateDemoReadiness();
     final brand = context.brand;
+
     return _GroupedCard(
       children: [
         _PreferenceRow(
@@ -1589,7 +1973,127 @@ class _DevFlagsSection extends ConsumerWidget {
             onChanged: notifier.setShowMorningBrief,
           ),
         ),
+        const _GroupedDivider(),
+        _DemoReadinessSummary(readiness: readiness),
+        for (final item in readiness.items) ...[
+          const _GroupedDivider(),
+          _DemoReadinessRow(item: item),
+        ],
       ],
+    );
+  }
+}
+
+class _DemoReadinessSummary extends StatelessWidget {
+  const _DemoReadinessSummary({required this.readiness});
+
+  final DemoReadiness readiness;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final color = readiness.isReady ? brand.success : brand.warning;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          _IconChip(icon: Icons.rocket_launch_outlined, tint: color),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Demo readiness',
+                  style: TextStyle(
+                    color: brand.ink,
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  readiness.isReady
+                      ? 'Required demo keys are configured.'
+                      : 'Some required demo keys are missing.',
+                  style: TextStyle(
+                    color: brand.textMuted,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            '${readiness.readyCount}/${readiness.totalCount}',
+            style: TextStyle(
+              color: color,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.05,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DemoReadinessRow extends StatelessWidget {
+  const _DemoReadinessRow({required this.item});
+
+  final DemoReadinessItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final color = item.isReady ? brand.success : brand.warning;
+    final icon = item.isReady
+        ? Icons.check_circle_rounded
+        : Icons.error_outline_rounded;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.label,
+                  style: TextStyle(
+                    color: brand.ink,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.1,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  item.detail,
+                  style: TextStyle(
+                    color: brand.textMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

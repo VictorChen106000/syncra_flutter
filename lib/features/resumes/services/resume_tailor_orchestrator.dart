@@ -6,12 +6,15 @@ import '../../../data/firestore/jobs_repository.dart';
 import '../../../data/firestore/resumes_repository.dart';
 import '../../../data/models/job.dart';
 import '../models/proposed_edit.dart';
+import '../models/resume_integrity_result.dart';
 import '../models/resume_file.dart';
 import '../models/resume_json.dart';
 import 'pdf_template.dart';
 import 'pdf_text_extractor.dart';
 import 'resume_diff_service.dart';
+import 'resume_integrity_service.dart';
 import 'resume_parser_service.dart';
+import 'resume_quality_service.dart';
 
 /// One-shot orchestrator: load resume → (lazy) parse → tailor for a job →
 /// render to PDF via the fixed template → save to local disk + Firestore.
@@ -26,14 +29,18 @@ class ResumeTailorOrchestrator {
     ResumePdfTextExtractor? extractor,
     ResumePdfTemplate? template,
     ResumeDiffService? diff,
+    ResumeIntegrityService? integrity,
+    ResumeQualityService? quality,
     FirebaseFirestore? db,
-  })  : _resumes = resumesRepository,
-        _jobs = jobsRepository,
-        _parser = parser,
-        _extractor = extractor ?? const ResumePdfTextExtractor(),
-        _template = template ?? const ResumePdfTemplate(),
-        _diff = diff ?? const ResumeDiffService(),
-        _paths = FirestorePaths(db ?? FirebaseFirestore.instance);
+  }) : _resumes = resumesRepository,
+       _jobs = jobsRepository,
+       _parser = parser,
+       _extractor = extractor ?? const ResumePdfTextExtractor(),
+       _template = template ?? const ResumePdfTemplate(),
+       _diff = diff ?? const ResumeDiffService(),
+       _integrity = integrity ?? const ResumeIntegrityService(),
+       _quality = quality ?? const ResumeQualityService(),
+       _paths = FirestorePaths(db ?? FirebaseFirestore.instance);
 
   final ResumesRepository _resumes;
   final JobsRepository _jobs;
@@ -41,6 +48,8 @@ class ResumeTailorOrchestrator {
   final ResumePdfTextExtractor _extractor;
   final ResumePdfTemplate _template;
   final ResumeDiffService _diff;
+  final ResumeIntegrityService _integrity;
+  final ResumeQualityService _quality;
   final FirestorePaths _paths;
 
   /// Reads a resume from Firestore, parses lazily if needed, returns the
@@ -111,26 +120,27 @@ class ResumeTailorOrchestrator {
     required List<ProposedEdit> acceptedEdits,
   }) async {
     if (acceptedEdits.isEmpty) {
-      throw const TailorOrchestratorException(
-        'No accepted edits to apply.',
-      );
+      throw const TailorOrchestratorException('No accepted edits to apply.');
     }
 
     final original = await readResumeJson(uid: uid, resumeId: resumeId);
     final diff = _diff.apply(original, acceptedEdits);
-
-    if (diff.applied.isEmpty) {
-      throw const TailorOrchestratorException(
-        'None of the accepted edits matched the resume — nothing to apply.',
-      );
-    }
-
-    final bytes = await _template.render(diff.resume);
-    return RenderEditsResult(
-      bytes: bytes,
-      resume: diff.resume,
+    final tailored = _quality.cleanTailoredResume(diff.resume);
+    final integrity = _integrity.verify(
+      original: original,
+      tailored: tailored,
+      acceptedEdits: acceptedEdits,
       appliedCount: diff.applied.length,
       skippedCount: diff.skipped.length,
+    );
+
+    final bytes = await _template.render(tailored);
+    return RenderEditsResult(
+      bytes: bytes,
+      resume: tailored,
+      appliedCount: diff.applied.length,
+      skippedCount: diff.skipped.length,
+      integrity: integrity,
     );
   }
 
@@ -158,10 +168,9 @@ class ResumeTailorOrchestrator {
     );
 
     try {
-      await _paths
-          .resumes(uid)
-          .doc(saved.id)
-          .update({'resume_json': resume.toJson()});
+      await _paths.resumes(uid).doc(saved.id).update({
+        'resume_json': resume.toJson(),
+      });
     } catch (e) {
       debugPrint('caching tailored resume_json failed: $e');
     }
@@ -193,10 +202,9 @@ class ResumeTailorOrchestrator {
     );
 
     try {
-      await _paths
-          .resumes(uid)
-          .doc(saved.id)
-          .update({'resume_json': resume.toJson()});
+      await _paths.resumes(uid).doc(saved.id).update({
+        'resume_json': resume.toJson(),
+      });
     } catch (e) {
       debugPrint('caching built resume_json failed: $e');
     }
@@ -218,6 +226,11 @@ class ResumeTailorOrchestrator {
       resumeId: resumeId,
       acceptedEdits: acceptedEdits,
     );
+    if (rendered.integrity.isBlocked) {
+      throw TailorOrchestratorException(
+        'Resume Integrity Check blocked saving: ${rendered.integrity.summary}',
+      );
+    }
     final saved = await saveRenderedResume(
       uid: uid,
       bytes: rendered.bytes,
@@ -265,12 +278,14 @@ class RenderEditsResult {
     required this.resume,
     required this.appliedCount,
     required this.skippedCount,
+    required this.integrity,
   });
 
   final Uint8List bytes;
   final ResumeJson resume;
   final int appliedCount;
   final int skippedCount;
+  final ResumeIntegrityResult integrity;
 }
 
 /// Result of [ResumeTailorOrchestrator.applyEdits].

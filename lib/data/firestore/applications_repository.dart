@@ -90,10 +90,72 @@ class ApplicationsRepository {
   Future<void> addNote(String uid, String applicationId, String body) async {
     final trimmed = body.trim();
     if (trimmed.isEmpty) return;
+
     await _paths.applications(uid).doc(applicationId).update({
       'notes': FieldValue.arrayUnion([
-        {'body': trimmed, 'created_at': Timestamp.now()},
+        {
+          'id': 'note_${DateTime.now().microsecondsSinceEpoch}',
+          'body': trimmed,
+          'created_at': Timestamp.now(),
+        },
       ]),
+    });
+  }
+
+  Future<void> updateNote(
+    String uid,
+    String applicationId,
+    List<TrackedApplicationNote> currentNotes,
+    String noteId,
+    String body,
+  ) async {
+    final cleanId = noteId.trim();
+    final trimmed = body.trim();
+    if (cleanId.isEmpty || trimmed.isEmpty) return;
+
+    final next = currentNotes
+        .map((note) => note.id == cleanId ? note.copyWith(body: trimmed) : note)
+        .map(_noteToMap)
+        .toList(growable: false);
+
+    await _paths.applications(uid).doc(applicationId).update({'notes': next});
+  }
+
+  Future<void> deleteNote(
+    String uid,
+    String applicationId,
+    List<TrackedApplicationNote> currentNotes,
+    String noteId,
+  ) async {
+    final cleanId = noteId.trim();
+    if (cleanId.isEmpty) return;
+
+    final next = currentNotes
+        .where((note) => note.id != cleanId)
+        .map(_noteToMap)
+        .toList(growable: false);
+
+    await _paths.applications(uid).doc(applicationId).update({'notes': next});
+  }
+
+  Future<void> setTrustGuard(
+    String uid,
+    String applicationId, {
+    required String trustRiskLevel,
+    required String trustRiskLabel,
+    required int trustSignalsCount,
+    required List<Map<String, String>> trustSignals,
+    required String trustSafeNextStep,
+  }) async {
+    await _paths.applications(uid).doc(applicationId).update({
+      'trust_risk_level': trustRiskLevel,
+      'trust_risk_label': trustRiskLabel,
+      'trust_signals_count': trustSignalsCount,
+      'trust_signals': trustSignals,
+      'trust_safe_next_step': trustSafeNextStep,
+      'trust_checked_at': trustRiskLevel == 'unchecked'
+          ? null
+          : FieldValue.serverTimestamp(),
     });
   }
 }
@@ -101,7 +163,6 @@ class ApplicationsRepository {
 TrackedApplication _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
   final data = doc.data();
   final job = _jobFromMap(Map<String, dynamic>.from(data['job'] as Map));
-  final notesRaw = (data['notes'] as List?) ?? const [];
 
   return TrackedApplication(
     id: doc.id,
@@ -117,15 +178,7 @@ TrackedApplication _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     trustSignalsCount: (data['trust_signals_count'] as num?)?.toInt() ?? 0,
     trustSignals: _trustSignalsFrom(data['trust_signals']),
     trustSafeNextStep: (data['trust_safe_next_step'] as String?) ?? '',
-    notes: notesRaw
-        .whereType<Map>()
-        .map(
-          (m) => TrackedApplicationNote(
-            body: (m['body'] as String?) ?? '',
-            createdAt: _toDate(m['created_at']) ?? DateTime.now(),
-          ),
-        )
-        .toList(growable: false),
+    notes: _notesFrom(data['notes']),
   );
 }
 
@@ -187,6 +240,38 @@ JobCategory _categoryFromName(String? name) {
   }
   return JobCategory.ready;
 }
+
+List<TrackedApplicationNote> _notesFrom(Object? value) {
+  if (value is! List) return const [];
+
+  final notes = <TrackedApplicationNote>[];
+
+  for (var i = 0; i < value.length; i++) {
+    final raw = value[i];
+    if (raw is! Map) continue;
+
+    final createdAt = _toDate(raw['created_at']) ?? DateTime.now();
+    final rawId = raw['id']?.toString().trim() ?? '';
+
+    notes.add(
+      TrackedApplicationNote(
+        id: rawId.isEmpty
+            ? 'legacy_${createdAt.millisecondsSinceEpoch}_$i'
+            : rawId,
+        body: raw['body']?.toString() ?? '',
+        createdAt: createdAt,
+      ),
+    );
+  }
+
+  return notes;
+}
+
+Map<String, dynamic> _noteToMap(TrackedApplicationNote note) => {
+  'id': note.id,
+  'body': note.body,
+  'created_at': Timestamp.fromDate(note.createdAt),
+};
 
 DateTime? _toDate(Object? value) {
   if (value is Timestamp) return value.toDate();

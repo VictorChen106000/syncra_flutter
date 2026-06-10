@@ -129,6 +129,12 @@ Resume tailoring:
 - The `tailor_resume` tool only proposes edits. It does not apply edits, render PDFs, or save files.
 - After `tailor_resume` returns proposed edits, stop and wait. The user reviews the edits in the diff viewer.
 - Do not call `apply_resume_edits`, `draft_email`, or `send_email` until the user has accepted edits.
+- Preserve supported resume facts only. Do not add unsupported employers, roles, dates, degrees, certifications,
+  tools, skills, metrics, years of experience, or achievements just because a job description mentions them.
+- Keep skill changes deduplicated. Do not add a skill that already appears elsewhere, and never output a bracketed
+  repeated skill list as one skill item.
+- If the app asks you to repair a tailored resume after an integrity check, call `tailor_resume` again for the same
+  source resume and job, then stop at the replacement diff. Do not use `apply_resume_edits` for repairs.
 - If the app later tells you the user approved and saved a tailored resume, continue the original workflow from there without asking the user to repeat the task.
 
 Building a resume from scratch:
@@ -528,15 +534,41 @@ Progress and style:
   }
 
   @override
-  void provideUserAnswer(String blockId, String answer) {
+  bool provideUserAnswer(String blockId, String answer) {
     final completer = _pendingAsks.remove(blockId);
     if (completer != null && !completer.isCompleted) {
       completer.complete(answer);
+      return true;
     }
+    return false;
   }
 
   @override
-  void resetConversation() => _conversation.clear();
+  void restoreConversationContext(List<ChatItem> items, {Job? threadJob}) {
+    _pendingAsks.clear();
+    _conversation.clear();
+
+    final restoredContext = buildRestoredConversationContextForAgent(
+      items,
+      threadJob: threadJob,
+    ).trim();
+
+    if (restoredContext.isEmpty) return;
+
+    _conversation.add({'role': 'user', 'content': restoredContext});
+    _conversation.add({
+      'role': 'assistant',
+      'content':
+          'Understood. I will use this restored Syncra conversation context to continue.',
+    });
+    _trimConversation();
+  }
+
+  @override
+  void resetConversation() {
+    _pendingAsks.clear();
+    _conversation.clear();
+  }
 
   /// Closes the underlying Anthropic client (and its HTTP connection pool).
   /// Call when the owning notifier is disposed. Not part of the
@@ -909,4 +941,149 @@ Progress and style:
     final s = e.toString().replaceFirst('Exception: ', '');
     return s.length > 80 ? '${s.substring(0, 80)}…' : s;
   }
+}
+
+@visibleForTesting
+String buildRestoredConversationContextForAgent(
+  List<ChatItem> items, {
+  Job? threadJob,
+}) {
+  if (items.isEmpty && threadJob == null) return '';
+
+  final lines = <String>[
+    'Previous Syncra conversation context restored from a saved UI snapshot.',
+    'Use this only as context. Do not claim that tools ran again during restore.',
+  ];
+
+  if (threadJob != null) {
+    lines.add('Active job thread: ${_restoredJobLabel(threadJob)}.');
+  }
+
+  final recentItems = items.length > 24
+      ? items.sublist(items.length - 24)
+      : items;
+
+  for (final item in recentItems) {
+    switch (item) {
+      case UserMessage():
+        final text = item.text.trim();
+        if (text.isNotEmpty) {
+          lines.add('User asked: ${_clipRestoredContext(text)}');
+        }
+        if (item.attachments.isNotEmpty) {
+          final attachments = item.attachments
+              .map((a) => '${a.name} (${a.id})')
+              .join(', ');
+          lines.add('User attached resume(s): $attachments.');
+        }
+
+      case AgentTurn():
+        for (final block in item.blocks) {
+          lines.addAll(_restoredBlockLines(block));
+        }
+        if (item.status == AgentTurnStatus.failed) {
+          final error = item.errorMessage?.trim();
+          lines.add(
+            error == null || error.isEmpty
+                ? 'The previous agent turn failed.'
+                : 'The previous agent turn failed: ${_clipRestoredContext(error)}',
+          );
+        } else if (item.status == AgentTurnStatus.stopped) {
+          lines.add('The previous agent turn was stopped before completion.');
+        }
+    }
+  }
+
+  final context = lines.join('\n');
+  const maxChars = 10000;
+  if (context.length <= maxChars) return context;
+
+  return '${lines.first}\n...\n${context.substring(context.length - maxChars)}';
+}
+
+Iterable<String> _restoredBlockLines(AgentBlock block) sync* {
+  switch (block) {
+    case ThinkingBlock():
+      // Do not feed restored thinking back as model context. User-visible text,
+      // cards, tools, and decisions below are enough to continue safely.
+      return;
+
+    case TextBlock():
+      final text = block.text.trim();
+      if (text.isNotEmpty) {
+        yield 'Syncra said: ${_clipRestoredContext(text)}';
+      }
+
+    case ToolCallBlock():
+      final result = block.resultSummary?.trim();
+      final status = block.status.name;
+      if (result == null || result.isEmpty) {
+        yield 'Syncra ran tool ${block.name} with status $status.';
+      } else {
+        yield 'Syncra ran tool ${block.name} with status $status: ${_clipRestoredContext(result)}';
+      }
+
+    case JobsBlock():
+      if (block.jobs.isEmpty) return;
+      final shown = block.jobs.take(3).map(_restoredJobLabel).join('; ');
+      final more = block.jobs.length > 3
+          ? ' and ${block.jobs.length - 3} more'
+          : '';
+      yield 'Syncra showed ${block.jobs.length} job card(s): $shown$more.';
+
+    case ProposedEditsBlock():
+      final jobPart = block.jobId == null ? '' : ' for job ${block.jobId}';
+      final resumePart =
+          block.resolvedResumeId ?? block.resumeId ?? block.savedResumeId;
+      final resumeText = resumePart == null ? '' : ' using resume $resumePart';
+      final savedText = block.savedResumeId == null
+          ? ''
+          : ' Saved tailored resume id: ${block.savedResumeId}.';
+      yield 'Syncra has a proposed-edits card in state ${block.state.name}$jobPart$resumeText with ${block.edits.length} edit(s), ${block.acceptedCount} accepted, ${block.appliedCount} applied, and ${block.skippedCount} skipped.$savedText';
+
+    case ResumeDraftBlock():
+      final savedText = block.savedResumeId == null
+          ? ''
+          : ' Saved resume id: ${block.savedResumeId}.';
+      final errorText = block.error == null || block.error!.trim().isEmpty
+          ? ''
+          : ' Error: ${_clipRestoredContext(block.error!)}';
+      yield 'Syncra has a built-resume draft "${block.fileName}" in state ${block.state.name}.$savedText$errorText';
+
+    case InputRequestBlock():
+      if (block.state == InputRequestState.answered) {
+        yield 'Syncra asked: ${_clipRestoredContext(block.question)} User answered: ${_clipRestoredContext(block.answer ?? '')}';
+      } else {
+        yield 'Syncra is waiting for user input: ${_clipRestoredContext(block.question)}';
+      }
+
+    case ActionProposalBlock():
+      yield 'Syncra showed an action proposal "${block.title}" in state ${block.state.name}: ${_clipRestoredContext(block.description)}';
+
+    case EmailDraftBlock():
+      final attachmentText = block.attachmentResumeId == null
+          ? ''
+          : ' Attachment resume id: ${block.attachmentResumeId}.';
+      final savedText = block.savedDraftId == null
+          ? ''
+          : ' Gmail draft id: ${block.savedDraftId}.';
+      yield 'Syncra drafted an email to ${block.recipient} with subject "${block.subject}" in status ${block.status.name}.$attachmentText$savedText';
+  }
+}
+
+String _restoredJobLabel(Job job) {
+  final title = job.title.trim().isEmpty ? 'Untitled role' : job.title.trim();
+  final company = job.company.trim().isEmpty
+      ? 'Unknown company'
+      : job.company.trim();
+  final location = job.location.trim().isEmpty
+      ? 'Unknown location'
+      : job.location.trim();
+  return '$title at $company in $location (${job.matchLabel}, id: ${job.id})';
+}
+
+String _clipRestoredContext(String value, {int max = 420}) {
+  final clean = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (clean.length <= max) return clean;
+  return '${clean.substring(0, max)}…';
 }

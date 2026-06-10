@@ -77,7 +77,8 @@ class AgentTurnView extends StatelessWidget {
           for (var i = 0; i < segments.length; i++) ...[
             if (i > 0)
               SizedBox(
-                height: (segments[i] is _TimelineSegment ||
+                height:
+                    (segments[i] is _TimelineSegment ||
                         segments[i - 1] is _TimelineSegment)
                     ? 18
                     : 14,
@@ -102,7 +103,8 @@ class AgentTurnView extends StatelessWidget {
             const SizedBox(height: 8),
             const _StoppedPill(),
           ],
-          if (!turn.isStreaming && (hasText || turn.status == AgentTurnStatus.failed)) ...[
+          if (!turn.isStreaming &&
+              (hasText || turn.status == AgentTurnStatus.failed)) ...[
             const SizedBox(height: 10),
             _TurnActionRow(turn: turn),
           ],
@@ -147,10 +149,10 @@ class AgentTurnView extends StatelessWidget {
         );
       case _OutputSegment(:final block):
         return AgentBlockView(
-          block: block,
-          // Only the last block of a still-streaming turn types itself in.
-          animateText: turnStreaming && isLast,
-        )
+              block: block,
+              // Only the last block of a still-streaming turn types itself in.
+              animateText: turnStreaming && isLast,
+            )
             .animate()
             .fadeIn(duration: 220.ms)
             .moveY(
@@ -331,11 +333,13 @@ class _TurnActionRow extends ConsumerWidget {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(
-        content: Text('Copied to clipboard'),
-        duration: Duration(milliseconds: 1400),
-        behavior: SnackBarBehavior.floating,
-      ));
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('Copied to clipboard'),
+          duration: Duration(milliseconds: 1400),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
   }
 }
 
@@ -604,17 +608,13 @@ class _TimelineRow extends StatelessWidget {
                   height: isFirst ? 6 : 0,
                   child: isFirst
                       ? const SizedBox.shrink()
-                      : Center(
-                          child: Container(width: 2, color: brand.border),
-                        ),
+                      : Center(child: Container(width: 2, color: brand.border)),
                 ),
                 _TimelineDot(active: isActive),
                 Expanded(
                   child: isLast
                       ? const SizedBox.shrink()
-                      : Center(
-                          child: Container(width: 2, color: brand.border),
-                        ),
+                      : Center(child: Container(width: 2, color: brand.border)),
                 ),
               ],
             ),
@@ -645,9 +645,7 @@ class _TimelineDot extends StatelessWidget {
       decoration: BoxDecoration(
         color: active ? brand.accent : brand.ink,
         shape: BoxShape.circle,
-        border: active
-            ? Border.all(color: brand.ink, width: 1.5)
-            : null,
+        border: active ? Border.all(color: brand.ink, width: 1.5) : null,
       ),
     );
     if (!active) return dot;
@@ -674,13 +672,13 @@ class _TimelineStepBody extends StatelessWidget {
   Widget build(BuildContext context) {
     return switch (block) {
       ThinkingBlock(:final content) => _TimelineThinking(
-          content: content,
-          active: active,
-        ),
+        content: content,
+        active: active,
+      ),
       ToolCallBlock() => _TimelineToolCall(
-          block: block as ToolCallBlock,
-          active: active,
-        ),
+        block: block as ToolCallBlock,
+        active: active,
+      ),
       _ => const SizedBox.shrink(),
     };
   }
@@ -771,9 +769,7 @@ class _TimelineToolCallState extends State<_TimelineToolCall> {
           Wrap(
             spacing: 6,
             runSpacing: 6,
-            children: [
-              for (final f in files) _FileChip(name: f),
-            ],
+            children: [for (final f in files) _FileChip(name: f)],
           ),
         ],
         if (block.resultSummary != null) ...[
@@ -1041,10 +1037,7 @@ class _ThinkingLabel extends StatelessWidget {
     if (!active) return base;
     return base
         .animate(onPlay: repeatIfMotion(context))
-        .shimmer(
-          duration: 1600.ms,
-          color: brand.ink.withValues(alpha: 0.55),
-        );
+        .shimmer(duration: 1600.ms, color: brand.ink.withValues(alpha: 0.55));
   }
 }
 
@@ -1063,21 +1056,29 @@ class _BouncingDots extends StatelessWidget {
       children: List.generate(3, (i) {
         return Padding(
           padding: EdgeInsets.only(right: i < 2 ? 6 : 0),
-          child: Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: brand.textMuted.withValues(alpha: 0.55),
-            ),
-          )
-              .animate(
-                onPlay: repeatIfMotion(context),
-                delay: (i * 180).ms,
-              )
-              .moveY(begin: 0, end: -3, duration: 380.ms, curve: Curves.easeOut)
-              .then()
-              .moveY(begin: -3, end: 0, duration: 380.ms, curve: Curves.easeIn),
+          child:
+              Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: brand.textMuted.withValues(alpha: 0.55),
+                    ),
+                  )
+                  .animate(onPlay: repeatIfMotion(context), delay: (i * 180).ms)
+                  .moveY(
+                    begin: 0,
+                    end: -3,
+                    duration: 380.ms,
+                    curve: Curves.easeOut,
+                  )
+                  .then()
+                  .moveY(
+                    begin: -3,
+                    end: 0,
+                    duration: 380.ms,
+                    curve: Curves.easeIn,
+                  ),
         );
       }),
     );

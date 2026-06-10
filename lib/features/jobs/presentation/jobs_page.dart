@@ -15,6 +15,7 @@ import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/gooey_orb.dart';
 import '../../agent/state/passive_agent_notifier.dart';
 import '../../agent_chat/state/agent_chat_notifier.dart';
+import '../services/application_quality_meter.dart';
 import '../state/jobs_notifier.dart';
 
 class JobsPage extends ConsumerStatefulWidget {
@@ -665,6 +666,8 @@ class _PipelineCard extends StatelessWidget {
                   for (final skill in skillTags) _Tag(label: skill),
                 ],
               ),
+              const SizedBox(height: 14),
+              _ApplicationQualityMeter(card: card),
               const SizedBox(height: 16),
               Divider(
                 height: 1,
@@ -698,6 +701,93 @@ class _PipelineCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ApplicationQualityMeter extends StatelessWidget {
+  const _ApplicationQualityMeter({required this.card});
+
+  final PipelineCard card;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final quality = evaluateApplicationQuality(card);
+    final color = _qualityColor(quality.score, brand);
+    final reasons = quality.reasons.take(2).join(' · ');
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: brand.isDark ? 0.12 : 0.09),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.speed_rounded, size: 15, color: color),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  quality.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.1,
+                    color: brand.ink,
+                  ),
+                ),
+              ),
+              Text(
+                '${quality.score}%',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  color: color,
+                  letterSpacing: -0.1,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(
+              value: quality.score / 100,
+              minHeight: 5,
+              backgroundColor: brand.border.withValues(alpha: 0.55),
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+          if (reasons.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              reasons,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: brand.textMuted,
+                letterSpacing: -0.05,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+Color _qualityColor(int score, BrandTheme brand) {
+  if (score >= 80) return brand.success;
+  if (score >= 60) return brand.warning;
+  if (score >= 40) return brand.textMuted;
+  return brand.danger;
 }
 
 /// Warm accent for a card, keyed to match quality. Deep enough to stay legible
