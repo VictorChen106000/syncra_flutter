@@ -9,6 +9,13 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  # Never analyze build output. SPM/CocoaPods check out third-party package
+  # sources (incl. their test files) under build/, which otherwise floods
+  # `flutter analyze` with errors that aren't from this app.
+  exclude:
+    - build/**
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`
