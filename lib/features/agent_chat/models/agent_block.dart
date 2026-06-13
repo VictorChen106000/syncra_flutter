@@ -371,6 +371,7 @@ class EmailDraftBlock extends AgentBlock {
     this.savedDraftId,
     this.attachmentResumeId,
     this.attachmentFilename,
+    this.autoSendPending = false,
   });
 
   final String recipient;
@@ -390,6 +391,12 @@ class EmailDraftBlock extends AgentBlock {
   /// Display filename for the attached resume PDF (e.g. `tailored_acme.pdf`).
   /// Null when there is no attachment.
   final String? attachmentFilename;
+
+  /// Transient, **not persisted** by `chat_snapshot_codec`. Set true only when
+  /// this block is freshly built from a live `draft_email` result; the draft
+  /// card uses it to auto-send once when the user has opted in. Restored history
+  /// comes back false, so reopening a chat never re-fires a send.
+  final bool autoSendPending;
 
   /// Whole-card lifecycle. Mutable so the notifier can flip it to [saved] or
   /// [sent] once the review sheet resolves and re-emit the chat state.

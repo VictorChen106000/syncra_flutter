@@ -870,6 +870,9 @@ Progress and style:
       attachmentFilename: (attachmentName == null || attachmentName.isEmpty)
           ? null
           : attachmentName,
+      // Freshly built from a live draft_email result — eligible for one-shot
+      // auto-send. Restored history (chat_snapshot_codec) leaves this false.
+      autoSendPending: true,
     );
   }
 

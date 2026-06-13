@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../../../data/firestore/applications_repository.dart';
+import '../../../data/firestore/company_contacts_repository.dart';
 import 'gmail_service.dart';
 
 /// Outcome of a successful confirmed send.
@@ -35,19 +36,24 @@ class EmailSendService {
 
   GmailService? _gmail;
   ApplicationsRepository? _applications;
+  CompanyContactsRepository? _contacts;
 
   GmailService get _gmailService => _gmail ??= GmailService();
   ApplicationsRepository get _applicationsRepo =>
       _applications ??= ApplicationsRepository();
+  CompanyContactsRepository get _contactsRepo =>
+      _contacts ??= CompanyContactsRepository();
 
   /// Overrides the collaborators — for tests only.
   @visibleForTesting
   void debugOverrideDependencies({
     GmailService? gmail,
     ApplicationsRepository? applications,
+    CompanyContactsRepository? contacts,
   }) {
     _gmail = gmail;
     _applications = applications;
+    _contacts = contacts;
   }
 
   final Random _random = Random.secure();
@@ -88,6 +94,8 @@ class EmailSendService {
     String? uid,
     String? applicationId,
     List<EmailAttachment> attachments = const [],
+    String? contactDomain,
+    String? company,
   }) async {
     if (!isValidToken(confirmationToken)) {
       throw const EmailNotConfirmedException();
@@ -121,7 +129,50 @@ class EmailSendService {
       }
     }
 
+    // A confirmed send is the strongest signal that [to] is the right address
+    // for this company — record it so the next draft pre-fills the real one.
+    await _learnRecipient(
+      to: to,
+      contactDomain: contactDomain,
+      company: company,
+      uid: uid,
+    );
+
     return EmailSendResult(messageId: messageId, sentAt: sentAt);
+  }
+
+  /// Sends an agent-drafted outreach email **without** a per-email tap, for the
+  /// app-wide "auto-send outreach" setting.
+  ///
+  /// This is the *only* place outside the review sheet allowed to mint a
+  /// confirmation token. It is justified because the caller has already cleared
+  /// two explicit gates that together stand in for the per-email tap:
+  ///   1. the user opted in via `AutoApplySettings.autoSendOutreach`, and
+  ///   2. the job passed the low-risk trust floor (`shouldAutoSendOutreach`).
+  /// The caller (the draft card) must enforce both before calling this — this
+  /// method does not re-check them. Everything downstream (send, `markSent`,
+  /// recipient learning) is shared with [sendConfirmed].
+  Future<EmailSendResult> autoSend({
+    required String to,
+    required String subject,
+    required String body,
+    String? uid,
+    String? applicationId,
+    List<EmailAttachment> attachments = const [],
+    String? contactDomain,
+    String? company,
+  }) {
+    return sendConfirmed(
+      confirmationToken: mintConfirmationToken(),
+      to: to,
+      subject: subject,
+      body: body,
+      uid: uid,
+      applicationId: applicationId,
+      attachments: attachments,
+      contactDomain: contactDomain,
+      company: company,
+    );
   }
 
   /// Creates a draft in the user's Gmail Drafts folder. Returns the draft id.
@@ -135,13 +186,65 @@ class EmailSendService {
     required String subject,
     required String body,
     List<EmailAttachment> attachments = const [],
-  }) {
-    return _gmailService.createDraft(
+    String? contactDomain,
+    String? company,
+    String? uid,
+  }) async {
+    final draftId = await _gmailService.createDraft(
       to: to,
       subject: subject,
       body: body,
       attachments: attachments,
     );
+
+    // Reviewing and saving a draft also confirms the address — learn it so the
+    // company's real recipient is reused next time (see CompanyContactsRepository).
+    await _learnRecipient(
+      to: to,
+      contactDomain: contactDomain,
+      company: company,
+      uid: uid,
+    );
+
+    return draftId;
+  }
+
+  /// Records the confirmed recipient [to] in the shared contacts directory.
+  /// Best-effort and never throws: a learning hiccup must not fail the send or
+  /// draft the user just completed. When [contactDomain] is omitted, the domain
+  /// is taken from the recipient address itself.
+  Future<void> _learnRecipient({
+    required String to,
+    String? contactDomain,
+    String? company,
+    String? uid,
+  }) async {
+    // Wrap everything — including building the repository — so a missing
+    // Firebase (e.g. in unit tests) or any write failure can never break the
+    // send/draft the user just completed.
+    try {
+      final domain = (contactDomain != null && contactDomain.trim().isNotEmpty)
+          ? contactDomain.trim()
+          : _domainFromEmail(to);
+      if (domain == null) return;
+      await _contactsRepo.saveConfirmedEmail(
+        domain: domain,
+        email: to,
+        company: company,
+        uid: uid,
+      );
+    } catch (e) {
+      debugPrint('EmailSendService: learnRecipient failed (ignored): $e');
+    }
+  }
+
+  /// The domain part of an email address, lower-cased, or `null` if [email]
+  /// has no usable `@host`.
+  String? _domainFromEmail(String email) {
+    final at = email.lastIndexOf('@');
+    if (at < 0) return null;
+    final domain = email.substring(at + 1).trim().toLowerCase();
+    return domain.isEmpty ? null : domain;
   }
 }
 
