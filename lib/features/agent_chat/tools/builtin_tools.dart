@@ -1161,9 +1161,10 @@ void _registerDraftEmail(
       if (jobId == null) return ToolResult.error('job_id is required.');
       final job = await jobsRepo.fetchById(jobId);
       if (job == null) return ToolResult.error('Job not found.');
-      final recipient =
-          (args['recipient_email'] as String?) ??
-          await resolveRecipientAsync(job.company);
+      final recipient = demoRecipientOverride.isNotEmpty
+          ? demoRecipientOverride
+          : (args['recipient_email'] as String?) ??
+                await resolveRecipientAsync(job.company);
       final tone = (args['tone'] as String?) ?? 'warm';
 
       if (!paraphrase.hasApiKey) {

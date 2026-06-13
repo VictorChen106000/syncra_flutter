@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../../data/firestore/applications_repository.dart';
 import '../../../data/firestore/company_contacts_repository.dart';
 import 'gmail_service.dart';
+import 'recipient_resolver.dart';
 
 /// Outcome of a successful confirmed send.
 class EmailSendResult {
@@ -219,6 +220,11 @@ class EmailSendService {
     String? company,
     String? uid,
   }) async {
+    // Don't learn the demo override address — it isn't a real company contact,
+    // and saving it would resurface as a bogus "learned" recipient later.
+    if (demoRecipientOverride.isNotEmpty && to.trim() == demoRecipientOverride) {
+      return;
+    }
     // Wrap everything — including building the repository — so a missing
     // Firebase (e.g. in unit tests) or any write failure can never break the
     // send/draft the user just completed.
