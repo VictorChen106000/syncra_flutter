@@ -21,6 +21,15 @@ library;
 
 import '../../../data/firestore/company_contacts_repository.dart';
 
+/// DEMO OVERRIDE — when non-empty, **every** outreach recipient is forced to
+/// this address. It short-circuits the contacts lookup and the `careers@` guess
+/// so live sends during a demo always reach a real inbox we control and never
+/// bounce on a made-up company address.
+///
+/// Set back to `''` to restore normal `careers@` / learned-contact resolution
+/// for production.
+const String demoRecipientOverride = 'pegatron.inc@gmail.com';
+
 /// Recipient address for [company], preferring a **real** address learned from
 /// a previous confirmed send/draft over the `careers@{domain}` guess.
 ///
@@ -34,6 +43,7 @@ Future<String> resolveRecipientAsync(
   String? website,
   CompanyContactsRepository? contacts,
 }) async {
+  if (demoRecipientOverride.isNotEmpty) return demoRecipientOverride;
   final repo = contacts ?? CompanyContactsRepository();
   final saved = await repo.lookupEmail(recipientDomain(company, website: website));
   if (saved != null && saved.isNotEmpty) return saved;
@@ -55,6 +65,7 @@ String recipientDomain(String company, {String? website}) =>
 /// This is never guaranteed to be a live inbox; it only pre-fills the
 /// editable "To" field so the user has a sensible default to correct.
 String resolveRecipient(String company, {String? website}) {
+  if (demoRecipientOverride.isNotEmpty) return demoRecipientOverride;
   final domain = _domainFor(company, website);
   return 'careers@$domain';
 }

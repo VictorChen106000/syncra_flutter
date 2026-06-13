@@ -30,8 +30,17 @@ class ResumePdfTemplate {
   const ResumePdfTemplate();
 
   Future<Uint8List> render(ResumeJson resume) async {
+    // Sanitize every content string up front. AI-tailored text routinely
+    // contains typographic Unicode — en-dashes in ranges like "40–60", curly
+    // quotes, ellipses — that the built-in serif fonts have no glyph for and
+    // would render as tofu boxes (▯). _sanitizeJson maps it to ASCII once,
+    // here, so every render path below is safe regardless of the text's source.
+    final clean = ResumeJson.fromJson(
+      (_sanitizeJson(resume.toJson()) as Map).cast<String, dynamic>(),
+    );
+
     final doc = pw.Document(
-      title: resume.header.name,
+      title: clean.header.name,
       theme: pw.ThemeData.withFont(
         base: pw.Font.times(),
         bold: pw.Font.timesBold(),
@@ -45,8 +54,8 @@ class ResumePdfTemplate {
         pageFormat: PdfPageFormat.letter,
         margin: const pw.EdgeInsets.fromLTRB(44, 40, 44, 40),
         build: (context) => [
-          _header(resume),
-          ..._sections(resume),
+          _header(clean),
+          ..._sections(clean),
         ],
       ),
     );
@@ -404,6 +413,49 @@ class ResumePdfTemplate {
     fontSize: 9.5,
     fontStyle: pw.FontStyle.italic,
   );
+
+  /// Maps the typographic Unicode an AI tailor commonly emits to the ASCII the
+  /// built-in WinAnsi serif fonts can actually render. Without this, an en-dash
+  /// range like "40–60" or a curly quote renders as a tofu box (▯).
+  static String _safe(String text) {
+    const replacements = {
+      '–': '-', // – en dash
+      '—': '-', // — em dash
+      '‒': '-', // ‒ figure dash
+      '―': '-', // ― horizontal bar
+      '−': '-', // − minus sign
+      '‘': "'", // ' left single quote
+      '’': "'", // ' right single quote / apostrophe
+      '‚': "'", // ‚ single low-9 quote
+      '‛': "'",
+      '“': '"', // " left double quote
+      '”': '"', // " right double quote
+      '„': '"', // „ double low-9 quote
+      '…': '...', // … ellipsis
+      '•': '-', // • bullet
+      '·': '-', // · middle dot
+      '→': '->', // → rightwards arrow
+      ' ': ' ', // non-breaking space
+      ' ': ' ', // thin space
+      ' ': ' ', // narrow no-break space
+      '​': '', // zero-width space
+      '﻿': '', // zero-width no-break space / BOM
+    };
+    var out = text;
+    replacements.forEach((from, to) => out = out.replaceAll(from, to));
+    return out;
+  }
+
+  /// Deep-applies [_safe] to every string in a decoded-JSON tree, leaving the
+  /// map keys (schema field names) untouched.
+  static Object? _sanitizeJson(Object? value) {
+    if (value is String) return _safe(value);
+    if (value is List) return value.map(_sanitizeJson).toList();
+    if (value is Map) {
+      return value.map((key, v) => MapEntry(key, _sanitizeJson(v)));
+    }
+    return value;
+  }
 }
 
 /// A labeled contact line in the header (e.g. "Email:" + value).
