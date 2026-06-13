@@ -328,13 +328,14 @@ class _JobMatchCard extends StatelessWidget {
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: brand.accent,
+                      color: brand.surfaceMuted,
                       borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: brand.border),
                     ),
                     alignment: Alignment.center,
                     child: Icon(
                       Icons.work_outline_rounded,
-                      color: brand.onAccent,
+                      color: brand.ink,
                       size: 18,
                     ),
                   ),
@@ -530,13 +531,14 @@ class EmailDraftBlockView extends ConsumerWidget {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: brand.accent,
+                  color: brand.surfaceMuted,
                   borderRadius: BorderRadius.circular(11),
+                  border: Border.all(color: brand.border),
                 ),
                 alignment: Alignment.center,
                 child: Icon(
                   Icons.drafts_rounded,
-                  color: brand.onAccent,
+                  color: brand.ink,
                   size: 17,
                 ),
               ),
@@ -876,13 +878,14 @@ class _ProposedEditsBlockView extends StatelessWidget {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: brand.accent,
+                  color: brand.surfaceMuted,
                   borderRadius: BorderRadius.circular(11),
+                  border: Border.all(color: brand.border),
                 ),
                 alignment: Alignment.center,
                 child: Icon(
                   Icons.difference_rounded,
-                  color: brand.onAccent,
+                  color: brand.ink,
                   size: 17,
                 ),
               ),
@@ -1018,8 +1021,11 @@ class _EditsFooter extends ConsumerWidget {
             SizedBox(
               width: double.infinity,
               child: _FooterButton(
+                // Inspection, not a commit — kept as a quiet outlined button so
+                // the only filled accent on screen is the irreversible action
+                // (e.g. the email card's Review & send).
                 label: saved ? 'View resume' : 'See what changed',
-                filled: !saved,
+                filled: false,
                 enabled: true,
                 onTap: () => _openPreview(context),
               ),
@@ -1243,7 +1249,9 @@ class _FooterButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final bg = filled ? brand.accent : Colors.transparent;
+    // Outlined buttons sit on a muted fill (not transparent) so they still read
+    // as a tappable control next to the one filled-accent primary.
+    final bg = filled ? brand.accent : brand.surfaceMuted;
     final fg = filled ? brand.onAccent : brand.ink;
     return Opacity(
       opacity: enabled ? 1 : 0.4,
@@ -1287,39 +1295,49 @@ class _StatusPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final (label, fg, bg) = switch (block.state) {
+    // Neutral pill on every state; a single colored dot carries the status so
+    // the chip doesn't compete with the card's one filled-accent action.
+    final (label, dot) = switch (block.state) {
       ProposedEditsState.applied =>
         block.integrityAutoRepairing
-            ? ('Repairing…', brand.ink, brand.warning.withValues(alpha: 0.16))
+            ? ('Repairing…', brand.warning)
             : block.isSaved
-            ? ('Saved', brand.onAccent, brand.accent)
-            : ('Preview ready', brand.onAccent, brand.accent),
-      ProposedEditsState.applying => (
-        'Rendering…',
-        brand.textMuted,
-        brand.surfaceMuted,
-      ),
-      ProposedEditsState.dismissed => (
-        'Dismissed',
-        brand.textMuted,
-        brand.surfaceMuted,
-      ),
+            ? ('Saved', brand.success)
+            : ('Preview ready', brand.accent),
+      ProposedEditsState.applying => ('Rendering…', brand.textSoft),
+      ProposedEditsState.dismissed => ('Dismissed', brand.textSoft),
       ProposedEditsState.reviewing => (
         '${block.acceptedCount}/${block.edits.length} accepted',
-        brand.textMuted,
-        brand.surfaceMuted,
+        brand.textSoft,
       ),
     };
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: bg,
+        color: brand.surfaceMuted,
         borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: brand.border),
       ),
-      child: Text(
-        label,
-        style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w800),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: brand.ink,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.1,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2024,7 +2042,9 @@ class _ProposalButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final bg = filled ? brand.accent : Colors.transparent;
+    // Outlined buttons sit on a muted fill (not transparent) so they still read
+    // as a tappable control next to the one filled-accent primary.
+    final bg = filled ? brand.accent : brand.surfaceMuted;
     final fg = filled ? brand.onAccent : brand.ink;
     return Material(
       color: bg,
