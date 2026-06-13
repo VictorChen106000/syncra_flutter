@@ -214,15 +214,27 @@ Future<void> _draftEmail(
       'team.\n\n'
       'Best regards,';
 
+  // Prefer a real address learned from a previous confirmed outreach to this
+  // company; resolveRecipientAsync falls back to the careers@ guess.
+  final recipient = await resolveRecipientAsync(job.company);
+  if (!parentContext.mounted) return;
+
   final result = await EmailReviewPage.show(
     parentContext,
-    recipient: resolveRecipient(job.company),
+    recipient: recipient,
     subject: subject,
     body: body,
     mode: EmailReviewMode.draft,
+    contactDomain: recipientDomain(job.company),
+    company: job.company,
   );
 
-  if (!(result?.draftCreated ?? false)) return;
+  // The review sheet lets the user flip between "Save as draft" and "Send now",
+  // so either outcome counts as acting on this job. Move it to Applications and
+  // word the confirmation to match what actually happened.
+  final sent = result?.sent ?? false;
+  final drafted = result?.draftCreated ?? false;
+  if (!sent && !drafted) return;
 
   await jobsNotifier.markDraftedJob(job);
   onDrafted?.call();
@@ -230,7 +242,13 @@ Future<void> _draftEmail(
   if (!parentContext.mounted) return;
 
   ScaffoldMessenger.of(parentContext).showSnackBar(
-    const SnackBar(content: Text('Draft saved and moved to Applications.')),
+    SnackBar(
+      content: Text(
+        sent
+            ? 'Email sent and moved to Applications.'
+            : 'Draft saved and moved to Applications.',
+      ),
+    ),
   );
 }
 

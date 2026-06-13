@@ -56,6 +56,8 @@ class EmailReviewPage extends StatefulWidget {
     required this.mode,
     this.applicationId,
     this.attachments = const [],
+    this.contactDomain,
+    this.company,
   });
 
   /// Pre-filled "To" address. Editable — the company address is only ever a
@@ -74,6 +76,15 @@ class EmailReviewPage extends StatefulWidget {
   /// Files to attach — typically the tailored resume PDF.
   final List<EmailAttachment> attachments;
 
+  /// Company domain this outreach is keyed by (e.g. `acme.com`). When set, the
+  /// confirmed "To" address is saved under it so the real recipient is reused
+  /// next time (see `CompanyContactsRepository`). Falls back to the recipient's
+  /// own domain when null.
+  final String? contactDomain;
+
+  /// Display company name, stored alongside a learned contact for context.
+  final String? company;
+
   /// Opens the review sheet. Resolves to the [EmailReviewResult], or `null`
   /// if the user dismissed it without acting. Defaults to draft mode — the
   /// safe path that never delivers without a second tap inside Gmail.
@@ -85,6 +96,8 @@ class EmailReviewPage extends StatefulWidget {
     EmailReviewMode mode = EmailReviewMode.draft,
     String? applicationId,
     List<EmailAttachment> attachments = const [],
+    String? contactDomain,
+    String? company,
   }) {
     return showModalBottomSheet<EmailReviewResult>(
       context: context,
@@ -97,6 +110,8 @@ class EmailReviewPage extends StatefulWidget {
         mode: mode,
         applicationId: applicationId,
         attachments: attachments,
+        contactDomain: contactDomain,
+        company: company,
       ),
     );
   }
@@ -119,10 +134,15 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
   bool _busy = false;
   String? _error;
 
+  /// The delivery choice the user can flip between in the sheet. Seeded from
+  /// [EmailReviewPage.mode] (the caller's default) but no longer fixed — the
+  /// "Save as draft / Send now" toggle drives it after review.
+  late EmailReviewMode _mode = widget.mode;
+
   /// Set once a draft has been created so the button can't be tapped twice
   /// into a second duplicate draft.
   String? _draftId;
-  bool get _isDraftMode => widget.mode == EmailReviewMode.draft;
+  bool get _isDraftMode => _mode == EmailReviewMode.draft;
 
   String get _reviewTitle {
     if (_draftId != null) {
@@ -204,6 +224,9 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
       subject: subject,
       body: body,
       attachments: widget.attachments,
+      contactDomain: widget.contactDomain,
+      company: widget.company,
+      uid: FirebaseAuth.instance.currentUser?.uid,
     );
 
     if (!mounted) return;
@@ -233,6 +256,8 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
       uid: FirebaseAuth.instance.currentUser?.uid,
       applicationId: widget.applicationId,
       attachments: widget.attachments,
+      contactDomain: widget.contactDomain,
+      company: widget.company,
     );
     if (!mounted) return;
     Navigator.of(
@@ -345,6 +370,19 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
                   ],
                 ),
               ],
+              if (_draftId == null) ...[
+                const SizedBox(height: 18),
+                const _FieldLabel('DELIVERY'),
+                const SizedBox(height: 8),
+                _ModeToggle(
+                  mode: _mode,
+                  enabled: !_busy,
+                  onChanged: (m) => setState(() {
+                    _mode = m;
+                    _error = null;
+                  }),
+                ),
+              ],
               if (_error != null) ...[
                 const SizedBox(height: 14),
                 _ErrorBanner(message: _error!),
@@ -404,6 +442,106 @@ class _FieldLabel extends StatelessWidget {
         fontWeight: FontWeight.w800,
         letterSpacing: 1.4,
         color: brand.ink.withValues(alpha: 0.7),
+      ),
+    );
+  }
+}
+
+/// Segmented "Save as draft / Send now" control. Lets the user pick the
+/// delivery action after reviewing, instead of the caller fixing it. Disabled
+/// while a send/draft is in flight.
+class _ModeToggle extends StatelessWidget {
+  const _ModeToggle({
+    required this.mode,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final EmailReviewMode mode;
+  final bool enabled;
+  final ValueChanged<EmailReviewMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: brand.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: brand.border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _ModeSegment(
+              label: 'Save as draft',
+              icon: Icons.drafts_rounded,
+              selected: mode == EmailReviewMode.draft,
+              enabled: enabled,
+              onTap: () => onChanged(EmailReviewMode.draft),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: _ModeSegment(
+              label: 'Send now',
+              icon: Icons.send_rounded,
+              selected: mode == EmailReviewMode.send,
+              enabled: enabled,
+              onTap: () => onChanged(EmailReviewMode.send),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModeSegment extends StatelessWidget {
+  const _ModeSegment({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final fg = selected ? brand.inkInverse : brand.ink;
+    return Material(
+      color: selected ? brand.ink : Colors.transparent,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          height: 40,
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 15, color: fg),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: fg,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -1,6 +1,21 @@
 import '../../../data/models/tracked_application.dart';
 import '../../auth/models/user_profile.dart';
+import '../../jobs/services/job_trust_guard.dart';
 import 'application_bundle_summary.dart';
+
+/// Whether the agent may auto-send a drafted outreach email instead of stopping
+/// at the manual review sheet.
+///
+/// The trust floor is deliberate: auto-send puts the user's real email address
+/// and resume in front of an employer with no human glance, so it only fires for
+/// `low`-risk jobs. Medium/high-risk postings (see [evaluateJobTrust]) always
+/// fall back to manual review even when the setting is on.
+bool shouldAutoSendOutreach({
+  required AutoApplySettings settings,
+  required JobTrustGuardResult trust,
+}) {
+  return settings.autoSendOutreach && trust.riskLevel == 'low';
+}
 
 class AutoApplyEligibilityResult {
   const AutoApplyEligibilityResult({

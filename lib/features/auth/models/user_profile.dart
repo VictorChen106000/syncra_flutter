@@ -9,6 +9,7 @@ class AutoApplySettings {
     this.minQualityScore = 85,
     this.maxDailyApplications = 3,
     this.requireLowTrust = true,
+    this.autoSendOutreach = false,
   });
 
   final bool enabled;
@@ -16,17 +17,25 @@ class AutoApplySettings {
   final int maxDailyApplications;
   final bool requireLowTrust;
 
+  /// When true, the agent may send a drafted outreach email automatically
+  /// instead of stopping at the review sheet — but only for low-risk jobs
+  /// (see `shouldAutoSendOutreach`). Off by default; the user opts in from
+  /// Profile. Medium/high-risk postings always fall back to manual review.
+  final bool autoSendOutreach;
+
   AutoApplySettings copyWith({
     bool? enabled,
     int? minQualityScore,
     int? maxDailyApplications,
     bool? requireLowTrust,
+    bool? autoSendOutreach,
   }) {
     return AutoApplySettings(
       enabled: enabled ?? this.enabled,
       minQualityScore: minQualityScore ?? this.minQualityScore,
       maxDailyApplications: maxDailyApplications ?? this.maxDailyApplications,
       requireLowTrust: requireLowTrust ?? this.requireLowTrust,
+      autoSendOutreach: autoSendOutreach ?? this.autoSendOutreach,
     );
   }
 
@@ -51,6 +60,10 @@ class AutoApplySettings {
         value['require_low_trust'],
         fallback: true,
       ),
+      autoSendOutreach: _boolOrFallback(
+        value['auto_send_outreach'],
+        fallback: false,
+      ),
     );
   }
 
@@ -59,6 +72,7 @@ class AutoApplySettings {
     'min_quality_score': minQualityScore,
     'max_daily_applications': maxDailyApplications,
     'require_low_trust': requireLowTrust,
+    'auto_send_outreach': autoSendOutreach,
   };
 
   static int _intInRange(
