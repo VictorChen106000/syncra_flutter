@@ -1668,20 +1668,25 @@ class _TextBlockViewState extends State<_TextBlockView> {
   Timer? _timer;
   bool _started = false;
 
+  /// The prose actually rendered. Any Markdown table the model emitted is
+  /// flattened into bullets here so the chat never draws a grid — see
+  /// [_flattenMarkdownTables]. The typing animation runs over this text.
+  late final String _text = _flattenMarkdownTables(widget.text);
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_started) return;
     _started = true;
-    if (widget.animate && widget.text.isNotEmpty && shouldAnimate(context)) {
+    if (widget.animate && _text.isNotEmpty && shouldAnimate(context)) {
       _startTyping();
     } else {
-      _shown = widget.text.length;
+      _shown = _text.length;
     }
   }
 
   void _startTyping() {
-    final len = widget.text.length;
+    final len = _text.length;
     // Reveal in ~1.3s regardless of length so short and long replies both
     // feel snappy rather than scaling linearly with character count.
     final step = (len / 80).ceil().clamp(1, len);
@@ -1704,9 +1709,9 @@ class _TextBlockViewState extends State<_TextBlockView> {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final typing = _shown < widget.text.length;
+    final typing = _shown < _text.length;
     // Trailing block caret while typing — reads as a live cursor.
-    final data = typing ? '${widget.text.substring(0, _shown)}▌' : widget.text;
+    final data = typing ? '${_text.substring(0, _shown)}▌' : _text;
     // Agent prose uses the app's one typeface (Inter) so the chat reads as a
     // single, consistent surface — no serif/sans split.
     final body = GoogleFonts.inter(
@@ -1783,6 +1788,73 @@ class _TextBlockViewState extends State<_TextBlockView> {
       ),
     );
   }
+}
+
+/// Rewrites any GitHub-flavoured Markdown table into a bulleted list so the chat
+/// never renders a grid. `flutter_markdown` draws real `<table>` columns, which
+/// overflow and read terribly on a phone — the product rule is that job
+/// comparisons live in the swipeable job rail, not a table. The system prompt
+/// already tells the agent not to emit tables; this is the backstop for when it
+/// does anyway. Each data row becomes one bullet whose first cell is bolded and
+/// whose remaining non-empty cells follow as "Header: value" fragments joined by
+/// " · ". Text with no table passes through untouched.
+String _flattenMarkdownTables(String input) {
+  if (!input.contains('|')) return input;
+
+  final lines = input.split('\n');
+  final out = <String>[];
+  var i = 0;
+  while (i < lines.length) {
+    final header = lines[i];
+    final separator = i + 1 < lines.length ? lines[i + 1] : '';
+    if (_looksLikeTableRow(header) && _isTableSeparator(separator)) {
+      final headers = _splitTableRow(header);
+      i += 2; // Consume the header and the `--- | ---` separator row.
+      while (i < lines.length && _looksLikeTableRow(lines[i])) {
+        out.add(_tableRowToBullet(headers, _splitTableRow(lines[i])));
+        i++;
+      }
+      continue;
+    }
+    out.add(header);
+    i++;
+  }
+  return out.join('\n');
+}
+
+bool _looksLikeTableRow(String line) {
+  final trimmed = line.trim();
+  return trimmed.startsWith('|') && trimmed.indexOf('|', 1) != -1;
+}
+
+bool _isTableSeparator(String line) {
+  if (!_looksLikeTableRow(line)) return false;
+  final cells = _splitTableRow(line);
+  if (cells.isEmpty) return false;
+  // Every cell is just dashes with optional alignment colons (e.g. `:--:`).
+  return cells.every((c) => RegExp(r'^:?-+:?$').hasMatch(c));
+}
+
+List<String> _splitTableRow(String line) {
+  var trimmed = line.trim();
+  if (trimmed.startsWith('|')) trimmed = trimmed.substring(1);
+  if (trimmed.endsWith('|')) trimmed = trimmed.substring(0, trimmed.length - 1);
+  return trimmed.split('|').map((c) => c.trim()).toList();
+}
+
+String _tableRowToBullet(List<String> headers, List<String> cells) {
+  final parts = <String>[];
+  for (var c = 0; c < cells.length; c++) {
+    final value = cells[c];
+    if (value.isEmpty) continue;
+    if (parts.isEmpty) {
+      parts.add('**$value**');
+    } else {
+      final label = c < headers.length ? headers[c] : '';
+      parts.add(label.isEmpty ? value : '$label: $value');
+    }
+  }
+  return parts.isEmpty ? '' : '- ${parts.join(' · ')}';
 }
 
 class ThinkingBlockView extends StatefulWidget {
