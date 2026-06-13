@@ -15,7 +15,6 @@ import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/gooey_orb.dart';
 import '../../agent/state/passive_agent_notifier.dart';
 import '../../agent_chat/state/agent_chat_notifier.dart';
-import '../services/application_quality_meter.dart';
 import '../state/jobs_notifier.dart';
 
 class JobsPage extends ConsumerStatefulWidget {
@@ -251,9 +250,9 @@ enum _PipelineFilter { all, allMatch, severalMatch, noMatch }
 extension _PipelineFilterX on _PipelineFilter {
   String get label => switch (this) {
     _PipelineFilter.all => 'All',
-    _PipelineFilter.allMatch => 'All match',
-    _PipelineFilter.severalMatch => 'Several match',
-    _PipelineFilter.noMatch => 'No match',
+    _PipelineFilter.allMatch => 'Strong',
+    _PipelineFilter.severalMatch => 'Partial',
+    _PipelineFilter.noMatch => 'Stretch',
   };
 
   /// True when [card] belongs under this tab. "All" admits everything.
@@ -283,21 +282,35 @@ class _FilterTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      physics: const BouncingScrollPhysics(),
-      child: Row(
-        children: [
-          for (final f in _PipelineFilter.values) ...[
-            _FilterChip(
-              label: f.label,
-              count: _countFor(f),
-              selected: f == selected,
-              onTap: () => onSelected(f),
-            ),
-            if (f != _PipelineFilter.values.last) const SizedBox(width: 8),
+    // Fade the right edge so a clipped pill reads as "scroll for more" rather
+    // than a layout bug. dstIn keeps the pills' own colors and just tapers
+    // their alpha over the last slice of the viewport.
+    return ShaderMask(
+      shaderCallback: (rect) => const LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        stops: [0.0, 0.88, 1.0],
+        colors: [Colors.black, Colors.black, Colors.transparent],
+      ).createShader(rect),
+      blendMode: BlendMode.dstIn,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Row(
+          children: [
+            for (final f in _PipelineFilter.values) ...[
+              _FilterChip(
+                label: f.label,
+                count: _countFor(f),
+                selected: f == selected,
+                onTap: () => onSelected(f),
+              ),
+              if (f != _PipelineFilter.values.last) const SizedBox(width: 8),
+            ],
+            // Trailing slack so the last pill can scroll clear of the fade.
+            const SizedBox(width: 28),
           ],
-        ],
+        ),
       ),
     );
   }
@@ -555,13 +568,6 @@ class _PipelineCard extends StatelessWidget {
     // real listings.
     final tint = _categoryTint(job.category);
 
-    // Match label + work mode + a couple of top skills, rendered as pills.
-    final skillTags = job.skills
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .take(2)
-        .toList(growable: false);
-
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -588,24 +594,24 @@ class _PipelineCard extends StatelessWidget {
               ),
             ],
           ),
-          padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Company mark + name, with a quiet relative time on the right.
+              // Company mark + "company · location", with a quiet relative time.
               Row(
                 children: [
                   _LogoMark(company: job.company),
                   const SizedBox(width: 11),
                   Expanded(
                     child: Text(
-                      job.company,
+                      _companyLine(job),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
                         color: brand.textMuted,
                         letterSpacing: -0.1,
                       ),
@@ -623,63 +629,57 @@ class _PipelineCard extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
-              // Role — the headline the eye lands on first.
+              const SizedBox(height: 11),
+              // Role + salary — the headline the eye lands on first.
               Text(
                 job.title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 19,
+                  fontSize: 17,
                   fontWeight: FontWeight.w800,
                   color: brand.ink,
-                  letterSpacing: -0.4,
+                  letterSpacing: -0.35,
                   height: 1.15,
                 ),
               ),
               if (job.salary.trim().isNotEmpty) ...[
-                const SizedBox(height: 4),
+                const SizedBox(height: 3),
                 Text(
                   job.salary,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 13.5,
                     fontWeight: FontWeight.w600,
                     color: brand.textMuted,
                     letterSpacing: -0.2,
                   ),
                 ),
               ],
-              const SizedBox(height: 14),
-              // Tag pills — match label leads (tinted), then work mode + skills.
+              const SizedBox(height: 12),
+              // Two pills at most: match quality leads (tinted); a trust pill
+              // appears only when the role needs verification — a clean card is
+              // itself the "looks safe" signal.
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  _Tag(label: job.matchLabel, color: tint),
-                  _TrustGuardTag(
-                    card: card,
-                    onTap: () => _showTrustGuardDetails(context, card),
-                  ),
-                  if (job.location.trim().isNotEmpty) _Tag(label: job.location),
-                  for (final skill in skillTags) _Tag(label: skill),
+                  _Tag(label: _matchLabel(job.category), color: tint),
+                  if (card.needsTrustReview)
+                    _TrustGuardTag(
+                      card: card,
+                      onTap: () => _showTrustGuardDetails(context, card),
+                    ),
                 ],
               ),
-              const SizedBox(height: 14),
-              _ApplicationQualityMeter(card: card),
-              const SizedBox(height: 16),
-              Divider(
-                height: 1,
-                thickness: 1,
-                color: brand.border.withValues(alpha: 0.5),
-              ),
               const SizedBox(height: 13),
-              // Agentic footer — progress dots + the single status line.
+              // Agentic footer — the progress stepper plus the single status
+              // line, which doubles as the application's verdict.
               Row(
                 children: [
                   _StageStepper(stage: card.stage),
-                  const SizedBox(width: 11),
+                  const SizedBox(width: 12),
                   Flexible(
                     child: Text(
                       _phrase(),
@@ -687,7 +687,7 @@ class _PipelineCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
                         letterSpacing: -0.1,
                         color: actionable ? brand.ink : brand.textMuted,
                       ),
@@ -703,92 +703,22 @@ class _PipelineCard extends StatelessWidget {
   }
 }
 
-class _ApplicationQualityMeter extends StatelessWidget {
-  const _ApplicationQualityMeter({required this.card});
-
-  final PipelineCard card;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final quality = evaluateApplicationQuality(card);
-    final color = _qualityColor(quality.score, brand);
-    final reasons = quality.reasons.take(2).join(' · ');
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: brand.isDark ? 0.12 : 0.09),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.28)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.speed_rounded, size: 15, color: color),
-              const SizedBox(width: 7),
-              Expanded(
-                child: Text(
-                  quality.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.1,
-                    color: brand.ink,
-                  ),
-                ),
-              ),
-              Text(
-                '${quality.score}%',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                  color: color,
-                  letterSpacing: -0.1,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(99),
-            child: LinearProgressIndicator(
-              value: quality.score / 100,
-              minHeight: 5,
-              backgroundColor: brand.border.withValues(alpha: 0.55),
-              valueColor: AlwaysStoppedAnimation<Color>(color),
-            ),
-          ),
-          if (reasons.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              reasons,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-                color: brand.textMuted,
-                letterSpacing: -0.05,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
+/// Company line under the logo: "Company · Location", or just the company when
+/// no location is known. Keeps location out of the pill row.
+String _companyLine(Job job) {
+  final location = job.location.trim();
+  if (location.isEmpty) return job.company;
+  return '${job.company}  ·  $location';
 }
 
-Color _qualityColor(int score, BrandTheme brand) {
-  if (score >= 80) return brand.success;
-  if (score >= 60) return brand.warning;
-  if (score >= 40) return brand.textMuted;
-  return brand.danger;
-}
+/// Short, human match label for the lead pill. Mirrors the filter-tab wording
+/// (Strong / Partial / Stretch) — never "No match", which reads as a mistake
+/// for a role the agent chose to pipeline.
+String _matchLabel(JobCategory category) => switch (category) {
+  JobCategory.ready => 'Strong match',
+  JobCategory.inputNeeded => 'Partial match',
+  JobCategory.exploration => 'Stretch',
+};
 
 /// Warm accent for a card, keyed to match quality. Deep enough to stay legible
 /// as tinted pill text, soft enough to read as a colored shadow at low alpha.
@@ -1262,11 +1192,29 @@ class _Dot extends StatelessWidget {
         : done
         ? brand.ink
         : brand.border;
-    final size = current ? 7.0 : 6.0;
+    // The current stage reads as a glowing, oversized dot so progress is
+    // legible at a glance; done dots are solid ink, future dots hollow-faint.
+    final size = current
+        ? 10.0
+        : done
+        ? 6.0
+        : 5.0;
     return Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        boxShadow: current
+            ? [
+                BoxShadow(
+                  color: brand.accentBright.withValues(alpha: 0.55),
+                  blurRadius: 8,
+                  spreadRadius: 1.5,
+                ),
+              ]
+            : null,
+      ),
     );
   }
 }
