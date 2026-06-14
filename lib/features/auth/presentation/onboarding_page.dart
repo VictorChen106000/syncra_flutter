@@ -15,6 +15,7 @@ import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/motion.dart';
 import '../../../data/firestore/jobs_repository.dart';
 import '../../../data/firestore/resumes_repository.dart';
+import '../../../data/firestore/user_repository.dart';
 import '../../../shared/widgets/app_back_button.dart';
 import '../../../shared/widgets/water_fill_circle.dart';
 import '../../agent/state/passive_agent_notifier.dart';
@@ -881,16 +882,19 @@ class _SetupPhase extends ConsumerStatefulWidget {
 
 class _SetupPhaseState extends ConsumerState<_SetupPhase> {
   static const _labels = [
-    'Reading your resume',
     'Reading your context',
+    'Reading your resume',
     'Mapping your strengths',
     'Setting your target role',
     'Finding roles for you',
   ];
 
-  /// Index of the "Reading your context" step — kept named so the timeline and
-  /// the run sequence stay in lockstep when steps are reordered.
-  static const _contextStep = 1;
+  /// Indices of the context + resume steps — kept named so the timeline, the
+  /// inline chips, and the run sequence stay in lockstep. Context is read
+  /// *first* now: the agent takes in what you asked for, then reads your resume
+  /// against it, so the recommendation it lands on factors your goal.
+  static const _contextStep = 0;
+  static const _resumeStep = 1;
 
   final List<_StepStatus> _statuses = List<_StepStatus>.filled(
     5,
@@ -1020,11 +1024,25 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
       return;
     }
 
-    // Step 1 — read + parse the resume. The download + Sonnet parse is a few
+    // Step 1 — read the user's own context (the goal they typed on the prompt
+    // beat) *first*, so everything after is read against it. It's already in
+    // hand, so this step is short; the goal is rendered as a chip under the
+    // step so the read is *visible*.
+    _set(_contextStep, _StepStatus.active, detail: 'Taking in what you told me…');
+    await Future<void>.delayed(const Duration(milliseconds: 750));
+    _set(
+      _contextStep,
+      _StepStatus.done,
+      detail: _hasContext
+          ? "Got your context — I'll read your resume against it."
+          : "No goal set — I'll plan from your resume.",
+    );
+
+    // Step 2 — read + parse the resume. The download + Sonnet parse is a few
     // opaque seconds, so narrate it with rotating "reading" captions rather
     // than a single frozen line; the real extracted facts surface as chips the
     // moment the parse resolves.
-    _startThinking(0, const [
+    _startThinking(_resumeStep, const [
       'Reading your resume…',
       'Scanning your experience…',
       'Pulling out your skills…',
@@ -1038,7 +1056,7 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
       }
       parsed = await _orchestrator.readResumeJson(uid: uid, resumeId: resumeId);
       _stopThinking();
-      _set(0, _StepStatus.done);
+      _set(_resumeStep, _StepStatus.done);
       _revealFindings(parsed);
     } catch (e) {
       // Scanned PDF / parse failure / missing key — don't trap the user. Mark
@@ -1046,7 +1064,7 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
       // resume later from chat.
       _stopThinking();
       _set(
-        0,
+        _resumeStep,
         _StepStatus.failed,
         detail: "Couldn't read that file — you can still continue.",
       );
@@ -1054,22 +1072,12 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
       return;
     }
 
-    // Step 2 — read the user's own context (the goal they typed on the prompt
-    // beat). It's already in hand, so this step is short; the goal is rendered
-    // as a chip under the step so the read is *visible*.
-    _set(_contextStep, _StepStatus.active, detail: 'Taking in what you told me…');
-    await Future<void>.delayed(const Duration(milliseconds: 750));
-    _set(
-      _contextStep,
-      _StepStatus.done,
-      detail: _hasContext
-          ? "Got your context — I'll factor it in."
-          : "No goal set — I'll plan from your resume.",
-    );
-
-    // Step 3 — infer role + role-fit in one headless agent call. This is the
-    // longest, most opaque step, so narrate it with rotating captions drawn
-    // from the user's own resume rather than a single frozen line.
+    // Step 3 — infer role + role-fit + a recommendation in one headless agent
+    // call, framed by the goal from step 1. This is the longest, most opaque
+    // step, so narrate it with rotating captions drawn from the user's own
+    // resume rather than a single frozen line. The recommendation is persisted
+    // so the dashboard can land on it — the agent's onboarding thought finishes
+    // there instead of restarting.
     _startThinking(2, [
       'Mapping your strengths…',
       if (parsed.experience.isNotEmpty)
@@ -1084,12 +1092,32 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     try {
       final inferred = await _paraphrase.inferOnboardingProfile(
         resumeJson: parsed.toJson(),
+        goal: widget.instruction,
       );
       _stopThinking();
       role = (inferred['role'] as String?)?.trim() ?? '';
       final fit = _fitFrom(inferred['segments']);
       if (fit != null) {
         await ref.read(userProfileProvider.notifier).setResumeFit(fit);
+      }
+      final recommendation =
+          (inferred['recommendation'] as String?)?.trim() ?? '';
+      if (recommendation.isNotEmpty) {
+        await ref
+            .read(userProfileProvider.notifier)
+            .setRecommendation(recommendation);
+        // Land the read into Career Memory so it shows on the Profile page and
+        // the dashboard's "Learned … about you" milestone counts it. Deduped by
+        // topic, so re-running setup refreshes the same entry rather than piling
+        // up duplicates. Fire-and-forget: the dashboard reads the profile field.
+        unawaited(
+          UserRepository().recordLearnedFact(
+            uid,
+            topic: 'career_focus',
+            detail: recommendation,
+            category: 'target_role',
+          ),
+        );
       }
       _set(2, _StepStatus.done);
     } catch (e) {
@@ -1245,7 +1273,7 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
   /// the reading step, and the context the agent is working from under the
   /// "Reading your context" step.
   Widget? _stepChild(int i) {
-    if (i == 0 && _found.isNotEmpty) {
+    if (i == _resumeStep && _found.isNotEmpty) {
       return Padding(
         padding: const EdgeInsets.only(top: 12),
         child: Wrap(

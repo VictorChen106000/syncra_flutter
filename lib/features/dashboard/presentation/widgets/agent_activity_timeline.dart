@@ -60,6 +60,11 @@ class AgentActivityTimeline extends ConsumerWidget {
     );
     final learnedCount = ref.watch(_learnedFactsCountProvider).value ?? 0;
     final role = (ref.watch(userProfileProvider)?.role ?? '').trim();
+    // The agent's onboarding read, carried onto the dashboard so the thought it
+    // started during setup finishes here rather than restarting.
+    final recommendation =
+        (ref.watch(userProfileProvider.select((p) => p?.recommendation)) ?? '')
+            .trim();
 
     final status = ref.watch(passiveAgentProvider.select((s) => s.status));
     final isRunning = ref.watch(
@@ -126,7 +131,16 @@ class AgentActivityTimeline extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _Header(isRunning: isRunning, briefAt: briefAt),
+          // When the agent has a read on the user, it *is* the header — typed
+          // out on first load, no card chrome — so the dashboard finishes the
+          // thought onboarding started. Otherwise fall back to the plain
+          // "Here's what I did" header.
+          if (recommendation.isNotEmpty)
+            _AgentRead(text: recommendation, isRunning: isRunning)
+                .animate()
+                .fadeIn(duration: 380.ms)
+          else
+            _Header(isRunning: isRunning, briefAt: briefAt),
           const SizedBox(height: 24),
           for (var i = 0; i < milestones.length; i++)
             _TimelineRow(
@@ -139,6 +153,117 @@ class AgentActivityTimeline extends ConsumerWidget {
                 .moveY(begin: 12, end: 0, curve: Curves.easeOutCubic),
         ],
       ),
+    );
+  }
+}
+
+/// The agent's onboarding read, surfaced as the dashboard's *headline* so the
+/// thought it started during setup finishes here. No card chrome — it's typed
+/// out in the agent's own voice ("you…") on first load, with the monochrome
+/// activity timeline as the supporting detail beneath it. Tapping opens the
+/// Profile's Career Memory, where this read lives as an editable fact.
+class _AgentRead extends StatelessWidget {
+  const _AgentRead({required this.text, required this.isRunning});
+
+  final String text;
+  final bool isRunning;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return InkWell(
+      onTap: () => context.go(RouteNames.profile),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.auto_awesome_rounded,
+                  size: 14,
+                  color: brand.accent,
+                ),
+                const SizedBox(width: 7),
+                Text(
+                  'MY READ ON YOU',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.4,
+                    color: brand.textMuted,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Icon(
+                  Icons.arrow_outward_rounded,
+                  size: 13,
+                  color: brand.textMuted.withValues(alpha: 0.7),
+                ),
+                const Spacer(),
+                if (isRunning) ...[
+                  _PulseDot(color: brand.accent, size: 7),
+                  const SizedBox(width: 7),
+                  Text(
+                    'WORKING NOW',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                      color: brand.textMuted,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 11),
+            _Typewriter(
+              text: text,
+              style: TextStyle(
+                fontSize: 18.5,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.4,
+                height: 1.4,
+                color: brand.ink,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Types [text] out character-by-character once on first build (with a thin
+/// trailing caret), then holds the full string. The reveal *is* the entrance,
+/// so the agent reads as if it's speaking its mind. Honors reduce-motion by
+/// rendering the full text immediately, and never replays on a rebuild because
+/// the tween target stays fixed at the text length.
+class _Typewriter extends StatelessWidget {
+  const _Typewriter({required this.text, required this.style});
+
+  final String text;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!shouldAnimate(context) || text.isEmpty) {
+      return Text(text, style: style);
+    }
+    final ms = (text.length * 16).clamp(450, 2000).toInt();
+    return TweenAnimationBuilder<int>(
+      tween: IntTween(begin: 0, end: text.length),
+      duration: Duration(milliseconds: ms),
+      curve: Curves.easeOut,
+      builder: (context, shown, _) {
+        final done = shown >= text.length;
+        return Text(
+          done ? text : '${text.substring(0, shown)}▏',
+          style: style,
+        );
+      },
     );
   }
 }

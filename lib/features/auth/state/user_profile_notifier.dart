@@ -133,6 +133,22 @@ class UserProfileNotifier extends Notifier<UserProfile?> {
     }
   }
 
+  /// Persists the agent's read on the user — the one/two-line recommendation
+  /// produced during onboarding setup. The dashboard lands on this so the
+  /// agent's onboarding thought finishes there instead of restarting.
+  Future<void> setRecommendation(String recommendation) async {
+    final uid = _boundUid;
+    if (uid == null) return;
+    final trimmed = recommendation.trim();
+    if (trimmed.isEmpty) return;
+    state = state?.copyWith(recommendation: trimmed);
+    try {
+      await _repository.update(uid, recommendation: trimmed);
+    } catch (e) {
+      debugPrint('setRecommendation failed: $e');
+    }
+  }
+
   /// Snaps the in-memory profile back to its first-run shape (keeps identity:
   /// name / email / avatar) so the router redirect lands the user on onboarding
   /// the instant a reset completes. The persisted reset is done by

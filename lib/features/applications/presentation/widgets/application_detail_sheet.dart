@@ -4,10 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/brand_theme.dart';
 import '../../../../data/models/tracked_application.dart';
-import '../../../auth/models/user_profile.dart';
-import '../../../auth/state/user_profile_notifier.dart';
-import '../../services/application_bundle_summary.dart';
-import '../../services/auto_apply_eligibility.dart';
+import '../../../../shared/widgets/app_back_button.dart';
 import '../../state/applications_notifier.dart';
 
 class ApplicationDetailSheet extends ConsumerStatefulWidget {
@@ -27,19 +24,6 @@ class ApplicationDetailSheet extends ConsumerStatefulWidget {
   @override
   ConsumerState<ApplicationDetailSheet> createState() =>
       _ApplicationDetailSheetState();
-}
-
-int _sentTodayCount(List<TrackedApplication> apps) {
-  final now = DateTime.now();
-
-  return apps.where((app) {
-    final sentAt = app.sentAt;
-    if (sentAt == null) return false;
-
-    return sentAt.year == now.year &&
-        sentAt.month == now.month &&
-        sentAt.day == now.day;
-  }).length;
 }
 
 class _ApplicationDetailSheetState
@@ -110,10 +94,6 @@ class _ApplicationDetailSheetState
       (a) => a.id == widget.application.id,
       orElse: () => widget.application,
     );
-    final profile = ref.watch(userProfileProvider);
-    final autoApplySettings =
-        profile?.autoApplySettings ?? const AutoApplySettings();
-    final autoApplySentToday = _sentTodayCount(state.items);
     final viewport = MediaQuery.of(context);
     return Padding(
       padding: EdgeInsets.only(bottom: viewport.viewInsets.bottom),
@@ -143,49 +123,51 @@ class _ApplicationDetailSheetState
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
-              Text(
-                app.job.title,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  color: brand.ink,
-                  letterSpacing: -0.3,
-                ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const AppBackButton(),
+                  const Spacer(),
+                ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                '${app.job.company} · ${app.job.location}',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: brand.textMuted,
-                  fontWeight: FontWeight.w500,
-                ),
+              const SizedBox(height: 6),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          app.job.title,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: brand.ink,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${app.job.company} · ${app.job.location}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: brand.textMuted,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  _PhaseChip(phase: app.phase),
+                ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 22),
               const _SectionHeader(label: 'TIMELINE'),
               const SizedBox(height: 10),
               _Timeline(app: app),
-              const SizedBox(height: 20),
-              const _SectionHeader(label: 'APPLICATION BUNDLE'),
-              const SizedBox(height: 10),
-              _BundlePanel(app: app),
-              const SizedBox(height: 20),
-              const _SectionHeader(label: 'BOUNDED AUTO-APPLY'),
-              const SizedBox(height: 10),
-              _AutoApplyPanel(
-                app: app,
-                settings: autoApplySettings,
-                sentToday: autoApplySentToday,
-              ),
-              const SizedBox(height: 20),
-              const _SectionHeader(label: 'TRUST GUARD'),
-              const SizedBox(height: 10),
-              _TrustGuardPanel(
-                app: app,
-                onRunCheck: () => notifier.runTrustGuard(app.id),
-              ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 22),
               const _SectionHeader(label: 'STATUS'),
               const SizedBox(height: 10),
               _StatusControls(
@@ -193,7 +175,7 @@ class _ApplicationDetailSheetState
                 onMarkSent: () => notifier.markSent(app.id),
                 onToggleReply: (v) => notifier.setGotReply(app.id, v),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 22),
               const _SectionHeader(label: 'NOTES'),
               const SizedBox(height: 10),
               _NoteComposer(
@@ -223,6 +205,43 @@ class _ApplicationDetailSheetState
               ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PhaseChip extends StatelessWidget {
+  const _PhaseChip({required this.phase});
+
+  final ApplicationPhase phase;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final (bg, fg) = switch (phase) {
+      ApplicationPhase.draft => (brand.surfaceMuted, brand.ink),
+      ApplicationPhase.sent => (brand.ink, brand.accent),
+      ApplicationPhase.replied => (brand.accent, brand.onAccent),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(
+          color: phase == ApplicationPhase.draft
+              ? brand.border
+              : Colors.transparent,
+        ),
+      ),
+      child: Text(
+        phase.label.toUpperCase(),
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 1.2,
+          color: fg,
         ),
       ),
     );
@@ -307,543 +326,6 @@ class _Timeline extends StatelessWidget {
     );
   }
 }
-
-class _BundlePanel extends StatelessWidget {
-  const _BundlePanel({required this.app});
-
-  final TrackedApplication app;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final bundle = evaluateApplicationBundle(app);
-    final statusColor = bundle.hasBlocker
-        ? brand.warning
-        : bundle.completeCount == bundle.totalCount
-        ? brand.success
-        : brand.textMuted;
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: brand.surfaceMuted.withValues(alpha: brand.isDark ? 0.72 : 0.9),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: brand.border.withValues(alpha: 0.72)),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Icon(Icons.inventory_2_outlined, size: 17, color: brand.ink),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Bundle readiness',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w900,
-                    color: brand.ink,
-                    letterSpacing: -0.1,
-                  ),
-                ),
-              ),
-              Text(
-                '${bundle.completeCount}/${bundle.totalCount} · ${bundle.statusLabel}',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                  color: statusColor,
-                  letterSpacing: -0.05,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          for (final item in bundle.items) _BundleItemRow(item: item),
-        ],
-      ),
-    );
-  }
-}
-
-class _BundleItemRow extends StatelessWidget {
-  const _BundleItemRow({required this.item});
-
-  final ApplicationBundleItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final color = item.isBlocking
-        ? brand.warning
-        : item.isComplete
-        ? brand.success
-        : brand.textMuted;
-    final icon = item.isBlocking
-        ? Icons.error_outline_rounded
-        : item.isComplete
-        ? Icons.check_circle_rounded
-        : Icons.radio_button_unchecked_rounded;
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 9),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.label,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w900,
-                    color: brand.ink,
-                    letterSpacing: -0.05,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  item.detail,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: brand.textMuted,
-                    height: 1.3,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AutoApplyPanel extends StatelessWidget {
-  const _AutoApplyPanel({
-    required this.app,
-    required this.settings,
-    required this.sentToday,
-  });
-
-  final TrackedApplication app;
-  final AutoApplySettings settings;
-  final int sentToday;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final result = evaluateAutoApplyEligibility(
-      app: app,
-      settings: settings,
-      sentToday: sentToday,
-    );
-
-    final color = result.isEligible
-        ? brand.success
-        : settings.enabled
-        ? brand.warning
-        : brand.textMuted;
-    final icon = result.isEligible
-        ? Icons.task_alt_rounded
-        : settings.enabled
-        ? Icons.rule_rounded
-        : Icons.pause_circle_outline_rounded;
-    final title = result.isEligible
-        ? 'Eligible under your rules'
-        : settings.enabled
-        ? 'Blocked by your rules'
-        : 'Auto-apply is off';
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: brand.isDark ? 0.14 : 0.08),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color.withValues(alpha: 0.28)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 18, color: color),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w900,
-                    color: brand.ink,
-                    letterSpacing: -0.1,
-                  ),
-                ),
-              ),
-              Text(
-                '$sentToday/${settings.maxDailyApplications} today',
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w900,
-                  color: color,
-                  letterSpacing: -0.05,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 9),
-          Text(
-            result.statusLabel,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-              color: brand.textMuted,
-              height: 1.35,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 7,
-            runSpacing: 7,
-            children: [
-              _AutoApplyRuleChip(
-                label: 'Min ${settings.minQualityScore}%',
-                active: result.qualityScore >= settings.minQualityScore,
-              ),
-              _AutoApplyRuleChip(
-                label: 'Quality ${result.qualityScore}%',
-                active: result.qualityScore >= settings.minQualityScore,
-              ),
-              _AutoApplyRuleChip(
-                label: settings.requireLowTrust
-                    ? 'Low-risk only'
-                    : 'Bundle decides',
-                active:
-                    !settings.requireLowTrust || app.trustRiskLevel == 'low',
-              ),
-            ],
-          ),
-          if (result.reasons.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            for (final reason in result.reasons.take(3))
-              Padding(
-                padding: const EdgeInsets.only(top: 5),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.circle, size: 5, color: color),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        reason,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: brand.textMuted,
-                          height: 1.35,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _AutoApplyRuleChip extends StatelessWidget {
-  const _AutoApplyRuleChip({required this.label, required this.active});
-
-  final String label;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final color = active ? brand.success : brand.textMuted;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: brand.isDark ? 0.16 : 0.1),
-        borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 10.5,
-          fontWeight: FontWeight.w900,
-          color: color,
-          letterSpacing: -0.05,
-        ),
-      ),
-    );
-  }
-}
-
-class _TrustGuardPanel extends StatelessWidget {
-  const _TrustGuardPanel({required this.app, required this.onRunCheck});
-
-  final TrackedApplication app;
-  final VoidCallback onRunCheck;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final color = _trustRiskColor(app.trustRiskLevel, brand);
-    final icon = _trustRiskIcon(app.trustRiskLevel);
-    final label = app.trustRiskLabel.trim().isEmpty
-        ? 'Not checked'
-        : app.trustRiskLabel.trim();
-    final safeNextStep = _trustSafeNextStep(app);
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: brand.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: brand.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: brand.isDark ? 0.2 : 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: color.withValues(alpha: 0.34)),
-                ),
-                alignment: Alignment.center,
-                child: Icon(icon, size: 17, color: color),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Trust Guard · $label',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                    color: brand.ink,
-                    letterSpacing: -0.2,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Quick red-flag screen only. This does not certify the job as legitimate.',
-            style: TextStyle(
-              fontSize: 12,
-              color: brand.textMuted,
-              fontWeight: FontWeight.w600,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 12),
-          if (app.trustSignals.isEmpty)
-            _TrustEmptySignal(color: color, level: app.trustRiskLevel)
-          else
-            for (final signal in app.trustSignals) ...[
-              _TrustSignalRow(signal: signal),
-              const SizedBox(height: 8),
-            ],
-          const SizedBox(height: 4),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: brand.surfaceMuted,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: brand.border.withValues(alpha: 0.7)),
-            ),
-            child: Text(
-              safeNextStep,
-              style: TextStyle(
-                fontSize: 12.2,
-                color: brand.ink,
-                fontWeight: FontWeight.w700,
-                height: 1.4,
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: onRunCheck,
-              icon: const Icon(Icons.verified_user_outlined, size: 17),
-              label: Text(
-                app.trustRiskLevel == 'unchecked'
-                    ? 'Run Trust Guard check'
-                    : 'Run check again',
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TrustEmptySignal extends StatelessWidget {
-  const _TrustEmptySignal({required this.color, required this.level});
-
-  final Color color;
-  final String level;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final text = level == 'unchecked'
-        ? 'No Trust Guard result was saved for this application yet.'
-        : 'No obvious red flags were found in the saved posting text.';
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: brand.isDark ? 0.15 : 0.09),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withValues(alpha: 0.26)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.check_circle_outline_rounded, size: 16, color: color),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(
-                fontSize: 12.2,
-                color: brand.ink,
-                fontWeight: FontWeight.w700,
-                height: 1.35,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TrustSignalRow extends StatelessWidget {
-  const _TrustSignalRow({required this.signal});
-
-  final Map<String, String> signal;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final severity = signal['severity'] ?? 'medium';
-    final color = _signalSeverityColor(severity, brand);
-    final label = signal['label'] ?? 'Trust signal';
-    final detail = signal['detail'] ?? '';
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: brand.surfaceMuted,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: brand.border.withValues(alpha: 0.7)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.error_outline_rounded, size: 16, color: color),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${_signalSeverityLabel(severity)} · $label',
-                  style: TextStyle(
-                    fontSize: 12.4,
-                    fontWeight: FontWeight.w900,
-                    color: brand.ink,
-                    height: 1.25,
-                  ),
-                ),
-                if (detail.trim().isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    detail,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: brand.textMuted,
-                      fontWeight: FontWeight.w600,
-                      height: 1.35,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-Color _trustRiskColor(String level, BrandTheme brand) => switch (level) {
-  'high' => brand.danger,
-  'medium' => brand.warning,
-  'low' => brand.success,
-  _ => brand.textSoft,
-};
-
-IconData _trustRiskIcon(String level) => switch (level) {
-  'high' => Icons.warning_amber_rounded,
-  'medium' => Icons.verified_user_outlined,
-  'low' => Icons.shield_outlined,
-  _ => Icons.shield_outlined,
-};
-
-String _trustSafeNextStep(TrackedApplication app) {
-  final saved = app.trustSafeNextStep.trim();
-  if (saved.isNotEmpty) return saved;
-
-  return switch (app.trustRiskLevel) {
-    'high' =>
-      'Do not send personal documents or payment. Verify the company and posting first.',
-    'medium' =>
-      'Verify the company site, recruiter identity, and application link before outreach.',
-    'low' =>
-      'No obvious red flags found. Still verify the official posting before applying.',
-    _ =>
-      'Run a Trust Guard check before sending personal documents or applying.',
-  };
-}
-
-Color _signalSeverityColor(String severity, BrandTheme brand) =>
-    switch (severity) {
-      'high' => brand.danger,
-      'medium' => brand.warning,
-      _ => brand.textSoft,
-    };
-
-String _signalSeverityLabel(String severity) => switch (severity) {
-  'high' => 'High',
-  'medium' => 'Medium',
-  _ => 'Note',
-};
 
 class _StatusControls extends StatelessWidget {
   const _StatusControls({

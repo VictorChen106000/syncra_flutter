@@ -55,6 +55,7 @@ class UserRepository {
     bool? gmailConnected,
     bool? hasCompletedOnboarding,
     ResumeFit? resumeFit,
+    String? recommendation,
     AutoApplySettings? autoApplySettings,
   }) async {
     final patch = <String, dynamic>{};
@@ -65,6 +66,7 @@ class UserRepository {
       patch['has_completed_onboarding'] = hasCompletedOnboarding;
     }
     if (resumeFit != null) patch['resume_fit'] = resumeFit.toJson();
+    if (recommendation != null) patch['recommendation'] = recommendation;
         if (autoApplySettings != null) {
       patch['auto_apply'] = autoApplySettings.toMap();
     }
@@ -77,6 +79,53 @@ class UserRepository {
   /// and will be orphaned until manually cleaned; that's acceptable for v1.
   Future<void> deleteUserDoc(String uid) async {
     await _paths.user(uid).delete();
+  }
+
+  /// Seeds (or refreshes, deduped by `topic`) one agent-authored Career Memory
+  /// fact, mirroring the chat's `record_fact` write shape so onboarding-seeded
+  /// memories sit alongside the ones the agent records in chat. Used during
+  /// onboarding to land the agent's "read on you" into the Profile's Career
+  /// Memory, so the read the dashboard shows is a real, editable memory rather
+  /// than a floating string.
+  Future<void> recordLearnedFact(
+    String uid, {
+    required String topic,
+    required String detail,
+    required String category,
+  }) async {
+    final cleanTopic = topic.trim();
+    final cleanDetail = detail.trim();
+    if (cleanTopic.isEmpty || cleanDetail.isEmpty) return;
+    final cleanCategory = category.trim().isEmpty ? 'other' : category.trim();
+
+    final facts = _paths.learnedFacts(uid);
+    final existing = await facts
+        .where('topic', isEqualTo: cleanTopic)
+        .limit(1)
+        .get();
+
+    if (existing.docs.isNotEmpty) {
+      final doc = existing.docs.first;
+      final observed = (doc.data()['observed_count'] as num?)?.toInt() ?? 1;
+      await doc.reference.update({
+        'detail': cleanDetail,
+        'category': cleanCategory,
+        'source': 'agent',
+        'updated_at': FieldValue.serverTimestamp(),
+        'observed_count': observed + 1,
+      });
+      return;
+    }
+
+    await facts.doc().set({
+      'topic': cleanTopic,
+      'detail': cleanDetail,
+      'category': cleanCategory,
+      'source': 'agent',
+      'created_at': FieldValue.serverTimestamp(),
+      'updated_at': FieldValue.serverTimestamp(),
+      'observed_count': 1,
+    });
   }
 
   /// Updates one learned Career Memory fact after the user edits it.
@@ -157,6 +206,7 @@ class UserRepository {
       'gmail_connected': false,
       'has_completed_onboarding': false,
       'resume_fit': FieldValue.delete(),
+      'recommendation': FieldValue.delete(),
             'auto_apply': const AutoApplySettings().toMap(),
     });
   }

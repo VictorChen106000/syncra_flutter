@@ -7,6 +7,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
+import '../../../core/utils/motion.dart';
 import '../../../data/firestore/pipeline_repository.dart';
 import '../../../data/models/job.dart';
 import '../../../shared/widgets/app_bottom_nav.dart';
@@ -196,6 +197,9 @@ class _PipelineFeedState extends ConsumerState<_PipelineFeed> {
   ) {
     final brand = context.brand;
     var animIndex = 0;
+    // Only the section that needs you wears the lime accent — "working" fades
+    // into a soft grey, "handled" settles to plain ink. Colour means "look
+    // here", not "this is a list".
 
     List<Widget> section(String label, Color accent, List<PipelineCard> items) {
       if (items.isEmpty) return const [];
@@ -233,8 +237,8 @@ class _PipelineFeedState extends ConsumerState<_PipelineFeed> {
       ),
       children: [
         ...section('Needs approval', brand.accent, needs),
-        ...section('Syncra working', brand.textMuted, inProgress),
-        ...section('Handled', brand.success, sent),
+        ...section('Syncra working', brand.textSoft, inProgress),
+        ...section('Handled', brand.ink, sent),
       ],
     );
   }
@@ -469,13 +473,17 @@ class _SectionHeader extends StatelessWidget {
             decoration: BoxDecoration(
               color: accent,
               shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: accent.withValues(alpha: 0.45),
-                  blurRadius: 10,
-                  spreadRadius: 1,
-                ),
-              ],
+              // A soft halo only on the lime "needs you" marker; the quieter
+              // sections get a crisp dot with no glow.
+              boxShadow: accent == brand.accent
+                  ? [
+                      BoxShadow(
+                        color: accent.withValues(alpha: 0.35),
+                        blurRadius: 7,
+                        spreadRadius: 0.5,
+                      ),
+                    ]
+                  : null,
             ),
           ),
           const SizedBox(width: 9),
@@ -563,10 +571,16 @@ class _PipelineCard extends StatelessWidget {
     final job = card.job;
     // Cards that need you or need trust review weight their status line in ink.
     final actionable = card.needsYou || card.needsTrustReview;
-    // Warm, per-match-quality accent — tints both the card's soft drop shadow
-    // and its lead pill so the feed spreads with the same variety as a stack of
-    // real listings.
-    final tint = _categoryTint(job.category);
+    // A strong match is the one positive signal worth the lime accent; the rest
+    // of the card stays monochrome.
+    final isStrong = job.category == JobCategory.ready;
+    // The single status line is the only place an alert can shout: high-risk
+    // postings turn red, real actions weight to ink, everything else is muted.
+    final phraseColor = card.trustRiskLevel == 'high'
+        ? brand.danger
+        : actionable
+        ? brand.ink
+        : brand.textMuted;
 
     return Material(
       color: Colors.transparent,
@@ -579,18 +593,13 @@ class _PipelineCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(AppConstants.cardRadius),
             border: Border.all(color: brand.border.withValues(alpha: 0.6)),
             boxShadow: [
-              // The soft colored drop shadow — tinted by match quality.
-              BoxShadow(
-                color: tint.withValues(alpha: brand.isDark ? 0.20 : 0.16),
-                blurRadius: 26,
-                spreadRadius: -4,
-                offset: const Offset(0, 14),
-              ),
-              // A neutral shadow underneath so the card lifts on any backdrop.
+              // One neutral shadow so the card lifts on any backdrop — no
+              // coloured glow.
               BoxShadow(
                 color: brand.shadow,
-                blurRadius: 14,
-                offset: const Offset(0, 6),
+                blurRadius: 18,
+                spreadRadius: -2,
+                offset: const Offset(0, 10),
               ),
             ],
           ),
@@ -658,14 +667,14 @@ class _PipelineCard extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 12),
-              // Two pills at most: match quality leads (tinted); a trust pill
-              // appears only when the role needs verification — a clean card is
-              // itself the "looks safe" signal.
+              // Two pills at most: match quality leads (lime when strong); a
+              // trust pill appears only when the role needs verification — a
+              // clean card is itself the "looks safe" signal.
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  _Tag(label: _matchLabel(job.category), color: tint),
+                  _Tag(label: _matchLabel(job.category), solid: isStrong),
                   if (card.needsTrustReview)
                     _TrustGuardTag(
                       card: card,
@@ -689,7 +698,7 @@ class _PipelineCard extends StatelessWidget {
                         fontSize: 12.5,
                         fontWeight: FontWeight.w700,
                         letterSpacing: -0.1,
-                        color: actionable ? brand.ink : brand.textMuted,
+                        color: phraseColor,
                       ),
                     ),
                   ),
@@ -718,14 +727,6 @@ String _matchLabel(JobCategory category) => switch (category) {
   JobCategory.ready => 'Strong match',
   JobCategory.inputNeeded => 'Partial match',
   JobCategory.exploration => 'Stretch',
-};
-
-/// Warm accent for a card, keyed to match quality. Deep enough to stay legible
-/// as tinted pill text, soft enough to read as a colored shadow at low alpha.
-Color _categoryTint(JobCategory category) => switch (category) {
-  JobCategory.ready => const Color(0xFF059669), // emerald
-  JobCategory.inputNeeded => const Color(0xFFD97706), // amber
-  JobCategory.exploration => const Color(0xFF7C3AED), // violet
 };
 
 Color _trustRiskColor(String level, BrandTheme brand) => switch (level) {
@@ -781,33 +782,13 @@ String _signalSeverityLabel(String severity) {
   };
 }
 
-/// A company "logo" stand-in — the first initial on a stable, per-company
-/// tinted tile. Gives every card a distinct colored mark without needing real
-/// brand assets.
+/// A company "logo" stand-in — the first initial on a lime tile with a black
+/// glyph: the brand's signature mark. A slow sheen sweeps across it so the feed
+/// feels alive without leaning on per-company rainbow colours.
 class _LogoMark extends StatelessWidget {
   const _LogoMark({required this.company});
 
   final String company;
-
-  static const _palette = <Color>[
-    Color(0xFF6366F1), // indigo
-    Color(0xFF8B5CF6), // violet
-    Color(0xFFEC4899), // pink
-    Color(0xFFF59E0B), // amber
-    Color(0xFF10B981), // emerald
-    Color(0xFF0EA5E9), // sky
-    Color(0xFFF43F5E), // rose
-    Color(0xFF14B8A6), // teal
-  ];
-
-  Color get _color {
-    if (company.isEmpty) return _palette.first;
-    var sum = 0;
-    for (final unit in company.codeUnits) {
-      sum += unit;
-    }
-    return _palette[sum % _palette.length];
-  }
 
   String get _initial {
     final trimmed = company.trim();
@@ -817,26 +798,38 @@ class _LogoMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final color = _color;
     return Container(
-      width: 40,
-      height: 40,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: brand.isDark ? 0.22 : 0.14),
-        borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: color.withValues(alpha: 0.28)),
-      ),
-      child: Text(
-        _initial,
-        style: TextStyle(
-          fontSize: 17,
-          fontWeight: FontWeight.w800,
-          color: color,
-          letterSpacing: -0.5,
-        ),
-      ),
-    );
+          width: 40,
+          height: 40,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: brand.accent,
+            borderRadius: BorderRadius.circular(13),
+            boxShadow: [
+              BoxShadow(
+                color: brand.accent.withValues(alpha: 0.3),
+                blurRadius: 12,
+                spreadRadius: -3,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Text(
+            _initial,
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+              color: brand.onAccent,
+              letterSpacing: -0.5,
+            ),
+          ),
+        )
+        .animate(onPlay: repeatIfMotion(context))
+        .shimmer(
+          duration: 2200.ms,
+          color: Colors.white.withValues(alpha: 0.55),
+          angle: 0.4,
+        );
   }
 }
 
@@ -1100,30 +1093,25 @@ class _TrustGuardTag extends StatelessWidget {
   }
 }
 
-/// A pill tag — the match label, work mode, or a skill. Accent-tinted when
-/// [color] is given, otherwise a quiet outlined chip.
+/// A pill tag — the match label or a skill. A solid lime chip for a strong
+/// match (the one positive signal worth colour); a quiet neutral chip otherwise.
 class _Tag extends StatelessWidget {
-  const _Tag({required this.label, this.color});
+  const _Tag({required this.label, this.solid = false});
 
   final String label;
-  final Color? color;
+  final bool solid;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final tinted = color != null;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
       decoration: BoxDecoration(
-        color: tinted
-            ? color!.withValues(alpha: brand.isDark ? 0.18 : 0.12)
-            : brand.surfaceMuted,
+        color: solid ? brand.accent : brand.surfaceMuted,
         borderRadius: BorderRadius.circular(AppConstants.pillRadius),
-        border: Border.all(
-          color: tinted
-              ? color!.withValues(alpha: 0.34)
-              : brand.border.withValues(alpha: 0.7),
-        ),
+        border: solid
+            ? null
+            : Border.all(color: brand.border.withValues(alpha: 0.7)),
       ),
       child: Text(
         label.toUpperCase(),
@@ -1133,7 +1121,7 @@ class _Tag extends StatelessWidget {
           fontSize: 10.5,
           fontWeight: FontWeight.w800,
           letterSpacing: 0.5,
-          color: tinted ? color! : brand.textMuted,
+          color: solid ? brand.onAccent : brand.textMuted,
         ),
       ),
     );
@@ -1208,9 +1196,9 @@ class _Dot extends StatelessWidget {
         boxShadow: current
             ? [
                 BoxShadow(
-                  color: brand.accentBright.withValues(alpha: 0.55),
-                  blurRadius: 8,
-                  spreadRadius: 1.5,
+                  color: brand.accentBright.withValues(alpha: 0.4),
+                  blurRadius: 6,
+                  spreadRadius: 0.5,
                 ),
               ]
             : null,

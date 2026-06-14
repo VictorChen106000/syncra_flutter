@@ -93,6 +93,7 @@ class UserProfile {
     this.gmailConnected = false,
     this.hasCompletedOnboarding = false,
     this.resumeFit,
+    this.recommendation,
     this.autoApplySettings = const AutoApplySettings(),
   });
 
@@ -115,6 +116,12 @@ class UserProfile {
   /// without a fresh agent call.
   final ResumeFit? resumeFit;
 
+  /// The agent's one- or two-line read on the user, written *to* them during
+  /// onboarding (where they're strongest + the next move it would make). The
+  /// dashboard lands on this so the agent's onboarding thought finishes there
+  /// rather than restarting. Null until the first setup run produces it.
+  final String? recommendation;
+
   /// User-defined guardrails for future bounded auto-apply behavior.
   ///
   /// This does not auto-send anything by itself; it only stores the safe
@@ -130,6 +137,7 @@ class UserProfile {
     bool? gmailConnected,
     bool? hasCompletedOnboarding,
     ResumeFit? resumeFit,
+    String? recommendation,
     AutoApplySettings? autoApplySettings,
     bool clearResumeFit = false,
   }) {
@@ -143,6 +151,7 @@ class UserProfile {
       hasCompletedOnboarding:
           hasCompletedOnboarding ?? this.hasCompletedOnboarding,
       resumeFit: clearResumeFit ? null : (resumeFit ?? this.resumeFit),
+      recommendation: recommendation ?? this.recommendation,
       autoApplySettings: autoApplySettings ?? this.autoApplySettings,
     );
   }
@@ -165,6 +174,9 @@ class UserProfile {
       resumeFit: rawFit is Map
           ? ResumeFit.fromJson(rawFit.cast<String, dynamic>())
           : null,
+      recommendation: (data['recommendation'] as String?)?.trim().isEmpty ?? true
+          ? null
+          : (data['recommendation'] as String).trim(),
       autoApplySettings: AutoApplySettings.fromMap(data['auto_apply']),
     );
   }

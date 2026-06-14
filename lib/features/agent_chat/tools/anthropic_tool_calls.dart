@@ -129,29 +129,41 @@ class AnthropicParaphraseService {
   }
 
   /// Reads a parsed resume and infers, in one headless call, the user's most
-  /// likely target role plus a 3-5 slice role-fit breakdown. This is the
-  /// non-interactive equivalent of the old onboarding chat's
-  /// `propose_fit_chart` + `complete_onboarding` combo — used by the dedicated
-  /// upload onboarding so the agent can set the user up without a Q&A.
+  /// likely target role, a 3-5 slice role-fit breakdown, and a short
+  /// recommendation written *to* the user. This is the non-interactive
+  /// equivalent of the old onboarding chat's `propose_fit_chart` +
+  /// `complete_onboarding` combo — used by the dedicated upload onboarding so
+  /// the agent can set the user up without a Q&A.
+  ///
+  /// [goal] is the free-text instruction the user typed on the prompt beat, if
+  /// any. When present the recommendation is framed toward it, so the read the
+  /// dashboard lands on factors *their context*, not just the resume.
   ///
   /// Returns:
   /// {
   ///   "role": "Senior Backend Engineer",
   ///   "segments": [ {"label": "Backend Engineering", "percent": 55,
-  ///                  "rationale": "..."}, ... ]
+  ///                  "rationale": "..."}, ... ],
+  ///   "recommendation": "You read strongest for backend roles — I'd lead with
+  ///                      your payments work and target senior IC openings."
   /// }
   Future<Map<String, dynamic>> inferOnboardingProfile({
     required Map<String, dynamic> resumeJson,
+    String goal = '',
   }) async {
+    final trimmedGoal = goal.trim();
+    final goalLine = trimmedGoal.isEmpty
+        ? ''
+        : "\n\nThe user's stated goal (their own words):\n$trimmedGoal";
     final response = await _call(
       system: _onboardingInferSystem,
       user:
           '''
 Resume (JSON):
-${const JsonEncoder.withIndent('  ').convert(resumeJson)}
+${const JsonEncoder.withIndent('  ').convert(resumeJson)}$goalLine
 
 Return ONLY the JSON object described in the system prompt.''',
-      maxTokens: 700,
+      maxTokens: 800,
     );
 
     final cleaned = _stripFences(response);
@@ -182,7 +194,14 @@ Return ONLY the JSON object described in the system prompt.''',
         )
         .toList();
 
-    return {'role': role, 'segments': rawSegments};
+    final recommendation =
+        (decoded['recommendation'] as String?)?.trim() ?? '';
+
+    return {
+      'role': role,
+      'segments': rawSegments,
+      'recommendation': recommendation,
+    };
   }
 
   /// Returns `{ subject, body }`.
@@ -400,19 +419,27 @@ Adding new content (op: "add"):
 
   static const _onboardingInferSystem = '''
 You are Syncra, an AI career copilot setting up a new user from their resume.
-You are given the parsed resume JSON. Infer two things and return them as JSON.
+You are given the parsed resume JSON, and sometimes the goal the user typed in
+their own words. Infer three things and return them as JSON.
 
 1. role: the single target role this person is most likely aiming for next,
    grounded in their most recent experience and strongest skills. Be specific
    but concise (under 60 chars), e.g. "Senior Backend Engineer",
    "Product Designer", "Data Scientist". Use the seniority their experience
-   supports. Never invent a domain the resume does not support.
+   supports. Never invent a domain the resume does not support. If the user
+   gave a goal, honor it where the resume can support it.
 
 2. segments: 3 to 5 role-category slices showing which kinds of roles their
    resume reads strongest for. Order biggest-first (segment[0] is dominant).
    Percents are the weight of evidence in the resume and should sum to ~100.
    Each slice has a short `label` (under 24 chars) and a one-line `rationale`
    grounded in the resume.
+
+3. recommendation: one or two sentences, addressed directly to the user as
+   "you", naming where they read strongest and the single highest-leverage
+   next move you'd make for them. Ground it in a concrete detail from the
+   resume. If the user gave a goal, frame the move toward that goal. Warm and
+   specific, no filler, under 240 chars.
 
 Return ONLY this JSON object — no markdown fences, no prose:
 {
@@ -421,7 +448,8 @@ Return ONLY this JSON object — no markdown fences, no prose:
     {"label": "Backend Engineering", "percent": 55, "rationale": "..."},
     {"label": "AI / ML", "percent": 25, "rationale": "..."},
     {"label": "DevOps", "percent": 20, "rationale": "..."}
-  ]
+  ],
+  "recommendation": "..."
 }
 ''';
 
