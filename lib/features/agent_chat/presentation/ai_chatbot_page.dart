@@ -92,6 +92,47 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
     );
   }
 
+  /// Scrolls the transcript to the artifact block tagged with [blockId] — the
+  /// "Jump to section" composer control hands us the id plus a rough
+  /// [ordinalFraction] of where it sits in the item list.
+  ///
+  /// The transcript is a lazily-laid-out [ListView], so a far-off block has no
+  /// element yet and `ensureVisible` can't target it. We first try the fast
+  /// path (already built), and otherwise coarse-jump to roughly where the block
+  /// sits so it inflates, then let `ensureVisible` settle on it precisely once
+  /// layout catches up.
+  Future<void> _jumpToBlock(String blockId, double ordinalFraction) async {
+    // A deliberate jump away from the live tail — stop auto-follow fighting it.
+    _autoFollow = false;
+
+    Future<bool> settleIfBuilt() async {
+      final ctx = GlobalObjectKey(blockId).currentContext;
+      if (ctx == null) return false;
+      await Scrollable.ensureVisible(
+        ctx,
+        // Land the block just below the floating top chrome, not jammed under it.
+        alignment: 0.12,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
+      );
+      return true;
+    }
+
+    if (await settleIfBuilt()) return;
+    if (!_scrollController.hasClients) return;
+
+    final pos = _scrollController.position;
+    _scrollController.jumpTo(
+      (pos.maxScrollExtent * ordinalFraction).clamp(0.0, pos.maxScrollExtent),
+    );
+    // Give layout a few frames to inflate the now-near block, then settle.
+    for (var attempt = 0; attempt < 8; attempt++) {
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      if (await settleIfBuilt()) return;
+    }
+  }
+
   @override
   void dispose() {
     _scrollController.removeListener(_onScroll);
@@ -224,7 +265,10 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
                   DockedInputRequest(block: pendingInput)
                 else if (pendingProposal != null)
                   DockedActionProposal(block: pendingProposal),
-                ChatInputBar(autofocus: widget.autofocusComposer),
+                ChatInputBar(
+                  autofocus: widget.autofocusComposer,
+                  onJumpToBlock: _jumpToBlock,
+                ),
               ],
             ),
           ),

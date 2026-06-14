@@ -148,19 +148,28 @@ class AgentTurnView extends StatelessWidget {
           streaming: turnStreaming && isLast,
         );
       case _OutputSegment(:final block):
-        return AgentBlockView(
-              block: block,
-              // Only the last block of a still-streaming turn types itself in.
-              animateText: turnStreaming && isLast,
-            )
-            .animate()
-            .fadeIn(duration: 220.ms)
-            .moveY(
-              begin: 6,
-              end: 0,
-              duration: 220.ms,
-              curve: Curves.easeOutCubic,
-            );
+        // A stable global key per output block lets the composer's "Jump to
+        // section" control scroll this artifact into view through
+        // Scrollable.ensureVisible. Keyed off block.id, which is unique and
+        // stable across rebuilds; docked blocks are filtered out upstream, so
+        // no id is ever mounted in two places at once.
+        return KeyedSubtree(
+          key: GlobalObjectKey(block.id),
+          child:
+              AgentBlockView(
+                    block: block,
+                    // Only the last block of a still-streaming turn types itself in.
+                    animateText: turnStreaming && isLast,
+                  )
+                  .animate()
+                  .fadeIn(duration: 220.ms)
+                  .moveY(
+                    begin: 6,
+                    end: 0,
+                    duration: 220.ms,
+                    curve: Curves.easeOutCubic,
+                  ),
+        );
     }
   }
 }
