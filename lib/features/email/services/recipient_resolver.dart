@@ -19,6 +19,43 @@
 ///      review sheet stays as the human safety net either way.
 library;
 
+import '../../../data/firestore/company_contacts_repository.dart';
+
+/// DEMO OVERRIDE — when non-empty, **every** outreach recipient is forced to
+/// this address. It short-circuits the contacts lookup and the `careers@` guess
+/// so live sends during a demo always reach a real inbox we control and never
+/// bounce on a made-up company address.
+///
+/// Set back to `''` to restore normal `careers@` / learned-contact resolution
+/// for production.
+const String demoRecipientOverride = 'pegatron.inc@gmail.com';
+
+/// Recipient address for [company], preferring a **real** address learned from
+/// a previous confirmed send/draft over the `careers@{domain}` guess.
+///
+/// This is the Flutter + Firebase answer to "find the real receiver": it reads
+/// the shared [CompanyContactsRepository] directory (keyed by company domain).
+/// When a confirmed contact exists it is returned; otherwise it falls back to
+/// [resolveRecipient]. Reads never throw — a Firestore hiccup just yields the
+/// guess. Pass [contacts] to inject a fake in tests.
+Future<String> resolveRecipientAsync(
+  String company, {
+  String? website,
+  CompanyContactsRepository? contacts,
+}) async {
+  if (demoRecipientOverride.isNotEmpty) return demoRecipientOverride;
+  final repo = contacts ?? CompanyContactsRepository();
+  final saved = await repo.lookupEmail(recipientDomain(company, website: website));
+  if (saved != null && saved.isNotEmpty) return saved;
+  return resolveRecipient(company, website: website);
+}
+
+/// The bare company domain an outreach draft is keyed by — the same value the
+/// contacts directory and the `careers@` guess are built from. Exposed so the
+/// review sheet can save a confirmed address under the right key.
+String recipientDomain(String company, {String? website}) =>
+    _domainFor(company, website);
+
 /// Best-effort recipient address for [company].
 ///
 /// When the employer's real [website] is known (e.g. JSearch's
@@ -28,6 +65,7 @@ library;
 /// This is never guaranteed to be a live inbox; it only pre-fills the
 /// editable "To" field so the user has a sensible default to correct.
 String resolveRecipient(String company, {String? website}) {
+  if (demoRecipientOverride.isNotEmpty) return demoRecipientOverride;
   final domain = _domainFor(company, website);
   return 'careers@$domain';
 }

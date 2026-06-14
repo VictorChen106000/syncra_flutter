@@ -1161,8 +1161,10 @@ void _registerDraftEmail(
       if (jobId == null) return ToolResult.error('job_id is required.');
       final job = await jobsRepo.fetchById(jobId);
       if (job == null) return ToolResult.error('Job not found.');
-      final recipient =
-          (args['recipient_email'] as String?) ?? resolveRecipient(job.company);
+      final recipient = demoRecipientOverride.isNotEmpty
+          ? demoRecipientOverride
+          : (args['recipient_email'] as String?) ??
+                await resolveRecipientAsync(job.company);
       final tone = (args['tone'] as String?) ?? 'warm';
 
       if (!paraphrase.hasApiKey) {
@@ -1409,13 +1411,19 @@ void _registerLookupHiringManager(ToolRegistry registry) {
       if (company.isEmpty) {
         return ToolResult.error('company is required.');
       }
+      // Prefer a real address learned from a previous confirmed send/draft;
+      // fall back to the generic careers guess.
+      final email = await resolveRecipientAsync(company);
+      final learned = email != resolveRecipient(company);
       return ToolResult(
-        summary: 'Careers inbox for $company',
+        summary: 'Contact for $company',
         data: {
           'name': null,
-          'email': resolveRecipient(company),
-          'confidence': 0.2,
-          'note': 'Generic careers address — no named-contact lookup wired.',
+          'email': email,
+          'confidence': learned ? 0.8 : 0.2,
+          'note': learned
+              ? 'Address confirmed from a previous outreach to this company.'
+              : 'Generic careers address — no confirmed contact on file yet.',
         },
       );
     },

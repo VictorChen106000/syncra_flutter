@@ -20,6 +20,15 @@ service cloud.firestore {
       allow write: if isSignedIn();
     }
 
+    // Shared directory of confirmed outreach recipient addresses, keyed by
+    // company domain (e.g. company_contacts/acme.com). Learned from real
+    // sends/drafts so the next user gets the real address instead of a guess.
+    // Same demo posture as jobs/: any signed-in user can read and write.
+    match /company_contacts/{domain} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
     // User profile + all per-user subcollections.
     match /users/{uid} {
       allow read, write: if isOwner(uid);

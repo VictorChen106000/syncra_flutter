@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/brand_theme.dart';
-import '../../../../core/utils/motion.dart';
 import '../../../resumes/presentation/widgets/resume_attachment_chips.dart';
 import '../../../resumes/presentation/widgets/select_resumes_bottom_sheet.dart';
 import '../../../resumes/state/resume_notifier.dart';
+import '../../models/agent_block.dart';
 import '../../models/chat_message.dart';
 import '../../state/agent_chat_notifier.dart';
 
@@ -18,12 +17,19 @@ class _SendIntent extends Intent {
 }
 
 class ChatInputBar extends ConsumerStatefulWidget {
-  const ChatInputBar({super.key, this.autofocus = false});
+  const ChatInputBar({super.key, this.autofocus = false, this.onJumpToBlock});
 
   /// When true, the composer grabs focus on first build — used when the user
   /// arrives from the dashboard's "Ask Syncra" bar intending to type straight
   /// away.
   final bool autofocus;
+
+  /// Scrolls the transcript to the artifact block with the given id. Supplied
+  /// by [AiChatbotPage], which owns the scroll controller. The second argument
+  /// is the block's rough ordinal position in the item list (0–1), used to
+  /// coarse-jump toward lazily-built blocks before settling. When null, the
+  /// "Jump to section" chip renders disabled.
+  final void Function(String blockId, double ordinalFraction)? onJumpToBlock;
 
   @override
   ConsumerState<ChatInputBar> createState() => _ChatInputBarState();
@@ -245,7 +251,7 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                         : () => SelectResumesBottomSheet.show(context),
                   ),
                   const SizedBox(width: 8),
-                  _ModelChip(streaming: streaming),
+                  _JumpToSectionChip(onJump: widget.onJumpToBlock),
                   const Spacer(),
                   _SendButton(
                     streaming: streaming,
@@ -264,69 +270,286 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
   }
 }
 
-/// Active-model pill that lives in the composer, beside the attach button —
-/// the chat's single "which model am I talking to" indicator. The dot pulses
-/// while the agent is streaming a response.
-class _ModelChip extends StatelessWidget {
-  const _ModelChip({required this.streaming});
+/// A jumpable artifact in the transcript — a job rail, tailored-resume card,
+/// resume draft, or outreach email. Built from the live chat state and listed
+/// in the "Jump to section" sheet so the user can leap straight to it.
+class _ChatSection {
+  const _ChatSection({
+    required this.blockId,
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    required this.ordinalFraction,
+  });
 
-  final bool streaming;
+  final String blockId;
+  final IconData icon;
+  final String label;
+  final String subtitle;
 
-  static const _modelLabel = 'Syncra Opus';
+  /// Rough position of the owning item in the transcript (0 = top, 1 = bottom),
+  /// handed to [AiChatbotPage] to coarse-jump toward lazily-built blocks.
+  final double ordinalFraction;
+}
+
+/// Walks the chat transcript and pulls out the artifact blocks worth jumping
+/// to, in transcript order. Plain text / tool-call / thinking blocks are
+/// skipped — only the cards a user would want to revisit make the list.
+List<_ChatSection> _collectSections(AgentChatState state) {
+  final items = state.items;
+  final denom = items.length > 1 ? items.length - 1 : 1;
+  final sections = <_ChatSection>[];
+  for (var i = 0; i < items.length; i++) {
+    final item = items[i];
+    if (item is! AgentTurn) continue;
+    final fraction = i / denom;
+    for (final block in item.blocks) {
+      switch (block) {
+        case JobsBlock():
+          final n = block.jobs.length;
+          sections.add(_ChatSection(
+            blockId: block.id,
+            icon: Icons.travel_explore_rounded,
+            label: 'Job matches',
+            subtitle: '$n role${n == 1 ? '' : 's'}',
+            ordinalFraction: fraction,
+          ));
+        case ProposedEditsBlock():
+          final n = block.edits.length;
+          sections.add(_ChatSection(
+            blockId: block.id,
+            icon: Icons.auto_awesome_rounded,
+            label: 'Tailored resume',
+            subtitle: '$n edit${n == 1 ? '' : 's'}',
+            ordinalFraction: fraction,
+          ));
+        case ResumeDraftBlock():
+          sections.add(_ChatSection(
+            blockId: block.id,
+            icon: Icons.description_outlined,
+            label: 'Resume draft',
+            subtitle: block.fileName,
+            ordinalFraction: fraction,
+          ));
+        case EmailDraftBlock():
+          sections.add(_ChatSection(
+            blockId: block.id,
+            icon: Icons.mail_outline_rounded,
+            label: 'Outreach email',
+            subtitle: block.subject.trim().isNotEmpty
+                ? block.subject.trim()
+                : block.recipient,
+            ordinalFraction: fraction,
+          ));
+        default:
+          break;
+      }
+    }
+  }
+  return sections;
+}
+
+/// Composer pill that opens a sheet of the chat's key sections (job matches,
+/// tailored resumes, drafts, outreach) and scrolls straight to the one tapped.
+/// Renders disabled until the conversation has produced something to jump to.
+class _JumpToSectionChip extends ConsumerWidget {
+  const _JumpToSectionChip({required this.onJump});
+
+  final void Function(String blockId, double ordinalFraction)? onJump;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final brand = context.brand;
+    final sections = _collectSections(ref.watch(agentChatProvider));
+    final enabled = sections.isNotEmpty && onJump != null;
     return Semantics(
-      label: streaming
-          ? '$_modelLabel, generating response'
-          : '$_modelLabel, idle',
-      container: true,
-      child: Container(
-        height: 36,
-        padding: const EdgeInsets.symmetric(horizontal: 11),
-        decoration: BoxDecoration(
+      button: true,
+      enabled: enabled,
+      label: 'Jump to a section of this chat',
+      child: Opacity(
+        opacity: enabled ? 1 : 0.45,
+        child: Material(
           color: brand.surfaceMuted,
           borderRadius: BorderRadius.circular(99),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _MiniPulseDot(active: streaming, color: brand.accent),
-            const SizedBox(width: 7),
-            Text(
-              _modelLabel,
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: brand.ink,
-                letterSpacing: -0.1,
+          child: InkWell(
+            onTap: enabled ? () => _open(context, sections) : null,
+            borderRadius: BorderRadius.circular(99),
+            child: Container(
+              height: 36,
+              padding: const EdgeInsets.symmetric(horizontal: 11),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.double_arrow_rounded,
+                    size: 16,
+                    color: brand.ink,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Jump to',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: brand.ink,
+                      letterSpacing: -0.1,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
+          ),
         ),
+      ),
+    );
+  }
+
+  void _open(BuildContext context, List<_ChatSection> sections) {
+    showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      backgroundColor: context.brand.bg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+      ),
+      builder: (sheetContext) => _JumpSectionsSheet(
+        sections: sections,
+        onSelect: (section) {
+          Navigator.of(sheetContext).pop();
+          onJump?.call(section.blockId, section.ordinalFraction);
+        },
       ),
     );
   }
 }
 
-class _MiniPulseDot extends StatelessWidget {
-  const _MiniPulseDot({required this.active, required this.color});
+/// Bottom sheet listing the chat's jumpable sections. Tapping a row closes the
+/// sheet and scrolls the transcript to that artifact.
+class _JumpSectionsSheet extends StatelessWidget {
+  const _JumpSectionsSheet({required this.sections, required this.onSelect});
 
-  final bool active;
-  final Color color;
+  final List<_ChatSection> sections;
+  final ValueChanged<_ChatSection> onSelect;
 
   @override
   Widget build(BuildContext context) {
-    final dot = Container(
-      width: 7,
-      height: 7,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    final brand = context.brand;
+    return SafeArea(
+      top: false,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 18, 16, 14),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Jump to section',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: brand.ink,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: Icon(Icons.close_rounded, color: brand.ink),
+                  style: IconButton.styleFrom(backgroundColor: brand.border),
+                ),
+              ],
+            ),
+          ),
+          Divider(height: 1, color: brand.border),
+          Flexible(
+            child: ListView.separated(
+              shrinkWrap: true,
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+              itemCount: sections.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (_, i) =>
+                  _SectionTile(section: sections[i], onTap: () => onSelect(sections[i])),
+            ),
+          ),
+        ],
+      ),
     );
-    if (!active) return dot;
-    return dot
-        .animate(onPlay: repeatIfMotion(context, reverse: true))
-        .fadeIn(begin: 0.45, duration: 700.ms);
+  }
+}
+
+class _SectionTile extends StatelessWidget {
+  const _SectionTile({required this.section, required this.onTap});
+
+  final _ChatSection section;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Material(
+      color: brand.surface,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: brand.border),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: brand.surfaceMuted,
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                alignment: Alignment.center,
+                child: Icon(section.icon, size: 18, color: brand.ink),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      section.label,
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w800,
+                        color: brand.ink,
+                        letterSpacing: -0.15,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      section.subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w500,
+                        color: brand.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.arrow_forward_rounded,
+                size: 16,
+                color: brand.textSoft,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

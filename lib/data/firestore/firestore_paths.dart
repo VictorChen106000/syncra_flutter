@@ -27,4 +27,9 @@ class FirestorePaths {
     user(uid).collection('learned_facts');
 
   CollectionReference<Map<String, dynamic>> jobs() => _db.collection('jobs');
+
+  /// Shared directory of confirmed outreach recipients, keyed by company
+  /// domain. See [CompanyContactsRepository] and the `company_contacts` rule.
+  CollectionReference<Map<String, dynamic>> companyContacts() =>
+      _db.collection('company_contacts');
 }

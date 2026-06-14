@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -20,7 +21,13 @@ import '../../../resumes/state/resume_notifier.dart';
 import '../../../email/presentation/email_review_page.dart';
 import '../../../email/services/gmail_service.dart';
 import '../../../jobs/presentation/widgets/job_action_sheet.dart';
+import '../../../jobs/services/job_trust_guard.dart';
 import '../../../jobs/state/jobs_notifier.dart';
+import '../../../../data/firestore/jobs_repository.dart';
+import '../../../applications/services/auto_apply_eligibility.dart';
+import '../../../auth/models/user_profile.dart';
+import '../../../auth/state/user_profile_notifier.dart';
+import '../../../email/services/email_send_service.dart';
 
 class AgentBlockView extends StatelessWidget {
   const AgentBlockView({
@@ -440,16 +447,93 @@ class _JobMatchCard extends StatelessWidget {
 /// user edits the recipient/subject/body and taps Send, which mints the one-shot
 /// confirmation token and delivers via Gmail. The agent still never sends on its
 /// own; the send only happens on the user's explicit tap inside the sheet.
-class EmailDraftBlockView extends ConsumerWidget {
+class EmailDraftBlockView extends ConsumerStatefulWidget {
   const EmailDraftBlockView({super.key, required this.block});
 
   final EmailDraftBlock block;
 
-  Future<void> _review(BuildContext context, WidgetRef ref) async {
+  @override
+  ConsumerState<EmailDraftBlockView> createState() =>
+      _EmailDraftBlockViewState();
+}
+
+class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
+  /// True while an auto-send is in flight — drives the "Auto-sending…" footer.
+  bool _autoSending = false;
+
+  /// Guards the one-shot auto-send so rebuilds / post-frame callbacks can't
+  /// fire it twice. Set on the first attempt whether or not it ends up sending.
+  bool _autoSendStarted = false;
+
+  /// True once this card actually auto-sent, so the settled state can say so.
+  bool _autoSent = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAutoSend());
+  }
+
+  /// Sends the drafted outreach automatically when the user opted in
+  /// ([AutoApplySettings.autoSendOutreach]) and the job clears the low-risk
+  /// trust floor ([shouldAutoSendOutreach]). Any miss — setting off, missing or
+  /// risky job, or a send error — falls back to the manual "Review & send" card.
+  /// Never sends for restored history: only blocks built live this session carry
+  /// [EmailDraftBlock.autoSendPending].
+  Future<void> _maybeAutoSend() async {
+    if (_autoSendStarted) return;
+    final block = widget.block;
+    if (!block.autoSendPending || block.status != EmailDraftStatus.reviewing) {
+      return;
+    }
+    final settings =
+        ref.read(userProfileProvider)?.autoApplySettings ??
+        const AutoApplySettings();
+    if (!settings.autoSendOutreach) return;
+    final jobId = block.jobId;
+    if (jobId == null || jobId.isEmpty) return;
+
+    _autoSendStarted = true;
+    try {
+      final job = await JobsRepository().fetchById(jobId);
+      if (job == null) return; // Can't assess risk → manual review.
+      if (!shouldAutoSendOutreach(
+        settings: settings,
+        trust: evaluateJobTrust(job),
+      )) {
+        return; // Medium/high risk → manual review.
+      }
+      if (!mounted) return;
+      setState(() => _autoSending = true);
+
+      final attachments = await _loadAttachments();
+      final result = await EmailSendService.instance.autoSend(
+        to: block.recipient,
+        subject: block.subject,
+        body: block.body,
+        uid: FirebaseAuth.instance.currentUser?.uid,
+        attachments: attachments,
+        company: job.company,
+      );
+      if (!mounted) return;
+      _autoSent = true;
+      ref
+          .read(agentChatProvider.notifier)
+          .markEmailDraftSent(block.id, result.messageId);
+    } catch (e) {
+      // Best-effort: drop back to the manual card so the user can still send.
+      debugPrint('EmailDraftBlockView: auto-send failed, manual fallback ($e)');
+    } finally {
+      if (mounted && _autoSending) setState(() => _autoSending = false);
+    }
+  }
+
+  Future<void> _review(BuildContext context) async {
+    final block = widget.block;
     // Pull the tailored resume PDF down before opening the sheet so it rides
     // along as a real attachment on the Gmail draft. A missing blob is not
     // fatal — the draft still saves, just without the file.
-    final attachments = await _loadAttachments(ref);
+    final attachments = await _loadAttachments();
     if (!context.mounted) return;
 
     final result = await EmailReviewPage.show(
@@ -472,7 +556,8 @@ class EmailDraftBlockView extends ConsumerWidget {
   /// Resolves the attachment list for this draft. Returns the tailored resume
   /// PDF bytes when [EmailDraftBlock.attachmentResumeId] is set and the blob
   /// downloads; otherwise an empty list.
-  Future<List<EmailAttachment>> _loadAttachments(WidgetRef ref) async {
+  Future<List<EmailAttachment>> _loadAttachments() async {
+    final block = widget.block;
     final resumeId = block.attachmentResumeId;
     if (resumeId == null) return const [];
 
@@ -502,7 +587,8 @@ class EmailDraftBlockView extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
+    final block = widget.block;
     final brand = context.brand;
     final sent = block.status == EmailDraftStatus.sent;
     final saved = block.status == EmailDraftStatus.saved;
@@ -611,9 +697,11 @@ class EmailDraftBlockView extends ConsumerWidget {
                 const SizedBox(width: 7),
                 Expanded(
                   child: Text(
-                    sent
-                        ? 'Email sent to ${block.recipient}.'
-                        : 'Saved to Gmail Drafts — review and send it from Gmail.',
+                    saved
+                        ? 'Saved to Gmail Drafts — review and send it from Gmail.'
+                        : _autoSent
+                        ? 'Auto-sent to ${block.recipient} (per your auto-send setting).'
+                        : 'Email sent to ${block.recipient}.',
                     style: TextStyle(
                       color: brand.ink,
                       fontSize: 12.5,
@@ -624,12 +712,35 @@ class EmailDraftBlockView extends ConsumerWidget {
                 ),
               ],
             )
+          else if (_autoSending)
+            Row(
+              children: [
+                SizedBox(
+                  width: 15,
+                  height: 15,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(brand.accent),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Auto-sending…',
+                  style: TextStyle(
+                    color: brand.textMuted,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+              ],
+            )
           else
             _FooterButton(
               label: 'Review & send',
               filled: true,
               enabled: true,
-              onTap: () => _review(context, ref),
+              onTap: () => _review(context),
             ),
         ],
       ),
@@ -1557,20 +1668,25 @@ class _TextBlockViewState extends State<_TextBlockView> {
   Timer? _timer;
   bool _started = false;
 
+  /// The prose actually rendered. Any Markdown table the model emitted is
+  /// flattened into bullets here so the chat never draws a grid — see
+  /// [_flattenMarkdownTables]. The typing animation runs over this text.
+  late final String _text = _flattenMarkdownTables(widget.text);
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_started) return;
     _started = true;
-    if (widget.animate && widget.text.isNotEmpty && shouldAnimate(context)) {
+    if (widget.animate && _text.isNotEmpty && shouldAnimate(context)) {
       _startTyping();
     } else {
-      _shown = widget.text.length;
+      _shown = _text.length;
     }
   }
 
   void _startTyping() {
-    final len = widget.text.length;
+    final len = _text.length;
     // Reveal in ~1.3s regardless of length so short and long replies both
     // feel snappy rather than scaling linearly with character count.
     final step = (len / 80).ceil().clamp(1, len);
@@ -1593,9 +1709,9 @@ class _TextBlockViewState extends State<_TextBlockView> {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final typing = _shown < widget.text.length;
+    final typing = _shown < _text.length;
     // Trailing block caret while typing — reads as a live cursor.
-    final data = typing ? '${widget.text.substring(0, _shown)}▌' : widget.text;
+    final data = typing ? '${_text.substring(0, _shown)}▌' : _text;
     // Agent prose uses the app's one typeface (Inter) so the chat reads as a
     // single, consistent surface — no serif/sans split.
     final body = GoogleFonts.inter(
@@ -1672,6 +1788,73 @@ class _TextBlockViewState extends State<_TextBlockView> {
       ),
     );
   }
+}
+
+/// Rewrites any GitHub-flavoured Markdown table into a bulleted list so the chat
+/// never renders a grid. `flutter_markdown` draws real `<table>` columns, which
+/// overflow and read terribly on a phone — the product rule is that job
+/// comparisons live in the swipeable job rail, not a table. The system prompt
+/// already tells the agent not to emit tables; this is the backstop for when it
+/// does anyway. Each data row becomes one bullet whose first cell is bolded and
+/// whose remaining non-empty cells follow as "Header: value" fragments joined by
+/// " · ". Text with no table passes through untouched.
+String _flattenMarkdownTables(String input) {
+  if (!input.contains('|')) return input;
+
+  final lines = input.split('\n');
+  final out = <String>[];
+  var i = 0;
+  while (i < lines.length) {
+    final header = lines[i];
+    final separator = i + 1 < lines.length ? lines[i + 1] : '';
+    if (_looksLikeTableRow(header) && _isTableSeparator(separator)) {
+      final headers = _splitTableRow(header);
+      i += 2; // Consume the header and the `--- | ---` separator row.
+      while (i < lines.length && _looksLikeTableRow(lines[i])) {
+        out.add(_tableRowToBullet(headers, _splitTableRow(lines[i])));
+        i++;
+      }
+      continue;
+    }
+    out.add(header);
+    i++;
+  }
+  return out.join('\n');
+}
+
+bool _looksLikeTableRow(String line) {
+  final trimmed = line.trim();
+  return trimmed.startsWith('|') && trimmed.indexOf('|', 1) != -1;
+}
+
+bool _isTableSeparator(String line) {
+  if (!_looksLikeTableRow(line)) return false;
+  final cells = _splitTableRow(line);
+  if (cells.isEmpty) return false;
+  // Every cell is just dashes with optional alignment colons (e.g. `:--:`).
+  return cells.every((c) => RegExp(r'^:?-+:?$').hasMatch(c));
+}
+
+List<String> _splitTableRow(String line) {
+  var trimmed = line.trim();
+  if (trimmed.startsWith('|')) trimmed = trimmed.substring(1);
+  if (trimmed.endsWith('|')) trimmed = trimmed.substring(0, trimmed.length - 1);
+  return trimmed.split('|').map((c) => c.trim()).toList();
+}
+
+String _tableRowToBullet(List<String> headers, List<String> cells) {
+  final parts = <String>[];
+  for (var c = 0; c < cells.length; c++) {
+    final value = cells[c];
+    if (value.isEmpty) continue;
+    if (parts.isEmpty) {
+      parts.add('**$value**');
+    } else {
+      final label = c < headers.length ? headers[c] : '';
+      parts.add(label.isEmpty ? value : '$label: $value');
+    }
+  }
+  return parts.isEmpty ? '' : '- ${parts.join(' · ')}';
 }
 
 class ThinkingBlockView extends StatefulWidget {
