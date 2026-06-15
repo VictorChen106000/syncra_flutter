@@ -391,9 +391,9 @@ enum _PipelineFilter { all, allMatch, severalMatch, noMatch }
 extension _PipelineFilterX on _PipelineFilter {
   String get label => switch (this) {
     _PipelineFilter.all => 'All',
-    _PipelineFilter.allMatch => 'Strong',
-    _PipelineFilter.severalMatch => 'Partial',
-    _PipelineFilter.noMatch => 'Stretch',
+    _PipelineFilter.allMatch => 'All Match',
+    _PipelineFilter.severalMatch => 'Several Match',
+    _PipelineFilter.noMatch => 'No Match',
   };
 
   /// True when [card] belongs under this tab. "All" admits everything.
