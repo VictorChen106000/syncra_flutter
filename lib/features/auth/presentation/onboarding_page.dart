@@ -19,6 +19,7 @@ import '../../../data/firestore/user_repository.dart';
 import '../../../shared/widgets/app_back_button.dart';
 import '../../../shared/widgets/water_fill_circle.dart';
 import '../../agent/state/passive_agent_notifier.dart';
+import '../../agent_chat/state/agent_chat_notifier.dart';
 import '../../agent_chat/tools/anthropic_tool_calls.dart';
 import '../../email/presentation/widgets/gmail_link_view.dart';
 import '../../email/services/gmail_service.dart';
@@ -101,19 +102,28 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     await ref.read(resumeProvider.notifier).pickAndUploadResumes();
   }
 
-  /// Skips the whole guided flow — marks the user past first-run setup with no
-  /// role captured and drops them straight on the dashboard, bypassing the
-  /// Gmail beat and the agent setup. They can connect Gmail later from the
-  /// profile, and the agent can read the resume later from chat.
-  Future<void> _skip() async {
-    await ref
-        .read(userProfileProvider.notifier)
-        .setHasCompletedOnboarding(true);
-    final dev = ref.read(devFlagsProvider);
-    if (dev.showOnboarding) {
-      await ref.read(devFlagsProvider.notifier).setShowOnboarding(false);
+  /// The "Build one with AI" path from the **upload** beat — the user has no
+  /// resume to upload. Marks them past first-run setup (no role captured,
+  /// bypassing the Gmail beat and the agent setup) and lands them on the home
+  /// dashboard, which then *auto-presses* its Ask Syncra bar to guide them into
+  /// the chatbot — where the agent greets them with an offer to build a resume
+  /// from scratch. They can connect Gmail later from the profile.
+  void _buildResumeWithAi() {
+    // Greet them in the chatbot with the offer, and tell the dashboard to
+    // auto-open the chat once it's on screen.
+    ref.read(pendingResumeBuilderOfferProvider.notifier).state = true;
+    ref.read(autoOpenChatProvider.notifier).state = true;
+    // Flip the onboarding gate (and any dev override) in memory *before*
+    // navigating. Both notifiers set their in-memory state synchronously, so by
+    // the time we call go() the router's redirect already sees onboarding as
+    // done — otherwise it boots us off onboarding mid-await and the `mounted`
+    // check swallows the jump. Persistence runs in the background.
+    unawaited(
+      ref.read(userProfileProvider.notifier).setHasCompletedOnboarding(true),
+    );
+    if (ref.read(devFlagsProvider).showOnboarding) {
+      unawaited(ref.read(devFlagsProvider.notifier).setShowOnboarding(false));
     }
-    if (!mounted) return;
     context.go(RouteNames.dashboard);
   }
 
@@ -208,11 +218,15 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                             key: const ValueKey('upload'),
                             onPick: _pickResume,
                             onContinue: _goToPrompt,
+                            onBuildWithAi: _buildResumeWithAi,
                           ),
                           _Phase.prompt => _PromptPhase(
                             key: const ValueKey('prompt'),
                             onSend: _send,
-                            onSkip: _skip,
+                            // Skipping the goal still runs the agent setup so
+                            // the user gets a read on their resume — it just
+                            // plans from the resume alone. Keeps the Gmail beat.
+                            onSkip: () => _send(''),
                             initialText: _instruction,
                           ),
                           _Phase.gmail => _GmailPhase(
@@ -246,10 +260,16 @@ class _UploadPhase extends ConsumerWidget {
     super.key,
     required this.onPick,
     required this.onContinue,
+    required this.onBuildWithAi,
   });
 
   final VoidCallback onPick;
   final VoidCallback onContinue;
+
+  /// "Build one with AI" — for users with no resume to upload. Completes
+  /// onboarding and hands them to the chatbot to build one. Only offered while
+  /// the vessel is empty (there's nothing to continue with yet).
+  final VoidCallback onBuildWithAi;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -288,47 +308,178 @@ class _UploadPhase extends ConsumerWidget {
         ? 'filled'
         : 'empty';
 
-    final onTap = busy ? null : (hasResume ? onContinue : onPick);
+    // A quiet supporting line under the headline so the beat reads as guided
+    // rather than a bare title + circle. Adapts with the state.
+    final subtitle = hasError
+        ? 'That didn’t read — try another file.'
+        : busy
+        ? 'Reading your résumé…'
+        : filled
+        ? 'Tap the circle to continue.'
+        : 'Drop in a PDF and I’ll take it from here.';
 
-    return Column(
-      children: [
-        const Spacer(flex: 5),
-        // Headline — sits above the vessel so "Tap to continue" reads as a
-        // prompt for the circle right beneath it.
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 240),
-          child: Text(
+    // The headline: a two-tone "Upload your résumé" while empty (accent on the
+    // noun, echoing the prompt beat), collapsing to a single adaptive line for
+    // the busy / filled / error states so the circle stays the hero.
+    final Widget titleWidget = labelKey == 'empty'
+        ? Text.rich(
+            TextSpan(
+              children: [
+                const TextSpan(text: 'Upload your '),
+                TextSpan(text: 'résumé', style: TextStyle(color: brand.accent)),
+              ],
+            ),
+            key: const ValueKey('empty'),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              color: _softInk,
+              letterSpacing: -0.7,
+              height: 1.12,
+            ),
+          )
+        : Text(
             label,
             key: ValueKey(labelKey),
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 22,
+              fontSize: 28,
               fontWeight: FontWeight.w800,
               color: hasError ? brand.warning : _softInk,
-              letterSpacing: -0.5,
-              height: 1.15,
+              letterSpacing: -0.7,
+              height: 1.12,
+            ),
+          );
+
+    final onTap = busy ? null : (hasResume ? onContinue : onPick);
+
+    return Column(
+      children: [
+        const Spacer(flex: 4),
+        // Headline + supporting line, sitting above the vessel so the words
+        // read as a prompt for the circle right beneath them.
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 260),
+          transitionBuilder: (child, anim) =>
+              FadeTransition(opacity: anim, child: child),
+          child: titleWidget,
+        ),
+        const SizedBox(height: 10),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 260),
+          child: Text(
+            subtitle,
+            key: ValueKey('sub-$labelKey'),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: brand.textMuted,
+              height: 1.4,
+              letterSpacing: -0.1,
             ),
           ),
         ),
-        const SizedBox(height: 26),
-        GestureDetector(
+        const SizedBox(height: 30),
+        _BouncyTap(
               onTap: onTap,
-              behavior: HitTestBehavior.opaque,
               child: SizedBox(
                 width: 224,
                 height: 224,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    WaterFillCircle(fill: fill, active: busy, size: 224),
-                    _CircleContent(
-                      filled: filled,
-                      busy: busy,
-                      percent: percent,
-                      fill: fill,
-                      brand: brand,
-                    ),
-                  ],
+                // Bob the *whole* vessel — rings, glow, water and glyph — as one
+                // unit so the ripple rings ride with the circle instead of
+                // drifting out of sync with it.
+                child: _Bobbing(
+                  enabled: onTap != null && !busy,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    // Let the ripple rings bloom past the 224px vessel instead
+                    // of being clipped to it.
+                    clipBehavior: Clip.none,
+                    children: [
+                      // Ripple rings whenever the vessel is tappable (empty *or*
+                      // full) so it reads as "press me" — gone while a file is
+                      // in flight, where the water is the focus. Honours
+                      // reduce-motion (renders nothing).
+                      if (onTap != null && !busy)
+                        _VesselPulse(size: 224, color: brand.accent),
+                      // Glassy backdrop: a soft radial lime core + an ambient
+                      // outer bloom give the vessel depth so it reads as a
+                      // tappable orb, not a thin ring on black. The rising water
+                      // (opaque) sits over this, so it mostly shows through in
+                      // the empty / partial states.
+                      Container(
+                        width: 224,
+                        height: 224,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              brand.accent.withValues(alpha: 0.16),
+                              brand.accent.withValues(alpha: 0.05),
+                              brand.accent.withValues(alpha: 0.0),
+                            ],
+                            stops: const [0.0, 0.62, 1.0],
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: brand.accent.withValues(alpha: 0.18),
+                              blurRadius: 34,
+                              spreadRadius: -6,
+                            ),
+                          ],
+                        ),
+                      ),
+                      WaterFillCircle(fill: fill, active: busy, size: 224),
+                      // A glossy lime orb for the "tap to continue" moment: a
+                      // vertical sheen (bright crown → deeper base) gives the
+                      // fill real dimension instead of a flat green, and a soft
+                      // top-left specular highlight lands the polished look.
+                      if (filled) ...[
+                        Container(
+                          width: 224,
+                          height: 224,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                brand.accentBright.withValues(alpha: 0.55),
+                                Colors.white.withValues(alpha: 0.0),
+                                Colors.black.withValues(alpha: 0.14),
+                              ],
+                              stops: const [0.0, 0.5, 1.0],
+                            ),
+                          ),
+                        ),
+                        Container(
+                          width: 224,
+                          height: 224,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: RadialGradient(
+                              center: const Alignment(-0.35, -0.5),
+                              radius: 0.9,
+                              colors: [
+                                Colors.white.withValues(alpha: 0.34),
+                                Colors.white.withValues(alpha: 0.0),
+                              ],
+                              stops: const [0.0, 0.6],
+                            ),
+                          ),
+                        ),
+                      ],
+                      _CircleContent(
+                        filled: filled,
+                        busy: busy,
+                        percent: percent,
+                        fill: fill,
+                        brand: brand,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             )
@@ -357,6 +508,13 @@ class _UploadPhase extends ConsumerWidget {
               ),
             ),
           ),
+        // No resume yet → reframe the exit as a positive path: build one with
+        // the agent. Routes straight into the chatbot. Trampolines on tap.
+        if (!hasResume && !busy)
+          _BuildWithAiButton(onTap: onBuildWithAi, brand: brand)
+              .animate()
+              .fadeIn(duration: 360.ms)
+              .moveY(begin: 8, end: 0),
         const SizedBox(height: 2),
       ],
     );
@@ -415,7 +573,7 @@ class _CircleContent extends StatelessWidget {
           Icons.arrow_upward_rounded,
           key: const ValueKey('empty'),
           size: 96,
-          color: brand.accent,
+          color: brand.accentBright,
         ),
       },
     );
@@ -493,6 +651,149 @@ class _WaterlineClipper extends CustomClipper<Rect> {
 
   @override
   bool shouldReclip(_WaterlineClipper old) => old.fill != fill;
+}
+
+/// A "trampoline" press: the child dips down on touch and springs back past its
+/// resting size on release (elastic overshoot), so every tap feels physical.
+/// Disabled — and rendered as a plain pass-through — when [onTap] is null.
+/// Honours reduce-motion by snapping instead of animating.
+class _BouncyTap extends StatefulWidget {
+  const _BouncyTap({required this.child, required this.onTap});
+
+  final Widget child;
+  final VoidCallback? onTap;
+
+  @override
+  State<_BouncyTap> createState() => _BouncyTapState();
+}
+
+class _BouncyTapState extends State<_BouncyTap> {
+  bool _down = false;
+
+  void _setDown(bool value) {
+    if (widget.onTap == null || _down == value) return;
+    setState(() => _down = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.onTap != null;
+    final motion = shouldAnimate(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: widget.onTap,
+      onTapDown: enabled ? (_) => _setDown(true) : null,
+      onTapUp: enabled ? (_) => _setDown(false) : null,
+      onTapCancel: enabled ? () => _setDown(false) : null,
+      child: AnimatedScale(
+        scale: _down ? 0.9 : 1.0,
+        // Quick dip in; a longer elastic release gives the trampoline spring.
+        duration: motion
+            ? (_down
+                  ? const Duration(milliseconds: 90)
+                  : const Duration(milliseconds: 460))
+            : Duration.zero,
+        curve: _down ? Curves.easeIn : Curves.elasticOut,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+/// A gentle, looping up-and-down bob — the "bounce" half of the tap
+/// affordance. Pass-through when [enabled] is false or reduce-motion is on.
+class _Bobbing extends StatelessWidget {
+  const _Bobbing({required this.child, required this.enabled});
+
+  final Widget child;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!enabled || !shouldAnimate(context)) return child;
+    return child
+        .animate(onPlay: (c) => c.repeat(reverse: true))
+        .moveY(
+          begin: 0,
+          end: -9,
+          duration: 1100.ms,
+          curve: Curves.easeInOut,
+        );
+  }
+}
+
+/// Soft rings that bloom outward from the vessel's rim on a loop, drawing the
+/// eye to a tappable circle. The "ripple" half of the affordance; renders
+/// nothing under reduce-motion.
+class _VesselPulse extends StatelessWidget {
+  const _VesselPulse({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!shouldAnimate(context)) return const SizedBox.shrink();
+
+    Widget ring(int i) => Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: color.withValues(alpha: 0.45), width: 2),
+      ),
+    ).animate(onPlay: (c) => c.repeat(), delay: (i * 900).ms).scaleXY(
+      begin: 1.0,
+      end: 1.32,
+      duration: 1800.ms,
+      curve: Curves.easeOut,
+    ).fadeOut(duration: 1800.ms, curve: Curves.easeOut);
+
+    return IgnorePointer(
+      child: Stack(
+        alignment: Alignment.center,
+        children: [ring(0), ring(1)],
+      ),
+    );
+  }
+}
+
+/// The "no resume" path, reframed as a positive CTA: an outlined lime pill that
+/// hands the user to the chatbot to build a resume from scratch. Outlined (not
+/// solid) so it reads as a clear secondary action without competing with the
+/// lime upload vessel above it. Trampolines on tap via [_BouncyTap].
+class _BuildWithAiButton extends StatelessWidget {
+  const _BuildWithAiButton({required this.onTap, required this.brand});
+
+  final VoidCallback onTap;
+  final BrandTheme brand;
+
+  @override
+  Widget build(BuildContext context) {
+    return _BouncyTap(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 13),
+        decoration: BoxDecoration(
+          color: brand.accent.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(26),
+          border: Border.all(
+            color: brand.accent.withValues(alpha: 0.6),
+            width: 1.4,
+          ),
+        ),
+        child: const Text(
+          'Build one with AI',
+          style: TextStyle(
+            color: _softInk,
+            fontWeight: FontWeight.w700,
+            fontSize: 15,
+            letterSpacing: -0.1,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
