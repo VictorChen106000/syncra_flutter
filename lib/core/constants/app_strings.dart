@@ -20,11 +20,6 @@ class AppStrings {
   static const String onboardingHeader = 'Syncra AI Setup';
   static const String goToDashboard = 'Go to Dashboard';
 
-  // Morning brief — the agent's "while you were away" autonomy reveal
-  static const String goodMorning = 'Good morning,';
-  static const String briefAutonomySubline =
-      'While you were away, I kept working — here\'s what I lined up.';
-
   // Resumes
   static const String resumeListsTitle = 'Resumes';
   static const String myUploads = 'My Uploads';

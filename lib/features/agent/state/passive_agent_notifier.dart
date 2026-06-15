@@ -44,7 +44,6 @@ class PassiveAgentState {
     this.briefId,
     this.lastMessage,
     this.lastError,
-    this.morningBriefShown = false,
     this.isLiveModeEnabled = false,
   });
 
@@ -55,7 +54,6 @@ class PassiveAgentState {
   final String? briefId;
   final String? lastMessage;
   final String? lastError;
-  final bool morningBriefShown;
   final bool isLiveModeEnabled;
 
   bool get hasPipeline => pipeline.isNotEmpty;
@@ -88,7 +86,6 @@ class PassiveAgentState {
     String? briefId,
     String? lastMessage,
     String? lastError,
-    bool? morningBriefShown,
     bool? isLiveModeEnabled,
     bool clearMessage = false,
     bool clearError = false,
@@ -101,7 +98,6 @@ class PassiveAgentState {
       briefId: briefId ?? this.briefId,
       lastMessage: clearMessage ? null : (lastMessage ?? this.lastMessage),
       lastError: clearError ? null : (lastError ?? this.lastError),
-      morningBriefShown: morningBriefShown ?? this.morningBriefShown,
       isLiveModeEnabled: isLiveModeEnabled ?? this.isLiveModeEnabled,
     );
   }
@@ -193,11 +189,6 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
       state = state.copyWith(clearMessage: true);
     }
     return m;
-  }
-
-  void markMorningBriefShown() {
-    if (state.morningBriefShown) return;
-    state = state.copyWith(morningBriefShown: true);
   }
 
   /// Kicks off the agent brief. [query] overrides the default search keyword

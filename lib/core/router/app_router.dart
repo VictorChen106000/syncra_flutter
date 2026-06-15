@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../dev/dev_flags_notifier.dart';
 import '../../features/agent_chat/presentation/ai_chatbot_page.dart';
 import '../../features/auth/presentation/login_page.dart';
-import '../../features/auth/presentation/morning_brief_page.dart';
 import '../../features/auth/presentation/onboarding_page.dart';
 import '../../features/auth/presentation/signup_page.dart';
 import '../../features/auth/presentation/splash_page.dart';
@@ -51,7 +50,6 @@ final routerProvider = Provider<GoRouter>((ref) {
     refreshListenable: refresh,
     redirect: (context, state) {
       final auth = ref.read(authProvider);
-      final passive = ref.read(passiveAgentProvider);
       final profile = ref.read(userProfileProvider);
       final dev = ref.read(devFlagsProvider);
       final isSignedIn = auth.isSignedIn;
@@ -73,9 +71,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (dev.showOnboarding && loc != RouteNames.onboarding) {
         return RouteNames.onboarding;
       }
-      if (dev.showMorningBrief && loc != RouteNames.morningBrief) {
-        return RouteNames.morningBrief;
-      }
 
       // Onboarding is gated on an explicit flag, not on `role` being empty —
       // the Skip path intentionally leaves the role blank but still marks the
@@ -94,14 +89,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         return RouteNames.dashboard;
       }
 
-      // After sign-in, lead returning users into the agent's overnight brief —
-      // the "here's what I did while you were away" reveal that makes the
-      // agent's background work visible. New users hit onboarding first (which
-      // fires its own brief), so they skip straight to the dashboard. Guests
-      // have no pipeline to show. `morningBriefShown` keeps it to once per app
-      // session; the dev `showMorningBrief` toggle (above) forces it on demand.
+      // After sign-in, send users to the dashboard. New accounts are caught by
+      // the `needsOnboarding` check above and routed to onboarding instead.
       if (loc == RouteNames.login || loc == RouteNames.signup) {
-        // Guests have no profile or pipeline — straight to the dashboard.
+        // Guests have no profile — straight to the dashboard.
         if (isGuest) return RouteNames.dashboard;
 
         // Non-guest: wait for the `users/{uid}` stream before deciding.
@@ -112,11 +103,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         // at which point `needsOnboarding` (above) catches new accounts and
         // sends them to onboarding.
         if (profile == null) return null;
-
-        // Profile loaded and onboarding already complete (brand-new accounts
-        // were caught by `needsOnboarding` above): returning users get the
-        // overnight brief once per session, then the dashboard.
-        if (!passive.morningBriefShown) return RouteNames.morningBrief;
         return RouteNames.dashboard;
       }
 
@@ -149,11 +135,6 @@ List<RouteBase> _routes(Page<void> Function(GoRouterState, Widget) fadePage) =>
         path: RouteNames.linkGmail,
         pageBuilder: (context, state) =>
             fadePage(state, const LinkGmailPage()),
-      ),
-      GoRoute(
-        path: RouteNames.morningBrief,
-        pageBuilder: (context, state) =>
-            fadePage(state, const MorningBriefPage()),
       ),
       GoRoute(
         path: RouteNames.resumes,

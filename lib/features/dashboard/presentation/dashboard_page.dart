@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
@@ -506,67 +508,138 @@ class _PromptSuggestionCard extends ConsumerWidget {
 /// Typing (and the conversation's history) lives entirely on the chat page, so
 /// the user never has to wonder where the chatbot is. The label echoes the
 /// latest chat turn so the bar reads as a continuation of the conversation.
-class _AgentInputBar extends ConsumerWidget {
+class _AgentInputBar extends ConsumerStatefulWidget {
   const _AgentInputBar();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_AgentInputBar> createState() => _AgentInputBarState();
+}
+
+class _AgentInputBarState extends ConsumerState<_AgentInputBar> {
+  /// True while the bar is showing its (self-triggered) pressed state.
+  bool _autoPressed = false;
+
+  /// Guards the guided open so it runs at most once, whether it's kicked off by
+  /// initState (flag already set when we land) or by the listener (flag flips
+  /// while the bar is already alive).
+  bool _guiding = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAutoOpen());
+  }
+
+  /// The "Build one with AI" hand-off: after the user lands on the home screen,
+  /// the bar settles, then *presses itself* (a visible dip + accent glow) and
+  /// opens the chat — guiding the no-resume user into the chatbot without them
+  /// having to find it. Honours reduce-motion by opening without the theatre.
+  Future<void> _maybeAutoOpen() async {
+    if (!mounted || _guiding) return;
+    if (!ref.read(autoOpenChatProvider)) return;
+    ref.read(autoOpenChatProvider.notifier).state = false;
+    _guiding = true;
+
+    if (shouldAnimate(context)) {
+      // Let the home screen register first…
+      await Future<void>.delayed(const Duration(milliseconds: 850));
+      if (!mounted) return;
+      // …then visibly press the bar (dip)…
+      setState(() => _autoPressed = true);
+      await Future<void>.delayed(const Duration(milliseconds: 240));
+      if (!mounted) return;
+      // …release into the bounce, and let it play before we navigate.
+      setState(() => _autoPressed = false);
+      await Future<void>.delayed(const Duration(milliseconds: 360));
+      if (!mounted) return;
+    }
+    // Don't autofocus the composer on the guided open — the resume-build offer's
+    // buttons sit at the bottom and a popped keyboard would crowd them.
+    _openChat(focus: false);
+  }
+
+  void _openChat({bool focus = true}) {
+    if (!mounted) return;
+    context.go(focus ? '${RouteNames.agentChat}?focus=1' : RouteNames.agentChat);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final brand = context.brand;
+    // Cover the case where the flag flips true while the bar is already mounted
+    // (e.g. returning from a re-run onboarding); the initState path covers the
+    // common case where the flag is already set when we land here.
+    ref.listen<bool>(autoOpenChatProvider, (_, next) {
+      if (next) _maybeAutoOpen();
+    });
     final items = ref.watch(agentChatProvider.select((s) => s.items));
     final label = _lastTurnLabel(items) ?? 'Chat with Syncra';
+    final motion = shouldAnimate(context);
+    final pressed = _autoPressed;
     return Semantics(
       button: true,
       label: 'Ask Syncra — opens chat',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => context.go('${RouteNames.agentChat}?focus=1'),
-          borderRadius: BorderRadius.circular(28),
-          child: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: brand.glassFill,
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: brand.glassBorder),
-              boxShadow: [
-                BoxShadow(
-                  color: brand.shadow,
-                  blurRadius: 40,
-                  offset: const Offset(0, 12),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: brand.textSoft,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
+      // A neutral press-and-bounce: a quick dip while held, then an elastic
+      // spring back on release. No accent colour — just a plain "tap" feel.
+      child: AnimatedScale(
+        scale: pressed ? 0.95 : 1.0,
+        duration: motion
+            ? (pressed
+                  ? const Duration(milliseconds: 130)
+                  : const Duration(milliseconds: 440))
+            : Duration.zero,
+        curve: pressed ? Curves.easeIn : Curves.elasticOut,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: _openChat,
+            borderRadius: BorderRadius.circular(28),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: brand.glassFill,
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: brand.glassBorder),
+                boxShadow: [
+                  BoxShadow(
+                    color: brand.shadow,
+                    blurRadius: 40,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: brand.textSoft,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: brand.ink,
-                    borderRadius: BorderRadius.circular(14),
+                  const SizedBox(width: 10),
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: brand.ink,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      Icons.arrow_forward_rounded,
+                      color: brand.inkInverse,
+                      size: 18,
+                    ),
                   ),
-                  alignment: Alignment.center,
-                  child: Icon(
-                    Icons.arrow_forward_rounded,
-                    color: brand.inkInverse,
-                    size: 18,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

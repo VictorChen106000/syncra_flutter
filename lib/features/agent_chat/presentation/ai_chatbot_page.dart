@@ -10,6 +10,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../data/models/job.dart';
 import '../../../shared/widgets/gooey_orb.dart';
+import '../../resumes/state/resume_notifier.dart';
 import '../agent_prompt_suggestions.dart';
 import '../models/agent_block.dart';
 import '../models/chat_message.dart';
@@ -49,6 +50,18 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeOfferResumeBuild());
+  }
+
+  /// If onboarding flagged that the user skipped uploading a resume, greet a
+  /// fresh chat with a proactive offer to build one. One-shot: clears the flag
+  /// so it never re-fires, and bails if the user actually has a resume by now.
+  void _maybeOfferResumeBuild() {
+    if (!mounted) return;
+    if (!ref.read(pendingResumeBuilderOfferProvider)) return;
+    ref.read(pendingResumeBuilderOfferProvider.notifier).state = false;
+    if (ref.read(resumeProvider).resumes.isNotEmpty) return;
+    ref.read(agentChatProvider.notifier).offerResumeBuild();
   }
 
   void _onScroll() {
@@ -149,8 +162,14 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
 
     final state = ref.watch(agentChatProvider);
 
-    final onlyInitial =
-        state.items.length == 1 && state.items.first is AgentTurn;
+    // A pristine chat is a single, blockless opener turn — that's what triggers
+    // the "How can I help today?" empty state. A seeded opener (e.g. the
+    // proactive resume-build offer) carries blocks, so it renders as a normal
+    // transcript instead.
+    final firstTurn = state.items.length == 1 && state.items.first is AgentTurn
+        ? state.items.first as AgentTurn
+        : null;
+    final onlyInitial = firstTurn != null && firstTurn.blocks.isEmpty;
     final pendingProposal = _pendingProposal(state.items);
     final pendingInput = _pendingInputRequest(state.items);
     // The latest prompt and any attached resume now flow inline as right-side

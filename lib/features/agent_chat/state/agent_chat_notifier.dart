@@ -89,6 +89,19 @@ final conversationListProvider =
 /// the user attach a resume before the prompt actually runs.
 final composerDraftProvider = StateProvider<String?>((ref) => null);
 
+/// Set true by onboarding when the user skips uploading a resume. The chat
+/// reads it on open and, for a fresh generic chat, greets with a proactive
+/// offer to build a resume from scratch — so skipping the upload isn't a dead
+/// end. One-shot: the chat clears it once the offer has been seeded.
+final pendingResumeBuilderOfferProvider = StateProvider<bool>((ref) => false);
+
+/// Set true by onboarding's "Build one with AI" path. The dashboard's Ask
+/// Syncra bar reads it on first build and, after a beat, *auto-presses itself*
+/// (a visible press animation) and opens the chat — guiding the no-resume user
+/// into the chatbot from the home screen. One-shot: the bar clears it once the
+/// guided open has started.
+final autoOpenChatProvider = StateProvider<bool>((ref) => false);
+
 @immutable
 class AgentChatState {
   const AgentChatState({
@@ -563,6 +576,54 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
       items: [_buildOpener(null)],
       conversationId: _newConversationId(),
     );
+  }
+
+  /// Seeds the opener of a fresh, generic chat with a proactive offer to build
+  /// a resume from scratch — used right after the user skips the onboarding
+  /// resume upload, so the hand-off to the dashboard isn't a dead end. No-op if
+  /// a stream is running, the chat is scoped to a job thread, or the user has
+  /// already started a conversation. The seeded turn keeps a `turn-opener-` id
+  /// so it stays out of saved history (see [_itemsForHistory]).
+  void offerResumeBuild() {
+    if (state.isStreaming) return;
+    if (state.threadJob != null) return;
+    final items = state.items;
+    final isFreshOpener = items.length == 1 &&
+        items.first is AgentTurn &&
+        (items.first as AgentTurn).blocks.isEmpty;
+    if (!isFreshOpener) return;
+
+    final turn = AgentTurn(
+      id: 'turn-opener-resume-offer',
+      isStreaming: false,
+      blocks: [
+        TextBlock(
+          id: 'opener-resume-text',
+          text:
+              "Hey — looks like you skipped uploading a resume. No problem: I "
+              "can build one with you from scratch. A few quick questions and "
+              "I'll draft it for you to review.",
+        ),
+        ActionProposalBlock(
+          id: 'opener-resume-action',
+          icon: Icons.auto_awesome_rounded,
+          title: 'Build my resume',
+          description: "A few quick questions, then I'll draft it for you",
+          acceptLabel: 'Build my resume',
+          editLabel: 'Maybe later',
+          continuationPrompt: '''
+The user has no resume yet and asked you to build one from scratch.
+Start the from-scratch resume builder now. Greet briefly, then begin gathering what you need.
+Call ask_user for the first piece — their name and contact details — with short suggestion chips where helpful.
+Across a few short turns, collect their work experience, education, and skills.
+When you have enough, call build_resume ONCE with the full structure. It renders a preview only; the user previews the PDF and taps Save.
+Do not call send_email.
+''',
+        ),
+      ],
+    );
+
+    state = state.copyWith(items: [turn]);
   }
 
   /// Clears the live chat after account reset without saving the old transcript.
