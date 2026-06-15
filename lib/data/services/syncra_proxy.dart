@@ -39,6 +39,10 @@ class SyncraProxy {
   /// Proxy for `GET https://jsearch.p.rapidapi.com/search`.
   static Uri get jsearch => Uri.parse('$base/jsearchProxy');
 
+  /// Proxy for official company recipient discovery.
+  static Uri get companyContactDiscovery =>
+      Uri.parse('$base/companyContactDiscovery');
+
   /// The current user's Firebase ID token, sent as a Bearer token so the
   /// function can authenticate the caller. Null when nobody is signed in.
   static Future<String?> idToken() async {
