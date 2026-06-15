@@ -7,10 +7,7 @@ void main() {
   group('Application bundle summary', () {
     test('marks a sent application with a resume as ready', () {
       final bundle = evaluateApplicationBundle(
-        _application(
-          resumeId: 'resume_1',
-          sentAt: DateTime(2026, 6, 5, 10),
-        ),
+        _application(resumeId: 'resume_1', sentAt: DateTime(2026, 6, 5, 10)),
       );
 
       expect(bundle.completeCount, bundle.totalCount);
@@ -24,10 +21,7 @@ void main() {
 
     test('blocks the bundle when no resume is attached', () {
       final bundle = evaluateApplicationBundle(
-        _application(
-          resumeId: null,
-          sentAt: DateTime(2026, 6, 5, 10),
-        ),
+        _application(resumeId: null, sentAt: DateTime(2026, 6, 5, 10)),
       );
 
       expect(bundle.hasBlocker, isTrue);

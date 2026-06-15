@@ -8,10 +8,7 @@ void main() {
   group('Application Quality Meter', () {
     test('marks a drafted strong fit as ready', () {
       final result = evaluateApplicationQuality(
-        _card(
-          category: JobCategory.ready,
-          stage: PipelineStage.drafted,
-        ),
+        _card(category: JobCategory.ready, stage: PipelineStage.drafted),
       );
 
       // base 35 + ready 25 + no-missing 15 + drafted 16 = 91
@@ -23,10 +20,7 @@ void main() {
 
     test('scores a freshly matched strong fit below a drafted one', () {
       final result = evaluateApplicationQuality(
-        _card(
-          category: JobCategory.ready,
-          stage: PipelineStage.matched,
-        ),
+        _card(category: JobCategory.ready, stage: PipelineStage.matched),
       );
 
       // base 35 + ready 25 + no-missing 15 + matched 0 = 75

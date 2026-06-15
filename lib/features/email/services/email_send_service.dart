@@ -220,6 +220,21 @@ class EmailSendService {
     return draftId;
   }
 
+  @visibleForTesting
+  Future<void> debugLearnRecipient({
+    required String to,
+    String? contactDomain,
+    String? company,
+    String? uid,
+  }) {
+    return _learnRecipient(
+      to: to,
+      contactDomain: contactDomain,
+      company: company,
+      uid: uid,
+    );
+  }
+
   /// Records the confirmed recipient [to] in the shared contacts directory.
   /// Best-effort and never throws: a learning hiccup must not fail the send or
   /// draft the user just completed. When [contactDomain] is omitted, the domain
