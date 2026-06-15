@@ -1689,22 +1689,19 @@ class _ThemeModeTile extends ConsumerWidget {
         selected: selected,
         onChanged: (m) => ref.read(themeModeProvider.notifier).setMode(m),
         options: [
-          (ThemeMode.light, (c) => _themeGlyph(AppAssets.themeSunSvg, c)),
-          (ThemeMode.dark, (c) => _themeGlyph(AppAssets.themeMoonSvg, c)),
+          (ThemeMode.light, (_) => _themeGlyphColor(AppAssets.themeSunSvg)),
+          (ThemeMode.dark, (_) => _themeGlyphColor(AppAssets.themeMoonSvg)),
         ],
       ),
     );
   }
 }
 
-/// A theme-toggle glyph: the [asset] SVG tinted to [color] so it tracks the
-/// segmented control's selected (on-accent) / unselected (muted) state.
-Widget _themeGlyph(String asset, Color color) => SvgPicture.asset(
-  asset,
-  width: 16,
-  height: 16,
-  colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
-);
+/// A theme-toggle glyph that keeps its true colours — the light option is a
+/// cute multicolour sun and the dark option a crescent moon, so each renders
+/// the SVG as drawn rather than tracking the segmented control's tint.
+Widget _themeGlyphColor(String asset) =>
+    SvgPicture.asset(asset, width: 16, height: 16);
 
 // ---------------------------------------------------------------------------
 // Account — reset (warning) and sign out (danger) grouped in one card so the

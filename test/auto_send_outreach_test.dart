@@ -2,14 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:syncra/features/applications/services/auto_apply_eligibility.dart';
 import 'package:syncra/features/auth/models/user_profile.dart';
 import 'package:syncra/features/email/models/recipient_resolution.dart';
-import 'package:syncra/features/jobs/services/job_trust_guard.dart';
-
-JobTrustGuardResult _trust(String level) => JobTrustGuardResult(
-  riskLevel: level,
-  riskLabel: level,
-  signals: const [],
-  safeNextStep: '',
-);
 
 void main() {
   group('AutoApplySettings.autoSendOutreach', () {
@@ -30,49 +22,27 @@ void main() {
   });
 
   group('shouldAutoSendOutreach', () {
-    test('false when the setting is off, even for a low-risk job', () {
+    test('false when the setting is off, even for a confirmed recipient', () {
       expect(
         shouldAutoSendOutreach(
           settings: const AutoApplySettings(autoSendOutreach: false),
-          trust: _trust('low'),
           recipient: _confirmedRecipient(),
         ),
         isFalse,
       );
     });
 
-    test(
-      'true when bounded auto-apply, auto-send, trust, and recipient pass',
-      () {
-        expect(
-          shouldAutoSendOutreach(
-            settings: const AutoApplySettings(
-              enabled: true,
-              autoSendOutreach: true,
-            ),
-            trust: _trust('low'),
-            recipient: _confirmedRecipient(),
+    test('true when bounded auto-apply, auto-send, and recipient pass', () {
+      expect(
+        shouldAutoSendOutreach(
+          settings: const AutoApplySettings(
+            enabled: true,
+            autoSendOutreach: true,
           ),
-          isTrue,
-        );
-      },
-    );
-
-    test('false when on but the job is medium or high risk', () {
-      for (final level in ['medium', 'high']) {
-        expect(
-          shouldAutoSendOutreach(
-            settings: const AutoApplySettings(
-              enabled: true,
-              autoSendOutreach: true,
-            ),
-            trust: _trust(level),
-            recipient: _confirmedRecipient(),
-          ),
-          isFalse,
-          reason: '$level risk must fall back to manual review',
-        );
-      }
+          recipient: _confirmedRecipient(),
+        ),
+        isTrue,
+      );
     });
 
     test('false for guessed recipients even when other gates pass', () {
@@ -82,7 +52,6 @@ void main() {
             enabled: true,
             autoSendOutreach: true,
           ),
-          trust: _trust('low'),
           recipient: RecipientResolution.guessed(
             email: 'careers@example.com',
             domain: 'example.com',

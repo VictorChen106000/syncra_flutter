@@ -77,15 +77,13 @@ void main() {
         autoSendOutreach: true,
         minQualityScore: 90,
         maxDailyApplications: 5,
-        requireLowTrust: false,
       );
       final mapped = AutonomyLevel.assist.applyToAutoApply(current);
       expect(mapped.enabled, isFalse);
       expect(mapped.autoSendOutreach, isFalse);
-      // Quality / daily / trust values are left untouched.
+      // Quality / daily values are left untouched.
       expect(mapped.minQualityScore, 90);
       expect(mapped.maxDailyApplications, 5);
-      expect(mapped.requireLowTrust, isFalse);
     });
 
     test('Auto-draft disables auto-apply and auto-send, keeps limits', () {
@@ -102,22 +100,20 @@ void main() {
       expect(mapped.maxDailyApplications, 2);
     });
 
-    test('Autopilot enables auto-apply, auto-send, and the low-trust gate', () {
+    test('Autopilot enables auto-apply and auto-send', () {
       final mapped = AutonomyLevel.autopilot.applyToAutoApply(
         const AutoApplySettings(),
       );
       expect(mapped.enabled, isTrue);
       expect(mapped.autoSendOutreach, isTrue);
-      expect(mapped.requireLowTrust, isTrue);
     });
 
-    test('Autopilot defaults safety values to 85% / 3 a day / low-risk', () {
+    test('Autopilot defaults safety values to 85% / 3 a day', () {
       final mapped = AutonomyLevel.autopilot.applyToAutoApply(
         const AutoApplySettings(),
       );
       expect(mapped.minQualityScore, 85);
       expect(mapped.maxDailyApplications, 3);
-      expect(mapped.requireLowTrust, isTrue);
     });
 
     test('Autopilot preserves a user\'s custom quality / daily-limit', () {

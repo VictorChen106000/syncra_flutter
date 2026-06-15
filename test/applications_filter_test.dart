@@ -10,70 +10,22 @@ void main() {
         id: 'missing_resume',
         company: 'No Resume Co',
         resumeId: null,
-        trustRiskLevel: 'low',
         draftedAt: DateTime(2026, 6, 5, 12),
-      );
-      final highRisk = _app(
-        id: 'high_risk',
-        company: 'Risky Co',
-        resumeId: 'resume_1',
-        trustRiskLevel: 'high',
-        draftedAt: DateTime(2026, 6, 5, 13),
       );
       final ready = _app(
         id: 'ready',
         company: 'Ready Co',
         resumeId: 'resume_1',
-        trustRiskLevel: 'low',
         sentAt: DateTime(2026, 6, 5, 14),
       );
 
       final state = ApplicationsState(
-        items: [missingResume, highRisk, ready],
+        items: [missingResume, ready],
         filter: ApplicationsFilter.bundleReview,
       );
 
-      expect(state.filtered.map((app) => app.id), [
-        'high_risk',
-        'missing_resume',
-      ]);
+      expect(state.filtered.map((app) => app.id), ['missing_resume']);
     });
-    test(
-      'trust review filter includes only medium and high risk applications',
-      () {
-        final high = _app(
-          id: 'high',
-          company: 'Risky Co',
-          trustRiskLevel: 'high',
-          draftedAt: DateTime(2026, 6, 5, 12),
-        );
-        final medium = _app(
-          id: 'medium',
-          company: 'Verify Co',
-          trustRiskLevel: 'medium',
-          draftedAt: DateTime(2026, 6, 5, 13),
-        );
-        final low = _app(
-          id: 'low',
-          company: 'Normal Co',
-          trustRiskLevel: 'low',
-          draftedAt: DateTime(2026, 6, 5, 14),
-        );
-        final unchecked = _app(
-          id: 'unchecked',
-          company: 'Old Co',
-          trustRiskLevel: 'unchecked',
-          draftedAt: DateTime(2026, 6, 5, 15),
-        );
-
-        final state = ApplicationsState(
-          items: [high, medium, low, unchecked],
-          filter: ApplicationsFilter.trustReview,
-        );
-
-        expect(state.filtered.map((app) => app.id), ['medium', 'high']);
-      },
-    );
 
     test('phase filters still return the expected application phases', () {
       final draft = _app(id: 'draft');
@@ -131,10 +83,6 @@ void main() {
         'oldest',
       ]);
     });
-
-    test('trust review label is available for filter chips', () {
-      expect(ApplicationsFilter.trustReview.label, 'Trust review');
-    });
   });
 }
 
@@ -145,7 +93,6 @@ TrackedApplication _app({
   DateTime? draftedAt,
   DateTime? sentAt,
   bool gotReply = false,
-  String trustRiskLevel = 'low',
 }) {
   return TrackedApplication(
     id: id,
@@ -154,13 +101,6 @@ TrackedApplication _app({
     draftedAt: draftedAt ?? DateTime(2026, 6, 5),
     sentAt: sentAt,
     gotReply: gotReply,
-    trustRiskLevel: trustRiskLevel,
-    trustRiskLabel: switch (trustRiskLevel) {
-      'high' => 'High risk',
-      'medium' => 'Needs verification',
-      'low' => 'Looks normal',
-      _ => 'Not checked',
-    },
   );
 }
 

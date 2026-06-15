@@ -17,7 +17,6 @@ class ApplicationQualityResult {
 ApplicationQualityResult evaluateApplicationQuality(PipelineCard card) {
   return evaluateApplicationQualityFor(
     job: card.job,
-    trustRiskLevel: card.trustRiskLevel,
     stage: card.stage,
   );
 }
@@ -27,37 +26,24 @@ ApplicationQualityResult evaluateTrackedApplicationQuality(
 ) {
   return evaluateApplicationQualityFor(
     job: app.job,
-    trustRiskLevel: app.trustRiskLevel,
     stage: _stageFromApplicationPhase(app.phase),
   );
 }
 
 ApplicationQualityResult evaluateApplicationQualityFor({
   required Job job,
-  required String trustRiskLevel,
   required PipelineStage stage,
 }) {
-  var score = _rawApplicationQualityScore(
+  final score = _rawApplicationQualityScore(
     job: job,
-    trustRiskLevel: trustRiskLevel,
     stage: stage,
-  );
-
-  // Trust gates the meter. A high-risk job should never look "ready",
-  // and unchecked legacy cards should not look fully ready either.
-  score = switch (trustRiskLevel) {
-    'high' => score.clamp(0, 35).toInt(),
-    'medium' => score.clamp(0, 59).toInt(),
-    'unchecked' => score.clamp(0, 74).toInt(),
-    _ => score.clamp(0, 100).toInt(),
-  };
+  ).clamp(0, 100).toInt();
 
   return ApplicationQualityResult(
     score: score,
     label: _applicationQualityLabel(score),
     reasons: _applicationQualityReasons(
       job: job,
-      trustRiskLevel: trustRiskLevel,
       stage: stage,
     ),
   );
@@ -65,7 +51,6 @@ ApplicationQualityResult evaluateApplicationQualityFor({
 
 int _rawApplicationQualityScore({
   required Job job,
-  required String trustRiskLevel,
   required PipelineStage stage,
 }) {
   var score = 35;
@@ -74,14 +59,6 @@ int _rawApplicationQualityScore({
     JobCategory.ready => 25,
     JobCategory.inputNeeded => 14,
     JobCategory.exploration => 6,
-  };
-
-  score += switch (trustRiskLevel) {
-    'low' => 20,
-    'unchecked' => 8,
-    'medium' => -8,
-    'high' => -30,
-    _ => 0,
   };
 
   if (job.missingSkills.isEmpty) {
@@ -109,29 +86,14 @@ String _applicationQualityLabel(int score) {
 
 List<String> _applicationQualityReasons({
   required Job job,
-  required String trustRiskLevel,
   required PipelineStage stage,
 }) {
   final reasons = <String>[];
 
-  if (trustRiskLevel == 'high') {
-    reasons.add('Trust blocked');
-  } else if (trustRiskLevel == 'medium') {
-    reasons.add('Verify trust first');
-  } else if (trustRiskLevel == 'low') {
-    reasons.add('Trust looks okay');
-  } else {
-    reasons.add('Trust not checked');
-  }
-
-  switch (job.category) {
-    case JobCategory.ready:
-      reasons.add('Resume fit strong');
-    case JobCategory.inputNeeded:
-      reasons.add('Needs missing info');
-    case JobCategory.exploration:
-      reasons.add('Stretch role');
-  }
+  // Use the single canonical match label so the meter never invents its own
+  // wording ("Stretch role", "Resume fit strong") that drifts from the three
+  // labels shown everywhere else: All Match / Several Match / No Match.
+  reasons.add(job.matchLabel);
 
   if (job.missingSkills.isNotEmpty) {
     reasons.add('Missing ${job.missingSkills.take(2).join(', ')}');

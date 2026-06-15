@@ -21,7 +21,6 @@ import '../../../resumes/state/resume_notifier.dart';
 import '../../../email/presentation/email_review_page.dart';
 import '../../../email/services/gmail_service.dart';
 import '../../../jobs/presentation/widgets/job_action_sheet.dart';
-import '../../../jobs/services/job_trust_guard.dart';
 import '../../../jobs/state/jobs_notifier.dart';
 import '../../../../data/firestore/jobs_repository.dart';
 import '../../../auth/models/user_profile.dart';
@@ -496,12 +495,11 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
   }
 
   /// In **Autopilot** ([AutonomyLevel.autopilot]) the agent's outreach is sent
-  /// for the user — but only when the job clears the low-risk trust floor and
-  /// the recipient is a real address, and always behind a brief [_undoWindow]
-  /// so the user can catch it. Any miss — wrong mode, missing/risky job, bad
-  /// recipient — falls back to the manual "Review & send" card. Never fires for
-  /// restored history: only blocks built live this session carry
-  /// [EmailDraftBlock.autoSendPending].
+  /// for the user — but only when the recipient is a real address, and always
+  /// behind a brief [_undoWindow] so the user can catch it. Any miss — wrong
+  /// mode, missing job, bad recipient — falls back to the manual "Review & send"
+  /// card. Never fires for restored history: only blocks built live this session
+  /// carry [EmailDraftBlock.autoSendPending].
   Future<void> _maybeAutoSend() async {
     if (_autoSendStarted) return;
     final block = widget.block;
@@ -518,10 +516,7 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
     _autoSendStarted = true;
     try {
       final job = await JobsRepository().fetchById(jobId);
-      if (job == null) return; // Can't assess risk → manual review.
-      if (evaluateJobTrust(job).riskLevel != 'low') {
-        return; // Medium/high risk → manual review.
-      }
+      if (job == null) return; // No job record → manual review.
       if (!mounted) return;
       // Open the undo window. The actual send fires when it elapses.
       setState(() => _undoRemaining = _undoWindow.inSeconds);

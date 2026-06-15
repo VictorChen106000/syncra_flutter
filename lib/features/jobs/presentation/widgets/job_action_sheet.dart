@@ -7,7 +7,6 @@ import '../../../../data/models/job.dart';
 import '../../../email/presentation/email_review_page.dart';
 import '../../../email/services/recipient_resolver.dart';
 import '../../state/jobs_notifier.dart';
-import '../../services/job_trust_guard.dart';
 
 class JobActionSheet {
   const JobActionSheet._();
@@ -53,7 +52,6 @@ class _JobActionSheetBody extends ConsumerWidget {
     final isSaved = state.isSaved(job.id);
     final isHidden = state.isHidden(job.id);
     final label = '${job.title} at ${job.company}';
-    final trust = evaluateJobTrust(job);
 
     return SafeArea(
       child: Container(
@@ -86,7 +84,6 @@ class _JobActionSheetBody extends ConsumerWidget {
                 ],
               ),
             ),
-            _TrustGuardPreflight(result: trust),
             _ActionTile(
               icon: Icons.drafts_outlined,
               label: 'Draft application email',
@@ -148,40 +145,6 @@ class _JobActionSheetBody extends ConsumerWidget {
   }
 }
 
-Future<bool?> _confirmTrustGuardProceed(
-  BuildContext context,
-  JobTrustGuardResult trust,
-) {
-  final brand = context.brand;
-
-  return showDialog<bool>(
-    context: context,
-    builder: (dialogContext) {
-      return AlertDialog(
-        backgroundColor: brand.surface,
-        title: Text(
-          '${trust.riskLabel} detected',
-          style: TextStyle(color: brand.ink, fontWeight: FontWeight.w900),
-        ),
-        content: Text(
-          '${trust.safeNextStep}\n\nContinue drafting anyway?',
-          style: TextStyle(color: brand.textMuted, height: 1.45),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Draft anyway'),
-          ),
-        ],
-      );
-    },
-  );
-}
-
 /// Opens the email review sheet pre-filled with a starter draft for [job],
 /// then saves it to the user's Gmail Drafts (nothing is sent). The recipient
 /// is a best-effort guess the user confirms in the sheet.
@@ -191,13 +154,7 @@ Future<void> _draftEmail(
   Job job, {
   VoidCallback? onDrafted,
 }) async {
-  final trust = evaluateJobTrust(job);
   final jobsNotifier = ref.read(jobsProvider.notifier);
-  if (trust.needsVerification) {
-    final confirmed = await _confirmTrustGuardProceed(context, trust);
-    if (confirmed != true) return;
-    if (!context.mounted) return;
-  }
 
   // Capture a stable parent context before closing the action sheet.
   final navigator = Navigator.of(context);
@@ -256,76 +213,6 @@ Future<void> _draftEmail(
       ),
     ),
   );
-}
-
-class _TrustGuardPreflight extends StatelessWidget {
-  const _TrustGuardPreflight({required this.result});
-
-  final JobTrustGuardResult result;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final color = switch (result.riskLevel) {
-      'high' => brand.danger,
-      'medium' => brand.warning,
-      'low' => brand.success,
-      _ => brand.textSoft,
-    };
-
-    final icon = switch (result.riskLevel) {
-      'high' => Icons.warning_amber_rounded,
-      'medium' => Icons.verified_user_outlined,
-      _ => Icons.shield_outlined,
-    };
-
-    final subtitle = result.signals.isEmpty
-        ? 'No obvious red flags found. Still verify the official posting.'
-        : result.safeNextStep;
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-      padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: brand.isDark ? 0.16 : 0.10),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.30)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Trust Guard · ${result.riskLabel}',
-                  style: TextStyle(
-                    color: brand.ink,
-                    fontSize: 12.8,
-                    fontWeight: FontWeight.w900,
-                    height: 1.25,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: brand.textMuted,
-                    fontSize: 12.2,
-                    fontWeight: FontWeight.w600,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _ActionTile extends StatelessWidget {

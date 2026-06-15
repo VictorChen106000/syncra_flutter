@@ -95,16 +95,19 @@ class JSearchService {
     String? location,
     int limit,
   ) async {
-    final loc = location?.trim() ?? '';
-    // Location rides inside the query text ("... in Singapore") rather than
-    // the `country` param so non-US searches work — a deliberate change
-    // from the Python port, which hardcoded country=us.
+    // Location is no longer folded into the query text ("... in Remote" was an
+    // unnatural phrase that collapsed JSearch relevance to a handful of hits).
+    // A remote location maps to JSearch's dedicated `remote_jobs_only` flag;
+    // any other location is left to the catalogue fallback's local filtering.
+    final loc = location?.trim().toLowerCase() ?? '';
+    final remoteOnly = loc.contains('remote');
     final uri = SyncraProxy.jsearch.replace(
       queryParameters: {
-        'query': loc.isEmpty ? query : '$query in $loc',
+        'query': query,
         'page': '1',
-        'num_pages': '1',
-        'date_posted': 'week',
+        'num_pages': '2',
+        'date_posted': 'month',
+        if (remoteOnly) 'remote_jobs_only': 'true',
       },
     );
 

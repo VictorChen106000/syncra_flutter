@@ -9,13 +9,11 @@ void main() {
       expect(settings.enabled, isFalse);
       expect(settings.minQualityScore, 85);
       expect(settings.maxDailyApplications, 3);
-      expect(settings.requireLowTrust, isTrue);
       expect(settings.autoSendOutreach, isFalse);
       expect(settings.toMap(), {
         'enabled': false,
         'min_quality_score': 85,
         'max_daily_applications': 3,
-        'require_low_trust': true,
         'auto_send_outreach': false,
       });
     });
@@ -28,14 +26,12 @@ void main() {
           'enabled': true,
           'min_quality_score': 90,
           'max_daily_applications': 2,
-          'require_low_trust': true,
         },
       });
 
       expect(profile.autoApplySettings.enabled, isTrue);
       expect(profile.autoApplySettings.minQualityScore, 90);
       expect(profile.autoApplySettings.maxDailyApplications, 2);
-      expect(profile.autoApplySettings.requireLowTrust, isTrue);
     });
 
     test('clamps unsafe numeric settings', () {
@@ -43,13 +39,11 @@ void main() {
         'enabled': true,
         'min_quality_score': 20,
         'max_daily_applications': 99,
-        'require_low_trust': false,
       });
 
       expect(settings.enabled, isTrue);
       expect(settings.minQualityScore, 60);
       expect(settings.maxDailyApplications, 10);
-      expect(settings.requireLowTrust, isFalse);
     });
 
     test('copyWith changes selected guardrails', () {
@@ -59,13 +53,11 @@ void main() {
         enabled: true,
         minQualityScore: 90,
         maxDailyApplications: 5,
-        requireLowTrust: false,
       );
 
       expect(updated.enabled, isTrue);
       expect(updated.minQualityScore, 90);
       expect(updated.maxDailyApplications, 5);
-      expect(updated.requireLowTrust, isFalse);
     });
 
     test('falls back when the saved value is missing or malformed', () {
@@ -80,7 +72,6 @@ void main() {
       expect(settings.enabled, isFalse);
       expect(settings.minQualityScore, 85);
       expect(settings.maxDailyApplications, 3);
-      expect(settings.requireLowTrust, isTrue);
     });
   });
 }

@@ -31,9 +31,8 @@ PipelineStage? pipelineAutopilotStopStage(AutonomyLevel level) =>
 
 /// The cards the auto-processor is allowed to touch: a fresh `matched` Strong
 /// (`ready`) or Partial (`inputNeeded`) match. Only Stretch (`exploration`)
-/// still waits for the user. Trust risk is NOT checked here. (Sends go to the
-/// demo inbox via [demoRecipientOverride], so a flagged role never reaches a
-/// real employer; in production the trust gate would need to come back.)
+/// still waits for the user. (Sends go to the demo inbox via
+/// [demoRecipientOverride], so autopilot never reaches a real employer.)
 /// Partial matches tailor on real résumé facts only — the missing skill is
 /// never invented. Pure + testable.
 @visibleForTesting
@@ -274,11 +273,6 @@ class PipelineAutopilotNotifier extends Notifier<PipelineAutopilotState> {
       uid: uid,
       job: job,
       resumeId: attachmentResumeId,
-      trustRiskLevel: card.trustRiskLevel,
-      trustRiskLabel: card.trustRiskLabel,
-      trustSignalsCount: card.trustSignalsCount,
-      trustSignals: card.trustSignals,
-      trustSafeNextStep: card.trustSafeNextStep,
     );
 
     await _emailSender.autoSend(

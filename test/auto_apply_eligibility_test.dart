@@ -28,7 +28,8 @@ void main() {
       expect(result.isEligible, isTrue);
       expect(result.statusLabel, 'Ready for bounded auto-apply');
       expect(result.reasons, isEmpty);
-      expect(result.qualityScore, 100);
+      // base 35 + ready 25 + no-missing 15 + drafted 16 = 91
+      expect(result.qualityScore, 91);
     });
 
     test('blocks when the daily limit has already been reached', () {
@@ -43,19 +44,6 @@ void main() {
 
       expect(result.isEligible, isFalse);
       expect(result.reasons, contains('Daily limit reached'));
-    });
-
-    test('blocks high-risk applications even if other inputs exist', () {
-      final result = evaluateAutoApplyEligibility(
-        app: _application(trustRiskLevel: 'high'),
-        settings: const AutoApplySettings(enabled: true),
-        sentToday: 0,
-      );
-
-      expect(result.isEligible, isFalse);
-      expect(result.reasons, contains('Trust must be low risk'));
-      expect(result.reasons, contains('Bundle needs review'));
-      expect(result.reasons, contains('Trust: Blocked'));
     });
 
     test('blocks applications with incomplete bundles', () {
@@ -81,8 +69,9 @@ void main() {
       );
 
       expect(result.isEligible, isFalse);
-      expect(result.qualityScore, 62);
-      expect(result.reasons, contains('Quality 62% is below 85% minimum'));
+      // base 35 + exploration 6 - missing(15) + drafted 16 = 42
+      expect(result.qualityScore, 42);
+      expect(result.reasons, contains('Quality 42% is below 85% minimum'));
     });
 
     test('blocks applications that are already sent', () {
@@ -100,7 +89,6 @@ void main() {
 
 TrackedApplication _application({
   String? resumeId = 'resume_1',
-  String trustRiskLevel = 'low',
   DateTime? sentAt,
   JobCategory category = JobCategory.ready,
   List<String> missingSkills = const [],
@@ -124,14 +112,5 @@ TrackedApplication _application({
     resumeId: resumeId,
     draftedAt: DateTime(2026, 6, 5, 9),
     sentAt: sentAt,
-    trustRiskLevel: trustRiskLevel,
-    trustRiskLabel: _trustLabel(trustRiskLevel),
   );
 }
-
-String _trustLabel(String level) => switch (level) {
-  'high' => 'High risk',
-  'medium' => 'Needs verification',
-  'low' => 'Looks normal',
-  _ => 'Not checked',
-};

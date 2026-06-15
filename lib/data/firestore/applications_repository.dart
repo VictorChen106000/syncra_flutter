@@ -24,11 +24,6 @@ class ApplicationsRepository {
     required String uid,
     required Job job,
     String? resumeId,
-    String trustRiskLevel = 'unchecked',
-    String trustRiskLabel = 'Not checked',
-    int trustSignalsCount = 0,
-    List<Map<String, String>> trustSignals = const [],
-    String trustSafeNextStep = '',
   }) async {
     final ref = _paths.applications(uid).doc();
     await ref.set({
@@ -39,14 +34,6 @@ class ApplicationsRepository {
       'got_reply': false,
       'follow_up_at': null,
       'sent_email_id': null,
-      'trust_risk_level': trustRiskLevel,
-      'trust_risk_label': trustRiskLabel,
-      'trust_signals_count': trustSignalsCount,
-      'trust_signals': trustSignals,
-      'trust_safe_next_step': trustSafeNextStep,
-      'trust_checked_at': trustRiskLevel == 'unchecked'
-          ? null
-          : FieldValue.serverTimestamp(),
       'notes': <Map<String, dynamic>>[],
     });
     return ref.id;
@@ -137,27 +124,6 @@ class ApplicationsRepository {
 
     await _paths.applications(uid).doc(applicationId).update({'notes': next});
   }
-
-  Future<void> setTrustGuard(
-    String uid,
-    String applicationId, {
-    required String trustRiskLevel,
-    required String trustRiskLabel,
-    required int trustSignalsCount,
-    required List<Map<String, String>> trustSignals,
-    required String trustSafeNextStep,
-  }) async {
-    await _paths.applications(uid).doc(applicationId).update({
-      'trust_risk_level': trustRiskLevel,
-      'trust_risk_label': trustRiskLabel,
-      'trust_signals_count': trustSignalsCount,
-      'trust_signals': trustSignals,
-      'trust_safe_next_step': trustSafeNextStep,
-      'trust_checked_at': trustRiskLevel == 'unchecked'
-          ? null
-          : FieldValue.serverTimestamp(),
-    });
-  }
 }
 
 TrackedApplication _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
@@ -173,35 +139,8 @@ TrackedApplication _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     gotReply: (data['got_reply'] as bool?) ?? false,
     followUpAt: _toDate(data['follow_up_at']),
     sentEmailId: data['sent_email_id'] as String?,
-    trustRiskLevel: (data['trust_risk_level'] as String?) ?? 'unchecked',
-    trustRiskLabel: (data['trust_risk_label'] as String?) ?? 'Not checked',
-    trustSignalsCount: (data['trust_signals_count'] as num?)?.toInt() ?? 0,
-    trustSignals: _trustSignalsFrom(data['trust_signals']),
-    trustSafeNextStep: (data['trust_safe_next_step'] as String?) ?? '',
     notes: _notesFrom(data['notes']),
   );
-}
-
-List<Map<String, String>> _trustSignalsFrom(Object? value) {
-  if (value is! List) return const [];
-
-  final signals = <Map<String, String>>[];
-
-  for (final raw in value.whereType<Map>()) {
-    final severity = raw['severity']?.toString().trim() ?? '';
-    final label = raw['label']?.toString().trim() ?? '';
-    final detail = raw['detail']?.toString().trim() ?? '';
-
-    if (label.isEmpty && detail.isEmpty) continue;
-
-    signals.add({
-      'severity': severity.isEmpty ? 'medium' : severity,
-      'label': label.isEmpty ? 'Trust signal' : label,
-      'detail': detail,
-    });
-  }
-
-  return signals;
 }
 
 Job _jobFromMap(Map<String, dynamic> m) => Job(

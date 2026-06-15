@@ -8,14 +8,12 @@ class AutoApplySettings {
     this.enabled = false,
     this.minQualityScore = 85,
     this.maxDailyApplications = 3,
-    this.requireLowTrust = true,
     this.autoSendOutreach = false,
   });
 
   final bool enabled;
   final int minQualityScore;
   final int maxDailyApplications;
-  final bool requireLowTrust;
 
   /// When true, the agent may send a drafted outreach email automatically
   /// instead of stopping at the review sheet — but only when bounded
@@ -29,14 +27,12 @@ class AutoApplySettings {
     bool? enabled,
     int? minQualityScore,
     int? maxDailyApplications,
-    bool? requireLowTrust,
     bool? autoSendOutreach,
   }) {
     return AutoApplySettings(
       enabled: enabled ?? this.enabled,
       minQualityScore: minQualityScore ?? this.minQualityScore,
       maxDailyApplications: maxDailyApplications ?? this.maxDailyApplications,
-      requireLowTrust: requireLowTrust ?? this.requireLowTrust,
       autoSendOutreach: autoSendOutreach ?? this.autoSendOutreach,
     );
   }
@@ -58,10 +54,6 @@ class AutoApplySettings {
         max: 10,
         fallback: 3,
       ),
-      requireLowTrust: _boolOrFallback(
-        value['require_low_trust'],
-        fallback: true,
-      ),
       autoSendOutreach: _boolOrFallback(
         value['auto_send_outreach'],
         fallback: false,
@@ -73,7 +65,6 @@ class AutoApplySettings {
     'enabled': enabled,
     'min_quality_score': minQualityScore,
     'max_daily_applications': maxDailyApplications,
-    'require_low_trust': requireLowTrust,
     'auto_send_outreach': autoSendOutreach,
   };
 
@@ -133,8 +124,8 @@ enum AutonomyLevel {
   /// Only [autopilot] enables auto-apply and auto-send; [assist] and
   /// [autoDraft] keep the agent stopping at the human gates. This sets *intent*
   /// only — the irreversible send stays gated by every check in
-  /// `shouldAutoSendOutreach` (Trust Guard low, confirmed recipient, quality,
-  /// daily limit), so guessed/medium-risk paths never auto-send regardless.
+  /// `shouldAutoSendOutreach` (confirmed recipient, quality, daily limit), so
+  /// guessed recipients never auto-send regardless.
   AutoApplySettings applyToAutoApply(AutoApplySettings current) =>
       switch (this) {
         AutonomyLevel.assist || AutonomyLevel.autoDraft => current.copyWith(
@@ -147,7 +138,6 @@ enum AutonomyLevel {
         AutonomyLevel.autopilot => current.copyWith(
           enabled: true,
           autoSendOutreach: true,
-          requireLowTrust: true,
         ),
       };
 
