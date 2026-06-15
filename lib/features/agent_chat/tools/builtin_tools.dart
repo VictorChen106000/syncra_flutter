@@ -669,11 +669,7 @@ void _registerSaveToPipeline(
 
       return ToolResult(
         summary: 'Saved ${job.company} to pipeline',
-        data: {
-          'saved': true,
-          'job_id': job.id,
-          'category': category.name,
-        },
+        data: {'saved': true, 'job_id': job.id, 'category': category.name},
       );
     },
   );
@@ -1151,77 +1147,42 @@ Map<String, dynamic> _recipientResolutionData(RecipientResolution resolution) {
   };
 }
 
-RecipientResolution _recipientResolutionFromDraftArgs(
-  Map<String, dynamic> args, {
-  required String email,
+RecipientResolution _recipientResolutionForDraft({
+  required RecipientResolution resolved,
+  required String? explicitRecipient,
   required String company,
   String? website,
 }) {
-  final confidence = _recipientConfidenceFromWire(
-    args['recipientConfidence'] ??
-        args['recipient_confidence'] ??
-        args['confidence'],
-    fallback: RecipientConfidence.low,
-  );
-  final source = _recipientSourceFromWire(
-    args['recipientSource'] ?? args['recipient_source'] ?? args['source'],
-    fallback: RecipientSource.guessedPattern,
-  );
+  final explicit = explicitRecipient?.trim();
+
+  if (explicit == null || explicit.isEmpty) {
+    return resolved;
+  }
+
+  final resolvedEmail = resolved.email.trim().toLowerCase();
+  if (resolvedEmail.isNotEmpty && explicit.toLowerCase() == resolvedEmail) {
+    return resolved;
+  }
+
   final domain =
-      (args['domain'] as String?)?.trim().toLowerCase() ??
+      _domainFromEmail(explicit) ??
       recipientDomainOrNull(company, website: website) ??
-      _domainFromEmail(email) ??
-      '';
-  final sourceUrl =
-      (args['recipientSourceUrl'] as String?)?.trim() ??
-      (args['recipient_source_url'] as String?)?.trim() ??
-      (args['sourceUrl'] as String?)?.trim();
-  final reason =
-      (args['recipientReason'] as String?)?.trim() ??
-      (args['recipient_reason'] as String?)?.trim() ??
-      (args['reason'] as String?)?.trim() ??
-      'Explicit recipient supplied to draft_email; not independently verified by Syncra.';
-  final canAutoSend =
-      args['canAutoSend'] == true || args['can_auto_send'] == true;
+      resolved.domain;
 
   return RecipientResolution(
-    email: email,
+    email: explicit,
     domain: domain,
-    confidence: confidence,
-    source: source,
-    label: RecipientResolution.labelFor(source: source, confidence: confidence),
-    sourceUrl: sourceUrl == null || sourceUrl.isEmpty ? null : sourceUrl,
-    reason: reason,
-    canAutoSend: canAutoSend,
-    requiresUserConfirmation:
-        confidence == RecipientConfidence.medium ||
-        confidence == RecipientConfidence.low ||
-        confidence == RecipientConfidence.none,
+    confidence: RecipientConfidence.low,
+    source: RecipientSource.guessedPattern,
+    label: RecipientResolution.labelFor(
+      source: RecipientSource.guessedPattern,
+      confidence: RecipientConfidence.low,
+    ),
+    reason:
+        'Recipient was supplied directly to draft_email and was not verified by Syncra.',
+    canAutoSend: false,
+    requiresUserConfirmation: true,
   );
-}
-
-RecipientConfidence _recipientConfidenceFromWire(
-  Object? raw, {
-  required RecipientConfidence fallback,
-}) {
-  final value = raw?.toString().trim();
-  if (value == null || value.isEmpty) return fallback;
-  for (final confidence in RecipientConfidence.values) {
-    if (confidence.name == value) return confidence;
-  }
-  return fallback;
-}
-
-RecipientSource _recipientSourceFromWire(
-  Object? raw, {
-  required RecipientSource fallback,
-}) {
-  final value = raw?.toString().trim();
-  if (value == null || value.isEmpty) return fallback;
-  for (final source in RecipientSource.values) {
-    if (source.name == value) return source;
-  }
-  return fallback;
 }
 
 String? _domainFromEmail(String email) {
@@ -1246,13 +1207,14 @@ void _registerDraftEmail(
     tool: const Tool(
       name: 'draft_email',
       description:
-          'Draft a cold outreach email for a job, optionally to a specific '
-          'recipient. Tailors the resume to the job requirements and attaches '
-          'the tailored PDF to the draft (falls back to the original resume if '
-          'it is already a strong fit). Pass resume_id to choose the source '
-          'resume; defaults to the latest manual one. Returns '
-          '{ job_id, subject, body, recipient, attachment_resume_id, '
-          'attachment_filename, tailored }. Does NOT send.',
+          'Draft a cold outreach email for a job. The app resolves recipient '
+          'confidence internally from the company cache, official website discovery, '
+          'or guessed fallback. If recipient_email is supplied manually, it is '
+          'treated as review-needed unless it matches Syncra’s own resolver result. '
+          'Tailors the resume to the job requirements and attaches the tailored PDF '
+          'to the draft when useful. Pass resume_id to choose the source resume; '
+          'defaults to the latest manual one. Returns recipient metadata and never '
+          'sends.',
       inputSchema: {
         'type': 'object',
         'properties': {
@@ -1265,20 +1227,6 @@ void _registerDraftEmail(
                 'latest manual resume.',
           },
           'recipient_email': {'type': 'string'},
-          'recipient_confidence': {
-            'type': 'string',
-            'enum': ['confirmed', 'high', 'medium', 'low', 'none'],
-            'description':
-                'Confidence from resolve_company_contact when recipient_email came from that tool.',
-          },
-          'recipient_source': {
-            'type': 'string',
-            'description':
-                'Source from resolve_company_contact when recipient_email came from that tool.',
-          },
-          'recipient_source_url': {'type': 'string'},
-          'recipient_reason': {'type': 'string'},
-          'can_auto_send': {'type': 'boolean'},
           'recipient_name': {'type': 'string'},
           'tone': {
             'type': 'string',
@@ -1296,18 +1244,16 @@ void _registerDraftEmail(
       final job = await jobsRepo.fetchById(jobId);
       if (job == null) return ToolResult.error('Job not found.');
       final explicitRecipient = (args['recipient_email'] as String?)?.trim();
-      final recipientResolution =
-          explicitRecipient != null && explicitRecipient.isNotEmpty
-          ? _recipientResolutionFromDraftArgs(
-              args,
-              email: explicitRecipient,
-              company: job.company,
-              website: job.employerWebsite,
-            )
-          : await resolveRecipientAsync(
-              job.company,
-              website: job.employerWebsite,
-            );
+      final resolvedRecipient = await resolveRecipientAsync(
+        job.company,
+        website: job.employerWebsite,
+      );
+      final recipientResolution = _recipientResolutionForDraft(
+        resolved: resolvedRecipient,
+        explicitRecipient: explicitRecipient,
+        company: job.company,
+        website: job.employerWebsite,
+      );
       final recipient = recipientResolution.email;
       final tone = (args['tone'] as String?) ?? 'warm';
 
@@ -1626,9 +1572,7 @@ void _registerSaveToTracker(
 
       return ToolResult(
         summary: 'Saved ${job.company} to tracker',
-        data: {
-          'application_id': appId,
-        },
+        data: {'application_id': appId},
       );
     },
   );
