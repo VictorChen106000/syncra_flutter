@@ -62,12 +62,12 @@ void main() {
       }
     });
 
-    test('ignores trust risk — match is the only gate', () {
+    test('selects matched cards before send-time safety gates run', () {
       for (final risk in ['low', 'medium', 'high', 'unchecked']) {
         expect(
           pipelineAutopilotCandidates([_card(trustRiskLevel: risk)]),
           hasLength(1),
-          reason: 'risk $risk should still process — trust is not gated',
+          reason: 'risk $risk can still draft; send safety gates it later',
         );
       }
     });

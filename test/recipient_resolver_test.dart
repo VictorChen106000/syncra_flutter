@@ -5,11 +5,39 @@ import 'package:syncra/features/email/services/company_contact_discovery_service
 import 'package:syncra/features/email/services/recipient_resolver.dart';
 
 void main() {
-  // The app ships with a demo-inbox override (so Autopilot delivers live);
-  // these tests exercise *real* per-company resolution, so clear it first.
-  setUp(() => demoRecipientOverride = '');
-
   group('resolveRecipientAsync', () {
+    test('normal builds do not enable a demo override', () {
+      expect(activeDemoRecipientEmail(), isNull);
+      expect(resolveRecipient('Acme'), 'careers@acme.com');
+    });
+
+    test('demo override requires both the flag and a valid email', () {
+      expect(
+        activeDemoRecipientEmail(
+          enabled: false,
+          overrideEmail: 'demo@example.com',
+        ),
+        isNull,
+      );
+      expect(
+        activeDemoRecipientEmail(enabled: true, overrideEmail: 'not an email'),
+        isNull,
+      );
+    });
+
+    test('enabled demo override is confirmed and auto-send eligible', () {
+      final resolution = demoEmailOverrideResolution(
+        enabled: true,
+        overrideEmail: 'demo@example.com',
+      );
+
+      expect(resolution, isNotNull);
+      expect(resolution!.email, 'demo@example.com');
+      expect(resolution.source, RecipientSource.demoOverride);
+      expect(resolution.confidence, RecipientConfidence.confirmed);
+      expect(resolution.isAutoSendEligible, isTrue);
+    });
+
     test(
       'confirmed Firestore contact wins over discovery and guessed fallback',
       () async {

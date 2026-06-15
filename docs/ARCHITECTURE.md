@@ -21,7 +21,7 @@ this file, fix the code (or change this file by PR). Product context is in
 | Job Trust Guard | Heuristic red-flag screen only; never certifies a job as legitimate |
 | Secrets | `--dart-define=KEY=...` at build time; rotate after demo |
 | Agent paradigm | Tool use — Claude picks tools, client executes, loop continues |
-| Human-in-the-loop | Agent never sends external traffic without an explicit user tap |
+| Human-in-the-loop | Claude never sends external traffic directly; manual sends require a user tap, while Autopilot sends require the app safety gate |
 | Resume canonical form | `ResumeJSON` in Firestore, lazy-populated on first parse |
 | PDF template | One fixed single-column ATS-safe layout |
 | Resume integrity | Pure Dart check after accepted edits render, with deterministic skill cleanup and one guarded repair pass; no extra PDF editor |
@@ -63,7 +63,7 @@ from an approval UI instead of a typed answer:
 
 - `ProposedEditsBlock` — PR-style resume edits from `tailor_resume`; supports per-edit Accept/Reject decisions, Apply N edits, preview rendering, Resume Integrity Check status, save-to-library, and saved-resume continuation.
 - `ActionProposalBlock` — approval card for concrete next actions; may include a hidden `continuationPrompt` that resumes the threaded agent loop after user approval.
-- `send_email` remains gated. The agent may draft outreach, but sending requires the email review UI and an explicit user-confirmation token.
+- `send_email` remains gated. The agent may draft outreach, but Claude cannot send directly; manual sends require the email review UI token, and Autopilot sends require the app's central safety gate plus the same token path.
 
 **Extended thinking is enabled** (`budget_tokens: 2048`, `max_tokens: 4096`).
 Thinking blocks render as a collapsed "Thought for a moment" step and must be
@@ -125,7 +125,7 @@ Each tool is declared in `tool_registry.dart` (`name`, `description`,
 | `remember_fact` | Persist a reusable fact about the user → `learned_facts` | auto |
 | `save_to_pipeline` | Write a scored match as a pipeline card, including Trust Guard result | auto |
 | `save_to_tracker` | Persist an application record to the Applications page, including Trust Guard result | auto; external sends still require the `send_email` user gate |
-| `send_email` | Send the drafted email via Gmail | **always requires a user tap** |
+| `send_email` | Send the drafted email via Gmail | **never callable by Claude directly**; manual sends require a user tap, Autopilot sends require the central safety gate |
 | `ask_user` | Ask the user a question and pause; optional suggestion chips | pauses the loop |
 
 ### The resume diff flow — the core sequence
@@ -216,26 +216,29 @@ and application tracker:
 | `gmail_connected` | bool | Records Gmail connection/intent state |
 | `has_completed_onboarding` | bool | Router gate for first-run onboarding |
 | `resume_fit` | map? | persisted onboarding fit chart snapshot |
-| `autonomy_level` | string | Agent Autonomy control: `assist` / `auto_draft` / `autopilot`; default `autopilot`. User-facing dial that drives `auto_apply`. |
-| `auto_apply` | map | bounded auto-apply guardrails (internal safety backend); set via Agent Autonomy, not edited directly; defaults disabled |
+| `autonomy_level` | string | Agent Autonomy control: `assist` / `auto_draft` / `autopilot`; default `auto_draft`. User-facing dial that drives hidden Autopilot safety policy. |
+| `auto_apply` | map | Hidden Autopilot safety policy derived from Agent Autonomy; not edited directly; defaults to Auto-draft policy |
 | `created_at` | Timestamp | |
 
 `auto_apply` map:
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `enabled` | bool | default `false`; does not send/apply by itself |
-| `min_quality_score` | int | default `85`; clamped 60–100 |
-| `max_daily_applications` | int | default `3`; clamped 1–10 |
-| `require_low_trust` | bool | default `true`; requires Trust Guard `low` before eligibility |
+| `enabled` | bool | derived from autonomy; only Autopilot sets `true` |
+| `min_quality_score` | int | fixed policy value; clamped 60–100 |
+| `max_daily_applications` | int | fixed policy value; clamped 0–10 |
+| `require_low_trust` | bool | fixed `true`; requires Trust Guard `low` before eligibility |
+| `auto_send_outreach` | bool | derived from autonomy; only Autopilot sets `true` |
 
-Agent Autonomy is the single user-facing control; **Bounded Auto-Apply remains
-the internal safety guardrail for Autopilot**, not a separately edited UI.
-Selecting Autopilot enables `auto_apply` + auto-send outreach (and forces
-`require_low_trust`); Assist / Auto-draft disable both and leave the other
-limits untouched. Autopilot can only send when the quality, Trust Guard,
-daily-limit, and recipient-confidence gates all pass (see
-`shouldAutoSendOutreach`); guessed or missing recipients never auto-send.
+Agent Autonomy is the single user-facing control. `auto_apply` is hidden safety
+state, not a separately edited UI. Fixed mappings are:
+Assist = off / quality 100 / daily 0 / low-trust required; Auto-draft = off /
+quality 85 / daily 0 / low-trust required; Autopilot = on / auto-send outreach
+on / quality 85 / daily 3 / low-trust required. Autopilot can only send when
+the central safety gate passes: Autopilot mode, hidden settings on, draft phase,
+daily cap, low trust, 85%+ quality, no application-bundle blockers, and a
+confirmed/high-confidence recipient with `canAutoSend: true`. Guessed, missing,
+or confirmation-required recipients never auto-send.
 
 **`users/{uid}/applications/{appId}` — activity log**
 
@@ -392,8 +395,8 @@ text, never touches layout. Don't change the template without a team vote.
 | `search_jobs` (JSearch) | cache `jobs/` for 1h — stay under 200/month |
 | `match_jobs` | ≤25 jobs per call |
 | `tailor_resume` | one in-flight per session |
-| `send_email` | hard-blocked without a user tap |
-| Bounded auto-apply / auto-send outreach | external send only when bounded auto-apply is enabled, auto-send outreach is enabled, Trust Guard is low, recipient confidence is confirmed/high with `canAutoSend: true`, quality/daily/sent guards pass |
+| `send_email` | hard-blocked without a review token or Autopilot safety path |
+| Autopilot safety / auto-send outreach | external send only when Autopilot mode and hidden policy are enabled, Trust Guard is low, recipient confidence is confirmed/high with `canAutoSend: true`, and quality/daily/draft/bundle gates pass |
 | Anthropic | $5/month spend cap in the console |
 
 ## 9. Chat job-result persistence

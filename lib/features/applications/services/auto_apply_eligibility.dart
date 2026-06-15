@@ -60,11 +60,11 @@ AutoApplyEligibilityResult evaluateAutoApplyEligibility({
   }
 
   if (settings.requireLowTrust && app.trustRiskLevel != 'low') {
-    reasons.add('Trust must be low risk');
+    reasons.add('Trust is not low-risk');
   }
 
   if (bundle.hasBlocker) {
-    reasons.add('Bundle needs review');
+    reasons.add('Application bundle needs review');
     reasons.addAll(
       bundle.items
           .where((item) => item.isBlocking)
@@ -84,7 +84,7 @@ AutoApplyEligibilityResult evaluateAutoApplyEligibility({
 
   return AutoApplyEligibilityResult(
     isEligible: isEligible,
-    statusLabel: isEligible ? 'Ready for bounded auto-apply' : reasons.first,
+    statusLabel: isEligible ? 'Ready for Autopilot safety' : reasons.first,
     reasons: List.unmodifiable(reasons),
     bundle: bundle,
   );

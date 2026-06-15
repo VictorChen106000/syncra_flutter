@@ -11,9 +11,12 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/utils/motion.dart';
+import '../../../../data/firestore/applications_repository.dart';
 import '../../../../data/models/job.dart';
+import '../../../../data/models/tracked_application.dart';
 import '../../models/agent_block.dart';
 import '../../state/agent_chat_notifier.dart';
+import '../../../applications/services/autopilot_safety_gate.dart';
 import '../../../resumes/models/resume_integrity_result.dart';
 import '../../../resumes/presentation/resume_draft_preview_page.dart';
 import '../../../resumes/presentation/tailored_changes_page.dart';
@@ -495,12 +498,10 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
     super.dispose();
   }
 
-  /// In **Autopilot** ([AutonomyLevel.autopilot]) the agent's outreach is sent
-  /// for the user — but only when the job clears the low-risk trust floor and
-  /// the recipient is a real address, and always behind a brief [_undoWindow]
-  /// so the user can catch it. Any miss — wrong mode, missing/risky job, bad
-  /// recipient — falls back to the manual "Review & send" card. Never fires for
-  /// restored history: only blocks built live this session carry
+  /// In **Autopilot** ([AutonomyLevel.autopilot]) the app may send the agent's
+  /// outreach after a brief [_undoWindow], but only when the same central safety
+  /// gate used by the pipeline passes. Any miss falls back to the manual
+  /// "Review & send" card. Never fires for restored history: only live blocks carry
   /// [EmailDraftBlock.autoSendPending].
   Future<void> _maybeAutoSend() async {
     if (_autoSendStarted) return;
@@ -508,10 +509,15 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
     if (!block.autoSendPending || block.status != EmailDraftStatus.reviewing) {
       return;
     }
-    final level =
-        ref.read(userProfileProvider)?.autonomyLevel ?? AutonomyLevel.autopilot;
+    final profile = ref.read(userProfileProvider);
+    final level = profile?.autonomyLevel ?? AutonomyLevel.autoDraft;
     if (level != AutonomyLevel.autopilot) return;
+    final settings = level.applyToAutoApply(
+      profile?.autoApplySettings ?? const AutoApplySettings(),
+    );
     if (!_looksLikeEmail(block.recipient)) return; // Guessed/blank → review.
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) return;
     final jobId = block.jobId;
     if (jobId == null || jobId.isEmpty) return;
 
@@ -519,8 +525,32 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
     try {
       final job = await JobsRepository().fetchById(jobId);
       if (job == null) return; // Can't assess risk → manual review.
-      if (evaluateJobTrust(job).riskLevel != 'low') {
-        return; // Medium/high risk → manual review.
+      final trust = evaluateJobTrust(job);
+      final application = TrackedApplication(
+        id: 'chat_${block.id}',
+        job: job,
+        resumeId: block.attachmentResumeId,
+        draftedAt: DateTime.now(),
+        trustRiskLevel: trust.riskLevel,
+        trustRiskLabel: trust.riskLabel,
+        trustSignalsCount: trust.signalsCount,
+        trustSignals: trust.signals,
+        trustSafeNextStep: trust.safeNextStep,
+      );
+      final sentToday = await ApplicationsRepository().countSentToday(uid);
+      final decision = evaluateAutopilotSendSafety(
+        autonomyLevel: level,
+        settings: settings,
+        application: application,
+        sentToday: sentToday,
+        recipient: block.recipientResolution,
+      );
+      if (!decision.allowed) {
+        debugPrint(
+          'EmailDraftBlockView: auto-send blocked -> '
+          '${decision.reasons.join('; ')}',
+        );
+        return;
       }
       if (!mounted) return;
       // Open the undo window. The actual send fires when it elapses.

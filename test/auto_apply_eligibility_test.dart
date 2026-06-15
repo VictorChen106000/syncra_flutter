@@ -18,7 +18,7 @@ void main() {
       expect(result.reasons, contains('Auto-apply is off'));
     });
 
-    test('allows a ready draft when all bounded rules pass', () {
+    test('allows a ready draft when all Autopilot safety rules pass', () {
       final result = evaluateAutoApplyEligibility(
         app: _application(),
         settings: const AutoApplySettings(enabled: true),
@@ -26,7 +26,7 @@ void main() {
       );
 
       expect(result.isEligible, isTrue);
-      expect(result.statusLabel, 'Ready for bounded auto-apply');
+      expect(result.statusLabel, 'Ready for Autopilot safety');
       expect(result.reasons, isEmpty);
       expect(result.qualityScore, 100);
     });
@@ -53,8 +53,8 @@ void main() {
       );
 
       expect(result.isEligible, isFalse);
-      expect(result.reasons, contains('Trust must be low risk'));
-      expect(result.reasons, contains('Bundle needs review'));
+      expect(result.reasons, contains('Trust is not low-risk'));
+      expect(result.reasons, contains('Application bundle needs review'));
       expect(result.reasons, contains('Trust: Blocked'));
     });
 
@@ -66,7 +66,7 @@ void main() {
       );
 
       expect(result.isEligible, isFalse);
-      expect(result.reasons, contains('Bundle needs review'));
+      expect(result.reasons, contains('Application bundle needs review'));
       expect(result.reasons, contains('Resume: Attach a resume'));
     });
 

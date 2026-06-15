@@ -65,6 +65,18 @@ class ApplicationsRepository {
     });
   }
 
+  Future<int> countSentToday(String uid, {DateTime? now}) async {
+    final anchor = now ?? DateTime.now();
+    final start = DateTime(anchor.year, anchor.month, anchor.day);
+    final end = start.add(const Duration(days: 1));
+    final snap = await _paths
+        .applications(uid)
+        .where('sent_at', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .where('sent_at', isLessThan: Timestamp.fromDate(end))
+        .get();
+    return snap.docs.length;
+  }
+
   Future<void> setGotReply(
     String uid,
     String applicationId,

@@ -149,7 +149,7 @@ Each teammate should run through:
 4. Open a role, run Trust Guard, and save it.
 5. Tailor a resume and preview the generated PDF.
 6. Draft outreach, save a Gmail draft, and confirm no email is sent without a tap.
-7. Check Applications for quality, bundle, trust, and bounded auto-apply status.
+7. Check Applications for quality, bundle, trust, and Autopilot safety status.
 8. Reset account only after confirming the demo path works.
 
 ### Post-demo shutdown
@@ -192,8 +192,9 @@ After the live demo:
   hidden / already-handled job results, proposal cards, resume preview cards,
   email draft cards, job-thread context, and compact model-side context so the
   next message can continue naturally.
-- **Human-in-the-loop.** The agent never sends external traffic without an
-  explicit user tap. Missing context → it pauses and asks.
+- **Human-in-the-loop.** Claude never sends external traffic directly. Manual
+  sends need an explicit tap; Autopilot sends only after the app's safety gate.
+  Missing context -> it pauses and asks.
 - **Honest scope.** The Applications page is an activity log (drafted / sent /
   user-flipped "got reply"), not a fake multi-stage CRM.
 - **Free to run.** Firebase Spark plan, no server. The only cost is Claude

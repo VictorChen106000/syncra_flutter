@@ -29,8 +29,8 @@ class UserRepository {
       'is_agent_active': true,
       'gmail_connected': false,
       'has_completed_onboarding': false,
-      'auto_apply': const AutoApplySettings().toMap(),
-      'autonomy_level': AutonomyLevel.autopilot.storageKey,
+      'auto_apply': fixedAutoApplySettingsFor(AutonomyLevel.autoDraft).toMap(),
+      'autonomy_level': AutonomyLevel.autoDraft.storageKey,
       'created_at': FieldValue.serverTimestamp(),
     });
   }
@@ -212,8 +212,8 @@ class UserRepository {
       'has_completed_onboarding': false,
       'resume_fit': FieldValue.delete(),
       'recommendation': FieldValue.delete(),
-      'auto_apply': const AutoApplySettings().toMap(),
-      'autonomy_level': AutonomyLevel.autopilot.storageKey,
+      'auto_apply': fixedAutoApplySettingsFor(AutonomyLevel.autoDraft).toMap(),
+      'autonomy_level': AutonomyLevel.autoDraft.storageKey,
     });
   }
 

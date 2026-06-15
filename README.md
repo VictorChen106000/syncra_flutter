@@ -43,6 +43,8 @@ flutter run --dart-define=SYNCRA_USE_MOCKS=true
 |-----|-----------|---------|
 | `SYNCRA_USE_MOCKS` | optional (default `false`) | `true` forces every service to fall back to mock/seeded data instead of the proxy |
 | `SYNCRA_PROXY_BASE` | optional | Override the Cloud Functions base URL (only if you deploy to a different project/region) |
+| `SYNCRA_DEMO_EMAIL_OVERRIDE_ENABLED` | optional (default `false`) | Enables the controlled demo recipient override only when paired with a valid email |
+| `SYNCRA_DEMO_EMAIL_OVERRIDE` | optional | Controlled demo recipient email; ignored unless the enable flag is `true` |
 
 Secrets (`ANTHROPIC_API_KEY`, `RAPIDAPI_KEY`) are **not** build-time vars anymore — they live in Cloud Secret Manager, set via `firebase functions:secrets:set`. Firebase project + Google Sign-In OAuth client IDs are baked into the committed Firebase config files.
 

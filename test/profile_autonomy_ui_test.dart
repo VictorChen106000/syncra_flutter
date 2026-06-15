@@ -1,9 +1,8 @@
 // Verifies the Profile page surfaces Agent Autonomy as the single user-facing
 // autonomy control and no longer renders a separate "Bounded Auto-Apply"
 // settings section. Each option keeps only its title inline; the description
-// lives behind an ⓘ button that opens a popup. Bounded Auto-Apply stays the
-// internal safety backend (its model + `shouldAutoSendOutreach` are unchanged
-// and covered by auto_send_outreach_test.dart / auto_apply_settings_test.dart).
+// lives behind an info button that opens a popup. Autopilot safety stays the
+// hidden backend and is covered by the auto-apply/safety tests.
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
@@ -105,7 +104,7 @@ void main() {
   ) async {
     await _pumpProfile(tester);
 
-    const assistBlurb = 'Asks before each step — you approve every move.';
+    const assistBlurb = 'Asks before each major step — you approve every move.';
 
     // Descriptions are no longer inline.
     expect(find.text(assistBlurb), findsNothing);
@@ -118,5 +117,19 @@ void main() {
 
     expect(find.text(assistBlurb), findsOneWidget);
     expect(find.text('Got it'), findsOneWidget);
+  });
+
+  testWidgets('Autopilot info explains hidden safety gates', (tester) async {
+    await _pumpProfile(tester);
+
+    const autopilotBlurb =
+        'Can send only when all safety gates pass: 85%+ quality, low-risk job, confirmed recipient, and under 3/day. Otherwise it stops at draft.';
+
+    expect(find.text(autopilotBlurb), findsNothing);
+    await tester.tap(find.byIcon(Icons.info_outline_rounded).last);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text(autopilotBlurb), findsOneWidget);
   });
 }

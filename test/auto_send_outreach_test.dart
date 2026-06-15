@@ -41,22 +41,19 @@ void main() {
       );
     });
 
-    test(
-      'true when bounded auto-apply, auto-send, trust, and recipient pass',
-      () {
-        expect(
-          shouldAutoSendOutreach(
-            settings: const AutoApplySettings(
-              enabled: true,
-              autoSendOutreach: true,
-            ),
-            trust: _trust('low'),
-            recipient: _confirmedRecipient(),
+    test('true when hidden policy, auto-send, trust, and recipient pass', () {
+      expect(
+        shouldAutoSendOutreach(
+          settings: const AutoApplySettings(
+            enabled: true,
+            autoSendOutreach: true,
           ),
-          isTrue,
-        );
-      },
-    );
+          trust: _trust('low'),
+          recipient: _confirmedRecipient(),
+        ),
+        isTrue,
+      );
+    });
 
     test('false when on but the job is medium or high risk', () {
       for (final level in ['medium', 'high']) {

@@ -1335,17 +1335,19 @@ class _AutonomyDialSection extends ConsumerWidget {
     (
       level: AutonomyLevel.assist,
       icon: Icons.tune_rounded,
-      blurb: 'Asks before each step — you approve every move.',
+      blurb: 'Asks before each major step — you approve every move.',
     ),
     (
       level: AutonomyLevel.autoDraft,
       icon: Icons.auto_awesome_rounded,
-      blurb: 'Tailors and drafts on its own. You save, then tap Send.',
+      blurb:
+          'Searches, tailors, and drafts on its own. You review, save, and send.',
     ),
     (
       level: AutonomyLevel.autopilot,
       icon: Icons.bolt_rounded,
-      blurb: 'Also sends low-risk emails for you — 5 seconds to undo.',
+      blurb:
+          'Can send only when all safety gates pass: 85%+ quality, low-risk job, confirmed recipient, and under 3/day. Otherwise it stops at draft.',
     ),
   ];
 
@@ -1357,7 +1359,7 @@ class _AutonomyDialSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(userProfileProvider);
-    final current = profile?.autonomyLevel ?? AutonomyLevel.autopilot;
+    final current = profile?.autonomyLevel ?? AutonomyLevel.autoDraft;
     final canEdit = profile != null;
 
     return _GroupedCard(
@@ -1369,7 +1371,7 @@ class _AutonomyDialSection extends ConsumerWidget {
             title: _options[i].level.label,
             blurb: _options[i].blurb,
             selected: _options[i].level == current,
-            recommended: _options[i].level == AutonomyLevel.autopilot,
+            recommended: _options[i].level == AutonomyLevel.autoDraft,
             onTap: canEdit
                 ? () => _select(ref, context, _options[i].level)
                 : null,

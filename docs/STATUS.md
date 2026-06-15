@@ -105,7 +105,7 @@ ship with one-tap CTAs; morning brief is now opt-in. Remaining:
 - [x] Gmail compose/send OAuth scopes are requested by the Gmail link flow or on-demand draft/save flow.
 - [x] Email/password auth uses Firebase email/password sign-in and account creation; it no longer falls through to guest mode.
 - [x] Resume upload progress is wired to Firebase Storage transfer progress.
-- [x] Optional polish pass — bounded auto-apply settings now show confirmation snackbars when guardrails change.
+- [x] Optional polish pass — Agent Autonomy changes now derive hidden Autopilot safety policy and show confirmation snackbars.
 - [x] Chat history recovery — saved conversations now use versioned full UI snapshots, show row previews in the grouped/searchable drawer, restore actionable chat cards and preview PDFs when available, rebuild compact model continuation context, and keep hardened legacy/malformed decoding.
 - [x] Locked pipeline lifecycle regression — handled pipeline cards (`sent` / `replied`) are excluded from the active Jobs pipeline, and terminal stage advancement marks cards `approved`. Covered by `test/pipeline_repository_test.dart`; do not weaken this behavior without updating that test.
 

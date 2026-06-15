@@ -52,6 +52,12 @@ void main() {
       expect(settings.requireLowTrust, isFalse);
     });
 
+    test('allows zero as a fixed draft-only daily limit', () {
+      final settings = AutoApplySettings.fromMap({'max_daily_applications': 0});
+
+      expect(settings.maxDailyApplications, 0);
+    });
+
     test('copyWith changes selected guardrails', () {
       const settings = AutoApplySettings();
 

@@ -147,11 +147,11 @@ class EmailSendService {
   ///
   /// This is the *only* place outside the review sheet allowed to mint a
   /// confirmation token. It is justified because the caller (the draft card)
-  /// has already cleared the gates that together stand in for the per-email tap:
+  /// has already cleared the Autopilot safety gates that stand in for the per-email tap:
   ///   1. the user chose `AutonomyLevel.autopilot`,
-  ///   2. the job passed the low-risk trust floor (`evaluateJobTrust`),
-  ///   3. the recipient is a real address, and
-  ///   4. the user let the on-card Undo window elapse without cancelling.
+  ///   2. quality, trust, daily cap, and bundle checks passed,
+  ///   3. the recipient is confirmed/high-confidence, and
+  ///   4. any Undo window elapsed without cancelling.
   /// The caller must enforce all of these before calling this — this method
   /// does not re-check them. Note this means the model can never send on its
   /// own (it cannot mint a token); only this app-controlled path can. Everything
@@ -233,8 +233,7 @@ class EmailSendService {
   }) async {
     // Don't learn the demo override address — it isn't a real company contact,
     // and saving it would resurface as a bogus "learned" recipient later.
-    if (demoRecipientOverride.isNotEmpty &&
-        to.trim() == demoRecipientOverride) {
+    if (isActiveDemoRecipient(to)) {
       return;
     }
     // Wrap everything — including building the repository — so a missing

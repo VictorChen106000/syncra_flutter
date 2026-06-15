@@ -17,12 +17,11 @@ class AutoApplySettings {
   final int maxDailyApplications;
   final bool requireLowTrust;
 
-  /// When true, the agent may send a drafted outreach email automatically
-  /// instead of stopping at the review sheet — but only when bounded
-  /// auto-apply is enabled, the job is low risk, and the recipient is
-  /// confirmed/high-confidence (see `shouldAutoSendOutreach`). Off by default;
-  /// the user opts in from Profile. Medium/high-risk postings and guessed
-  /// recipients always fall back to manual review.
+  /// When true, the app may send a drafted outreach email automatically instead
+  /// of stopping at the review sheet — but only when the hidden Autopilot safety
+  /// policy, low-risk trust, quality, daily, and recipient gates all pass.
+  /// Medium/high-risk postings and guessed recipients always fall back to
+  /// manual review.
   final bool autoSendOutreach;
 
   AutoApplySettings copyWith({
@@ -54,7 +53,7 @@ class AutoApplySettings {
       ),
       maxDailyApplications: _intInRange(
         value['max_daily_applications'],
-        min: 1,
+        min: 0,
         max: 10,
         fallback: 3,
       ),
@@ -101,8 +100,8 @@ class AutoApplySettings {
 /// - [assist]: proposes each step, waits for approval before the next.
 /// - [autoDraft]: chains the full stated goal to a ready-to-send draft; stops
 ///   only at the two human gates — Save résumé + tap Send.
-/// - [autopilot] (default): also auto-sends low-risk drafts, behind a brief
-///   undo window.
+/// - [autopilot]: can also auto-send low-risk, high-quality drafts with a
+///   confirmed recipient and daily cap.
 ///
 /// Only the level itself is trusted to the model; the irreversible send stays
 /// code-gated by the email confirmation token regardless of this setting.
@@ -125,40 +124,49 @@ enum AutonomyLevel {
     AutonomyLevel.autopilot => 'Autopilot',
   };
 
-  /// Derives the bounded auto-apply guardrails this autonomy level implies,
-  /// starting from the user's [current] settings so customised quality / daily
-  /// limits are preserved. Agent Autonomy is the single user-facing control;
-  /// this keeps the internal [AutoApplySettings] in lockstep with it.
+  /// Derives the fixed hidden safety policy this autonomy level implies.
   ///
-  /// Only [autopilot] enables auto-apply and auto-send; [assist] and
-  /// [autoDraft] keep the agent stopping at the human gates. This sets *intent*
-  /// only — the irreversible send stays gated by every check in
-  /// `shouldAutoSendOutreach` (Trust Guard low, confirmed recipient, quality,
-  /// daily limit), so guessed/medium-risk paths never auto-send regardless.
-  AutoApplySettings applyToAutoApply(AutoApplySettings current) =>
-      switch (this) {
-        AutonomyLevel.assist || AutonomyLevel.autoDraft => current.copyWith(
-          enabled: false,
-          autoSendOutreach: false,
-        ),
-        // minQualityScore / maxDailyApplications fall through copyWith
-        // unchanged — keeping any existing value, or the model defaults
-        // (85% / 3 a day) for a fresh profile.
-        AutonomyLevel.autopilot => current.copyWith(
-          enabled: true,
-          autoSendOutreach: true,
-          requireLowTrust: true,
-        ),
-      };
+  /// [current] is intentionally ignored; Agent Autonomy is the single visible
+  /// control, so stale custom guardrails must not survive level changes.
+  AutoApplySettings applyToAutoApply(AutoApplySettings _) =>
+      fixedAutoApplySettingsFor(this);
 
-  /// Parses the persisted key, defaulting to [autopilot] for legacy users and
+  /// Parses the persisted key, defaulting to [autoDraft] for legacy users and
   /// any unrecognised value.
   static AutonomyLevel fromStorage(Object? value) => switch (value) {
     'assist' => AutonomyLevel.assist,
     'auto_draft' => AutonomyLevel.autoDraft,
-    _ => AutonomyLevel.autopilot,
+    'autopilot' => AutonomyLevel.autopilot,
+    _ => AutonomyLevel.autoDraft,
   };
 }
+
+/// Fixed hidden Autopilot safety policy derived from the user-facing autonomy
+/// dial. No previous custom values are preserved.
+AutoApplySettings fixedAutoApplySettingsFor(AutonomyLevel level) =>
+    switch (level) {
+      AutonomyLevel.assist => const AutoApplySettings(
+        enabled: false,
+        autoSendOutreach: false,
+        minQualityScore: 100,
+        maxDailyApplications: 0,
+        requireLowTrust: true,
+      ),
+      AutonomyLevel.autoDraft => const AutoApplySettings(
+        enabled: false,
+        autoSendOutreach: false,
+        minQualityScore: 85,
+        maxDailyApplications: 0,
+        requireLowTrust: true,
+      ),
+      AutonomyLevel.autopilot => const AutoApplySettings(
+        enabled: true,
+        autoSendOutreach: true,
+        minQualityScore: 85,
+        maxDailyApplications: 3,
+        requireLowTrust: true,
+      ),
+    };
 
 /// Snapshot of `users/{uid}` — settings the user controls.
 ///
@@ -177,8 +185,8 @@ class UserProfile {
     this.hasCompletedOnboarding = false,
     this.resumeFit,
     this.recommendation,
-    this.autoApplySettings = const AutoApplySettings(),
-    this.autonomyLevel = AutonomyLevel.autopilot,
+    this.autoApplySettings = const AutoApplySettings(maxDailyApplications: 0),
+    this.autonomyLevel = AutonomyLevel.autoDraft,
   });
 
   final String name;
@@ -206,14 +214,14 @@ class UserProfile {
   /// rather than restarting. Null until the first setup run produces it.
   final String? recommendation;
 
-  /// User-defined guardrails for future bounded auto-apply behavior.
+  /// Hidden safety policy derived from Agent Autonomy.
   ///
   /// This does not auto-send anything by itself; it only stores the safe
   /// boundaries the agent must obey later.
   final AutoApplySettings autoApplySettings;
 
   /// How far the chat agent advances before it waits for the user. Defaults to
-  /// [AutonomyLevel.autopilot] for new and legacy profiles.
+  /// [AutonomyLevel.autoDraft] for new and legacy profiles.
   final AutonomyLevel autonomyLevel;
 
   UserProfile copyWith({
@@ -248,6 +256,8 @@ class UserProfile {
 
   factory UserProfile.fromMap(Map<String, dynamic> data) {
     final rawFit = data['resume_fit'];
+    final autonomyLevel = AutonomyLevel.fromStorage(data['autonomy_level']);
+    final rawAutoApply = data['auto_apply'];
     return UserProfile(
       name: (data['name'] as String?) ?? '',
       email: (data['email'] as String?) ?? '',
@@ -268,8 +278,10 @@ class UserProfile {
           (data['recommendation'] as String?)?.trim().isEmpty ?? true
           ? null
           : (data['recommendation'] as String).trim(),
-      autoApplySettings: AutoApplySettings.fromMap(data['auto_apply']),
-      autonomyLevel: AutonomyLevel.fromStorage(data['autonomy_level']),
+      autoApplySettings: rawAutoApply == null
+          ? fixedAutoApplySettingsFor(autonomyLevel)
+          : AutoApplySettings.fromMap(rawAutoApply),
+      autonomyLevel: autonomyLevel,
     );
   }
 }
