@@ -15,6 +15,7 @@ class Job {
     required this.missingSkills,
     required this.why,
     this.matched = true,
+    this.employerWebsite = '',
   });
 
   final String id;
@@ -36,6 +37,11 @@ class Job {
   /// surface [matchLabel] until this is true. Defaults to true: persisted
   /// pipeline/saved jobs are always the product of a real match.
   final bool matched;
+
+  /// The employer's real website (e.g. JSearch's `employer_website`), when
+  /// known. Used to address outreach to `careers@{realdomain}` instead of a
+  /// domain slugged from the company name. Empty when unknown.
+  final String employerWebsite;
 
   /// LinkedIn-style match label derived from [category]. The matching system
   /// is purely qualitative — the user never sees a numeric score or percent,
@@ -61,6 +67,7 @@ class Job {
     missingSkills: List<String>.from(json['missing'] as List),
     why: json['why'] as String,
     matched: json['matched'] as bool? ?? true,
+    employerWebsite: (json['employer_website'] as String?) ?? '',
   );
 
   Map<String, dynamic> toJson() => {
@@ -77,6 +84,7 @@ class Job {
     'missing': missingSkills,
     'why': why,
     'matched': matched,
+    'employer_website': employerWebsite,
   };
 
   static JobCategory _categoryFromString(String value) {

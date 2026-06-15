@@ -64,8 +64,10 @@ class DefaultFirebaseOptions {
     messagingSenderId: '812957418121',
     projectId: 'syncra-signlogin',
     storageBucket: 'syncra-signlogin.firebasestorage.app',
-    androidClientId: '812957418121-fjbgekr4qbsr7smalg6spmv7ppcrn1c4.apps.googleusercontent.com',
-    iosClientId: '812957418121-6m7jk45riilursjqg43fpv1p4ountgg6.apps.googleusercontent.com',
+    androidClientId:
+        '812957418121-fjbgekr4qbsr7smalg6spmv7ppcrn1c4.apps.googleusercontent.com',
+    iosClientId:
+        '812957418121-6m7jk45riilursjqg43fpv1p4ountgg6.apps.googleusercontent.com',
     iosBundleId: 'com.example.syncra',
   );
 
@@ -75,8 +77,10 @@ class DefaultFirebaseOptions {
     messagingSenderId: '812957418121',
     projectId: 'syncra-signlogin',
     storageBucket: 'syncra-signlogin.firebasestorage.app',
-    androidClientId: '812957418121-fjbgekr4qbsr7smalg6spmv7ppcrn1c4.apps.googleusercontent.com',
-    iosClientId: '812957418121-6m7jk45riilursjqg43fpv1p4ountgg6.apps.googleusercontent.com',
+    androidClientId:
+        '812957418121-fjbgekr4qbsr7smalg6spmv7ppcrn1c4.apps.googleusercontent.com',
+    iosClientId:
+        '812957418121-6m7jk45riilursjqg43fpv1p4ountgg6.apps.googleusercontent.com',
     iosBundleId: 'com.example.syncra',
   );
 

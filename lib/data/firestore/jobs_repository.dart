@@ -8,7 +8,7 @@ import 'firestore_paths.dart';
 /// the pipeline-card agent fields.
 class JobsRepository {
   JobsRepository({FirebaseFirestore? db})
-      : _paths = FirestorePaths(db ?? FirebaseFirestore.instance);
+    : _paths = FirestorePaths(db ?? FirebaseFirestore.instance);
 
   final FirestorePaths _paths;
 
@@ -39,6 +39,7 @@ Job _fromDocSnap(DocumentSnapshot<Map<String, dynamic>> doc) {
     skills: const [],
     missingSkills: const [],
     why: (m['description'] as String?) ?? '',
+    employerWebsite: (m['employer_website'] as String?) ?? '',
   );
 }
 
@@ -57,5 +58,6 @@ Job _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     skills: const [],
     missingSkills: const [],
     why: (m['description'] as String?) ?? '',
+    employerWebsite: (m['employer_website'] as String?) ?? '',
   );
 }

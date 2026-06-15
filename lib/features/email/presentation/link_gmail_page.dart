@@ -65,9 +65,7 @@ class _LinkGmailPageState extends ConsumerState<LinkGmailPage> {
       // the dashboard reads from it and the Profile › Connections toggle shows
       // Gmail as on. Fire-and-forget; the notifier flips its in-memory state
       // synchronously, so we don't block the handoff on the Firestore write.
-      unawaited(
-        ref.read(userProfileProvider.notifier).setGmailConnected(true),
-      );
+      unawaited(ref.read(userProfileProvider.notifier).setGmailConnected(true));
     } else {
       // Declined / unavailable — don't trap the user. Let them in and surface a
       // quiet note that they can connect later.
@@ -96,10 +94,7 @@ class _LinkGmailPageState extends ConsumerState<LinkGmailPage> {
           ),
           // A soft lime wash rising from the bottom, echoing the reference's
           // gradient — restrained so the CTA stays legible.
-          const Align(
-            alignment: Alignment.bottomCenter,
-            child: _BottomWash(),
-          ),
+          const Align(alignment: Alignment.bottomCenter, child: _BottomWash()),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(26, 12, 26, 26),

@@ -115,93 +115,88 @@ class DockedActionProposal extends ConsumerWidget {
     final brand = context.brand;
     final notifier = ref.read(agentChatProvider.notifier);
     return _DockedShell(
-      eyebrow: 'PROPOSED ACTION',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          eyebrow: 'PROPOSED ACTION',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // Ink tile + accent icon — the app's established premium
-              // pairing (see ProposedEditsBlock, the thread hero).
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: brand.ink,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                alignment: Alignment.center,
-                child: Icon(block.icon, size: 16, color: brand.accent),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Ink tile + accent icon — the app's established premium
+                  // pairing (see ProposedEditsBlock, the thread hero).
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: brand.ink,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(block.icon, size: 16, color: brand.accent),
+                  ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          block.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: brand.ink,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.2,
+                            height: 1.25,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          block.description,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: brand.textMuted,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      block.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: brand.ink,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.2,
-                        height: 1.25,
-                      ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: _DockedButton(
+                      label: block.editLabel,
+                      filled: false,
+                      onTap: () => notifier.dismissProposal(block.id),
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      block.description,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: brand.textMuted,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w500,
-                        height: 1.4,
-                      ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _DockedButton(
+                      label: block.acceptLabel,
+                      icon: Icons.arrow_forward_rounded,
+                      filled: true,
+                      onTap: () => notifier.acceptProposal(block.id),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _DockedButton(
-                  label: block.editLabel,
-                  filled: false,
-                  onTap: () => notifier.dismissProposal(block.id),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _DockedButton(
-                  label: block.acceptLabel,
-                  icon: Icons.arrow_forward_rounded,
-                  filled: true,
-                  onTap: () => notifier.acceptProposal(block.id),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    )
+        )
         .animate(key: ValueKey(block.id))
         .fadeIn(duration: 220.ms)
-        .moveY(
-          begin: 14,
-          end: 0,
-          duration: 240.ms,
-          curve: Curves.easeOutCubic,
-        );
+        .moveY(begin: 14, end: 0, duration: 240.ms, curve: Curves.easeOutCubic);
   }
 }
 
@@ -219,8 +214,9 @@ class DockedInputRequest extends ConsumerStatefulWidget {
 }
 
 class _DockedInputRequestState extends ConsumerState<DockedInputRequest> {
-  late final TextEditingController _controller =
-      TextEditingController(text: widget.block.answer ?? '');
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.block.answer ?? '',
+  );
   final FocusNode _focusNode = FocusNode();
 
   @override
@@ -244,100 +240,96 @@ class _DockedInputRequestState extends ConsumerState<DockedInputRequest> {
     final brand = context.brand;
     final hasText = _controller.text.trim().isNotEmpty;
     return _DockedShell(
-      eyebrow: 'NEEDS YOUR INPUT',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            widget.block.question,
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              color: brand.ink,
-              height: 1.4,
-              letterSpacing: -0.1,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.fromLTRB(14, 4, 5, 4),
-            decoration: BoxDecoration(
-              color: brand.surfaceMuted,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: brand.border, width: 1),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    focusNode: _focusNode,
-                    minLines: 1,
-                    maxLines: 4,
-                    textInputAction: TextInputAction.send,
-                    onChanged: (_) => setState(() {}),
-                    onSubmitted: _submit,
-                    cursorColor: brand.ink,
-                    cursorWidth: 1.4,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: brand.ink,
-                      height: 1.4,
-                      letterSpacing: -0.1,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: 'Type your answer…',
-                      hintStyle: TextStyle(
-                        color: brand.textSoft,
-                        fontWeight: FontWeight.w500,
-                        fontSize: 14,
-                        letterSpacing: -0.1,
+          eyebrow: 'NEEDS YOUR INPUT',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                widget.block.question,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: brand.ink,
+                  height: 1.4,
+                  letterSpacing: -0.1,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.fromLTRB(14, 4, 5, 4),
+                decoration: BoxDecoration(
+                  color: brand.surfaceMuted,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: brand.border, width: 1),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _controller,
+                        focusNode: _focusNode,
+                        minLines: 1,
+                        maxLines: 4,
+                        textInputAction: TextInputAction.send,
+                        onChanged: (_) => setState(() {}),
+                        onSubmitted: _submit,
+                        cursorColor: brand.ink,
+                        cursorWidth: 1.4,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: brand.ink,
+                          height: 1.4,
+                          letterSpacing: -0.1,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: 'Type your answer…',
+                          hintStyle: TextStyle(
+                            color: brand.textSoft,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 14,
+                            letterSpacing: -0.1,
+                          ),
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 10,
+                          ),
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                        ),
                       ),
-                      isDense: true,
-                      contentPadding:
-                          const EdgeInsets.symmetric(vertical: 10),
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
                     ),
-                  ),
+                    const SizedBox(width: 6),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: _AnswerSendButton(
+                        enabled: hasText,
+                        onTap: () => _submit(_controller.text),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 6),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 2),
-                  child: _AnswerSendButton(
-                    enabled: hasText,
-                    onTap: () => _submit(_controller.text),
-                  ),
+              ),
+              if (widget.block.suggestions.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final s in widget.block.suggestions)
+                      _SuggestionChip(label: s, onTap: () => _submit(s)),
+                  ],
                 ),
               ],
-            ),
+            ],
           ),
-          if (widget.block.suggestions.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final s in widget.block.suggestions)
-                  _SuggestionChip(label: s, onTap: () => _submit(s)),
-              ],
-            ),
-          ],
-        ],
-      ),
-    )
+        )
         .animate(key: ValueKey(widget.block.id))
         .fadeIn(duration: 220.ms)
-        .moveY(
-          begin: 14,
-          end: 0,
-          duration: 240.ms,
-          curve: Curves.easeOutCubic,
-        );
+        .moveY(begin: 14, end: 0, duration: 240.ms, curve: Curves.easeOutCubic);
   }
 }
 
@@ -422,9 +414,7 @@ class _AnswerSendButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: enabled ? brand.ink : brand.surface,
           shape: BoxShape.circle,
-          border: enabled
-              ? null
-              : Border.all(color: brand.border, width: 1),
+          border: enabled ? null : Border.all(color: brand.border, width: 1),
         ),
         child: Material(
           color: Colors.transparent,

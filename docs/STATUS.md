@@ -1,6 +1,6 @@
 # Syncra — Status & Plan
 
-**Demo day:** June 16, 2026 · **Today:** 2026-06-08 · **~8 days out.**
+**Demo day:** June 16, 2026 · **Today:** 2026-06-15 · **1 day out.**
 
 The live tracker of what's done, what's left, and who owns it. Update this as
 work lands. Product context: [README.md](./README.md). Technical contract:
@@ -16,7 +16,7 @@ Five workstreams, one owner each (5-person team). Plain names — no codes.
 | **Resume Diff UI** | The inline proposed-edits change log, tailored preview, resume list/preview |
 | **Agent Reasoning** | Claude tool-use loop, prompts, tool descriptions, brief reasoner |
 | **App Shell** | Riverpod, navigation, auth/onboarding, dashboard, settings, applications, notifications |
-| **Integrations** | JSearch, Gmail send, email review modal |
+| **Integrations** | JSearch, Recipient Intelligence, Gmail send, email review modal |
 
 ## ✅ Shipped — don't rebuild
 
@@ -75,8 +75,9 @@ One cross-workstream wire remains (see below).
 - [x] `jsearch_service.dart` — live RapidAPI search, `jobs/` upsert, 1h cache; `search_jobs` uses it (falls back to the seeded catalogue with no key).
 - [x] `gmail_service.dart` + `lib/features/email/` — real Gmail drafts via `gmail.compose` on web/mobile, confirmed sends via `gmail.send`; web draft OAuth uses Firebase Auth popup, non-web uses `google_sign_in` v7.
 - [x] `email_send_service.dart` — one-shot confirmation-token gate; the real `send_email` handler refuses tokenless (autonomous) calls.
-- [x] `email_review_page.dart` — editable review sheet that mints the token and sends.
-- [x] `lookup_hiring_manager` — returns the company's `careers@` address; no named-contact lookup (Hunter.io considered and dropped 2026-05-21).
+- [x] `email_review_page.dart` — editable review sheet that mints the token and sends; recipient badges/warnings distinguish confirmed, found, guessed, and missing recipients.
+- [x] Recipient Intelligence — JSearch does not provide recruiter emails; `resolve_company_contact` and `recipient_resolver.dart` prefer `company_contacts`, keep a safe official-discovery shell for future Firebase callable integration, and label `careers@domain` as low-confidence guessed fallback with `canAutoSend: false`.
+- [x] `lookup_hiring_manager` — legacy alias that now returns recipient metadata; prefer `resolve_company_contact`.
 
 - [x] Email review UI is reachable from chat email draft blocks and the manual job action sheet.
 
@@ -90,7 +91,7 @@ Loop, prompts, and tools are in place. Current status:
 - [x] Main agent prompt is regression-tested for goal-oriented workflow behavior, approval gates, saved-resume continuation, and `send_email` safety.
 - [x] `tailor_resume` prompt is regression-tested: no full-section rewrites, every `original_text` must be verbatim, no invented experience, no unsupported claims, and no duplicate skill artifacts.
 - [x] Morning brief Trust Guard prompt is regression-tested: `check_job_risk` runs before `save_to_pipeline`, medium/high-risk jobs are skipped, no outreach is attempted, no user questions are asked, and the no-resume fallback still runs Trust Guard.
-- [x] `draft_email` uses real selected/uploaded resume context through `_loadResumeContextForAgent`, defaults to the latest manual resume, and attaches the chosen or tailored PDF.
+- [x] `draft_email` uses real selected/uploaded resume context through `_loadResumeContextForAgent`, defaults to the latest manual resume, attaches the chosen or tailored PDF, and carries recipient confidence/source metadata into the review card.
 
 Remaining / delegated:
 

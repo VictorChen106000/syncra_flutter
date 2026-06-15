@@ -35,9 +35,7 @@ class ResumePreviewPage extends ConsumerWidget {
               ref.read(resumeProvider.notifier).deleteResume(r.id);
               ScaffoldMessenger.of(context)
                 ..clearSnackBars()
-                ..showSnackBar(
-                  SnackBar(content: Text('${r.name} deleted')),
-                );
+                ..showSnackBar(SnackBar(content: Text('${r.name} deleted')));
               context.go(RouteNames.resumes);
             },
             child: const Text('Delete'),
@@ -54,9 +52,9 @@ class ResumePreviewPage extends ConsumerWidget {
     final latestResume = resume == null
         ? null
         : allResumes.firstWhere(
-              (r) => r.id == resume!.id,
-              orElse: () => resume!,
-            );
+            (r) => r.id == resume!.id,
+            orElse: () => resume!,
+          );
 
     return Scaffold(
       backgroundColor: brand.bg,
@@ -124,8 +122,10 @@ class ResumePreviewPage extends ConsumerWidget {
                 child: Center(
                   child: Container(
                     constraints: const BoxConstraints(maxWidth: 280),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 9,
+                    ),
                     decoration: BoxDecoration(
                       color: brand.ink.withValues(alpha: 0.80),
                       borderRadius: BorderRadius.circular(99),
@@ -279,10 +279,7 @@ class _MetadataPaperPreview extends StatelessWidget {
               body:
                   'Live PDF preview is only available for files uploaded from this device. For DOC/DOCX or seeded examples, open them in your system viewer.',
             ),
-            _PreviewSection(
-              title: 'FORMAT',
-              body: resume.type,
-            ),
+            _PreviewSection(title: 'FORMAT', body: resume.type),
           ],
         ),
       ),

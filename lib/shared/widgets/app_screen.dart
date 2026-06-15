@@ -51,7 +51,9 @@ class AppScreen extends StatelessWidget {
               child: Padding(
                 padding: EdgeInsets.only(
                   bottom: showBottomNav && !extendBehindBottomNav
-                      ? AppConstants.bottomNavHeight + AppConstants.bottomNavInset + 16
+                      ? AppConstants.bottomNavHeight +
+                            AppConstants.bottomNavInset +
+                            16
                       : 0,
                 ),
                 child: child,

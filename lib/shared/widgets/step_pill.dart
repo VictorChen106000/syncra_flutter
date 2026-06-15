@@ -22,8 +22,7 @@ class StepPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    final background =
-        color ?? (accent ? brand.accent : brand.surface);
+    final background = color ?? (accent ? brand.accent : brand.surface);
     final foreground = textColor ?? (accent ? brand.onAccent : brand.ink);
 
     return Container(

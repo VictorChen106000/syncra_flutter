@@ -24,5 +24,6 @@ class AppUser {
   }
 
   /// The first letter of the display name, for avatar fallback.
-  String get initial => displayName.isNotEmpty ? displayName[0].toUpperCase() : '?';
+  String get initial =>
+      displayName.isNotEmpty ? displayName[0].toUpperCase() : '?';
 }

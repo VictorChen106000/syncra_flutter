@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../data/models/job.dart';
+import '../../email/models/recipient_resolution.dart';
 import '../../resumes/models/proposed_edit.dart';
 import '../../resumes/models/resume_integrity_result.dart';
 import '../../resumes/models/resume_json.dart';
@@ -383,6 +384,15 @@ class ChatSnapshotCodec {
       'kind': 'email_draft',
       'id': block.id,
       'recipient': block.recipient,
+      if (_clean(block.recipientDomain) != null)
+        'recipientDomain': block.recipientDomain,
+      'recipientConfidence': block.recipientConfidence.name,
+      'recipientSource': block.recipientSource.name,
+      if (_clean(block.recipientSourceUrl) != null)
+        'recipientSourceUrl': block.recipientSourceUrl,
+      if (_clean(block.recipientReason) != null)
+        'recipientReason': block.recipientReason,
+      'canAutoSend': block.canAutoSend,
       'subject': block.subject,
       'body': block.body,
       if (_clean(block.jobId) != null) 'jobId': block.jobId,
@@ -417,6 +427,14 @@ class ChatSnapshotCodec {
       subject: subject,
       body: body,
       jobId: _clean(_string(map, 'jobId')),
+      recipientDomain: _clean(_string(map, 'recipientDomain')),
+      recipientConfidence: _decodeRecipientConfidence(
+        _string(map, 'recipientConfidence'),
+      ),
+      recipientSource: _decodeRecipientSource(_string(map, 'recipientSource')),
+      recipientSourceUrl: _clean(_string(map, 'recipientSourceUrl')),
+      recipientReason: _clean(_string(map, 'recipientReason')),
+      canAutoSend: map['canAutoSend'] == true,
       status: _decodeEmailDraftStatus(_string(map, 'status')),
       savedDraftId: _clean(_string(map, 'savedDraftId')),
       attachmentResumeId: _clean(_string(map, 'attachmentResumeId')),
@@ -579,8 +597,27 @@ class ChatSnapshotCodec {
   static EmailDraftStatus _decodeEmailDraftStatus(String? raw) {
     return switch (raw?.trim().toLowerCase()) {
       'saved' => EmailDraftStatus.saved,
+      'sent' => EmailDraftStatus.sent,
       _ => EmailDraftStatus.reviewing,
     };
+  }
+
+  static RecipientConfidence _decodeRecipientConfidence(String? raw) {
+    final value = raw?.trim();
+    if (value == null || value.isEmpty) return RecipientConfidence.low;
+    for (final confidence in RecipientConfidence.values) {
+      if (confidence.name == value) return confidence;
+    }
+    return RecipientConfidence.low;
+  }
+
+  static RecipientSource _decodeRecipientSource(String? raw) {
+    final value = raw?.trim();
+    if (value == null || value.isEmpty) return RecipientSource.guessedPattern;
+    for (final source in RecipientSource.values) {
+      if (source.name == value) return source;
+    }
+    return RecipientSource.guessedPattern;
   }
 
   static String _kindOf(Map<dynamic, dynamic> map) {

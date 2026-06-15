@@ -9,67 +9,70 @@ import 'package:syncra/features/resumes/services/resume_diff_service.dart';
 /// toJson → fromJson round-trip the parser/cache/diff pipeline relies on, and
 /// must be reachable by the diff engine's `target_path` grammar.
 ResumeJson _fullResume() => const ResumeJson(
-      header: ResumeHeader(
-        name: 'Daryn James Welling',
-        email: 'djwofficial8@gmail.com',
-        github: 'github.com/djwofficial',
-        twitter: 'x.com/DarynWellingg',
-      ),
-      education: [
-        ResumeEducation(
-          school: 'National Tsing Hua University',
-          degree: 'BS Electrical Engineering and Computer Science',
-          start: 'Sep 2024',
-          end: 'Jun 2028',
-          bullets: [
-            'Admitted to the FinTech and Blockchain Program',
-            'Coursework: Cryptography & Network Security',
-          ],
-        ),
+  header: ResumeHeader(
+    name: 'Daryn James Welling',
+    email: 'djwofficial8@gmail.com',
+    github: 'github.com/djwofficial',
+    twitter: 'x.com/DarynWellingg',
+  ),
+  education: [
+    ResumeEducation(
+      school: 'National Tsing Hua University',
+      degree: 'BS Electrical Engineering and Computer Science',
+      start: 'Sep 2024',
+      end: 'Jun 2028',
+      bullets: [
+        'Admitted to the FinTech and Blockchain Program',
+        'Coursework: Cryptography & Network Security',
       ],
-      projects: [
-        ResumeProject(
-          name: 'Cross-Platform Tower Defense Game',
-          date: 'Spring 2025',
-          bullets: ['Built a tower defense game in C++ using Allegro.'],
-        ),
-      ],
-      certifications: [
-        ResumeCertification(
-          name: 'SUI Smart Contract Completion Certificate',
-          issuer: 'NTHU Blockchain Club x Sui Foundation',
-          date: 'Dec 2025',
-          bullets: ['Developed basic smart contracts using MOVE language'],
-        ),
-        ResumeCertification(
-          name: 'Thousand Overseas Chinese Student Scholarship',
-          date: 'Nov 2024',
-          bullets: ['Awarded 50,000 NTD merit for academic excellence.'],
-        ),
-      ],
-      skillGroups: [
-        ResumeSkillGroup(
-          category: 'Languages',
-          items: ['C/C++', 'Python', 'Dart'],
-        ),
-        ResumeSkillGroup(
-          category: 'Tools & Frameworks',
-          items: ['Flutter', 'Firebase', 'Figma'],
-        ),
-      ],
-    );
+    ),
+  ],
+  projects: [
+    ResumeProject(
+      name: 'Cross-Platform Tower Defense Game',
+      date: 'Spring 2025',
+      bullets: ['Built a tower defense game in C++ using Allegro.'],
+    ),
+  ],
+  certifications: [
+    ResumeCertification(
+      name: 'SUI Smart Contract Completion Certificate',
+      issuer: 'NTHU Blockchain Club x Sui Foundation',
+      date: 'Dec 2025',
+      bullets: ['Developed basic smart contracts using MOVE language'],
+    ),
+    ResumeCertification(
+      name: 'Thousand Overseas Chinese Student Scholarship',
+      date: 'Nov 2024',
+      bullets: ['Awarded 50,000 NTD merit for academic excellence.'],
+    ),
+  ],
+  skillGroups: [
+    ResumeSkillGroup(category: 'Languages', items: ['C/C++', 'Python', 'Dart']),
+    ResumeSkillGroup(
+      category: 'Tools & Frameworks',
+      items: ['Flutter', 'Firebase', 'Figma'],
+    ),
+  ],
+);
 
 void main() {
   group('ResumeJson round-trip preserves every section', () {
     test('certifications survive toJson → fromJson', () {
       final back = ResumeJson.fromJson(_fullResume().toJson());
       expect(back.certifications, hasLength(2));
-      expect(back.certifications[0].name,
-          'SUI Smart Contract Completion Certificate');
-      expect(back.certifications[0].issuer,
-          'NTHU Blockchain Club x Sui Foundation');
-      expect(back.certifications[0].bullets.single,
-          'Developed basic smart contracts using MOVE language');
+      expect(
+        back.certifications[0].name,
+        'SUI Smart Contract Completion Certificate',
+      );
+      expect(
+        back.certifications[0].issuer,
+        'NTHU Blockchain Club x Sui Foundation',
+      );
+      expect(
+        back.certifications[0].bullets.single,
+        'Developed basic smart contracts using MOVE language',
+      );
       expect(back.certifications[1].date, 'Nov 2024');
     });
 
@@ -79,8 +82,14 @@ void main() {
       expect(back.skillGroups[0].category, 'Languages');
       expect(back.skillGroups[1].items, ['Flutter', 'Firebase', 'Figma']);
       // Flat list stays a faithful flattening so cosmetic callers keep working.
-      expect(back.skills,
-          ['C/C++', 'Python', 'Dart', 'Flutter', 'Firebase', 'Figma']);
+      expect(back.skills, [
+        'C/C++',
+        'Python',
+        'Dart',
+        'Flutter',
+        'Firebase',
+        'Figma',
+      ]);
     });
 
     test('education sub-bullets and project date survive', () {
@@ -131,8 +140,10 @@ void main() {
         ),
       ]);
       expect(out.applied, hasLength(1));
-      expect(out.resume.certifications[0].bullets[0],
-          'Built and deployed smart contracts in MOVE.');
+      expect(
+        out.resume.certifications[0].bullets[0],
+        'Built and deployed smart contracts in MOVE.',
+      );
     });
 
     test('a tailor edit never empties the rest of the resume', () {
@@ -148,8 +159,10 @@ void main() {
       expect(out.resume.certifications, hasLength(2));
       expect(out.resume.skillGroups, hasLength(2));
       expect(out.resume.projects, hasLength(1));
-      expect(out.resume.education.single.bullets[1],
-          'Coursework: Cryptography & Network Security');
+      expect(
+        out.resume.education.single.bullets[1],
+        'Coursework: Cryptography & Network Security',
+      );
     });
   });
 }

@@ -34,15 +34,14 @@ class _ResumeDraftPreviewPageState
     if (!mounted) return;
     setState(() => _saving = false);
 
-    final block =
-        ref.read(agentChatProvider.notifier).resumeDraftBlock(widget.blockId);
+    final block = ref
+        .read(agentChatProvider.notifier)
+        .resumeDraftBlock(widget.blockId);
     final messenger = ScaffoldMessenger.of(context);
     if (block != null && block.isSaved) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(
-          const SnackBar(content: Text('Saved to your resumes')),
-        );
+        ..showSnackBar(const SnackBar(content: Text('Saved to your resumes')));
       Navigator.of(context).maybePop();
     } else if (block?.error != null) {
       messenger
@@ -68,8 +67,9 @@ class _ResumeDraftPreviewPageState
     final brand = context.brand;
     // Watch chat state so a save elsewhere reflects here too.
     ref.watch(agentChatProvider);
-    final block =
-        ref.read(agentChatProvider.notifier).resumeDraftBlock(widget.blockId);
+    final block = ref
+        .read(agentChatProvider.notifier)
+        .resumeDraftBlock(widget.blockId);
     final bytes = block?.previewBytes;
     final isSaved = block?.isSaved ?? false;
 
@@ -83,7 +83,9 @@ class _ResumeDraftPreviewPageState
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
               child: Row(
                 children: [
-                  AppBackButton(onPressed: () => Navigator.of(context).maybePop()),
+                  AppBackButton(
+                    onPressed: () => Navigator.of(context).maybePop(),
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -192,11 +194,7 @@ class _ActionBar extends StatelessWidget {
         border: Border(top: BorderSide(color: brand.border)),
       ),
       child: isSaved
-          ? _BarButton(
-              label: 'Done',
-              filled: true,
-              onTap: onDone,
-            )
+          ? _BarButton(label: 'Done', filled: true, onTap: onDone)
           : Row(
               children: [
                 Expanded(

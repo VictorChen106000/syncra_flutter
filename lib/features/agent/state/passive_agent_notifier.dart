@@ -191,6 +191,10 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
     return m;
   }
 
+  void markMorningBriefShown() {
+    state = state.copyWith(lastBriefAt: state.lastBriefAt ?? DateTime.now());
+  }
+
   /// Kicks off the agent brief. [query] overrides the default search keyword
   /// set — onboarding passes the user's just-captured target role here so the
   /// pipeline that lands on the dashboard is actually relevant to them.

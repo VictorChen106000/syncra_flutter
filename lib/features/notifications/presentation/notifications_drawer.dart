@@ -89,10 +89,10 @@ class NotificationsDrawer extends ConsumerWidget {
                       itemBuilder: (context, i) {
                         final n = items[i];
                         return _NotificationCard(
-                          notification: n,
-                          onTap: () => _handleTap(context, ref, n),
-                          onMarkRead: () => notifier.markRead(n.id),
-                        )
+                              notification: n,
+                              onTap: () => _handleTap(context, ref, n),
+                              onMarkRead: () => notifier.markRead(n.id),
+                            )
                             .animate(delay: (i * 40).ms)
                             .fadeIn(duration: 240.ms)
                             .moveX(begin: -10, end: 0);
@@ -148,9 +148,7 @@ class _DrawerHeader extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      unreadCount > 0
-                          ? '$unreadCount unread'
-                          : 'All caught up',
+                      unreadCount > 0 ? '$unreadCount unread' : 'All caught up',
                       style: TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600,
@@ -289,9 +287,7 @@ class _TabChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(99),
-            border: Border.all(
-              color: active ? brand.ink : brand.border,
-            ),
+            border: Border.all(color: active ? brand.ink : brand.border),
           ),
           child: Text(
             label,
@@ -319,7 +315,7 @@ class _EmptyState extends StatelessWidget {
     final body = hasAnyEver
         ? 'Switch to "All" to see your history.'
         : 'Once the agent starts working, you\'ll see its asks and '
-            'completed actions here.';
+              'completed actions here.';
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -376,37 +372,38 @@ class _NotificationCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onMarkRead;
 
-  (IconData, Color, Color) _icon(BrandTheme brand) => switch (notification.kind) {
+  (IconData, Color, Color) _icon(BrandTheme brand) =>
+      switch (notification.kind) {
         NotificationKind.intercept => (
-            Icons.front_hand_outlined,
-            brand.accent.withValues(alpha: 0.20),
-            brand.ink,
-          ),
+          Icons.front_hand_outlined,
+          brand.accent.withValues(alpha: 0.20),
+          brand.ink,
+        ),
         NotificationKind.proposal => (
-            Icons.task_alt_rounded,
-            brand.accent.withValues(alpha: 0.20),
-            brand.ink,
-          ),
+          Icons.task_alt_rounded,
+          brand.accent.withValues(alpha: 0.20),
+          brand.ink,
+        ),
         NotificationKind.reply => (
-            Icons.mark_email_unread_outlined,
-            brand.accent.withValues(alpha: 0.30),
-            brand.ink,
-          ),
+          Icons.mark_email_unread_outlined,
+          brand.accent.withValues(alpha: 0.30),
+          brand.ink,
+        ),
         NotificationKind.drafted => (
-            Icons.edit_note_rounded,
-            brand.surfaceMuted,
-            brand.ink,
-          ),
+          Icons.edit_note_rounded,
+          brand.surfaceMuted,
+          brand.ink,
+        ),
         NotificationKind.undo => (
-            Icons.undo_rounded,
-            brand.surfaceMuted,
-            brand.ink,
-          ),
+          Icons.undo_rounded,
+          brand.surfaceMuted,
+          brand.ink,
+        ),
         NotificationKind.match => (
-            Icons.auto_awesome_rounded,
-            brand.accent.withValues(alpha: 0.20),
-            brand.ink,
-          ),
+          Icons.auto_awesome_rounded,
+          brand.accent.withValues(alpha: 0.20),
+          brand.ink,
+        ),
       };
 
   @override

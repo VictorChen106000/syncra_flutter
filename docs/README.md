@@ -38,8 +38,9 @@ tape between them. **Syncra is the duct tape, automated.**
    change log with the original text, rewrite, and one-line reason.
 6. Syncra renders an unsaved tailored PDF preview. You inspect the changes,
    then save the tailored resume or dismiss it.
-7. Agent runs Trust Guard for obvious job red flags, then drafts a cold-outreach
-   email if the role looks normal or you approve continuing.
+7. Agent runs Trust Guard for obvious job red flags, resolves the best available
+   recipient, then drafts a cold-outreach email if the role looks normal or you
+   approve continuing.
 8. You review the email and save it to Gmail Drafts on web or mobile. If using
    send mode, a separate explicit tap is still required before anything is
    delivered.
@@ -176,6 +177,12 @@ After the live demo:
 - **Trust Guard before outreach.** Before saving or drafting for a role, Syncra
   checks for obvious scam signals and shows the result on pipeline and
   application cards. It never claims a job is guaranteed safe.
+- **Recipient Intelligence, not fake recruiter lookup.** JSearch does not
+  provide recruiter emails. Syncra prefers confirmed `company_contacts` and a
+  future Firebase-only official-site discovery hook, but `careers@domain` is
+  labeled as a low-confidence guess. Syncra never guarantees an inbox is valid,
+  never scrapes LinkedIn/social/private profile pages, and never auto-sends to
+  guessed recipients.
 - **Walk-away support.** Leave the chat mid-task and agent updates land in the
   in-app notifications inbox — answer or approve from there.
 - **Persistent chat workspace.** Conversations are saved as versioned Firestore
@@ -197,7 +204,7 @@ After the live demo:
 - **Flutter** (iOS / Android / Web) — entire app, including the agent loop and tool registry
 - **Firebase Auth** (Google Sign-In + email/password) · **Cloud Firestore** (Spark) · **Firebase Storage** (resume files)
 - **Anthropic Claude** (Haiku 4.5) — agent brain, called directly from Flutter
-- **JSearch / RapidAPI** — live job listings
+- **JSearch / RapidAPI** — live job listings, not recruiter email data
 - **Gmail API** — save Gmail drafts with `gmail.compose` and send confirmed emails
   with `gmail.send`; never Gmail read scope
 
@@ -208,4 +215,4 @@ future Firebase-only backend extension, not part of this build.
 ## Out of scope for v1
 
 Push notifications (FCM), auto-submit, cover-letter documents, LinkedIn
-integration, multi-account Gmail, calendar / interview scheduling.
+integration/scraping, multi-account Gmail, calendar / interview scheduling.

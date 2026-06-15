@@ -5,11 +5,7 @@ import '../../core/theme/brand_theme.dart';
 
 /// Generic shimmering placeholder for any list page during data fetches.
 class SkeletonCard extends StatelessWidget {
-  const SkeletonCard({
-    super.key,
-    this.height = 96,
-    this.borderRadius = 20,
-  });
+  const SkeletonCard({super.key, this.height = 96, this.borderRadius = 20});
 
   final double height;
   final double borderRadius;

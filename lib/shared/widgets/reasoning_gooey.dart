@@ -37,9 +37,7 @@ class ReasoningGooey extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final brand = context.brand;
-    final taskLabel = ref.watch(
-      runningTaskProvider.select((s) => s.label),
-    );
+    final taskLabel = ref.watch(runningTaskProvider.select((s) => s.label));
     final label = taskLabel.trim().isEmpty ? fallbackLabel : taskLabel.trim();
     return Padding(
       padding: padding,
@@ -49,15 +47,15 @@ class ReasoningGooey extends ConsumerWidget {
           GooeyOrb(size: size),
           const SizedBox(height: 10),
           Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: brand.textMuted,
-              letterSpacing: -0.1,
-            ),
-          )
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: brand.textMuted,
+                  letterSpacing: -0.1,
+                ),
+              )
               .animate(
                 onPlay: (c) => c.repeat(reverse: true),
                 key: ValueKey(label),

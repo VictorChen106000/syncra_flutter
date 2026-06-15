@@ -215,18 +215,24 @@ Future<void> _draftEmail(
       'Best regards,';
 
   // Prefer a real address learned from a previous confirmed outreach to this
-  // company; resolveRecipientAsync falls back to the careers@ guess.
-  final recipient = await resolveRecipientAsync(job.company);
+  // company; low-confidence guesses stay labeled in the review sheet.
+  final recipientResolution = await resolveRecipientAsync(
+    job.company,
+    website: job.employerWebsite,
+  );
   if (!parentContext.mounted) return;
 
   final result = await EmailReviewPage.show(
     parentContext,
-    recipient: recipient,
+    recipient: recipientResolution.email,
     subject: subject,
     body: body,
     mode: EmailReviewMode.draft,
-    contactDomain: recipientDomain(job.company),
+    contactDomain: recipientResolution.domain.isNotEmpty
+        ? recipientResolution.domain
+        : recipientDomain(job.company, website: job.employerWebsite),
     company: job.company,
+    recipientResolution: recipientResolution,
   );
 
   // The review sheet lets the user flip between "Save as draft" and "Send now",
