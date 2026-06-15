@@ -118,7 +118,7 @@ class AnthropicParaphraseService {
   /// Strips fences, decodes, and validates the `proposed_edits` array shape.
   /// Throws on malformed JSON or a missing array so the caller can retry.
   Map<String, dynamic> _parseProposedEdits(String response) {
-    final decoded = jsonDecode(_stripFences(response)) as Map<String, dynamic>;
+    final decoded = _decodeJsonObject(response);
     final rawEdits = decoded['proposed_edits'];
     if (rawEdits is! List) {
       throw const FormatException('Missing proposed_edits array.');
@@ -164,10 +164,9 @@ Return ONLY the JSON object described in the system prompt.''',
       maxTokens: 800,
     );
 
-    final cleaned = _stripFences(response);
     final Map<String, dynamic> decoded;
     try {
-      decoded = jsonDecode(cleaned) as Map<String, dynamic>;
+      decoded = _decodeJsonObject(response);
     } catch (e) {
       debugPrint('inferOnboardingProfile parse failed: $e\nRaw: $response');
       throw Exception('Could not parse onboarding profile JSON.');
@@ -225,11 +224,10 @@ Recipient: ${recipientName ?? 'the hiring team at ${job.company}'}
 Tone: $tone
 
 Return ONLY a JSON object: {"subject": "...", "body": "..."}.''',
-      maxTokens: 600,
+      maxTokens: 1024,
     );
-    final cleaned = _stripFences(response);
     try {
-      return jsonDecode(cleaned) as Map<String, dynamic>;
+      return _decodeJsonObject(response);
     } catch (e) {
       debugPrint('draftColdEmail parse failed: $e\nRaw: $response');
       throw Exception('Could not parse email draft JSON.');
@@ -317,7 +315,7 @@ Return ONLY a JSON object: {"subject": "...", "body": "..."}.''',
     return Duration(milliseconds: 500 * (1 << attempt));
   }
 
-  String _stripFences(String text) {
+  static String _stripFences(String text) {
     final trimmed = text.trim();
     if (!trimmed.startsWith('```')) return trimmed;
     final firstNewline = trimmed.indexOf('\n');
@@ -326,6 +324,80 @@ Return ONLY a JSON object: {"subject": "...", "body": "..."}.''',
         : trimmed.substring(firstNewline + 1);
     final end = stripped.lastIndexOf('```');
     return end == -1 ? stripped.trim() : stripped.substring(0, end).trim();
+  }
+
+  /// Decodes a single JSON object from a model reply, tolerating the two ways
+  /// these replies routinely break strict [jsonDecode]: surrounding prose /
+  /// markdown fences, and — the common one for multi-sentence email bodies and
+  /// resume summaries — raw newlines or tabs *inside* a string value, which is
+  /// invalid JSON. Strips fences, isolates the outermost `{ ... }`, and on a
+  /// first-pass failure escapes control characters inside strings, then decodes.
+  /// Throws [FormatException] only when no object can be recovered.
+  @visibleForTesting
+  static Map<String, dynamic> decodeModelJsonObject(String raw) =>
+      _decodeJsonObject(raw);
+
+  static Map<String, dynamic> _decodeJsonObject(String raw) {
+    final stripped = _stripFences(raw);
+    final start = stripped.indexOf('{');
+    final end = stripped.lastIndexOf('}');
+    if (start == -1 || end == -1 || end < start) {
+      throw const FormatException('No JSON object found in reply.');
+    }
+    final candidate = stripped.substring(start, end + 1);
+
+    try {
+      return jsonDecode(candidate) as Map<String, dynamic>;
+    } catch (_) {
+      // Fall through to the control-character repair below.
+    }
+    return jsonDecode(_escapeControlCharsInStrings(candidate))
+        as Map<String, dynamic>;
+  }
+
+  /// Escapes raw newline / carriage-return / tab characters that appear inside
+  /// JSON string literals (models often emit a multi-line body with literal
+  /// line breaks). Characters outside strings — the structural whitespace — are
+  /// left untouched. Honors backslash escapes so an already-valid `\n` is kept.
+  static String _escapeControlCharsInStrings(String input) {
+    final buffer = StringBuffer();
+    var inString = false;
+    var escaped = false;
+    for (final unit in input.codeUnits) {
+      if (escaped) {
+        buffer.writeCharCode(unit);
+        escaped = false;
+        continue;
+      }
+      if (unit == 0x5C) {
+        // backslash — preserve it and the next (already-escaped) character.
+        buffer.writeCharCode(unit);
+        escaped = true;
+        continue;
+      }
+      if (unit == 0x22) {
+        // unescaped double quote toggles in/out of a string literal.
+        inString = !inString;
+        buffer.writeCharCode(unit);
+        continue;
+      }
+      if (inString) {
+        if (unit == 0x0A) {
+          buffer.write(r'\n');
+          continue;
+        }
+        if (unit == 0x0D) {
+          buffer.write(r'\r');
+          continue;
+        }
+        if (unit == 0x09) {
+          buffer.write(r'\t');
+          continue;
+        }
+      }
+      buffer.writeCharCode(unit);
+    }
+    return buffer.toString();
   }
 
   String _extractError(String body, int status) {
