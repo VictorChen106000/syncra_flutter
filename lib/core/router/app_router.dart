@@ -18,7 +18,6 @@ import '../../features/profile/presentation/profile_page.dart';
 import '../../features/resumes/models/resume_file.dart';
 import '../../features/resumes/presentation/resume_lists_page.dart';
 import '../../features/resumes/presentation/resume_preview_page.dart';
-import '../../features/applications/presentation/applications_page.dart';
 import '../../shared/widgets/app_shell_scaffold.dart';
 import 'route_names.dart';
 
@@ -190,10 +189,5 @@ List<RouteBase> _routes(Page<void> Function(GoRouterState, Widget) fadePage) =>
             ],
           ),
         ],
-      ),
-      GoRoute(
-        path: RouteNames.applications,
-        pageBuilder: (context, state) =>
-            fadePage(state, const ApplicationsPage()),
       ),
     ];
