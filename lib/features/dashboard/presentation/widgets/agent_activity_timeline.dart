@@ -123,7 +123,9 @@ class AgentActivityTimeline extends ConsumerWidget {
             replied: repliedCount,
           ),
           time: briefAt,
-          route: RouteNames.applications,
+          // The standalone tracker is gone — applications now live as the
+          // History lane inside the pipeline.
+          route: RouteNames.jobs,
         ),
       if (isRunning) _Milestone(title: liveLabel, active: true),
     ];

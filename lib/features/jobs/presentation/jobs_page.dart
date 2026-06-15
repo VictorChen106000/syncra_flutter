@@ -4,18 +4,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_constants.dart';
-import '../../../core/constants/app_strings.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/motion.dart';
 import '../../../data/firestore/pipeline_repository.dart';
 import '../../../data/models/job.dart';
+import '../../../data/models/tracked_application.dart';
 import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/gooey_orb.dart';
 import '../../agent/state/passive_agent_notifier.dart';
 import '../../agent_chat/state/agent_chat_notifier.dart';
+import '../../applications/presentation/widgets/application_detail_sheet.dart';
+import '../../applications/state/applications_notifier.dart';
 import '../state/jobs_notifier.dart';
 
 class JobsPage extends ConsumerStatefulWidget {
@@ -117,9 +119,13 @@ class _PipelineFeed extends ConsumerStatefulWidget {
 }
 
 class _PipelineFeedState extends ConsumerState<_PipelineFeed> {
-  /// Which match-category tab is selected. Orthogonal to the workflow sections
-  /// below — this only narrows *which* cards are shown.
+  /// Which match-category tab is selected (live board only).
   _PipelineFilter _filter = _PipelineFilter.all;
+
+  /// Header mode: live Pipeline vs. the finished-work History. Null until the
+  /// user picks — then we open on History only when the board is empty but a
+  /// record exists, so a returning user never lands on a blank page.
+  bool? _showHistoryOverride;
 
   @override
   Widget build(BuildContext context) {
@@ -135,22 +141,45 @@ class _PipelineFeedState extends ConsumerState<_PipelineFeed> {
         final byStage = _needsRank(a).compareTo(_needsRank(b));
         return byStage != 0 ? byStage : b.createdAt.compareTo(a.createdAt);
       });
-    final sent = filtered.where((c) => c.isSent).toList();
     final inProgress = filtered.where((c) => !c.needsYou && !c.isSent).toList();
+
+    // Split the off-board application record into the two slices the title
+    // toggle shows. The line is the one irreversible act — you hit send:
+    //   • draft (never sent) → still "needs you", so it belongs on the board
+    //   • sent / replied     → the History record
+    // Deduped against anything still live on the board.
+    final liveJobIds = {for (final c in cards) c.job.id};
+    final offBoard = ref
+        .watch(applicationsProvider.select((s) => s.items))
+        .where((a) => !liveJobIds.contains(a.job.id));
+    final draftApps =
+        offBoard.where((a) => a.phase == ApplicationPhase.draft).toList()
+          ..sort((a, b) => b.sortAt.compareTo(a.sortAt));
+    final historyApps =
+        offBoard.where((a) => a.phase != ApplicationPhase.draft).toList()
+          ..sort((a, b) => b.sortAt.compareTo(a.sortAt));
+
+    // Everything still in motion: live cards + unsent drafts. Filter-independent
+    // so the header count stays honest.
+    final activeCount = cards.length + draftApps.length;
+    final showHistory =
+        _showHistoryOverride ?? (activeCount == 0 && historyApps.isNotEmpty);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AppHeader.tab(
-          title: AppStrings.agentPipeline,
-          subtitle: _subtitle(
-            cards,
-            needs.length + inProgress.length,
-            sent.length,
+          // The big title *is* the switch — tap the dimmed word to flip views.
+          titleWidget: _SwitchTitle(
+            showHistory: showHistory,
+            subtitle: showHistory
+                ? _historySubtitle(historyApps.length)
+                : _activeSubtitle(activeCount),
+            onChanged: (h) => setState(() => _showHistoryOverride = h),
           ),
-          // Match-category filter tabs. Only worth showing once there's a
-          // pipeline to filter.
-          bottom: cards.isEmpty
+          // Match filters narrow the live board only — hidden in History and
+          // when there's no board to filter.
+          bottom: showHistory || cards.isEmpty
               ? null
               : _FilterTabs(
                   cards: cards,
@@ -159,73 +188,125 @@ class _PipelineFeedState extends ConsumerState<_PipelineFeed> {
                 ),
         ),
         Expanded(
-          child: cards.isEmpty
-              ? _GooeyEmptyState(
-                  agentHasRun: widget.agentHasRun,
-                  hadAnyPipeline: widget.hadAnyPipeline,
-                )
-              : filtered.isEmpty
-              ? _EmptyFilter(filter: _filter)
-              : _list(context, ref, needs, inProgress, sent),
+          child: showHistory
+              ? _historyView(context, ref, historyApps)
+              : _pipelineView(
+                  context,
+                  ref,
+                  cards,
+                  filtered,
+                  needs,
+                  inProgress,
+                  draftApps,
+                ),
         ),
       ],
     );
   }
 
-  String? _subtitle(List<PipelineCard> cards, int active, int sent) {
-    if (cards.isEmpty) return 'Your pipeline is quiet';
-
-    final parts = <String>[];
-
-    if (active > 0) {
-      parts.add(active == 1 ? '1 in progress' : '$active in progress');
-    }
-
-    if (sent > 0) {
-      parts.add(sent == 1 ? '1 handled' : '$sent handled');
-    }
-
-    return parts.isEmpty ? 'All caught up' : parts.join(' · ');
+  String? _activeSubtitle(int active) {
+    if (active == 0) return 'Your pipeline is quiet';
+    return active == 1 ? '1 in progress' : '$active in progress';
   }
 
-  Widget _list(
+  String? _historySubtitle(int count) {
+    if (count == 0) return 'Nothing sent yet';
+    return count == 1 ? '1 sent' : '$count sent';
+  }
+
+  /// The live board — needs-you and in-progress sections. "Needs you" also
+  /// carries unsent drafts (apps with no live card): you drafted them but never
+  /// hit send, so they're still your move. Sent work has moved to History.
+  Widget _pipelineView(
     BuildContext context,
     WidgetRef ref,
+    List<PipelineCard> cards,
+    List<PipelineCard> filtered,
     List<PipelineCard> needs,
     List<PipelineCard> inProgress,
-    List<PipelineCard> sent,
+    List<TrackedApplication> draftApps,
   ) {
+    if (cards.isEmpty && draftApps.isEmpty) {
+      return _GooeyEmptyState(
+        agentHasRun: widget.agentHasRun,
+        hadAnyPipeline: widget.hadAnyPipeline,
+      );
+    }
+    if (filtered.isEmpty && draftApps.isEmpty) {
+      return _EmptyFilter(filter: _filter);
+    }
+
     final brand = context.brand;
     var animIndex = 0;
-    // Only the section that needs you wears the lime accent — "working" fades
-    // into a soft grey, "handled" settles to plain ink. Colour means "look
-    // here", not "this is a list".
 
-    List<Widget> section(String label, Color accent, List<PipelineCard> items) {
-      if (items.isEmpty) return const [];
-      return [
-        _SectionHeader(label: label, count: items.length, accent: accent),
-        for (var i = 0; i < items.length; i++)
-          Padding(
-                padding: const EdgeInsets.only(bottom: 14),
-                child: _SwipeDismissible(
-                  key: ValueKey('pipe-${items[i].id}'),
-                  onDismissed: () => widget.onDismiss(items[i].job),
-                  child: _PipelineCard(
-                    card: items[i],
-                    onTap: () {
-                      ref
-                          .read(agentChatProvider.notifier)
-                          .openJobThread(items[i].job);
-                      context.go(RouteNames.agentChat);
-                    },
-                  ),
+    void goToThread(Job job) {
+      ref.read(agentChatProvider.notifier).openJobThread(job);
+      context.go(RouteNames.agentChat);
+    }
+
+    // A live pipeline card: swipe-dismissible, taps into the agent thread.
+    Widget liveEntry(PipelineCard card) =>
+        Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: _SwipeDismissible(
+                key: ValueKey('pipe-${card.id}'),
+                onDismissed: () => widget.onDismiss(card.job),
+                child: _PipelineCard(
+                  card: card,
+                  onTap: () => goToThread(card.job),
                 ),
-              )
-              .animate(delay: (animIndex++ * 55).ms)
-              .fadeIn(duration: 320.ms)
-              .moveY(begin: 14, end: 0, curve: Curves.easeOutCubic),
-      ];
+              ),
+            )
+            .animate(delay: (animIndex++ * 55).ms)
+            .fadeIn(duration: 320.ms)
+            .moveY(begin: 14, end: 0, curve: Curves.easeOutCubic);
+
+    // An unsent draft (application with no live card): the same card, not
+    // dismissible (it's a record); long-press opens its detail/notes.
+    Widget draftEntry(TrackedApplication app) =>
+        Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: _PipelineCard(
+                card: _cardFromApplication(app),
+                onTap: () => goToThread(app.job),
+                onDetails: () => ApplicationDetailSheet.show(context, app),
+              ),
+            )
+            .animate(delay: (animIndex++ * 55).ms)
+            .fadeIn(duration: 320.ms)
+            .moveY(begin: 14, end: 0, curve: Curves.easeOutCubic);
+
+    final children = <Widget>[];
+
+    // Needs you = unsent drafts (most actionable, lead) + live needs-you cards.
+    final needsTotal = draftApps.length + needs.length;
+    if (needsTotal > 0) {
+      children.add(
+        _SectionHeader(
+          label: 'Needs approval',
+          count: needsTotal,
+          accent: brand.accent,
+        ),
+      );
+      for (final app in draftApps) {
+        children.add(draftEntry(app));
+      }
+      for (final card in needs) {
+        children.add(liveEntry(card));
+      }
+    }
+
+    if (inProgress.isNotEmpty) {
+      children.add(
+        _SectionHeader(
+          label: 'Syncra working',
+          count: inProgress.length,
+          accent: brand.textSoft,
+        ),
+      );
+      for (final card in inProgress) {
+        children.add(liveEntry(card));
+      }
     }
 
     return ListView(
@@ -235,10 +316,45 @@ class _PipelineFeedState extends ConsumerState<_PipelineFeed> {
         AppConstants.screenHorizontalPadding,
         140,
       ),
+      children: children,
+    );
+  }
+
+  /// History — the same job cards as the board, mapped to *finished* pipeline
+  /// cards so the stepper reads as a completed timeline. Primary tap is the
+  /// agent handoff (identical to a live card); long-press opens the record
+  /// (notes / follow-up / mark replied).
+  Widget _historyView(
+    BuildContext context,
+    WidgetRef ref,
+    List<TrackedApplication> history,
+  ) {
+    if (history.isEmpty) return const _HistoryEmpty();
+
+    var animIndex = 0;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppConstants.screenHorizontalPadding,
+        8,
+        AppConstants.screenHorizontalPadding,
+        140,
+      ),
       children: [
-        ...section('Needs approval', brand.accent, needs),
-        ...section('Syncra working', brand.textSoft, inProgress),
-        ...section('Handled', brand.ink, sent),
+        for (final app in history)
+          Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: _PipelineCard(
+                  card: _cardFromApplication(app),
+                  onTap: () {
+                    ref.read(agentChatProvider.notifier).openJobThread(app.job);
+                    context.go(RouteNames.agentChat);
+                  },
+                  onDetails: () => ApplicationDetailSheet.show(context, app),
+                ),
+              )
+              .animate(delay: (animIndex++ * 45).ms)
+              .fadeIn(duration: 300.ms)
+              .moveY(begin: 12, end: 0, curve: Curves.easeOutCubic),
       ],
     );
   }
@@ -522,6 +638,177 @@ class _SectionHeader extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
+// Pipeline ⇄ History — one feed, two slices of the same job cards. The header
+// title doubles as the switch (_SwitchTitle); History reuses the live card via
+// _cardFromApplication so a finished role reads as the same card with a
+// completed stepper.
+// ---------------------------------------------------------------------------
+
+/// Maps a finished [TrackedApplication] onto a [PipelineCard] so History reuses
+/// the exact same card. Status is [approved] (it's left the live board) and the
+/// stage carries the phase, so the stepper renders a completed timeline.
+PipelineCard _cardFromApplication(TrackedApplication app) {
+  final stage = switch (app.phase) {
+    ApplicationPhase.draft => PipelineStage.drafted,
+    ApplicationPhase.sent => PipelineStage.sent,
+    ApplicationPhase.replied => PipelineStage.replied,
+  };
+  return PipelineCard(
+    id: app.id,
+    job: app.job,
+    status: PipelineCardStatus.approved,
+    createdAt: app.sortAt,
+    stage: stage,
+    trustRiskLevel: app.trustRiskLevel,
+    trustRiskLabel: app.trustRiskLabel,
+    trustSignalsCount: app.trustSignalsCount,
+    trustSignals: app.trustSignals,
+    trustSafeNextStep: app.trustSafeNextStep,
+  );
+}
+
+/// The big title *is* the mode switch: two large words, the active one inked,
+/// the other dimmed but still visible (so History never hides). Tap the dim one
+/// to flip the feed. Counts ride in the subtitle.
+class _SwitchTitle extends StatelessWidget {
+  const _SwitchTitle({
+    required this.showHistory,
+    required this.subtitle,
+    required this.onChanged,
+  });
+
+  final bool showHistory;
+  final String? subtitle;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            _TitleWord(
+              label: 'Pipeline',
+              active: !showHistory,
+              onTap: () => onChanged(false),
+            ),
+            const SizedBox(width: 16),
+            _TitleWord(
+              label: 'History',
+              active: showHistory,
+              onTap: () => onChanged(true),
+            ),
+          ],
+        ),
+        if (subtitle != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            subtitle!,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: brand.textMuted,
+              height: 1.45,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _TitleWord extends StatelessWidget {
+  const _TitleWord({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Semantics(
+      button: true,
+      selected: active,
+      label: label,
+      child: GestureDetector(
+        onTap: active ? null : onTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedDefaultTextStyle(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          style: TextStyle(
+            fontSize: 26,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.6,
+            height: 1,
+            color: active ? brand.ink : brand.ink.withValues(alpha: 0.22),
+          ),
+          child: Text(label),
+        ),
+      ),
+    );
+  }
+}
+
+/// Empty History — finished roles flow here automatically. Mirrors the quiet,
+/// centred tone of the other empty states.
+class _HistoryEmpty extends StatelessWidget {
+  const _HistoryEmpty();
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(36, 0, 36, 120),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.check_circle_outline_rounded,
+              size: 34,
+              color: brand.textSoft,
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Nothing sent yet',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: brand.ink,
+                letterSpacing: -0.2,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Roles you send land here automatically — the same card, '
+              'with its timeline completed.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: brand.textMuted,
+                height: 1.45,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Pipeline card — a standalone job listing card: a company mark, the role,
 // salary, a row of tag pills, then the agentic footer (stage stepper + the one
 // status line). It floats on a soft category-tinted shadow so the feed reads as
@@ -529,10 +816,15 @@ class _SectionHeader extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _PipelineCard extends StatelessWidget {
-  const _PipelineCard({required this.card, required this.onTap});
+  const _PipelineCard({required this.card, required this.onTap, this.onDetails});
 
   final PipelineCard card;
   final VoidCallback onTap;
+
+  /// Optional record action. App-backed cards (History + unsent drafts) pass
+  /// this to show a small "details" button in the footer; tapping it opens the
+  /// record (status + notes). The card's main tap stays the agent handoff.
+  final VoidCallback? onDetails;
 
   /// The single status line under the stepper. Action-led for cards that need
   /// you, quiet and factual for the rest. The dots carry stage, so this never
@@ -705,9 +997,43 @@ class _PipelineCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (onDetails != null) ...[
+                    const SizedBox(width: 10),
+                    _CardDetailsButton(onTap: onDetails!),
+                  ],
                 ],
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Small footer affordance on app-backed cards — opens the record (status +
+/// notes). Quiet and circular so it sits under the status line without
+/// competing with the card's main tap.
+class _CardDetailsButton extends StatelessWidget {
+  const _CardDetailsButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Material(
+      color: brand.surfaceMuted,
+      shape: const CircleBorder(),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: Padding(
+          padding: const EdgeInsets.all(7),
+          child: Icon(
+            Icons.more_horiz_rounded,
+            size: 18,
+            color: brand.textMuted,
           ),
         ),
       ),
