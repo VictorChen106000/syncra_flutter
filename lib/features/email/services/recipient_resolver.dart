@@ -8,15 +8,14 @@
 /// point that the user is always expected to verify in the review sheet before
 /// a draft is created.
 ///
-/// ## Upgrade path — Hunter.io (option 3)
-/// To return real verified addresses, add an async lookup *without* touching
-/// any caller:
-///   1. Add a `HunterService` (mirror `JSearchService`) reading its own
-///      `HUNTER_API_KEY` — unrelated to the Anthropic/Claude key.
-///   2. Add an async `resolveRecipientAsync(company, {website})` here that
-///      tries Hunter first and falls back to [resolveRecipient] below.
-///   3. Have callers `await` the async variant. The editable "To" field in the
-///      review sheet stays as the human safety net either way.
+/// ## How the recipient is resolved
+/// [resolveRecipientAsync] tries, in order: an optional demo override, a
+/// contact previously confirmed in the shared Firestore `company_contacts/`
+/// directory (which can also be seeded before a demo so a known company
+/// resolves to a real inbox we control — real delivery, no bounce), and finally
+/// a deterministic `careers@{domain}` guess built from the company's real
+/// website domain. Every step degrades to the next on failure, and the editable
+/// "To" field in the review sheet stays as the human safety net.
 library;
 
 import '../../../data/firestore/company_contacts_repository.dart';
@@ -28,7 +27,12 @@ import '../../../data/firestore/company_contacts_repository.dart';
 ///
 /// Set back to `''` to restore normal `careers@` / learned-contact resolution
 /// for production.
-const String demoRecipientOverride = 'pegatron.inc@gmail.com';
+///
+/// Off by default — every recipient is resolved dynamically per company
+/// (confirmed Firestore contact → `careers@{domain}` guess) so the demo isn't
+/// hardcoded to one inbox. Set a non-empty address only to force a safe
+/// catch-all during a live send.
+const String demoRecipientOverride = '';
 
 /// Recipient address for [company], preferring a **real** address learned from
 /// a previous confirmed send/draft over the `careers@{domain}` guess.
@@ -44,9 +48,17 @@ Future<String> resolveRecipientAsync(
   CompanyContactsRepository? contacts,
 }) async {
   if (demoRecipientOverride.isNotEmpty) return demoRecipientOverride;
+
+  final domain = recipientDomain(company, website: website);
+
+  // 1. A real address confirmed for this company wins. The shared
+  //    company_contacts/ directory can be seeded before a demo so a known
+  //    company resolves to an inbox we control (real delivery, no bounce).
   final repo = contacts ?? CompanyContactsRepository();
-  final saved = await repo.lookupEmail(recipientDomain(company, website: website));
+  final saved = await repo.lookupEmail(domain);
   if (saved != null && saved.isNotEmpty) return saved;
+
+  // 2. Deterministic careers@{domain} guess — always returns something.
   return resolveRecipient(company, website: website);
 }
 
@@ -70,7 +82,7 @@ String resolveRecipient(String company, {String? website}) {
   return 'careers@$domain';
 }
 
-/// Resolves the bare domain — the part Hunter.io would also key off of.
+/// Resolves the bare company domain used for the contacts lookup and guess.
 String _domainFor(String company, String? website) {
   final fromWebsite = _domainFromWebsite(website);
   if (fromWebsite != null) return fromWebsite;

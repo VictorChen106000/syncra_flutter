@@ -1164,7 +1164,10 @@ void _registerDraftEmail(
       final recipient = demoRecipientOverride.isNotEmpty
           ? demoRecipientOverride
           : (args['recipient_email'] as String?) ??
-                await resolveRecipientAsync(job.company);
+                await resolveRecipientAsync(
+                  job.company,
+                  website: job.employerWebsite,
+                );
       final tone = (args['tone'] as String?) ?? 'warm';
 
       if (!paraphrase.hasApiKey) {

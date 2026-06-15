@@ -14,6 +14,7 @@ class Job {
     required this.skills,
     required this.missingSkills,
     required this.why,
+    this.employerWebsite = '',
   });
 
   final String id;
@@ -28,6 +29,11 @@ class Job {
   final List<String> skills;
   final List<String> missingSkills;
   final String why;
+
+  /// The employer's real website (e.g. JSearch's `employer_website`), when
+  /// known. Used to address outreach to `careers@{realdomain}` instead of a
+  /// domain slugged from the company name. Empty when unknown.
+  final String employerWebsite;
 
   /// LinkedIn-style match label derived from [category]. The matching system
   /// is purely qualitative — the user never sees a numeric score or percent,
@@ -52,6 +58,7 @@ class Job {
     skills: List<String>.from(json['skills'] as List),
     missingSkills: List<String>.from(json['missing'] as List),
     why: json['why'] as String,
+    employerWebsite: (json['employer_website'] as String?) ?? '',
   );
 
   Map<String, dynamic> toJson() => {
@@ -67,6 +74,7 @@ class Job {
     'skills': skills,
     'missing': missingSkills,
     'why': why,
+    'employer_website': employerWebsite,
   };
 
   static JobCategory _categoryFromString(String value) {

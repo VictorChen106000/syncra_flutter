@@ -215,8 +215,11 @@ Future<void> _draftEmail(
       'Best regards,';
 
   // Prefer a real address learned from a previous confirmed outreach to this
-  // company; resolveRecipientAsync falls back to the careers@ guess.
-  final recipient = await resolveRecipientAsync(job.company);
+  // company; resolveRecipientAsync falls back to the careers@{real domain} guess.
+  final recipient = await resolveRecipientAsync(
+    job.company,
+    website: job.employerWebsite,
+  );
   if (!parentContext.mounted) return;
 
   final result = await EmailReviewPage.show(

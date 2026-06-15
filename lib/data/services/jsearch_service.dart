@@ -170,6 +170,7 @@ class JSearchService {
       skills: const [],
       missingSkills: const [],
       why: _description(raw),
+      employerWebsite: (raw['employer_website'] as String?)?.trim() ?? '',
     );
   }
 
@@ -245,6 +246,7 @@ class JSearchService {
             'location': job.location,
             'salary': job.salary,
             'description': job.why,
+            'employer_website': job.employerWebsite,
             'source': 'jsearch',
             'discovered_at': FieldValue.serverTimestamp(),
           },

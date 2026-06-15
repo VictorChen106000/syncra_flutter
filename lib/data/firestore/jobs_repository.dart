@@ -39,6 +39,7 @@ Job _fromDocSnap(DocumentSnapshot<Map<String, dynamic>> doc) {
     skills: const [],
     missingSkills: const [],
     why: (m['description'] as String?) ?? '',
+    employerWebsite: (m['employer_website'] as String?) ?? '',
   );
 }
 
@@ -57,5 +58,6 @@ Job _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     skills: const [],
     missingSkills: const [],
     why: (m['description'] as String?) ?? '',
+    employerWebsite: (m['employer_website'] as String?) ?? '',
   );
 }
