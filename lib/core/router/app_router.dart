@@ -101,10 +101,22 @@ final routerProvider = Provider<GoRouter>((ref) {
       // have no pipeline to show. `morningBriefShown` keeps it to once per app
       // session; the dev `showMorningBrief` toggle (above) forces it on demand.
       if (loc == RouteNames.login || loc == RouteNames.signup) {
-        final isReturningUser = profile?.hasCompletedOnboarding ?? false;
-        if (!isGuest && isReturningUser && !passive.morningBriefShown) {
-          return RouteNames.morningBrief;
-        }
+        // Guests have no profile or pipeline — straight to the dashboard.
+        if (isGuest) return RouteNames.dashboard;
+
+        // Non-guest: wait for the `users/{uid}` stream before deciding.
+        // Routing on a still-loading (null) profile would drop a brand-new
+        // account on the dashboard before we know it still needs onboarding —
+        // the user would never see first-run setup. Staying put lets the
+        // refresh listener re-run this redirect the moment the profile lands,
+        // at which point `needsOnboarding` (above) catches new accounts and
+        // sends them to onboarding.
+        if (profile == null) return null;
+
+        // Profile loaded and onboarding already complete (brand-new accounts
+        // were caught by `needsOnboarding` above): returning users get the
+        // overnight brief once per session, then the dashboard.
+        if (!passive.morningBriefShown) return RouteNames.morningBrief;
         return RouteNames.dashboard;
       }
 

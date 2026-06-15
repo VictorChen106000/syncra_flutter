@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -159,33 +161,80 @@ class AgentActivityTimeline extends ConsumerWidget {
 
 /// The agent's onboarding read, surfaced as the dashboard's *headline* so the
 /// thought it started during setup finishes here. No card chrome — it's typed
-/// out in the agent's own voice ("you…") on first load, with the monochrome
-/// activity timeline as the supporting detail beneath it. Tapping opens the
-/// Profile's Career Memory, where this read lives as an editable fact.
-class _AgentRead extends StatelessWidget {
+/// out in the agent's own voice ("you…") on first load, then quietly rolls up
+/// to hand the screen back to the activity timeline. The "MY READ ON YOU"
+/// eyebrow always stays put with a chevron, so a tap drops the full read back
+/// down. Honors reduce-motion by skipping the type-out and the roll, opening
+/// collapsed so the timeline is the first thing in view.
+class _AgentRead extends StatefulWidget {
   const _AgentRead({required this.text, required this.isRunning});
 
   final String text;
   final bool isRunning;
 
   @override
+  State<_AgentRead> createState() => _AgentReadState();
+}
+
+class _AgentReadState extends State<_AgentRead> {
+  bool _expanded = true;
+  bool _userToggled = false;
+  bool _ready = false;
+  Timer? _autoCollapse;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_ready) return;
+    _ready = true;
+
+    if (!shouldAnimate(context)) {
+      // Reduce-motion: no type-out and no roll — open collapsed so the read is
+      // a quiet, opt-in disclosure and the timeline leads.
+      _expanded = false;
+      return;
+    }
+
+    // Let the read type out and breathe, then roll it up to reveal the
+    // timeline. Mirrors _Typewriter's own duration so the hold starts once the
+    // last character lands.
+    final typeMs = (widget.text.length * 16).clamp(450, 2000).toInt();
+    _autoCollapse = Timer(Duration(milliseconds: typeMs + 1000), () {
+      if (mounted && !_userToggled) setState(() => _expanded = false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _autoCollapse?.cancel();
+    super.dispose();
+  }
+
+  void _toggle() {
+    _autoCollapse?.cancel();
+    setState(() {
+      _userToggled = true;
+      _expanded = !_expanded;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    return InkWell(
-      onTap: () => context.go(RouteNames.profile),
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    final motion = shouldAnimate(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // The eyebrow is the persistent anchor and the toggle: tap to roll the
+        // read up or back down. Padded out to a comfortable tap target.
+        InkWell(
+          onTap: _toggle,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
               children: [
-                Icon(
-                  Icons.auto_awesome_rounded,
-                  size: 14,
-                  color: brand.accent,
-                ),
+                Icon(Icons.auto_awesome_rounded, size: 14, color: brand.accent),
                 const SizedBox(width: 7),
                 Text(
                   'MY READ ON YOU',
@@ -193,17 +242,12 @@ class _AgentRead extends StatelessWidget {
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 1.4,
+                    height: 1,
                     color: brand.textMuted,
                   ),
                 ),
-                const SizedBox(width: 6),
-                Icon(
-                  Icons.arrow_outward_rounded,
-                  size: 13,
-                  color: brand.textMuted.withValues(alpha: 0.7),
-                ),
                 const Spacer(),
-                if (isRunning) ...[
+                if (widget.isRunning) ...[
                   _PulseDot(color: brand.accent, size: 7),
                   const SizedBox(width: 7),
                   Text(
@@ -212,26 +256,58 @@ class _AgentRead extends StatelessWidget {
                       fontSize: 10.5,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 1.2,
+                      height: 1,
                       color: brand.textMuted,
                     ),
                   ),
+                  const SizedBox(width: 12),
                 ],
+                AnimatedRotation(
+                  // Points down to invite a drop-down; flips up once the read
+                  // is showing, matching the "roll up" it triggers.
+                  turns: _expanded ? 0.5 : 0.0,
+                  duration: motion ? 200.ms : Duration.zero,
+                  curve: Curves.easeOut,
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 20,
+                    color: brand.textMuted.withValues(alpha: 0.85),
+                  ),
+                ),
               ],
             ),
-            const SizedBox(height: 11),
-            _Typewriter(
-              text: text,
-              style: TextStyle(
-                fontSize: 18.5,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.4,
-                height: 1.4,
-                color: brand.ink,
+          ),
+        ),
+        // The read itself. Kept mounted while collapsed (height rolled to zero,
+        // clipped) so the type-out plays exactly once and never replays on a
+        // re-expand.
+        ClipRect(
+          child: AnimatedAlign(
+            alignment: Alignment.topCenter,
+            heightFactor: _expanded ? 1.0 : 0.0,
+            duration: motion ? 340.ms : Duration.zero,
+            curve: Curves.easeInOutCubic,
+            child: AnimatedOpacity(
+              opacity: _expanded ? 1.0 : 0.0,
+              duration: motion ? 240.ms : Duration.zero,
+              curve: Curves.easeOut,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 10, bottom: 2),
+                child: _Typewriter(
+                  text: widget.text,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.3,
+                    height: 1.45,
+                    color: brand.ink,
+                  ),
+                ),
               ),
             ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
