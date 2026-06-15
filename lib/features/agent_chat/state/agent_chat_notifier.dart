@@ -701,7 +701,8 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     if (state.isStreaming) return;
     if (state.threadJob != null) return;
     final items = state.items;
-    final isFreshOpener = items.length == 1 &&
+    final isFreshOpener =
+        items.length == 1 &&
         items.first is AgentTurn &&
         (items.first as AgentTurn).blocks.isEmpty;
     if (!isFreshOpener) return;

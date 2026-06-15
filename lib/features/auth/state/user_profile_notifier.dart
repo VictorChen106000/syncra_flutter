@@ -107,13 +107,24 @@ class UserProfileNotifier extends Notifier<UserProfile?> {
   }
 
   /// Sets how far the chat agent advances on its own (Assist / Auto-draft /
-  /// Autopilot). Optimistically updates local state, then persists.
+  /// Autopilot) — the single user-facing autonomy control. Selecting a level
+  /// also re-derives the internal bounded auto-apply guardrails it implies
+  /// (only Autopilot enables auto-apply/auto-send), persisting both in one
+  /// Firestore write so the two never drift. Optimistically updates local
+  /// state, then persists.
   Future<void> setAutonomyLevel(AutonomyLevel level) async {
     final uid = _boundUid;
     if (uid == null) return;
-    state = state?.copyWith(autonomyLevel: level);
+    final autoApply = level.applyToAutoApply(
+      state?.autoApplySettings ?? const AutoApplySettings(),
+    );
+    state = state?.copyWith(autonomyLevel: level, autoApplySettings: autoApply);
     try {
-      await _repository.update(uid, autonomyLevel: level);
+      await _repository.update(
+        uid,
+        autonomyLevel: level,
+        autoApplySettings: autoApply,
+      );
     } catch (e) {
       debugPrint('setAutonomyLevel failed: $e');
     }

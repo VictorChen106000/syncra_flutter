@@ -191,8 +191,7 @@ Return ONLY the JSON object described in the system prompt.''',
         )
         .toList();
 
-    final recommendation =
-        (decoded['recommendation'] as String?)?.trim() ?? '';
+    final recommendation = (decoded['recommendation'] as String?)?.trim() ?? '';
 
     return {
       'role': role,

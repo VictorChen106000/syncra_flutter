@@ -718,21 +718,25 @@ class _SwitchTitle extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            _TitleWord(
-              label: 'Pipeline',
-              active: !showHistory,
-              onTap: () => onChanged(false),
-            ),
-            const SizedBox(width: 16),
-            _TitleWord(
-              label: 'History',
-              active: showHistory,
-              onTap: () => onChanged(true),
-            ),
-          ],
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _TitleWord(
+                label: 'Pipeline',
+                active: !showHistory,
+                onTap: () => onChanged(false),
+              ),
+              const SizedBox(width: 16),
+              _TitleWord(
+                label: 'History',
+                active: showHistory,
+                onTap: () => onChanged(true),
+              ),
+            ],
+          ),
         ),
         if (subtitle != null) ...[
           const SizedBox(height: 8),
@@ -772,9 +776,11 @@ class _TitleWord extends StatelessWidget {
       child: GestureDetector(
         onTap: active ? null : onTap,
         behavior: HitTestBehavior.opaque,
-        child: AnimatedDefaultTextStyle(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
+        // Plain Text on purpose: the row scales inside a FittedBox, and an
+        // implicitly-animated style (AnimatedDefaultTextStyle) mis-rasterises
+        // to solid blocks when scaled. The active/dimmed colour swaps instantly.
+        child: Text(
+          label,
           style: TextStyle(
             fontSize: 26,
             fontWeight: FontWeight.w900,
@@ -782,7 +788,6 @@ class _TitleWord extends StatelessWidget {
             height: 1,
             color: active ? brand.ink : brand.ink.withValues(alpha: 0.22),
           ),
-          child: Text(label),
         ),
       ),
     );
@@ -846,7 +851,11 @@ class _HistoryEmpty extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _PipelineCard extends StatelessWidget {
-  const _PipelineCard({required this.card, required this.onTap, this.onDetails});
+  const _PipelineCard({
+    required this.card,
+    required this.onTap,
+    this.onDetails,
+  });
 
   final PipelineCard card;
   final VoidCallback onTap;
