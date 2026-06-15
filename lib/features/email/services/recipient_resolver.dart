@@ -21,7 +21,7 @@ import 'company_contact_discovery_service.dart';
 /// (confirmed Firestore contact → `careers@{domain}` guess) so the demo isn't
 /// hardcoded to one inbox. Set a non-empty address only to force a safe
 /// catch-all during a live send.
-const String demoRecipientOverride = '';
+const String demoRecipientOverride = 'pegatron.inc@gmail.com';
 
 /// Recipient metadata for [company], preferring confirmed contacts and safe
 /// official discovery over the low-confidence `careers@{domain}` guess.
@@ -50,7 +50,10 @@ Future<RecipientResolution> resolveRecipientAsync(
       domain: overrideDomain,
       source: RecipientSource.demoOverride,
       reason: 'Controlled demo recipient override.',
-      canAutoSend: false,
+      // Demo: force auto-send eligibility so Autopilot actually delivers to the
+      // controlled inbox (both the pipeline auto-processor and the on-screen
+      // draft card). Restore to false / clear the override for production.
+      canAutoSend: true,
     );
   }
 
