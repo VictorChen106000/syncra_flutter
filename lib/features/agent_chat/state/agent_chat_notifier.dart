@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../data/firestore/jobs_repository.dart';
+import '../../../data/firestore/pipeline_repository.dart';
 import '../../../data/firestore/resumes_repository.dart';
 import '../../../data/models/job.dart';
 import '../../../shared/state/running_task_notifier.dart';
@@ -407,13 +408,43 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
   /// optional [job] so a thread opened from a pipeline card lands on a
   /// contextual message + a relevant action proposal instead of the
   /// generic welcome.
-  AgentTurn _buildOpener(Job? job) {
+  AgentTurn _buildOpener(
+    Job? job, {
+    PipelineStage stage = PipelineStage.matched,
+    bool autopilotClaimed = false,
+  }) {
     if (job == null) {
       // No greeting bubble: the fresh-chat experience is the empty state
       // ("How can I help today?"). The opener stays as an empty turn purely so
       // the single-agent-item check that triggers the empty state keeps
       // working; it's filtered out of the rendered transcript.
       return AgentTurn(id: 'turn-opener', isStreaming: false);
+    }
+
+    // The background autopilot may have already carried this card forward. Read
+    // the same pipeline stage it advanced so a tailored / drafted / sent card
+    // isn't greeted with a stale "Prepare draft" — the chat and the processor
+    // stay in sync instead of colliding.
+    final advanced = _openerForAdvancedStage(job, stage);
+    if (advanced != null) return advanced;
+
+    // Still `matched` but the autopilot has already claimed it and is mid-run.
+    // Show "preparing…" (no action) so the user can't fire a duplicate tailor
+    // on a job the background processor is actively working.
+    if (autopilotClaimed && stage == PipelineStage.matched) {
+      return AgentTurn(
+        id: 'turn-opener-${job.id}',
+        isStreaming: false,
+        blocks: [
+          TextBlock(
+            id: 'opener-text-${job.id}',
+            text:
+                "Syncra is preparing your application for ${job.title} at "
+                "${job.company} right now — tailoring your résumé and drafting "
+                "the outreach. It'll be ready to send in a moment.",
+          ),
+        ],
+      );
     }
 
     final blocks = <AgentBlock>[];
@@ -550,6 +581,74 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     );
   }
 
+  /// A stage-aware opener for a card the background autopilot already advanced.
+  /// Returns null for a still-`matched` card so [_buildOpener] falls through to
+  /// its category-based "prepare draft" greeting; otherwise it reflects the real
+  /// progress (tailored → offer to draft, drafted → review & send, sent → done).
+  AgentTurn? _openerForAdvancedStage(Job job, PipelineStage stage) {
+    switch (stage) {
+      case PipelineStage.matched:
+        return null;
+      case PipelineStage.tailored:
+      case PipelineStage.drafted:
+        final isDrafted = stage == PipelineStage.drafted;
+        return AgentTurn(
+          id: 'turn-opener-${job.id}',
+          isStreaming: false,
+          blocks: [
+            TextBlock(
+              id: 'opener-text-${job.id}',
+              text: isDrafted
+                  ? "Your application for ${job.title} at ${job.company} is "
+                        "tailored and the outreach is drafted — ready to send. "
+                        "Want me to send it, or make changes first?"
+                  : "I've tailored your résumé for ${job.title} at "
+                        "${job.company}. Want me to draft the outreach next?",
+            ),
+            ActionProposalBlock(
+              id: 'opener-action-${job.id}',
+              icon: Icons.send_rounded,
+              title: 'Continue application for ${job.company}',
+              description: isDrafted
+                  ? 'Review the outreach draft and send'
+                  : 'Draft outreach from your tailored résumé',
+              acceptLabel: isDrafted ? 'Review & send' : 'Draft outreach',
+              editLabel: 'Make changes',
+              continuationPrompt:
+                  '''
+        The user opened a pipeline job the background autopilot already advanced to "${stage.name}".
+
+        Job:
+        - job_id: ${job.id}
+        - title: ${job.title}
+        - company: ${job.company}
+        - location: ${job.location}
+
+        The résumé is already tailored for this role — do NOT re-tailor unless the user asks.
+        Continue toward outreach: draft (or refine) the recruiter email so the user can review and send it.
+        Do not call send_email. Sending still requires the email review UI and explicit confirmation token.
+        ''',
+            ),
+          ],
+        );
+      case PipelineStage.sent:
+      case PipelineStage.replied:
+        return AgentTurn(
+          id: 'turn-opener-${job.id}',
+          isStreaming: false,
+          blocks: [
+            TextBlock(
+              id: 'opener-text-${job.id}',
+              text:
+                  "Your application to ${job.company} for ${job.title} is "
+                  "already sent — it's in your tracker now. Want me to find "
+                  "more roles like it or prep a follow-up?",
+            ),
+          ],
+        );
+    }
+  }
+
   List<ChatItem> _restoreHistoryItems(List<ChatItem> saved) {
     if (saved.isEmpty) return [_buildOpener(null)];
     return [...saved];
@@ -558,7 +657,11 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
   /// Scopes the chat to [job] and replaces the opener with a contextual
   /// turn. Called by the pipeline when a card is tapped — the chatbot is
   /// the single thread for every agentic interaction.
-  void openJobThread(Job job) {
+  void openJobThread(
+    Job job, {
+    PipelineStage stage = PipelineStage.matched,
+    bool autopilotClaimed = false,
+  }) {
     final currentThreadJob = state.threadJob;
 
     if (currentThreadJob != null && currentThreadJob.id == job.id) {
@@ -569,7 +672,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     _service.resetConversation();
     _threadPipelineMarkedComplete = false;
     state = AgentChatState(
-      items: [_buildOpener(job)],
+      items: [_buildOpener(job, stage: stage, autopilotClaimed: autopilotClaimed)],
       conversationId: _newConversationId(),
       threadJob: job,
     );

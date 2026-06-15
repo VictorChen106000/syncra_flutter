@@ -1,8 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syncra/features/agent_chat/tools/builtin_tools.dart';
 import 'package:syncra/features/email/models/recipient_resolution.dart';
+import 'package:syncra/features/email/services/recipient_resolver.dart';
 
 void main() {
+  // App ships with a demo-inbox override; this test checks real resolution.
+  setUp(() => demoRecipientOverride = '');
+
   test(
     'resolve_company_contact tool helper returns recipient metadata',
     () async {

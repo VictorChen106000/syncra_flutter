@@ -5,6 +5,10 @@ import 'package:syncra/features/email/services/company_contact_discovery_service
 import 'package:syncra/features/email/services/recipient_resolver.dart';
 
 void main() {
+  // The app ships with a demo-inbox override (so Autopilot delivers live);
+  // these tests exercise *real* per-company resolution, so clear it first.
+  setUp(() => demoRecipientOverride = '');
+
   group('resolveRecipientAsync', () {
     test(
       'confirmed Firestore contact wins over discovery and guessed fallback',

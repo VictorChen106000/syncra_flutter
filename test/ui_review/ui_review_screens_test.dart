@@ -29,6 +29,7 @@ import 'package:syncra/data/models/job.dart';
 import 'package:syncra/features/agent/services/anthropic_service.dart';
 import 'package:syncra/features/agent/state/passive_agent_notifier.dart';
 import 'package:syncra/features/agent/state/pipeline_autopilot_notifier.dart';
+import 'package:syncra/features/applications/state/applications_notifier.dart';
 import 'package:syncra/features/agent_chat/models/agent_block.dart';
 import 'package:syncra/features/agent_chat/models/chat_message.dart';
 import 'package:syncra/features/agent_chat/presentation/ai_chatbot_page.dart';
@@ -62,6 +63,14 @@ class _FixedJobsNotifier extends JobsNotifier {
 class _FixedPipelineAutopilotNotifier extends PipelineAutopilotNotifier {
   @override
   Future<void> processNow() async {}
+}
+
+class _FixedApplicationsNotifier extends ApplicationsNotifier {
+  _FixedApplicationsNotifier()
+    : super(repository: ApplicationsRepository(db: _FakeFirestore()));
+
+  @override
+  ApplicationsState build() => const ApplicationsState();
 }
 
 class _FixedPassiveAgentNotifier extends PassiveAgentNotifier {
@@ -434,6 +443,7 @@ Widget _wrap(Widget child, List<Override> overrides, {bool dark = false}) {
     // goldens never reach the real (Firebase-backed) run path.
     overrides: [
       pipelineAutopilotProvider.overrideWith(_FixedPipelineAutopilotNotifier.new),
+      applicationsProvider.overrideWith(_FixedApplicationsNotifier.new),
       ...overrides,
     ],
     child: MaterialApp(
