@@ -35,8 +35,8 @@ class AnthropicClient {
     http.Client? client,
     this.maxAttempts = 4,
     this.timeout = const Duration(seconds: 45),
-  })  : _apiKey = apiKey ?? const String.fromEnvironment('ANTHROPIC_API_KEY'),
-        _client = client ?? http.Client();
+  }) : _apiKey = apiKey ?? const String.fromEnvironment('ANTHROPIC_API_KEY'),
+       _client = client ?? http.Client();
 
   static const _endpoint = 'https://api.anthropic.com/v1/messages';
   static const _version = '2023-06-01';

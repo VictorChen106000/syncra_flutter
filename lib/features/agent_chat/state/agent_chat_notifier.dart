@@ -751,7 +751,7 @@ If integrity_status is needsReview, mention that the user saved despite warnings
 If integrity_status is blocked, stop and ask the user to review the resume integrity issue; this should be unusual because saving is disabled.
 Now offer outreach: call ask_user to ask whether they want you to draft recruiter outreach for this role, with
 chips like ["Draft recruiter outreach", "Not yet", "Save for later"]. Only call draft_email after the user confirms.
-If they confirm and recipient information is missing, call lookup_hiring_manager or ask_user.
+If they confirm, call resolve_company_contact before draft_email. If confidence is low or none, draft only and tell the user to verify or replace the recipient.
 Do not call send_email. Sending still requires explicit user approval.
 ''');
   }

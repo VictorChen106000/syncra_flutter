@@ -127,9 +127,9 @@ class ResumeDiffService {
     // it here rather than report a phantom success.
     if (current is List) {
       if (current.any((item) => item is! String)) return false;
-      final alreadyPresent = current
-          .whereType<String>()
-          .any((item) => item.trim().toLowerCase() == value.toLowerCase());
+      final alreadyPresent = current.whereType<String>().any(
+        (item) => item.trim().toLowerCase() == value.toLowerCase(),
+      );
       if (alreadyPresent) return false;
       current.add(edit.proposedText);
       return true;
@@ -174,8 +174,9 @@ class ResumeDiffService {
         continue;
       }
       accessors.add(match.group(1)!.trim());
-      for (final bracket
-          in RegExp(r'\[(\d+)\]').allMatches(match.group(2) ?? '')) {
+      for (final bracket in RegExp(
+        r'\[(\d+)\]',
+      ).allMatches(match.group(2) ?? '')) {
         accessors.add(int.parse(bracket.group(1)!));
       }
     }

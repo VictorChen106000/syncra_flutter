@@ -60,10 +60,7 @@ class AppNotification {
   /// `ActionProposalBlock` or `InputRequestBlock` without re-deriving it.
   final String? targetBlockId;
 
-  AppNotification copyWith({
-    bool? unread,
-    String? timestamp,
-  }) {
+  AppNotification copyWith({bool? unread, String? timestamp}) {
     return AppNotification(
       id: id,
       kind: kind,

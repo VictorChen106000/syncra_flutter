@@ -133,5 +133,5 @@ class RunningTaskNotifier extends Notifier<RunningTaskState> {
 
 final runningTaskProvider =
     NotifierProvider<RunningTaskNotifier, RunningTaskState>(
-  RunningTaskNotifier.new,
-);
+      RunningTaskNotifier.new,
+    );

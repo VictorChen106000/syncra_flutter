@@ -97,8 +97,9 @@ class LoginPage extends ConsumerWidget {
                   const SizedBox(height: 18),
                   Center(
                     child: TextButton(
-                      onPressed:
-                          disabled ? null : () => notifier.continueAsGuest(),
+                      onPressed: disabled
+                          ? null
+                          : () => notifier.continueAsGuest(),
                       style: TextButton.styleFrom(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,
@@ -158,10 +159,7 @@ class _LoginBackground extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image.asset(
-            AppAssets.loginBackground,
-            fit: BoxFit.cover,
-          ),
+          Image.asset(AppAssets.loginBackground, fit: BoxFit.cover),
           // Bottom-anchored dark gradient guarantees headline + buttons stay
           // legible regardless of which part of the photo sits behind them.
           const DecoratedBox(
@@ -215,8 +213,9 @@ class _LoginButton extends StatelessWidget {
           height: 58,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            border:
-                borderColor == null ? null : Border.all(color: borderColor!),
+            border: borderColor == null
+                ? null
+                : Border.all(color: borderColor!),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -227,8 +226,9 @@ class _LoginButton extends StatelessWidget {
                       height: 20,
                       child: CircularProgressIndicator(
                         strokeWidth: 2.4,
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(foregroundColor),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          foregroundColor,
+                        ),
                       ),
                     ),
                   ]
@@ -464,8 +464,9 @@ class _SheetSubmitButton extends StatelessWidget {
                       height: 20,
                       child: CircularProgressIndicator(
                         strokeWidth: 2.4,
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(brand.onAccent),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          brand.onAccent,
+                        ),
                       ),
                     ),
                   ]
@@ -602,8 +603,7 @@ class _SheetField extends StatelessWidget {
                       fontSize: 14,
                     ),
                     isCollapsed: true,
-                    contentPadding:
-                        const EdgeInsets.symmetric(vertical: 16),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 16),
                     border: InputBorder.none,
                   ),
                 ),

@@ -37,10 +37,10 @@ class Tool {
 
   /// The Anthropic-API-shaped tool definition sent in the request.
   Map<String, dynamic> toApiJson() => {
-        'name': name,
-        'description': description,
-        'input_schema': inputSchema,
-      };
+    'name': name,
+    'description': description,
+    'input_schema': inputSchema,
+  };
 }
 
 /// Result returned by every tool handler.
@@ -59,9 +59,6 @@ class ToolResult {
 
   final bool isError;
 
-  static ToolResult error(String message) => ToolResult(
-        summary: message,
-        data: {'error': message},
-        isError: true,
-      );
+  static ToolResult error(String message) =>
+      ToolResult(summary: message, data: {'error': message}, isError: true);
 }

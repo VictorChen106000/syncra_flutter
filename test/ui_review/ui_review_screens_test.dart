@@ -256,7 +256,10 @@ AgentChatState _chatWithJobsRail() {
   return AgentChatState(
     conversationId: 'demo',
     items: [
-      UserMessage(id: 'u1', text: 'Find me senior product design roles, remote first.'),
+      UserMessage(
+        id: 'u1',
+        text: 'Find me senior product design roles, remote first.',
+      ),
       turn,
     ],
   );
@@ -318,7 +321,8 @@ AgentChatState _chatWithDraftAndEdits() {
       ),
       InputRequestBlock(
         id: 'c5',
-        question: 'Should I mention your availability for a portfolio walkthrough this week?',
+        question:
+            'Should I mention your availability for a portfolio walkthrough this week?',
         suggestions: const ['Yes, offer this week', 'No, keep it short'],
       ),
     ],
@@ -340,6 +344,47 @@ AgentChatState _chatWithDraftAndEdits() {
 // ---------------------------------------------------------------------------
 
 const _fontDir = 'test/ui_review/fonts';
+
+File _materialIconsFontFile() {
+  final candidates = <File>[];
+  final flutterRoot = Platform.environment['FLUTTER_ROOT'];
+  if (flutterRoot != null && flutterRoot.trim().isNotEmpty) {
+    candidates.add(
+      File(
+        '${flutterRoot.trim()}/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
+      ),
+    );
+  }
+
+  var dir = File(Platform.resolvedExecutable).parent;
+  for (var i = 0; i < 8; i++) {
+    candidates
+      ..add(
+        File(
+          '${dir.path}/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
+        ),
+      )
+      ..add(
+        File(
+          '${dir.path}/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
+        ),
+      );
+    final parent = dir.parent;
+    if (parent.path == dir.path) break;
+    dir = parent;
+  }
+
+  candidates.add(
+    File(
+      '/opt/homebrew/share/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
+    ),
+  );
+
+  for (final candidate in candidates) {
+    if (candidate.existsSync()) return candidate;
+  }
+  throw StateError('Could not locate MaterialIcons-Regular.otf.');
+}
 
 /// Intercepts the asset channel so google_fonts finds Inter "in the bundle":
 /// the AssetManifest response gains entries for the Inter TTFs, and requests
@@ -439,12 +484,10 @@ void main() {
         }
         await GoogleFonts.pendingFonts();
         // Material icons otherwise render as tofu boxes in widget tests.
-        final icons = File(
-          '/opt/homebrew/share/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
-        ).readAsBytesSync();
-        await (FontLoader('MaterialIcons')
-              ..addFont(Future.value(ByteData.sublistView(icons))))
-            .load();
+        final icons = _materialIconsFontFile().readAsBytesSync();
+        await (FontLoader(
+          'MaterialIcons',
+        )..addFont(Future.value(ByteData.sublistView(icons)))).load();
       });
       final app = buildApp();
       await tester.pumpWidget(app);
@@ -506,9 +549,7 @@ void main() {
     await capture(
       tester,
       () => _wrap(const JobsPage(), [
-        jobsProvider.overrideWith(
-          () => _FixedJobsNotifier(const JobsState()),
-        ),
+        jobsProvider.overrideWith(() => _FixedJobsNotifier(const JobsState())),
         passiveAgentProvider.overrideWith(_FixedPassiveAgentNotifier.new),
       ]),
       'jobs_empty_light',
@@ -522,9 +563,7 @@ void main() {
         agentChatProvider.overrideWith(
           () => _FixedChatNotifier(_chatWithJobsRail()),
         ),
-        jobsProvider.overrideWith(
-          () => _FixedJobsNotifier(const JobsState()),
-        ),
+        jobsProvider.overrideWith(() => _FixedJobsNotifier(const JobsState())),
         resumeProvider.overrideWith(_FixedResumeNotifier.new),
       ]),
       'chat_jobs_rail_light',
@@ -540,9 +579,7 @@ void main() {
         agentChatProvider.overrideWith(
           () => _FixedChatNotifier(_chatWithDraftAndEdits()),
         ),
-        jobsProvider.overrideWith(
-          () => _FixedJobsNotifier(const JobsState()),
-        ),
+        jobsProvider.overrideWith(() => _FixedJobsNotifier(const JobsState())),
         resumeProvider.overrideWith(_FixedResumeNotifier.new),
       ]),
       'chat_draft_review_light',

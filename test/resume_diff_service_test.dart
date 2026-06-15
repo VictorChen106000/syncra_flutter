@@ -4,39 +4,32 @@ import 'package:syncra/features/resumes/models/resume_json.dart';
 import 'package:syncra/features/resumes/services/resume_diff_service.dart';
 
 ResumeJson _sampleResume() => const ResumeJson(
-      header: ResumeHeader(name: 'Ada Lovelace'),
-      summary: 'Engineer who ships.',
-      experience: [
-        ResumeExperience(
-          company: 'Analytical Co',
-          role: 'Engineer',
-          start: '2023',
-          bullets: [
-            'Built the first algorithm.',
-            'Wrote extensive notes.',
-          ],
-        ),
-      ],
-      skills: ['Math', 'Logic', 'Writing'],
-      projects: [
-        ResumeProject(
-          name: 'Engine',
-          bullets: ['Designed the analytical engine.'],
-        ),
-      ],
-    );
+  header: ResumeHeader(name: 'Ada Lovelace'),
+  summary: 'Engineer who ships.',
+  experience: [
+    ResumeExperience(
+      company: 'Analytical Co',
+      role: 'Engineer',
+      start: '2023',
+      bullets: ['Built the first algorithm.', 'Wrote extensive notes.'],
+    ),
+  ],
+  skills: ['Math', 'Logic', 'Writing'],
+  projects: [
+    ResumeProject(name: 'Engine', bullets: ['Designed the analytical engine.']),
+  ],
+);
 
 ProposedEdit _edit({
   required String path,
   required String original,
   required String proposed,
-}) =>
-    ProposedEdit(
-      targetPath: path,
-      originalText: original,
-      proposedText: proposed,
-      reason: 'because it helps',
-    );
+}) => ProposedEdit(
+  targetPath: path,
+  originalText: original,
+  proposedText: proposed,
+  reason: 'because it helps',
+);
 
 void main() {
   const service = ResumeDiffService();
@@ -71,7 +64,11 @@ void main() {
 
     test('skills[i]', () {
       final result = service.applyEdits(_sampleResume(), [
-        _edit(path: 'skills[2]', original: 'Writing', proposed: 'Technical Writing'),
+        _edit(
+          path: 'skills[2]',
+          original: 'Writing',
+          proposed: 'Technical Writing',
+        ),
       ]);
       expect(result.skills, ['Math', 'Logic', 'Technical Writing']);
     });
@@ -141,11 +138,7 @@ void main() {
 
     test('whitespace-only differences still match (trimmed compare)', () {
       final result = service.applyEdits(_sampleResume(), [
-        _edit(
-          path: 'skills[0]',
-          original: '  Math  ',
-          proposed: 'Mathematics',
-        ),
+        _edit(path: 'skills[0]', original: '  Math  ', proposed: 'Mathematics'),
       ]);
       expect(result.skills[0], 'Mathematics');
     });

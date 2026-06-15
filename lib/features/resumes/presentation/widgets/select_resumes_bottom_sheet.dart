@@ -120,13 +120,16 @@ class SelectResumesBottomSheet extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 14),
-                  ...state.uploadQueue.map((item) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: ResumeUploadCard(uploadingItem: item),
-                      )),
+                  ...state.uploadQueue.map(
+                    (item) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: ResumeUploadCard(uploadingItem: item),
+                    ),
+                  ),
                   ...state.resumes.map((resume) {
-                    final selected =
-                        state.selectedResumeIds.contains(resume.id);
+                    final selected = state.selectedResumeIds.contains(
+                      resume.id,
+                    );
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: InkWell(
@@ -180,8 +183,10 @@ class SelectResumesBottomSheet extends ConsumerWidget {
                                 ),
                               ),
                               if (selected)
-                                Icon(Icons.check_circle_rounded,
-                                    color: brand.accent),
+                                Icon(
+                                  Icons.check_circle_rounded,
+                                  color: brand.accent,
+                                ),
                             ],
                           ),
                         ),

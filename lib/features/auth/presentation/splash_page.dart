@@ -16,8 +16,7 @@ class SplashPage extends StatefulWidget {
   State<SplashPage> createState() => _SplashPageState();
 }
 
-class _SplashPageState extends State<SplashPage>
-    with TickerProviderStateMixin {
+class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
   late final AnimationController _c; // assemble + exit reveal (forward once)
   late final AnimationController _shimmer; // looping green shimmer sweep
 
@@ -129,7 +128,10 @@ class _Wordmark extends StatelessWidget {
 
     if (reduceMotion) {
       final p = Curves.easeOut.transform((t / 0.7).clamp(0.0, 1.0));
-      return Opacity(opacity: p, child: Text(AppStrings.appName, style: style));
+      return Opacity(
+        opacity: p,
+        child: Text(AppStrings.appName, style: style),
+      );
     }
 
     Widget row = Row(

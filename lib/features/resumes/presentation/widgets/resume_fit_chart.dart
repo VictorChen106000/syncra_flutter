@@ -80,8 +80,9 @@ class _ResumeFitChartState extends State<ResumeFitChart> {
   Widget build(BuildContext context) {
     final segments = widget.fit.segments;
     final palette = _palette(context.brand);
-    final focused =
-        (_touched >= 0 && _touched < segments.length) ? _touched : -1;
+    final focused = (_touched >= 0 && _touched < segments.length)
+        ? _touched
+        : -1;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -135,15 +136,10 @@ class _ResumeFitChartState extends State<ResumeFitChart> {
             duration: const Duration(milliseconds: 220),
             switchInCurve: Curves.easeOutCubic,
             switchOutCurve: Curves.easeInCubic,
-            transitionBuilder: (child, anim) => FadeTransition(
-              opacity: anim,
-              child: child,
-            ),
+            transitionBuilder: (child, anim) =>
+                FadeTransition(opacity: anim, child: child),
             child: focused == -1
-                ? const SizedBox(
-                    key: ValueKey('idle'),
-                    width: double.infinity,
-                  )
+                ? const SizedBox(key: ValueKey('idle'), width: double.infinity)
                 : _FocusPanel(
                     key: ValueKey('focus-$focused'),
                     segment: segments[focused],
@@ -180,11 +176,7 @@ class _ResumeFitChartState extends State<ResumeFitChart> {
 ///   - the slice label + percent on one line
 ///   - the optional rationale below, in a quieter muted tone
 class _FocusPanel extends StatelessWidget {
-  const _FocusPanel({
-    super.key,
-    required this.segment,
-    required this.color,
-  });
+  const _FocusPanel({super.key, required this.segment, required this.color});
 
   final ResumeFitSegment segment;
   final Color color;

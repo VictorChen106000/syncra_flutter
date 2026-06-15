@@ -24,15 +24,15 @@ class JSearchService {
     String? host,
     http.Client? client,
     FirebaseFirestore? firestore,
-  })  : _apiKey = apiKey ?? const String.fromEnvironment('RAPIDAPI_KEY'),
-        _host = (host != null && host.isNotEmpty)
-            ? host
-            : const String.fromEnvironment(
-                'JSEARCH_HOST',
-                defaultValue: 'jsearch.p.rapidapi.com',
-              ),
-        _client = client ?? http.Client(),
-        _db = firestore ?? FirebaseFirestore.instance;
+  }) : _apiKey = apiKey ?? const String.fromEnvironment('RAPIDAPI_KEY'),
+       _host = (host != null && host.isNotEmpty)
+           ? host
+           : const String.fromEnvironment(
+               'JSEARCH_HOST',
+               defaultValue: 'jsearch.p.rapidapi.com',
+             ),
+       _client = client ?? http.Client(),
+       _db = firestore ?? FirebaseFirestore.instance;
 
   final String _apiKey;
   final String _host;
@@ -114,13 +114,12 @@ class JSearchService {
 
     final http.Response response;
     try {
-      response = await _client.get(
-        uri,
-        headers: {
-          'X-RapidAPI-Key': _apiKey,
-          'X-RapidAPI-Host': _host,
-        },
-      ).timeout(_httpTimeout);
+      response = await _client
+          .get(
+            uri,
+            headers: {'X-RapidAPI-Key': _apiKey, 'X-RapidAPI-Host': _host},
+          )
+          .timeout(_httpTimeout);
     } catch (e) {
       throw JSearchException('JSearch request failed: $e');
     }
@@ -153,8 +152,8 @@ class JSearchService {
     final company = (raw['employer_name'] as String?)?.trim() ?? '';
     final sourceUrl =
         ((raw['job_apply_link'] ?? raw['job_google_link']) as String?)
-                ?.trim() ??
-            '';
+            ?.trim() ??
+        '';
     if (title.isEmpty || company.isEmpty || sourceUrl.isEmpty) return null;
 
     return Job(
@@ -216,7 +215,8 @@ class JSearchService {
   /// onto one Firestore doc instead of duplicating. Mirrors the backend's
   /// `_job_id_for()` scheme.
   String _jobIdFor(String title, String company, String sourceUrl) {
-    final raw = '${title.toLowerCase().trim()}|'
+    final raw =
+        '${title.toLowerCase().trim()}|'
         '${company.toLowerCase().trim()}|'
         '${sourceUrl.toLowerCase().trim()}';
     final digest = sha256.convert(utf8.encode(raw)).toString();
@@ -224,7 +224,8 @@ class JSearchService {
   }
 
   String _cacheKey(String query, String? location, int limit) {
-    final raw = '${query.toLowerCase()}|'
+    final raw =
+        '${query.toLowerCase()}|'
         '${(location ?? '').toLowerCase().trim()}|$limit';
     return sha256.convert(utf8.encode(raw)).toString().substring(0, 16);
   }
@@ -238,20 +239,16 @@ class JSearchService {
     try {
       final batch = _db.batch();
       for (final job in jobs) {
-        batch.set(
-          _db.collection('jobs').doc(job.id),
-          {
-            'title': job.title,
-            'company': job.company,
-            'location': job.location,
-            'salary': job.salary,
-            'description': job.why,
-            'employer_website': job.employerWebsite,
-            'source': 'jsearch',
-            'discovered_at': FieldValue.serverTimestamp(),
-          },
-          SetOptions(merge: true),
-        );
+        batch.set(_db.collection('jobs').doc(job.id), {
+          'title': job.title,
+          'company': job.company,
+          'location': job.location,
+          'salary': job.salary,
+          'description': job.why,
+          'employer_website': job.employerWebsite,
+          'source': 'jsearch',
+          'discovered_at': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
       }
       await batch.commit();
     } catch (e) {

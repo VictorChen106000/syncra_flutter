@@ -57,7 +57,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isSignedIn = auth.isSignedIn;
       final isGuest = auth.appUser?.isGuest ?? false;
       final loc = state.matchedLocation;
-      final isAuthRoute = loc == RouteNames.login ||
+      final isAuthRoute =
+          loc == RouteNames.login ||
           loc == RouteNames.signup ||
           loc == RouteNames.splash ||
           loc == RouteNames.onboarding;
@@ -135,8 +136,7 @@ List<RouteBase> _routes(Page<void> Function(GoRouterState, Widget) fadePage) =>
       ),
       GoRoute(
         path: RouteNames.linkGmail,
-        pageBuilder: (context, state) =>
-            fadePage(state, const LinkGmailPage()),
+        pageBuilder: (context, state) => fadePage(state, const LinkGmailPage()),
       ),
       GoRoute(
         path: RouteNames.morningBrief,
@@ -151,8 +151,9 @@ List<RouteBase> _routes(Page<void> Function(GoRouterState, Widget) fadePage) =>
       GoRoute(
         path: RouteNames.resumePreview,
         pageBuilder: (context, state) {
-          final resume =
-              state.extra is ResumeFile ? state.extra as ResumeFile : null;
+          final resume = state.extra is ResumeFile
+              ? state.extra as ResumeFile
+              : null;
           return fadePage(state, ResumePreviewPage(resume: resume));
         },
       ),

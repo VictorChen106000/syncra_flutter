@@ -39,50 +39,48 @@ class GoogleAuthService {
     }
   }
 
-/// Triggers Google sign-in and signs into Firebase.
-Future<AppUser?> signInWithGoogle() async {
-  try {
-    if (kIsWeb) {
-      final googleProvider = GoogleAuthProvider()
-        ..addScope('email')
-        ..addScope('profile');
+  /// Triggers Google sign-in and signs into Firebase.
+  Future<AppUser?> signInWithGoogle() async {
+    try {
+      if (kIsWeb) {
+        final googleProvider = GoogleAuthProvider()
+          ..addScope('email')
+          ..addScope('profile');
 
-      final UserCredential userCredential =
-          await _firebaseAuth.signInWithPopup(googleProvider);
+        final UserCredential userCredential = await _firebaseAuth
+            .signInWithPopup(googleProvider);
+
+        return userToAppUser(userCredential.user);
+      }
+
+      // `scopeHint` nudges Google to surface the Gmail send permission during
+      // sign-in so the agent can later send outreach from the user's own
+      // account. It's a hint only — identity sign-in still succeeds if the user
+      // skips it, and GmailService re-requests `gmail.send` on demand at first
+      // send. Send-only scope, never `gmail.readonly` (api-contract §5.3 / §11.5).
+      final GoogleSignInAccount googleUser = await GoogleSignIn.instance
+          .authenticate(scopeHint: const [GmailService.sendScope]);
+
+      final GoogleSignInAuthentication googleAuth = googleUser.authentication;
+
+      final OAuthCredential credential = GoogleAuthProvider.credential(
+        idToken: googleAuth.idToken,
+      );
+
+      final UserCredential userCredential = await _firebaseAuth
+          .signInWithCredential(credential);
 
       return userToAppUser(userCredential.user);
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'popup-closed-by-user' ||
+          e.code == 'cancelled-popup-request' ||
+          e.code == 'web-context-cancelled') {
+        return null;
+      }
+
+      rethrow;
     }
-
-    // `scopeHint` nudges Google to surface the Gmail send permission during
-    // sign-in so the agent can later send outreach from the user's own
-    // account. It's a hint only — identity sign-in still succeeds if the user
-    // skips it, and GmailService re-requests `gmail.send` on demand at first
-    // send. Send-only scope, never `gmail.readonly` (api-contract §5.3 / §11.5).
-    final GoogleSignInAccount googleUser =
-        await GoogleSignIn.instance.authenticate(
-      scopeHint: const [GmailService.sendScope],
-    );
-
-    final GoogleSignInAuthentication googleAuth = googleUser.authentication;
-
-    final OAuthCredential credential = GoogleAuthProvider.credential(
-      idToken: googleAuth.idToken,
-    );
-
-    final UserCredential userCredential =
-        await _firebaseAuth.signInWithCredential(credential);
-
-    return userToAppUser(userCredential.user);
-  } on FirebaseAuthException catch (e) {
-    if (e.code == 'popup-closed-by-user' ||
-        e.code == 'cancelled-popup-request' ||
-        e.code == 'web-context-cancelled') {
-      return null;
-    }
-
-    rethrow;
   }
-}
 
   /// Signs in an existing account with email + password.
   /// Throws [FirebaseAuthException] on bad credentials — caller maps the code.

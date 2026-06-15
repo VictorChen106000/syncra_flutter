@@ -42,8 +42,7 @@ class ResumeAttachmentChips extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.description_rounded,
-                      size: 15, color: brand.ink),
+                  Icon(Icons.description_rounded, size: 15, color: brand.ink),
                   const SizedBox(width: 6),
                   Flexible(
                     child: Text(
@@ -59,8 +58,11 @@ class ResumeAttachmentChips extends StatelessWidget {
                   const SizedBox(width: 4),
                   GestureDetector(
                     onTap: () => onRemove(resume.id),
-                    child: Icon(Icons.close_rounded,
-                        size: 15, color: brand.textMuted),
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 15,
+                      color: brand.textMuted,
+                    ),
                   ),
                 ],
               ),

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../data/firestore/applications_repository.dart';
 import '../../../data/firestore/company_contacts_repository.dart';
+import '../models/recipient_resolution.dart';
 import 'gmail_service.dart';
 import 'recipient_resolver.dart';
 
@@ -69,8 +70,7 @@ class EmailSendService {
   /// [sendConfirmed] call. Nothing else in the app should call this.
   String mintConfirmationToken() {
     final bytes = List<int>.generate(16, (_) => _random.nextInt(256));
-    final token =
-        bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    final token = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
     _pendingTokens.add(token);
     return token;
   }
@@ -157,12 +157,18 @@ class EmailSendService {
     required String to,
     required String subject,
     required String body,
+    required RecipientResolution recipientResolution,
     String? uid,
     String? applicationId,
     List<EmailAttachment> attachments = const [],
     String? contactDomain,
     String? company,
   }) {
+    if (!recipientResolution.isAutoSendEligible) {
+      throw StateError(
+        'Auto-send requires a confirmed or high-confidence recipient.',
+      );
+    }
     return sendConfirmed(
       confirmationToken: mintConfirmationToken(),
       to: to,
@@ -190,6 +196,7 @@ class EmailSendService {
     String? contactDomain,
     String? company,
     String? uid,
+    bool learnRecipient = true,
   }) async {
     final draftId = await _gmailService.createDraft(
       to: to,
@@ -198,14 +205,14 @@ class EmailSendService {
       attachments: attachments,
     );
 
-    // Reviewing and saving a draft also confirms the address — learn it so the
-    // company's real recipient is reused next time (see CompanyContactsRepository).
-    await _learnRecipient(
-      to: to,
-      contactDomain: contactDomain,
-      company: company,
-      uid: uid,
-    );
+    if (learnRecipient) {
+      await _learnRecipient(
+        to: to,
+        contactDomain: contactDomain,
+        company: company,
+        uid: uid,
+      );
+    }
 
     return draftId;
   }
@@ -222,7 +229,8 @@ class EmailSendService {
   }) async {
     // Don't learn the demo override address — it isn't a real company contact,
     // and saving it would resurface as a bogus "learned" recipient later.
-    if (demoRecipientOverride.isNotEmpty && to.trim() == demoRecipientOverride) {
+    if (demoRecipientOverride.isNotEmpty &&
+        to.trim() == demoRecipientOverride) {
       return;
     }
     // Wrap everything — including building the repository — so a missing

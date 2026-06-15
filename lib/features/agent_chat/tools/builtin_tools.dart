@@ -11,6 +11,7 @@ import '../../../data/firestore/jobs_repository.dart';
 import '../../../data/firestore/resumes_repository.dart';
 import '../../../data/models/job.dart';
 import '../../../data/services/jsearch_service.dart';
+import '../../email/models/recipient_resolution.dart';
 import '../../email/services/email_send_service.dart';
 import '../../email/services/recipient_resolver.dart';
 import '../../agent/services/anthropic_service.dart';
@@ -52,6 +53,7 @@ void registerBuiltinTools(ToolRegistry registry) {
   _registerTailorResume(registry, jobs, paraphrase, orchestrator);
   _registerApplyResumeEdits(registry, orchestrator, pipeline);
   _registerBuildResume(registry);
+  _registerResolveCompanyContact(registry, jobs);
   _registerDraftEmail(registry, jobs, paraphrase, orchestrator, pipeline);
   _registerLookupHiringManager(registry);
   _registerSaveToTracker(registry, jobs, applications, pipeline);
@@ -1112,6 +1114,195 @@ void _registerApplyResumeEdits(
 }
 
 // ---------------------------------------------------------------------------
+// resolve_company_contact — returns recipient metadata before outreach drafting
+// ---------------------------------------------------------------------------
+
+void _registerResolveCompanyContact(
+  ToolRegistry registry,
+  JobsRepository jobsRepo,
+) {
+  registry.register(
+    tool: const Tool(
+      name: 'resolve_company_contact',
+      description:
+          'Resolve the best available outreach recipient for a company before '
+          'draft_email. Returns metadata: email, domain, confidence, source, '
+          'sourceUrl, reason, canAutoSend, and requiresUserConfirmation. '
+          'Low-confidence guessedPattern addresses are not verified and must '
+          'not be described as confirmed, safe, or verified.',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'job_id': {
+            'type': 'string',
+            'description':
+                'Job id returned by search_jobs or match_jobs. Use this when available.',
+          },
+          'company': {'type': 'string'},
+          'website': {
+            'type': 'string',
+            'description':
+                'Official employer website when known; preferred for domain extraction.',
+          },
+          'apply_link': {'type': 'string'},
+        },
+      },
+      uiLabel: 'Resolving recipient…',
+      uiIcon: Icons.alternate_email_rounded,
+    ),
+    handler: (args) async {
+      final jobId = (args['job_id'] as String?)?.trim();
+      Job? job;
+      if (jobId != null && jobId.isNotEmpty) {
+        job = await jobsRepo.fetchById(jobId);
+      }
+
+      final company = (args['company'] as String?)?.trim().isNotEmpty == true
+          ? (args['company'] as String).trim()
+          : job?.company.trim() ?? '';
+      if (company.isEmpty) {
+        return ToolResult.error('company or job_id is required.');
+      }
+
+      final website = (args['website'] as String?)?.trim().isNotEmpty == true
+          ? (args['website'] as String).trim()
+          : job?.employerWebsite.trim();
+      final applyLink = (args['apply_link'] as String?)?.trim();
+
+      return resolveCompanyContactToolResult(
+        company,
+        website: website,
+        applyLink: applyLink,
+      );
+    },
+  );
+}
+
+Future<ToolResult> resolveCompanyContactToolResult(
+  String company, {
+  String? website,
+  String? applyLink,
+}) async {
+  final resolution = await resolveRecipientAsync(
+    company,
+    website: website,
+    applyLink: applyLink,
+  );
+  return ToolResult(
+    summary: _recipientResolutionSummary(company, resolution),
+    data: _recipientResolutionData(resolution),
+  );
+}
+
+String _recipientResolutionSummary(
+  String company,
+  RecipientResolution resolution,
+) {
+  if (!resolution.hasEmail) return 'No public email found for $company';
+  return '${resolution.label} for $company: ${resolution.email}';
+}
+
+Map<String, dynamic> _recipientResolutionData(RecipientResolution resolution) {
+  return {
+    'email': resolution.email,
+    'recipient': resolution.email,
+    'domain': resolution.domain,
+    'confidence': resolution.confidence.name,
+    'recipientConfidence': resolution.confidence.name,
+    'source': resolution.source.name,
+    'recipientSource': resolution.source.name,
+    if (resolution.sourceUrl != null && resolution.sourceUrl!.trim().isNotEmpty)
+      'sourceUrl': resolution.sourceUrl,
+    if (resolution.sourceUrl != null && resolution.sourceUrl!.trim().isNotEmpty)
+      'recipientSourceUrl': resolution.sourceUrl,
+    'reason': resolution.reason,
+    'recipientReason': resolution.reason,
+    'canAutoSend': resolution.canAutoSend,
+    'requiresUserConfirmation': resolution.requiresUserConfirmation,
+  };
+}
+
+RecipientResolution _recipientResolutionFromDraftArgs(
+  Map<String, dynamic> args, {
+  required String email,
+  required String company,
+  String? website,
+}) {
+  final confidence = _recipientConfidenceFromWire(
+    args['recipientConfidence'] ??
+        args['recipient_confidence'] ??
+        args['confidence'],
+    fallback: RecipientConfidence.low,
+  );
+  final source = _recipientSourceFromWire(
+    args['recipientSource'] ?? args['recipient_source'] ?? args['source'],
+    fallback: RecipientSource.guessedPattern,
+  );
+  final domain =
+      (args['domain'] as String?)?.trim().toLowerCase() ??
+      recipientDomainOrNull(company, website: website) ??
+      _domainFromEmail(email) ??
+      '';
+  final sourceUrl =
+      (args['recipientSourceUrl'] as String?)?.trim() ??
+      (args['recipient_source_url'] as String?)?.trim() ??
+      (args['sourceUrl'] as String?)?.trim();
+  final reason =
+      (args['recipientReason'] as String?)?.trim() ??
+      (args['recipient_reason'] as String?)?.trim() ??
+      (args['reason'] as String?)?.trim() ??
+      'Explicit recipient supplied to draft_email; not independently verified by Syncra.';
+  final canAutoSend =
+      args['canAutoSend'] == true || args['can_auto_send'] == true;
+
+  return RecipientResolution(
+    email: email,
+    domain: domain,
+    confidence: confidence,
+    source: source,
+    label: RecipientResolution.labelFor(source: source, confidence: confidence),
+    sourceUrl: sourceUrl == null || sourceUrl.isEmpty ? null : sourceUrl,
+    reason: reason,
+    canAutoSend: canAutoSend,
+    requiresUserConfirmation:
+        confidence == RecipientConfidence.medium ||
+        confidence == RecipientConfidence.low ||
+        confidence == RecipientConfidence.none,
+  );
+}
+
+RecipientConfidence _recipientConfidenceFromWire(
+  Object? raw, {
+  required RecipientConfidence fallback,
+}) {
+  final value = raw?.toString().trim();
+  if (value == null || value.isEmpty) return fallback;
+  for (final confidence in RecipientConfidence.values) {
+    if (confidence.name == value) return confidence;
+  }
+  return fallback;
+}
+
+RecipientSource _recipientSourceFromWire(
+  Object? raw, {
+  required RecipientSource fallback,
+}) {
+  final value = raw?.toString().trim();
+  if (value == null || value.isEmpty) return fallback;
+  for (final source in RecipientSource.values) {
+    if (source.name == value) return source;
+  }
+  return fallback;
+}
+
+String? _domainFromEmail(String email) {
+  final at = email.lastIndexOf('@');
+  if (at < 0 || at == email.length - 1) return null;
+  final domain = email.substring(at + 1).trim().toLowerCase();
+  return domain.isEmpty ? null : domain;
+}
+
+// ---------------------------------------------------------------------------
 // draft_email — REAL: composes a cold outreach via Anthropic
 // ---------------------------------------------------------------------------
 
@@ -1145,6 +1336,20 @@ void _registerDraftEmail(
                 'latest manual resume.',
           },
           'recipient_email': {'type': 'string'},
+          'recipient_confidence': {
+            'type': 'string',
+            'enum': ['confirmed', 'high', 'medium', 'low', 'none'],
+            'description':
+                'Confidence from resolve_company_contact when recipient_email came from that tool.',
+          },
+          'recipient_source': {
+            'type': 'string',
+            'description':
+                'Source from resolve_company_contact when recipient_email came from that tool.',
+          },
+          'recipient_source_url': {'type': 'string'},
+          'recipient_reason': {'type': 'string'},
+          'can_auto_send': {'type': 'boolean'},
           'recipient_name': {'type': 'string'},
           'tone': {
             'type': 'string',
@@ -1161,13 +1366,20 @@ void _registerDraftEmail(
       if (jobId == null) return ToolResult.error('job_id is required.');
       final job = await jobsRepo.fetchById(jobId);
       if (job == null) return ToolResult.error('Job not found.');
-      final recipient = demoRecipientOverride.isNotEmpty
-          ? demoRecipientOverride
-          : (args['recipient_email'] as String?) ??
-                await resolveRecipientAsync(
-                  job.company,
-                  website: job.employerWebsite,
-                );
+      final explicitRecipient = (args['recipient_email'] as String?)?.trim();
+      final recipientResolution =
+          explicitRecipient != null && explicitRecipient.isNotEmpty
+          ? _recipientResolutionFromDraftArgs(
+              args,
+              email: explicitRecipient,
+              company: job.company,
+              website: job.employerWebsite,
+            )
+          : await resolveRecipientAsync(
+              job.company,
+              website: job.employerWebsite,
+            );
+      final recipient = recipientResolution.email;
       final tone = (args['tone'] as String?) ?? 'warm';
 
       if (!paraphrase.hasApiKey) {
@@ -1251,6 +1463,7 @@ void _registerDraftEmail(
             'subject': draft['subject'],
             'body': draft['body'],
             'recipient': recipient,
+            ..._recipientResolutionData(recipientResolution),
             'attachment_resume_id': attachment.resumeId,
             'attachment_filename': attachment.filename,
             'tailored': attachment.tailored,
@@ -1385,9 +1598,7 @@ JobCategory _jobCategoryFromWire(
 }
 
 // ---------------------------------------------------------------------------
-// lookup_hiring_manager — returns the company's generic careers address.
-// There is no named-contact data source wired, so this is a deterministic
-// domain guess. Gives Claude an explicit recipient instead of inventing one.
+// lookup_hiring_manager — legacy alias for recipient resolution.
 // ---------------------------------------------------------------------------
 
 void _registerLookupHiringManager(ToolRegistry registry) {
@@ -1395,13 +1606,14 @@ void _registerLookupHiringManager(ToolRegistry registry) {
     tool: const Tool(
       name: 'lookup_hiring_manager',
       description:
-          'Find a contact email for outreach at a target company. Returns '
-          '{name, email, confidence}. There is no named-contact lookup — '
-          "this returns the company's generic careers address.",
+          'Legacy contact lookup. Prefer resolve_company_contact before '
+          'draft_email. Returns the best available company recipient metadata '
+          'and labels low-confidence guessedPattern addresses as unverified.',
       inputSchema: {
         'type': 'object',
         'properties': {
           'company': {'type': 'string'},
+          'website': {'type': 'string'},
           'role_filter': {'type': 'string'},
         },
         'required': ['company'],
@@ -1414,19 +1626,14 @@ void _registerLookupHiringManager(ToolRegistry registry) {
       if (company.isEmpty) {
         return ToolResult.error('company is required.');
       }
-      // Prefer a real address learned from a previous confirmed send/draft;
-      // fall back to the generic careers guess.
-      final email = await resolveRecipientAsync(company);
-      final learned = email != resolveRecipient(company);
+      final website = (args['website'] as String?)?.trim();
+      final resolution = await resolveRecipientAsync(company, website: website);
       return ToolResult(
-        summary: 'Contact for $company',
+        summary: _recipientResolutionSummary(company, resolution),
         data: {
           'name': null,
-          'email': email,
-          'confidence': learned ? 0.8 : 0.2,
-          'note': learned
-              ? 'Address confirmed from a previous outreach to this company.'
-              : 'Generic careers address — no confirmed contact on file yet.',
+          ..._recipientResolutionData(resolution),
+          'note': resolution.reason,
         },
       );
     },

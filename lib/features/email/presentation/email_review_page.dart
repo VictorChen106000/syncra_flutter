@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/brand_theme.dart';
+import '../models/recipient_resolution.dart';
 import '../services/email_send_service.dart';
 import '../services/gmail_service.dart';
 
@@ -58,6 +59,7 @@ class EmailReviewPage extends StatefulWidget {
     this.attachments = const [],
     this.contactDomain,
     this.company,
+    this.recipientResolution,
   });
 
   /// Pre-filled "To" address. Editable — the company address is only ever a
@@ -85,6 +87,10 @@ class EmailReviewPage extends StatefulWidget {
   /// Display company name, stored alongside a learned contact for context.
   final String? company;
 
+  /// Recipient metadata shown in the review UI. Older callers may omit this;
+  /// the sheet then treats the pre-filled recipient as a low-confidence guess.
+  final RecipientResolution? recipientResolution;
+
   /// Opens the review sheet. Resolves to the [EmailReviewResult], or `null`
   /// if the user dismissed it without acting. Defaults to draft mode — the
   /// safe path that never delivers without a second tap inside Gmail.
@@ -98,6 +104,7 @@ class EmailReviewPage extends StatefulWidget {
     List<EmailAttachment> attachments = const [],
     String? contactDomain,
     String? company,
+    RecipientResolution? recipientResolution,
   }) {
     return showModalBottomSheet<EmailReviewResult>(
       context: context,
@@ -112,6 +119,7 @@ class EmailReviewPage extends StatefulWidget {
         attachments: attachments,
         contactDomain: contactDomain,
         company: company,
+        recipientResolution: recipientResolution,
       ),
     );
   }
@@ -132,6 +140,7 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
   );
 
   bool _busy = false;
+  bool _lowConfidenceAccepted = false;
   String? _error;
 
   /// The delivery choice the user can flip between in the sheet. Seeded from
@@ -143,6 +152,48 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
   /// into a second duplicate draft.
   String? _draftId;
   bool get _isDraftMode => _mode == EmailReviewMode.draft;
+
+  RecipientResolution get _effectiveResolution {
+    final typed = _recipientCtrl.text.trim();
+    final initial = widget.initialRecipient.trim();
+    final domain = widget.contactDomain?.trim().toLowerCase();
+
+    if (typed.isEmpty) {
+      return RecipientResolution.none(domain: domain ?? '');
+    }
+
+    if (typed != initial) {
+      return RecipientResolution.confirmed(
+        email: typed,
+        domain: _domainFromEmail(typed) ?? domain ?? '',
+        source: RecipientSource.confirmedCache,
+        reason: 'Recipient entered or replaced by the user.',
+        canAutoSend: false,
+      );
+    }
+
+    return widget.recipientResolution ??
+        RecipientResolution.fromLegacyRecipient(typed, domain: domain);
+  }
+
+  bool get _recipientMissing => _recipientCtrl.text.trim().isEmpty;
+
+  bool get _isLowConfidenceGuessedRecipient {
+    final resolution = _effectiveResolution;
+    return resolution.confidence == RecipientConfidence.low &&
+        resolution.source == RecipientSource.guessedPattern;
+  }
+
+  bool _requiresLowConfidenceSendConfirmationFor(EmailReviewMode mode) {
+    return mode == EmailReviewMode.send && _isLowConfidenceGuessedRecipient;
+  }
+
+  bool _canSubmitFor(EmailReviewMode mode) {
+    return !_busy &&
+        !_recipientMissing &&
+        (!_requiresLowConfidenceSendConfirmationFor(mode) ||
+            _lowConfidenceAccepted);
+  }
 
   String get _reviewTitle {
     if (_draftId != null) {
@@ -167,25 +218,54 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
     return 'This saves a draft to your Gmail. Nothing is sent — you finish and send it from Gmail.';
   }
 
-  String get _primaryActionLabel {
-    if (!_isDraftMode) return 'Send email';
-    return 'Save to Gmail drafts';
+  bool get _recipientWasEdited =>
+      _recipientCtrl.text.trim() != widget.initialRecipient.trim();
+
+  bool get _shouldLearnRecipient {
+    final resolution = _effectiveResolution;
+    return _recipientWasEdited ||
+        _lowConfidenceAccepted ||
+        resolution.confidence == RecipientConfidence.confirmed ||
+        resolution.confidence == RecipientConfidence.high;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _recipientCtrl.addListener(_handleRecipientChanged);
+  }
+
+  void _handleRecipientChanged() {
+    if (!mounted) return;
+    setState(() {
+      _lowConfidenceAccepted = false;
+      if (_error == 'Add a recipient address.') _error = null;
+    });
   }
 
   @override
   void dispose() {
+    _recipientCtrl.removeListener(_handleRecipientChanged);
     _recipientCtrl.dispose();
     _subjectCtrl.dispose();
     _bodyCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _submit() async {
+  Future<void> _submit(EmailReviewMode mode) async {
     final recipient = _recipientCtrl.text.trim();
     final subject = _subjectCtrl.text.trim();
     final body = _bodyCtrl.text.trim();
     if (recipient.isEmpty) {
       setState(() => _error = 'Add a recipient address.');
+      return;
+    }
+    if (_requiresLowConfidenceSendConfirmationFor(mode) &&
+        !_lowConfidenceAccepted) {
+      setState(
+        () => _error =
+            'Confirm this guessed recipient or replace it before sending.',
+      );
       return;
     }
     if (subject.isEmpty || body.isEmpty) {
@@ -194,13 +274,14 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
     }
 
     setState(() {
+      _mode = mode;
       _busy = true;
       _error = null;
     });
     FocusScope.of(context).unfocus();
 
     try {
-      if (_isDraftMode) {
+      if (mode == EmailReviewMode.draft) {
         await _createDraft(recipient: recipient, subject: subject, body: body);
       } else {
         await _sendEmail(recipient: recipient, subject: subject, body: body);
@@ -219,14 +300,18 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
     required String subject,
     required String body,
   }) async {
+    final resolution = _effectiveResolution;
     final draftId = await EmailSendService.instance.createDraft(
       to: recipient,
       subject: subject,
       body: body,
       attachments: widget.attachments,
-      contactDomain: widget.contactDomain,
+      contactDomain: resolution.domain.isNotEmpty
+          ? resolution.domain
+          : widget.contactDomain,
       company: widget.company,
       uid: FirebaseAuth.instance.currentUser?.uid,
+      learnRecipient: _shouldLearnRecipient,
     );
 
     if (!mounted) return;
@@ -244,6 +329,7 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
     required String subject,
     required String body,
   }) async {
+    final resolution = _effectiveResolution;
     final service = EmailSendService.instance;
     // Minting the token here is what makes this the *only* legitimate send
     // path — the agent has no way to produce one.
@@ -256,7 +342,9 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
       uid: FirebaseAuth.instance.currentUser?.uid,
       applicationId: widget.applicationId,
       attachments: widget.attachments,
-      contactDomain: widget.contactDomain,
+      contactDomain: resolution.domain.isNotEmpty
+          ? resolution.domain
+          : widget.contactDomain,
       company: widget.company,
     );
     if (!mounted) return;
@@ -281,6 +369,10 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
   Widget build(BuildContext context) {
     final brand = context.brand;
     final viewport = MediaQuery.of(context);
+    final resolution = _effectiveResolution;
+    final warning = _recipientWarning(resolution);
+    final showLowConfidenceCheckbox =
+        _isLowConfidenceGuessedRecipient && _draftId == null;
 
     return Padding(
       padding: EdgeInsets.only(bottom: viewport.viewInsets.bottom),
@@ -331,7 +423,13 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
                 ),
               ),
               const SizedBox(height: 18),
-              const _FieldLabel('TO'),
+              Row(
+                children: [
+                  const _FieldLabel('TO'),
+                  const SizedBox(width: 8),
+                  Flexible(child: _RecipientBadge(resolution: resolution)),
+                ],
+              ),
               const SizedBox(height: 8),
               _EditableField(
                 controller: _recipientCtrl,
@@ -339,6 +437,22 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
                 enabled: !_busy && _draftId == null,
                 keyboardType: TextInputType.emailAddress,
               ),
+              if (warning != null) ...[
+                const SizedBox(height: 8),
+                _RecipientWarning(message: warning),
+              ],
+              if (showLowConfidenceCheckbox) ...[
+                const SizedBox(height: 8),
+                _RecipientConfirmationCheckbox(
+                  value: _lowConfidenceAccepted,
+                  onChanged: _busy
+                      ? null
+                      : (value) => setState(() {
+                          _lowConfidenceAccepted = value ?? false;
+                          _error = null;
+                        }),
+                ),
+              ],
               const SizedBox(height: 14),
               const _FieldLabel('SUBJECT'),
               const SizedBox(height: 8),
@@ -375,12 +489,11 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
                 const _FieldLabel('DELIVERY'),
                 const SizedBox(height: 8),
                 _ModeToggle(
-                  mode: _mode,
                   enabled: !_busy,
-                  onChanged: (m) => setState(() {
-                    _mode = m;
-                    _error = null;
-                  }),
+                  canSaveDraft: _canSubmitFor(EmailReviewMode.draft),
+                  canSendNow: _canSubmitFor(EmailReviewMode.send),
+                  onSaveDraft: () => _submit(EmailReviewMode.draft),
+                  onSendNow: () => _submit(EmailReviewMode.send),
                 ),
               ],
               if (_error != null) ...[
@@ -396,31 +509,174 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
                   onTap: () => Navigator.of(context).pop(
                     EmailReviewResult(draftCreated: true, draftId: _draftId),
                   ),
-                )
-              else
-                Row(
-                  children: [
-                    Expanded(
-                      child: _CancelButton(
-                        onTap: _busy ? null : () => Navigator.of(context).pop(),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 2,
-                      child: _PrimaryButton(
-                        label: _primaryActionLabel,
-                        icon: _isDraftMode
-                            ? Icons.drafts_rounded
-                            : Icons.send_rounded,
-                        busy: _busy,
-                        onTap: _busy ? null : _submit,
-                      ),
-                    ),
-                  ],
                 ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  String? _recipientWarning(RecipientResolution resolution) {
+    if (resolution.confidence == RecipientConfidence.none ||
+        resolution.source == RecipientSource.none ||
+        resolution.source == RecipientSource.applyLinkOnly) {
+      return 'No public inbox was found. Add or replace the recipient before sending.';
+    }
+    if (resolution.confidence == RecipientConfidence.low &&
+        resolution.source == RecipientSource.guessedPattern) {
+      return 'Syncra could not verify this inbox. Please confirm or replace it before sending.';
+    }
+    if (resolution.confidence == RecipientConfidence.medium) {
+      return resolution.reason.trim().isEmpty
+          ? 'Review this recipient before sending.'
+          : resolution.reason;
+    }
+    return null;
+  }
+}
+
+String? _domainFromEmail(String email) {
+  final at = email.lastIndexOf('@');
+  if (at < 0 || at == email.length - 1) return null;
+  final domain = email.substring(at + 1).trim().toLowerCase();
+  return domain.isEmpty ? null : domain;
+}
+
+class _RecipientBadge extends StatelessWidget {
+  const _RecipientBadge({required this.resolution});
+
+  final RecipientResolution resolution;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final color = switch (resolution.confidence) {
+      RecipientConfidence.confirmed ||
+      RecipientConfidence.high => brand.success,
+      RecipientConfidence.medium => brand.warning,
+      RecipientConfidence.low => brand.warning,
+      RecipientConfidence.none => brand.textSoft,
+    };
+    final icon = switch (resolution.source) {
+      RecipientSource.confirmedCache ||
+      RecipientSource.demoOverride => Icons.verified_rounded,
+      RecipientSource.officialCompanyWebsite ||
+      RecipientSource.publicCareersPage => Icons.public_rounded,
+      RecipientSource.guessedPattern => Icons.help_outline_rounded,
+      RecipientSource.applyLinkOnly ||
+      RecipientSource.none => Icons.mail_outline_rounded,
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: brand.isDark ? 0.18 : 0.12),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: color.withValues(alpha: 0.32)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              resolution.label,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecipientWarning extends StatelessWidget {
+  const _RecipientWarning({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: brand.warning.withValues(alpha: brand.isDark ? 0.16 : 0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: brand.warning.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline_rounded, size: 16, color: brand.warning),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                color: brand.ink,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecipientConfirmationCheckbox extends StatelessWidget {
+  const _RecipientConfirmationCheckbox({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final bool value;
+  final ValueChanged<bool?>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return InkWell(
+      onTap: onChanged == null ? null : () => onChanged!(!value),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: Checkbox(
+                value: value,
+                onChanged: onChanged,
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'I confirmed this guessed inbox is the right recipient.',
+                style: TextStyle(
+                  color: brand.ink,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -452,48 +708,41 @@ class _FieldLabel extends StatelessWidget {
 /// while a send/draft is in flight.
 class _ModeToggle extends StatelessWidget {
   const _ModeToggle({
-    required this.mode,
     required this.enabled,
-    required this.onChanged,
+    required this.canSaveDraft,
+    required this.canSendNow,
+    required this.onSaveDraft,
+    required this.onSendNow,
   });
 
-  final EmailReviewMode mode;
   final bool enabled;
-  final ValueChanged<EmailReviewMode> onChanged;
+  final bool canSaveDraft;
+  final bool canSendNow;
+  final VoidCallback onSaveDraft;
+  final VoidCallback onSendNow;
 
   @override
   Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: brand.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: brand.border),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _ModeSegment(
-              label: 'Save as draft',
-              icon: Icons.drafts_rounded,
-              selected: mode == EmailReviewMode.draft,
-              enabled: enabled,
-              onTap: () => onChanged(EmailReviewMode.draft),
-            ),
+    return Row(
+      children: [
+        Expanded(
+          child: _PrimaryButton(
+            label: 'Save as draft',
+            icon: Icons.drafts_rounded,
+            busy: false,
+            onTap: enabled && canSaveDraft ? onSaveDraft : null,
           ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: _ModeSegment(
-              label: 'Send now',
-              icon: Icons.send_rounded,
-              selected: mode == EmailReviewMode.send,
-              enabled: enabled,
-              onTap: () => onChanged(EmailReviewMode.send),
-            ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _PrimaryButton(
+            label: 'Send now',
+            icon: Icons.send_rounded,
+            busy: false,
+            onTap: enabled && canSendNow ? onSendNow : null,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -689,41 +938,6 @@ class _ErrorBanner extends StatelessWidget {
   }
 }
 
-class _CancelButton extends StatelessWidget {
-  const _CancelButton({required this.onTap});
-
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    return Material(
-      color: brand.surface,
-      borderRadius: BorderRadius.circular(99),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(99),
-        child: Container(
-          height: 48,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(99),
-            border: Border.all(color: brand.border),
-          ),
-          child: Text(
-            'Cancel',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: brand.ink,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _PrimaryButton extends StatelessWidget {
   const _PrimaryButton({
     required this.label,
@@ -740,8 +954,10 @@ class _PrimaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
+    final enabled = onTap != null;
+    final fg = enabled ? brand.inkInverse : brand.textSoft;
     return Material(
-      color: brand.ink,
+      color: enabled ? brand.ink : brand.surfaceMuted,
       borderRadius: BorderRadius.circular(99),
       child: InkWell(
         onTap: onTap,
@@ -761,14 +977,14 @@ class _PrimaryButton extends StatelessWidget {
               : Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(icon, size: 16, color: brand.inkInverse),
+                    Icon(icon, size: 16, color: fg),
                     const SizedBox(width: 8),
                     Text(
                       label,
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
-                        color: brand.inkInverse,
+                        color: fg,
                       ),
                     ),
                   ],

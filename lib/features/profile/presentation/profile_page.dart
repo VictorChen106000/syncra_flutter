@@ -1377,7 +1377,7 @@ class _BoundedAutoApplySectionState
     _save(
       settings.copyWith(autoSendOutreach: next),
       next
-          ? 'Auto-send on — low-risk agent drafts send automatically; risky jobs still wait for review.'
+          ? 'Auto-send on — only low-risk jobs with confirmed recipients can send automatically.'
           : 'Auto-send off — agent drafts wait for your review.',
     );
   }

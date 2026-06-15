@@ -8,10 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Backed by `shared_preferences` so toggles survive hot restarts.
 @immutable
 class DevFlags {
-  const DevFlags({
-    this.showOnboarding = false,
-    this.showMorningBrief = false,
-  });
+  const DevFlags({this.showOnboarding = false, this.showMorningBrief = false});
 
   /// When ON, the router force-routes the user to onboarding regardless of
   /// whether their profile already has a role. The page's submit handler
@@ -23,10 +20,7 @@ class DevFlags {
   /// auto-clears this flag.
   final bool showMorningBrief;
 
-  DevFlags copyWith({
-    bool? showOnboarding,
-    bool? showMorningBrief,
-  }) {
+  DevFlags copyWith({bool? showOnboarding, bool? showMorningBrief}) {
     return DevFlags(
       showOnboarding: showOnboarding ?? this.showOnboarding,
       showMorningBrief: showMorningBrief ?? this.showMorningBrief,

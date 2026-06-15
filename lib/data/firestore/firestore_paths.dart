@@ -24,7 +24,7 @@ class FirestorePaths {
       user(uid).collection('conversations');
 
   CollectionReference<Map<String, dynamic>> learnedFacts(String uid) =>
-    user(uid).collection('learned_facts');
+      user(uid).collection('learned_facts');
 
   CollectionReference<Map<String, dynamic>> jobs() => _db.collection('jobs');
 

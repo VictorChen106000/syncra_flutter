@@ -102,9 +102,7 @@ class AppTheme {
           fontWeight: FontWeight.w600,
         ),
         actionTextColor: brand.accent,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         elevation: 4,
       ),
       dividerTheme: DividerThemeData(

@@ -107,15 +107,15 @@ class _MorningBriefPageState extends ConsumerState<MorningBriefPage> {
               ),
               const Spacer(),
               Text(
-                '${AppStrings.goodMorning}\n$firstName.',
-                style: GoogleFonts.inter(
-                  color: _softInk,
-                  fontSize: 42,
-                  fontWeight: FontWeight.w900,
-                  height: 1.08,
-                  letterSpacing: -1.1,
-                ),
-              )
+                    '${AppStrings.goodMorning}\n$firstName.',
+                    style: GoogleFonts.inter(
+                      color: _softInk,
+                      fontSize: 42,
+                      fontWeight: FontWeight.w900,
+                      height: 1.08,
+                      letterSpacing: -1.1,
+                    ),
+                  )
                   .animate()
                   .fadeIn(duration: 500.ms)
                   .moveY(begin: 12, end: 0, curve: Curves.easeOutCubic),
@@ -123,15 +123,15 @@ class _MorningBriefPageState extends ConsumerState<MorningBriefPage> {
               // The autonomy line — this sentence is the pitch: the agent kept
               // working while the user was away. Everything below is the proof.
               Text(
-                AppStrings.briefAutonomySubline,
-                style: TextStyle(
-                  color: _softInk.withValues(alpha: 0.66),
-                  fontSize: 15.5,
-                  height: 1.5,
-                  fontWeight: FontWeight.w500,
-                  letterSpacing: -0.1,
-                ),
-              )
+                    AppStrings.briefAutonomySubline,
+                    style: TextStyle(
+                      color: _softInk.withValues(alpha: 0.66),
+                      fontSize: 15.5,
+                      height: 1.5,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: -0.1,
+                    ),
+                  )
                   .animate(delay: 200.ms)
                   .fadeIn(duration: 460.ms)
                   .moveY(begin: 8, end: 0, curve: Curves.easeOutCubic),
@@ -141,9 +141,11 @@ class _MorningBriefPageState extends ConsumerState<MorningBriefPage> {
               _BriefStatusLine(agent: agent),
               const SizedBox(height: 16),
               _ContinueButton(
-                  onTap: _continue,
-                  ready: agent.hasPipeline || agent.status == AgentBriefStatus.done,
-                )
+                    onTap: _continue,
+                    ready:
+                        agent.hasPipeline ||
+                        agent.status == AgentBriefStatus.done,
+                  )
                   .animate(delay: 400.ms)
                   .fadeIn(duration: 360.ms)
                   .moveY(begin: 10, end: 0, curve: Curves.easeOutCubic),
@@ -243,11 +245,7 @@ class _EmptyBriefBody extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(
-          Icons.info_outline_rounded,
-          color: brand.accent,
-          size: 18,
-        ),
+        Icon(Icons.info_outline_rounded, color: brand.accent, size: 18),
         const SizedBox(width: 10),
         Expanded(
           child: Text(
@@ -287,15 +285,15 @@ class _MatchBody extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Text(
-          job.matchLabel.toUpperCase(),
-          style: GoogleFonts.inter(
-            color: brand.accent,
-            fontSize: 44,
-            fontWeight: FontWeight.w900,
-            height: 1.0,
-            letterSpacing: -0.8,
-          ),
-        )
+              job.matchLabel.toUpperCase(),
+              style: GoogleFonts.inter(
+                color: brand.accent,
+                fontSize: 44,
+                fontWeight: FontWeight.w900,
+                height: 1.0,
+                letterSpacing: -0.8,
+              ),
+            )
             .animate(delay: 200.ms)
             .scale(
               begin: const Offset(0.92, 0.92),
@@ -344,11 +342,7 @@ class _ErrorBody extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(
-          Icons.error_outline_rounded,
-          color: brand.danger,
-          size: 18,
-        ),
+        Icon(Icons.error_outline_rounded, color: brand.danger, size: 18),
         const SizedBox(width: 10),
         Expanded(
           child: Column(

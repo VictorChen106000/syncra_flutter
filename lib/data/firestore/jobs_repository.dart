@@ -8,7 +8,7 @@ import 'firestore_paths.dart';
 /// the pipeline-card agent fields.
 class JobsRepository {
   JobsRepository({FirebaseFirestore? db})
-      : _paths = FirestorePaths(db ?? FirebaseFirestore.instance);
+    : _paths = FirestorePaths(db ?? FirebaseFirestore.instance);
 
   final FirestorePaths _paths;
 

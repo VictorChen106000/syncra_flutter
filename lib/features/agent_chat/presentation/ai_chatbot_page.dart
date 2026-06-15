@@ -159,7 +159,9 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
     // doesn't lead with a blank gap. Streaming turns legitimately have no
     // blocks yet, so those are kept.
     final transcriptForList = state.items
-        .where((it) => it is! AgentTurn || it.isStreaming || it.blocks.isNotEmpty)
+        .where(
+          (it) => it is! AgentTurn || it.isStreaming || it.blocks.isNotEmpty,
+        )
         .toList();
 
     final media = MediaQuery.of(context);
@@ -310,7 +312,6 @@ class _AiChatbotPageState extends ConsumerState<AiChatbotPage> {
     }
     return null;
   }
-
 }
 
 /// Floating top chrome over the full-bleed transcript: a back button, history
@@ -376,10 +377,7 @@ class _FadeScrim extends StatelessWidget {
         gradient: LinearGradient(
           begin: top ? Alignment.topCenter : Alignment.bottomCenter,
           end: top ? Alignment.bottomCenter : Alignment.topCenter,
-          colors: [
-            brand.surface,
-            brand.surface.withValues(alpha: 0.0),
-          ],
+          colors: [brand.surface, brand.surface.withValues(alpha: 0.0)],
           stops: const [0.55, 1.0],
         ),
       ),
@@ -514,8 +512,7 @@ class _ThreadHero extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                 decoration: BoxDecoration(
                   color: brand.accent,
                   borderRadius: BorderRadius.circular(99),
@@ -614,24 +611,25 @@ class _EmptyState extends StatelessWidget {
     return ListView(
       padding: EdgeInsets.fromLTRB(24, topInset + 12, 24, bottomInset + 12),
       children: [
-        Center(
-          child: const GooeyOrb(size: 116),
-        )
+        Center(child: const GooeyOrb(size: 116))
             .animate()
             .fadeIn(duration: 380.ms)
             .scale(begin: const Offset(0.85, 0.85), end: const Offset(1, 1)),
         const SizedBox(height: 22),
         Text(
-          'How can I help today?',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 26,
-            fontWeight: FontWeight.w800,
-            color: brand.ink,
-            letterSpacing: -0.6,
-            height: 1.1,
-          ),
-        ).animate(delay: 80.ms).fadeIn(duration: 380.ms).moveY(
+              'How can I help today?',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
+                color: brand.ink,
+                letterSpacing: -0.6,
+                height: 1.1,
+              ),
+            )
+            .animate(delay: 80.ms)
+            .fadeIn(duration: 380.ms)
+            .moveY(
               begin: 8,
               end: 0,
               duration: 380.ms,
@@ -651,10 +649,10 @@ class _EmptyState extends StatelessWidget {
         const SizedBox(height: 36),
         for (var i = 0; i < prompts.length; i++) ...[
           _PromptCard(
-            text: prompts[i],
-            icon: _promptIcons[i % _promptIcons.length],
-            onTap: () => onPromptTap(prompts[i]),
-          )
+                text: prompts[i],
+                icon: _promptIcons[i % _promptIcons.length],
+                onTap: () => onPromptTap(prompts[i]),
+              )
               .animate(delay: (220 + i * 70).ms)
               .fadeIn(duration: 360.ms)
               .moveY(

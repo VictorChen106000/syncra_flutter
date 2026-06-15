@@ -489,7 +489,7 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
     final settings =
         ref.read(userProfileProvider)?.autoApplySettings ??
         const AutoApplySettings();
-    if (!settings.autoSendOutreach) return;
+    if (!settings.enabled || !settings.autoSendOutreach) return;
     final jobId = block.jobId;
     if (jobId == null || jobId.isEmpty) return;
 
@@ -500,6 +500,7 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
       if (!shouldAutoSendOutreach(
         settings: settings,
         trust: evaluateJobTrust(job),
+        recipient: block.recipientResolution,
       )) {
         return; // Medium/high risk → manual review.
       }
@@ -511,8 +512,10 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
         to: block.recipient,
         subject: block.subject,
         body: block.body,
+        recipientResolution: block.recipientResolution,
         uid: FirebaseAuth.instance.currentUser?.uid,
         attachments: attachments,
+        contactDomain: block.recipientResolution.domain,
         company: job.company,
       );
       if (!mounted) return;
@@ -543,6 +546,8 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
       body: block.body,
       mode: EmailReviewMode.send,
       attachments: attachments,
+      contactDomain: block.recipientResolution.domain,
+      recipientResolution: block.recipientResolution,
     );
     if (!context.mounted) return;
     final notifier = ref.read(agentChatProvider.notifier);
@@ -622,11 +627,7 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
                   border: Border.all(color: brand.border),
                 ),
                 alignment: Alignment.center,
-                child: Icon(
-                  Icons.drafts_rounded,
-                  color: brand.ink,
-                  size: 17,
-                ),
+                child: Icon(Icons.drafts_rounded, color: brand.ink, size: 17),
               ),
               const SizedBox(width: 10),
               Expanded(

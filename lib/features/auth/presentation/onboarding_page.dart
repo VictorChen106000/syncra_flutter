@@ -845,9 +845,7 @@ class _GmailPhaseState extends ConsumerState<_GmailPhase> {
       // Persist the connection so it sticks past onboarding — the dashboard and
       // the Profile › Connections toggle read this flag. Fire-and-forget: the
       // notifier flips its in-memory state synchronously.
-      unawaited(
-        ref.read(userProfileProvider.notifier).setGmailConnected(true),
-      );
+      unawaited(ref.read(userProfileProvider.notifier).setGmailConnected(true));
     }
     widget.onDone();
   }
@@ -1057,7 +1055,11 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     // Step 2 — read the user's own context (the goal they typed on the prompt
     // beat). It's already in hand, so this step is short; the goal is rendered
     // as a chip under the step so the read is *visible*.
-    _set(_contextStep, _StepStatus.active, detail: 'Taking in what you told me…');
+    _set(
+      _contextStep,
+      _StepStatus.active,
+      detail: 'Taking in what you told me…',
+    );
     await Future<void>.delayed(const Duration(milliseconds: 750));
     _set(
       _contextStep,
@@ -1374,7 +1376,9 @@ class _ProcessStep extends StatelessWidget {
             bottom: 0,
             left: 0,
             width: _railWidth,
-            child: Center(child: _Connector(done: done, active: active)),
+            child: Center(
+              child: _Connector(done: done, active: active),
+            ),
           ),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,

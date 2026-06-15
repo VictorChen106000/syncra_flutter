@@ -27,7 +27,7 @@ class UserRepository {
       'avatar_url': firebaseUser.photoURL,
       'role': null,
       'is_agent_active': true,
-            'gmail_connected': false,
+      'gmail_connected': false,
       'has_completed_onboarding': false,
       'auto_apply': const AutoApplySettings().toMap(),
       'created_at': FieldValue.serverTimestamp(),
@@ -48,7 +48,7 @@ class UserRepository {
   /// Partial update of `users/{uid}`. Pass only the fields you want to
   /// change; the others remain untouched (Firestore `update` semantics,
   /// not `set`).
-    Future<void> update(
+  Future<void> update(
     String uid, {
     String? role,
     bool? isAgentActive,
@@ -65,7 +65,7 @@ class UserRepository {
       patch['has_completed_onboarding'] = hasCompletedOnboarding;
     }
     if (resumeFit != null) patch['resume_fit'] = resumeFit.toJson();
-        if (autoApplySettings != null) {
+    if (autoApplySettings != null) {
       patch['auto_apply'] = autoApplySettings.toMap();
     }
     if (patch.isEmpty) return;
@@ -157,7 +157,7 @@ class UserRepository {
       'gmail_connected': false,
       'has_completed_onboarding': false,
       'resume_fit': FieldValue.delete(),
-            'auto_apply': const AutoApplySettings().toMap(),
+      'auto_apply': const AutoApplySettings().toMap(),
     });
   }
 

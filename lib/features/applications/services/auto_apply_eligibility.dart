@@ -1,4 +1,5 @@
 import '../../../data/models/tracked_application.dart';
+import '../../email/models/recipient_resolution.dart';
 import '../../auth/models/user_profile.dart';
 import '../../jobs/services/job_trust_guard.dart';
 import 'application_bundle_summary.dart';
@@ -13,8 +14,12 @@ import 'application_bundle_summary.dart';
 bool shouldAutoSendOutreach({
   required AutoApplySettings settings,
   required JobTrustGuardResult trust,
+  required RecipientResolution recipient,
 }) {
-  return settings.autoSendOutreach && trust.riskLevel == 'low';
+  return settings.enabled &&
+      settings.autoSendOutreach &&
+      trust.riskLevel == 'low' &&
+      recipient.isAutoSendEligible;
 }
 
 class AutoApplyEligibilityResult {

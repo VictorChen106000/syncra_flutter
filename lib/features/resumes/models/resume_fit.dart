@@ -8,10 +8,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// Produced during onboarding via the `propose_fit_chart` tool; refreshed
 /// whenever the user runs onboarding again with a different resume.
 class ResumeFit {
-  const ResumeFit({
-    required this.segments,
-    required this.generatedAt,
-  });
+  const ResumeFit({required this.segments, required this.generatedAt});
 
   /// Biggest-first list of category slices. Normalised so percents sum to
   /// ~100 — the chart renderer doesn't need to defend against drift.
@@ -22,9 +19,9 @@ class ResumeFit {
   final DateTime generatedAt;
 
   Map<String, dynamic> toJson() => {
-        'segments': segments.map((s) => s.toJson()).toList(),
-        'generated_at': Timestamp.fromDate(generatedAt),
-      };
+    'segments': segments.map((s) => s.toJson()).toList(),
+    'generated_at': Timestamp.fromDate(generatedAt),
+  };
 
   factory ResumeFit.fromJson(Map<String, dynamic> json) {
     final rawSegments = (json['segments'] as List?) ?? const [];
@@ -55,10 +52,10 @@ class ResumeFitSegment {
   final String? rationale;
 
   Map<String, dynamic> toJson() => {
-        'label': label,
-        'percent': percent,
-        if (rationale != null && rationale!.isNotEmpty) 'rationale': rationale,
-      };
+    'label': label,
+    'percent': percent,
+    if (rationale != null && rationale!.isNotEmpty) 'rationale': rationale,
+  };
 
   factory ResumeFitSegment.fromJson(Map<String, dynamic> json) =>
       ResumeFitSegment(

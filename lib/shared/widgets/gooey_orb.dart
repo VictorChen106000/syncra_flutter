@@ -102,7 +102,7 @@ class _GooeyOrbState extends State<GooeyOrb> with TickerProviderStateMixin {
               // wobble; while dragging, follow the finger directly.
               final pull = _spring.value > 0
                   ? _releasePull *
-                      (1 - Curves.elasticOut.transform(_spring.value))
+                        (1 - Curves.elasticOut.transform(_spring.value))
                   : _pull;
               return CustomPaint(
                 painter: _GooeyBlobPainter(
@@ -150,7 +150,8 @@ class _GooeyBlobPainter extends CustomPainter {
     const samples = 72;
     for (var i = 0; i <= samples; i++) {
       final theta = (i / samples) * 2 * math.pi;
-      final wobble = 1 +
+      final wobble =
+          1 +
           0.09 * math.sin(3 * theta + p) +
           0.07 * math.sin(5 * theta - 2 * p + 1.7) +
           0.05 * math.sin(2 * theta + 3 * p + 0.6);

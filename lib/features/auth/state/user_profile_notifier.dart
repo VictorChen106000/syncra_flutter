@@ -14,7 +14,7 @@ import 'auth_notifier.dart';
 /// sign-out, account swap). Guests get a `null` profile.
 class UserProfileNotifier extends Notifier<UserProfile?> {
   UserProfileNotifier({UserRepository? repository})
-      : _repository = repository ?? UserRepository();
+    : _repository = repository ?? UserRepository();
 
   final UserRepository _repository;
 
@@ -49,14 +49,16 @@ class UserProfileNotifier extends Notifier<UserProfile?> {
     }
 
     _boundUid = uid;
-    _subscription = _repository.watchProfile(uid).listen(
-      (profile) {
-        state = profile;
-      },
-      onError: (Object e) {
-        debugPrint('user profile stream error: $e');
-      },
-    );
+    _subscription = _repository
+        .watchProfile(uid)
+        .listen(
+          (profile) {
+            state = profile;
+          },
+          onError: (Object e) {
+            debugPrint('user profile stream error: $e');
+          },
+        );
   }
 
   Future<void> setRole(String role) async {
@@ -93,7 +95,7 @@ class UserProfileNotifier extends Notifier<UserProfile?> {
     }
   }
 
-    Future<void> setAutoApplySettings(AutoApplySettings settings) async {
+  Future<void> setAutoApplySettings(AutoApplySettings settings) async {
     final uid = _boundUid;
     if (uid == null) return;
     state = state?.copyWith(autoApplySettings: settings);
@@ -175,5 +177,6 @@ class UserProfileNotifier extends Notifier<UserProfile?> {
   }
 }
 
-final userProfileProvider =
-    NotifierProvider<UserProfileNotifier, UserProfile?>(UserProfileNotifier.new);
+final userProfileProvider = NotifierProvider<UserProfileNotifier, UserProfile?>(
+  UserProfileNotifier.new,
+);
