@@ -41,24 +41,28 @@ class ApplicationsState {
 
   /// Items the filter accepts, already sorted newest-first by [TrackedApplication.sortAt].
   List<TrackedApplication> get filtered {
+    final uniqueItems = dedupeOpenDraftApplicationsByJobId(items);
     final base = switch (filter) {
-      ApplicationsFilter.all => items,
+      ApplicationsFilter.all => uniqueItems,
       ApplicationsFilter.bundleReview =>
-        items.where((a) => evaluateApplicationBundle(a).hasBlocker).toList(),
+        uniqueItems
+            .where((a) => evaluateApplicationBundle(a).hasBlocker)
+            .toList(),
       ApplicationsFilter.trustReview =>
-        items.where((a) => a.needsTrustReview).toList(),
+        uniqueItems.where((a) => a.needsTrustReview).toList(),
       ApplicationsFilter.drafts =>
-        items.where((a) => a.phase == ApplicationPhase.draft).toList(),
+        uniqueItems.where((a) => a.phase == ApplicationPhase.draft).toList(),
       ApplicationsFilter.sent =>
-        items.where((a) => a.phase == ApplicationPhase.sent).toList(),
+        uniqueItems.where((a) => a.phase == ApplicationPhase.sent).toList(),
       ApplicationsFilter.replied =>
-        items.where((a) => a.phase == ApplicationPhase.replied).toList(),
+        uniqueItems.where((a) => a.phase == ApplicationPhase.replied).toList(),
     };
     return List.of(base)..sort((a, b) => b.sortAt.compareTo(a.sortAt));
   }
 
-  int countOf(ApplicationPhase phase) =>
-      items.where((a) => a.phase == phase).length;
+  int countOf(ApplicationPhase phase) => dedupeOpenDraftApplicationsByJobId(
+    items,
+  ).where((a) => a.phase == phase).length;
 
   ApplicationsState copyWith({
     List<TrackedApplication>? items,

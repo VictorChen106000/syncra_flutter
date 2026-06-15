@@ -195,11 +195,11 @@ class JobsNotifier extends Notifier<JobsState> {
     final user = ref.read(authProvider).appUser;
     final uid = user?.uid;
     if (uid == null || user!.isGuest) return;
-    final card = state.cards.where((c) => c.job.id == id).firstOrNull;
-    if (card == null) return;
+    final hasCard = state.cards.any((c) => c.job.id == id);
+    if (!hasCard) return;
 
     try {
-      await _repository.dismiss(uid, card.id);
+      await _repository.dismissByJobId(uid: uid, jobId: id);
     } catch (e) {
       debugPrint('dismiss card failed: $e');
     }
@@ -240,7 +240,7 @@ class JobsNotifier extends Notifier<JobsState> {
     try {
       final trust = evaluateJobTrust(job);
 
-      await _applications.createApplication(
+      await _applications.createOrReuseDraftApplication(
         uid: uid,
         job: job,
         resumeId: resumeId,
@@ -274,7 +274,7 @@ class JobsNotifier extends Notifier<JobsState> {
     try {
       final trust = _trustForCard(card);
 
-      await _applications.createApplication(
+      await _applications.createOrReuseDraftApplication(
         uid: uid,
         job: card.job,
         resumeId: resumeId,
@@ -284,7 +284,7 @@ class JobsNotifier extends Notifier<JobsState> {
         trustSignals: trust.signals,
         trustSafeNextStep: trust.safeNextStep,
       );
-      await _repository.approve(uid, card.id);
+      await _repository.approveByJobId(uid: uid, jobId: jobId);
       state = state.copyWith(
         lastMessage: '${card.job.company} moved to Applications',
       );
@@ -306,7 +306,7 @@ class JobsNotifier extends Notifier<JobsState> {
     try {
       final trust = _trustForCard(card);
 
-      final appId = await _applications.createApplication(
+      final appId = await _applications.createOrReuseDraftApplication(
         uid: uid,
         job: card.job,
         trustRiskLevel: trust.riskLevel,
@@ -319,7 +319,7 @@ class JobsNotifier extends Notifier<JobsState> {
       // this draft and intends to send it" — flip sent_at immediately. For
       // the v1 demo we don't actually call send_email here.
       await _applications.markSent(uid, appId);
-      await _repository.approve(uid, card.id);
+      await _repository.approveByJobId(uid: uid, jobId: jobId);
       state = state.copyWith(
         lastMessage: '${card.job.company} added to tracker',
       );

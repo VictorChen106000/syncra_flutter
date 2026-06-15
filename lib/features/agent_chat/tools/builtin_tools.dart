@@ -1682,7 +1682,7 @@ void _registerSaveToTracker(
 
       final trust = evaluateJobTrust(job);
 
-      final appId = await applicationsRepo.createApplication(
+      final appId = await applicationsRepo.createOrReuseDraftApplication(
         uid: uid,
         job: job,
         resumeId: args['resume_id'] as String?,

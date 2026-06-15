@@ -213,6 +213,19 @@ class PipelineAutopilotNotifier extends Notifier<PipelineAutopilotState> {
     required String sourceResumeId,
   }) async {
     final job = card.job;
+    final existingDraft = await _applications.findOpenDraftByJobId(
+      uid: uid,
+      jobId: job.id,
+    );
+    if (existingDraft != null) {
+      await _pipeline.advanceStage(
+        uid: uid,
+        jobId: job.id,
+        stage: PipelineStage.drafted,
+      );
+      return;
+    }
+
     final resumeJson = (await _orchestrator.readResumeJson(
       uid: uid,
       resumeId: sourceResumeId,
@@ -264,7 +277,7 @@ class PipelineAutopilotNotifier extends Notifier<PipelineAutopilotState> {
 
     if (subject.isEmpty || body.isEmpty) return;
 
-    final appId = await _applications.createApplication(
+    final appId = await _applications.createOrReuseDraftApplication(
       uid: uid,
       job: job,
       resumeId: attachmentResumeId,

@@ -132,6 +132,47 @@ void main() {
       ]);
     });
 
+    test('draft count and filters dedupe duplicate open drafts by job id', () {
+      final older = _app(
+        id: 'older',
+        jobId: 'job_shared',
+        draftedAt: DateTime(2026, 6, 5, 9),
+      );
+      final newer = _app(
+        id: 'newer',
+        jobId: 'job_shared',
+        draftedAt: DateTime(2026, 6, 5, 10),
+      );
+
+      final state = ApplicationsState(
+        items: [older, newer],
+        filter: ApplicationsFilter.drafts,
+      );
+
+      expect(state.countOf(ApplicationPhase.draft), 1);
+      expect(state.filtered.map((app) => app.id), ['newer']);
+    });
+
+    test('sent applications are not collapsed with open drafts', () {
+      final draft = _app(
+        id: 'draft',
+        jobId: 'job_shared',
+        draftedAt: DateTime(2026, 6, 5, 10),
+      );
+      final sent = _app(
+        id: 'sent',
+        jobId: 'job_shared',
+        draftedAt: DateTime(2026, 6, 5, 9),
+        sentAt: DateTime(2026, 6, 5, 11),
+      );
+
+      final state = ApplicationsState(items: [draft, sent]);
+
+      expect(state.countOf(ApplicationPhase.draft), 1);
+      expect(state.countOf(ApplicationPhase.sent), 1);
+      expect(state.filtered.map((app) => app.id), ['sent', 'draft']);
+    });
+
     test('trust review label is available for filter chips', () {
       expect(ApplicationsFilter.trustReview.label, 'Trust review');
     });
@@ -140,6 +181,7 @@ void main() {
 
 TrackedApplication _app({
   required String id,
+  String? jobId,
   String company = 'Acme',
   String? resumeId = 'resume_1',
   DateTime? draftedAt,
@@ -150,7 +192,7 @@ TrackedApplication _app({
   return TrackedApplication(
     id: id,
     resumeId: resumeId,
-    job: _job(id: 'job_$id', company: company),
+    job: _job(id: jobId ?? 'job_$id', company: company),
     draftedAt: draftedAt ?? DateTime(2026, 6, 5),
     sentAt: sentAt,
     gotReply: gotReply,

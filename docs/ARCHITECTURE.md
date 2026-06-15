@@ -259,6 +259,11 @@ or confirmation-required recipients never auto-send.
 | `trust_safe_next_step` | string | recommended verification step |
 | `trust_checked_at` | Timestamp? | null when unchecked |
 
+Open draft writes are idempotent by exact `job.id`: when `sent_at == null`,
+agent/manual/autopilot flows reuse the existing draft instead of creating a
+second open application. Legacy duplicate open drafts are deduped for tracker
+filters and counts by keeping the newest `drafted_at` record.
+
 **`users/{uid}/resumes/{resumeId}` — resume metadata**
 
 | Field | Type | Notes |
@@ -294,6 +299,8 @@ Important invariant:
 - `sent` and `replied` cards are handled work and must not appear in the active pipeline.
 - Advancing a card to `sent` or `replied` must also mark the card `status: approved`.
 - Legacy cards with `status: pending` but terminal stage `sent` or `replied` must still be hidden from the active pipeline.
+- Pipeline saves are idempotent by exact `job.id`: one unfinished pending card is reused and updated; legacy active duplicates are collapsed by keeping the highest-stage/newest card and marking the others approved.
+- Auto-draft/Autopilot skips a job that already has an open draft, advances its pipeline card to `drafted`, and does not auto-send that pre-existing draft.
 
 Do not remove or weaken this behavior without updating `test/pipeline_repository_test.dart`.
 

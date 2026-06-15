@@ -41,6 +41,59 @@ void main() {
     });
   });
 
+  group('pipeline card dedupe', () {
+    test('keeps one active card per job id', () {
+      final cards = [
+        _card(id: 'older', jobId: 'job_a', createdAt: DateTime(2026, 6, 6, 9)),
+        _card(id: 'newer', jobId: 'job_a', createdAt: DateTime(2026, 6, 6, 10)),
+        _card(id: 'other', jobId: 'job_b', createdAt: DateTime(2026, 6, 6, 11)),
+      ];
+
+      final deduped = dedupePipelineCardsByJobId(cards);
+
+      expect(deduped.map((card) => card.job.id), ['job_b', 'job_a']);
+      expect(deduped.where((card) => card.job.id == 'job_a'), hasLength(1));
+    });
+
+    test('keeps the highest stage for duplicate job ids', () {
+      final best = pickBestPipelineCardForJob([
+        _card(
+          id: 'newer_matched',
+          jobId: 'job_a',
+          stage: PipelineStage.matched,
+          createdAt: DateTime(2026, 6, 6, 12),
+        ),
+        _card(
+          id: 'older_drafted',
+          jobId: 'job_a',
+          stage: PipelineStage.drafted,
+          createdAt: DateTime(2026, 6, 6, 9),
+        ),
+      ]);
+
+      expect(best.id, 'older_drafted');
+    });
+
+    test('keeps the newest card when duplicate stages tie', () {
+      final best = pickBestPipelineCardForJob([
+        _card(
+          id: 'older',
+          jobId: 'job_a',
+          stage: PipelineStage.tailored,
+          createdAt: DateTime(2026, 6, 6, 9),
+        ),
+        _card(
+          id: 'newer',
+          jobId: 'job_a',
+          stage: PipelineStage.tailored,
+          createdAt: DateTime(2026, 6, 6, 10),
+        ),
+      ]);
+
+      expect(best.id, 'newer');
+    });
+  });
+
   group('pipeline stage patching', () {
     test('advances unfinished stages without approving the card', () {
       expect(
@@ -122,21 +175,24 @@ void main() {
 }
 
 PipelineCard _card({
+  String? id,
+  String jobId = 'job_pipeline_test',
   PipelineCardStatus status = PipelineCardStatus.pending,
   PipelineStage stage = PipelineStage.matched,
+  DateTime? createdAt,
 }) {
   return PipelineCard(
-    id: 'card_${status.name}_${stage.name}',
+    id: id ?? 'card_${status.name}_${stage.name}',
     status: status,
     stage: stage,
-    createdAt: DateTime(2026, 6, 6),
-    job: _job(),
+    createdAt: createdAt ?? DateTime(2026, 6, 6),
+    job: _job(id: jobId),
   );
 }
 
-Job _job() {
-  return const Job(
-    id: 'job_pipeline_test',
+Job _job({required String id}) {
+  return Job(
+    id: id,
     title: 'Frontend Engineer',
     company: 'Syncra Test Co',
     location: 'Remote',
