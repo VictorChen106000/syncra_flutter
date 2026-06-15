@@ -99,3 +99,6 @@ exports.jsearchProxy = onRequest(
     }
   }
 );
+
+exports.companyContactDiscovery =
+  require("./companyContactDiscovery").companyContactDiscovery;
