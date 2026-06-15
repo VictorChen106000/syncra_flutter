@@ -7,7 +7,9 @@ import '../../../data/firestore/jobs_repository.dart';
 import '../../../data/firestore/resumes_repository.dart';
 import '../../../data/models/job.dart';
 import '../../../shared/state/running_task_notifier.dart';
+import '../../auth/models/user_profile.dart';
 import '../../auth/state/auth_notifier.dart';
+import '../../auth/state/user_profile_notifier.dart';
 import '../../notifications/models/app_notification.dart';
 import '../../notifications/state/notifications_notifier.dart';
 import '../../jobs/state/jobs_notifier.dart';
@@ -24,6 +26,34 @@ import '../services/chat_history_repository.dart';
 import '../tools/builtin_tools.dart';
 import '../tools/tool_registry.dart';
 import 'dart:typed_data';
+
+/// Maps the user's autonomy dial to the system directive the agent reads each
+/// turn. Sent as a secondary system block (see [AgentService.setAutonomyDirective]).
+/// The irreversible send stays code-gated by the email confirmation token in
+/// every mode — Autopilot only changes who mints that token (the app, after an
+/// undo window) rather than removing the gate.
+String _autonomyDirectiveFor(AutonomyLevel level) => switch (level) {
+  AutonomyLevel.assist =>
+    'ACTIVE AUTONOMY MODE: Assist. After each step, STOP and call `ask_user` '
+        'with 2-3 next-step chips before doing the next step — even when the '
+        "user stated a multi-step goal. Do NOT chain steps. Don't tailor, "
+        'draft, or save without an explicit go-ahead for that step. Never call '
+        '`send_email`.',
+  AutonomyLevel.autoDraft =>
+    'ACTIVE AUTONOMY MODE: Auto-draft. Carry out the full stated goal in one '
+        'run (find -> match -> tailor -> draft) WITHOUT pausing to ask '
+        'permission between steps; narrate each decision in one short line '
+        'instead. Stop only at the two human gates handled by the app UI: the '
+        'user saves the tailored resume, then the user taps Send. Never call '
+        '`send_email` yourself.',
+  AutonomyLevel.autopilot =>
+    'ACTIVE AUTONOMY MODE: Autopilot. Carry out the full goal in one run '
+        '(find -> match -> tailor -> draft) without inter-step asks; narrate '
+        'decisions briefly. After you call `draft_email`, the app auto-sends '
+        'low-risk drafts after a short Undo window, so tell the user you will '
+        "send it automatically unless they tap Undo. Do NOT call `send_email` "
+        'yourself — the app performs the confirmed send.',
+};
 
 /// The active [AgentService] for the app — Claude via the tool-use loop.
 /// Requires an `ANTHROPIC_API_KEY`; without one the agent surfaces an error
@@ -751,6 +781,7 @@ Do not call send_email.
       },
     );
 
+    _syncAutonomyDirective();
     _activeSub = _service
         .runPrompt(prompt: clean, attachments: attachments)
         .listen(
@@ -758,6 +789,15 @@ Do not call send_email.
           onDone: _finishTurn,
           onError: (Object e) => _failActiveTurn('Something went wrong. $e'),
         );
+  }
+
+  /// Pushes the user's active autonomy level down to the agent service before a
+  /// turn runs, so the model advances exactly as far as the dial allows. Read
+  /// fresh each turn so a mid-session change in Profile takes effect at once.
+  void _syncAutonomyDirective() {
+    final level =
+        ref.read(userProfileProvider)?.autonomyLevel ?? AutonomyLevel.autoDraft;
+    _service.setAutonomyDirective(_autonomyDirectiveFor(level));
   }
 
   void _startContinuationPrompt(String prompt) {
@@ -772,6 +812,7 @@ Do not call send_email.
     state = state.copyWith(items: [...state.items, turn], isStreaming: true);
     _persistNow();
 
+    _syncAutonomyDirective();
     _activeSub = _service
         .runPrompt(prompt: clean, threaded: true)
         .listen(

@@ -6,36 +6,30 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/job.dart';
+import 'syncra_proxy.dart';
 
 /// Live job search via JSearch (RapidAPI).
 ///
 /// Ported from the backend's `app/jobs/sources.py`: fetch → normalize →
 /// dedupe → upsert into the global `jobs/` collection → return [Job]s.
 ///
-/// Reads `RAPIDAPI_KEY` from `--dart-define=RAPIDAPI_KEY=...`. When no key
-/// is configured [hasApiKey] is false and callers should fall back to the
-/// seeded `jobs/` collection so the demo still works offline.
-///
-/// Security note: in production this call belongs on a backend so the key
-/// never ships to the client. The client-side path is for the demo only.
+/// Requests go through the [SyncraProxy] Cloud Function, which holds the
+/// RapidAPI key server-side and authenticates the caller by Firebase ID token,
+/// so no key ships in the client. [hasApiKey] reports whether the real backend
+/// should be used (false only with `--dart-define=SYNCRA_USE_MOCKS=true`) so
+/// callers can fall back to the seeded `jobs/` collection offline.
 class JSearchService {
   JSearchService({
     String? apiKey,
-    String? host,
     http.Client? client,
     FirebaseFirestore? firestore,
   })  : _apiKey = apiKey ?? const String.fromEnvironment('RAPIDAPI_KEY'),
-        _host = (host != null && host.isNotEmpty)
-            ? host
-            : const String.fromEnvironment(
-                'JSEARCH_HOST',
-                defaultValue: 'jsearch.p.rapidapi.com',
-              ),
         _client = client ?? http.Client(),
         _db = firestore ?? FirebaseFirestore.instance;
 
+  /// Legacy direct key — never sent (the proxy injects the real key). Kept only
+  /// so a dart-define key still flips [hasApiKey].
   final String _apiKey;
-  final String _host;
   final http.Client _client;
   final FirebaseFirestore _db;
 
@@ -50,7 +44,7 @@ class JSearchService {
 
   final Map<String, _CacheEntry> _cache = {};
 
-  bool get hasApiKey => _apiKey.isNotEmpty;
+  bool get hasApiKey => SyncraProxy.enabled || _apiKey.isNotEmpty;
 
   /// Searches JSearch, upserts results into `jobs/`, and returns the [Job]s.
   ///
@@ -105,7 +99,7 @@ class JSearchService {
     // Location rides inside the query text ("... in Singapore") rather than
     // the `country` param so non-US searches work — a deliberate change
     // from the Python port, which hardcoded country=us.
-    final uri = Uri.https(_host, '/search', {
+    final uri = SyncraProxy.jsearch.replace(queryParameters: {
       'query': loc.isEmpty ? query : '$query in $loc',
       'page': '1',
       'num_pages': '1',
@@ -114,13 +108,8 @@ class JSearchService {
 
     final http.Response response;
     try {
-      response = await _client.get(
-        uri,
-        headers: {
-          'X-RapidAPI-Key': _apiKey,
-          'X-RapidAPI-Host': _host,
-        },
-      ).timeout(_httpTimeout);
+      final headers = await SyncraProxy.authHeaders();
+      response = await _client.get(uri, headers: headers).timeout(_httpTimeout);
     } catch (e) {
       throw JSearchException('JSearch request failed: $e');
     }

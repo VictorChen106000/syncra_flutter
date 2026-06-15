@@ -104,6 +104,19 @@ class UserProfileNotifier extends Notifier<UserProfile?> {
     }
   }
 
+  /// Sets how far the chat agent advances on its own (Assist / Auto-draft /
+  /// Autopilot). Optimistically updates local state, then persists.
+  Future<void> setAutonomyLevel(AutonomyLevel level) async {
+    final uid = _boundUid;
+    if (uid == null) return;
+    state = state?.copyWith(autonomyLevel: level);
+    try {
+      await _repository.update(uid, autonomyLevel: level);
+    } catch (e) {
+      debugPrint('setAutonomyLevel failed: $e');
+    }
+  }
+
   /// Flips the user past first-run setup. Called by the Skip button (which
   /// leaves `role` untouched). Used by the router redirect to decide whether
   /// the user still needs the onboarding surface.

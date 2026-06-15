@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../data/models/job.dart';
+import '../../../data/services/syncra_proxy.dart';
 
 /// Lightweight Anthropic wrapper used by tool handlers for paraphrasing
 /// tasks (tailor_resume, draft_email). Distinct from `AnthropicService`
@@ -20,9 +21,6 @@ class AnthropicParaphraseService {
     this.tailorModel = 'claude-sonnet-4-6',
   }) : _apiKey = apiKey ?? const String.fromEnvironment('ANTHROPIC_API_KEY'),
        _client = client ?? http.Client();
-
-  static const _endpoint = 'https://api.anthropic.com/v1/messages';
-  static const _version = '2023-06-01';
 
   /// Per-request retry budget for transient API failures (429 / 5xx / 529).
   /// Four attempts → three backoff retries (~1s/2s/4s) before failing, so an
@@ -43,7 +41,7 @@ class AnthropicParaphraseService {
   /// latency/cost is paid once.
   final String tailorModel;
 
-  bool get hasApiKey => _apiKey.isNotEmpty;
+  bool get hasApiKey => SyncraProxy.enabled || _apiKey.isNotEmpty;
 
   /// Returns PR-style proposed edits for a target job.
   ///
@@ -273,20 +271,12 @@ Return ONLY a JSON object: {"subject": "...", "body": "..."}.''',
   /// backoff. A 200 returns immediately; permanent errors (auth, bad request)
   /// fail without retrying.
   Future<http.Response> _postWithRetry(String body) async {
+    final headers = await SyncraProxy.jsonHeaders();
     Object lastError = Exception('Anthropic request failed.');
     for (var attempt = 1; attempt <= _maxApiAttempts; attempt++) {
       try {
         final response = await _client
-            .post(
-              Uri.parse(_endpoint),
-              headers: {
-                'content-type': 'application/json',
-                'x-api-key': _apiKey,
-                'anthropic-version': _version,
-                'anthropic-dangerous-direct-browser-access': 'true',
-              },
-              body: body,
-            )
+            .post(SyncraProxy.anthropic, headers: headers, body: body)
             .timeout(const Duration(seconds: 45));
 
         if (response.statusCode == 200) return response;

@@ -227,6 +227,9 @@ class ProfilePage extends StatelessWidget {
                 const SectionTitle(title: 'Connections'),
                 const _IntegrationSection(),
                 const SizedBox(height: 24),
+                const SectionTitle(title: 'Agent autonomy'),
+                const _AutonomyDialSection(),
+                const SizedBox(height: 24),
                 const SectionTitle(title: 'Bounded Auto-Apply'),
                 const _BoundedAutoApplySection(),
                 const SizedBox(height: 24),
@@ -1333,6 +1336,188 @@ class _IntegrationSection extends ConsumerWidget {
   }
 }
 
+/// The chat agent's autonomy dial: how far it advances on its own before it
+/// waits for the user. One selectable row per [AutonomyLevel]; the choice is
+/// persisted to the profile and read by the chat agent on every turn.
+class _AutonomyDialSection extends ConsumerWidget {
+  const _AutonomyDialSection();
+
+  static const _options = [
+    (
+      level: AutonomyLevel.assist,
+      icon: Icons.tune_rounded,
+      blurb: 'Asks before each step — you approve every move.',
+    ),
+    (
+      level: AutonomyLevel.autoDraft,
+      icon: Icons.auto_awesome_rounded,
+      blurb: 'Tailors and drafts on its own. You save, then tap Send.',
+    ),
+    (
+      level: AutonomyLevel.autopilot,
+      icon: Icons.bolt_rounded,
+      blurb: 'Also sends low-risk emails for you — 5 seconds to undo.',
+    ),
+  ];
+
+  void _select(WidgetRef ref, BuildContext context, AutonomyLevel level) {
+    ref.read(userProfileProvider.notifier).setAutonomyLevel(level);
+    _showSettingsSnack(context, 'Agent autonomy set to ${level.label}.');
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(userProfileProvider);
+    final current = profile?.autonomyLevel ?? AutonomyLevel.autoDraft;
+    final canEdit = profile != null;
+
+    return _GroupedCard(
+      children: [
+        for (var i = 0; i < _options.length; i++) ...[
+          if (i > 0) const _GroupedDivider(),
+          _AutonomyOptionRow(
+            icon: _options[i].icon,
+            title: _options[i].level.label,
+            blurb: _options[i].blurb,
+            selected: _options[i].level == current,
+            recommended: _options[i].level == AutonomyLevel.autoDraft,
+            onTap: canEdit
+                ? () => _select(ref, context, _options[i].level)
+                : null,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// One selectable autonomy level: lime glyph · title + one-line blurb · a lime
+/// check when active. Mirrors [_PreferenceRow]'s metrics but carries a subtitle
+/// and a radio-style selected state.
+class _AutonomyOptionRow extends StatelessWidget {
+  const _AutonomyOptionRow({
+    required this.icon,
+    required this.title,
+    required this.blurb,
+    required this.selected,
+    required this.recommended,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String blurb;
+  final bool selected;
+  final bool recommended;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _IconChip(icon: icon),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15.5,
+                            height: 1.2,
+                            color: brand.ink,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        if (recommended) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: brand.accent.withValues(alpha: 0.18),
+                              borderRadius: BorderRadius.circular(99),
+                            ),
+                            child: Text(
+                              'Recommended',
+                              style: TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.4,
+                                color: brand.ink,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      blurb,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        height: 1.3,
+                        fontWeight: FontWeight.w500,
+                        color: brand.textMuted,
+                        letterSpacing: -0.1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              _AutonomyRadio(selected: selected),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Radio-style selected marker: a filled lime disc with a check when active,
+/// a hairline ring otherwise.
+class _AutonomyRadio extends StatelessWidget {
+  const _AutonomyRadio({required this.selected});
+
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Container(
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        color: selected ? brand.accent : Colors.transparent,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: selected ? brand.accent : brand.border,
+          width: 2,
+        ),
+      ),
+      alignment: Alignment.center,
+      child: selected
+          ? Icon(Icons.check_rounded, size: 14, color: brand.onAccent)
+          : null,
+    );
+  }
+}
+
 enum _AutoApplyMenu { minimumQuality, dailyLimit, trustGate }
 
 class _BoundedAutoApplySection extends ConsumerStatefulWidget {
@@ -1369,16 +1554,6 @@ class _BoundedAutoApplySectionState
       nextEnabled
           ? 'Bounded Auto-Apply turned on.'
           : 'Bounded Auto-Apply turned off.',
-    );
-  }
-
-  void _toggleAutoSend(AutoApplySettings settings) {
-    final next = !settings.autoSendOutreach;
-    _save(
-      settings.copyWith(autoSendOutreach: next),
-      next
-          ? 'Auto-send on — low-risk agent drafts send automatically; risky jobs still wait for review.'
-          : 'Auto-send off — agent drafts wait for your review.',
     );
   }
 
@@ -1469,16 +1644,6 @@ class _BoundedAutoApplySectionState
                   : 'Trust gate set to bundle review.',
             ),
           ),
-        const _GroupedDivider(),
-        _PreferenceRow(
-          icon: Icons.send_rounded,
-          title: 'Auto-send outreach',
-          trailing: _LimeToggle(
-            active: settings.autoSendOutreach,
-            onToggle: canEdit ? () => _toggleAutoSend(settings) : null,
-          ),
-          onTap: canEdit ? () => _toggleAutoSend(settings) : null,
-        ),
       ],
     );
   }

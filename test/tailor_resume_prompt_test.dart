@@ -57,8 +57,16 @@ void main() {
     test('treats user messages as workflow goals', () {
       expect(prompt, contains('goal'));
       expect(prompt, contains('drive the workflow forward yourself'));
-      expect(prompt, contains('proactively offer the next concrete step'));
+      expect(prompt, contains('offer the next concrete step'));
       expect(prompt, contains('continue the workflow'));
+    });
+
+    test('defers to the active autonomy mode directive', () {
+      // The static prompt must point at the per-turn autonomy directive
+      // (Assist / Auto-draft / Autopilot) and let it override the defaults.
+      expect(prompt, contains('active autonomy mode'));
+      expect(prompt, contains('assist / auto-draft / autopilot'));
+      expect(prompt, contains('behave as auto-draft'));
     });
 
     test('pauses only at user gates', () {
@@ -112,10 +120,10 @@ void main() {
 
     test('drives the search → tailor → email sequence via ask_user offers', () {
       expect(prompt, contains('standard job-search sequence'));
-      // After search, it must offer tailoring instead of stopping on a job list.
-      expect(prompt, contains('never stop with just a result'));
+      // A stated multi-step goal must be chained, not stopped after each step.
+      expect(prompt, contains('carry out every step that goal implies'));
       expect(prompt, contains('tailor for the top role'));
-      // After the tailored resume is saved, it must offer outreach.
+      // When tailoring was the whole request, it must still offer outreach.
       expect(prompt, contains('draft recruiter outreach'));
       expect(
         prompt,
