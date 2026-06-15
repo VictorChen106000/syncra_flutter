@@ -35,8 +35,8 @@ class AnthropicClient {
     http.Client? client,
     this.maxAttempts = 4,
     this.timeout = const Duration(seconds: 45),
-  })  : _apiKey = apiKey ?? const String.fromEnvironment('ANTHROPIC_API_KEY'),
-        _client = client ?? http.Client();
+  }) : _apiKey = apiKey ?? const String.fromEnvironment('ANTHROPIC_API_KEY'),
+       _client = client ?? http.Client();
 
   /// Legacy direct key. Kept only so tests can flag a configured client and so
   /// a dart-define key still flips [hasApiKey]; it is never sent — the proxy

@@ -18,9 +18,11 @@ class AutoApplySettings {
   final bool requireLowTrust;
 
   /// When true, the agent may send a drafted outreach email automatically
-  /// instead of stopping at the review sheet — but only for low-risk jobs
-  /// (see `shouldAutoSendOutreach`). Off by default; the user opts in from
-  /// Profile. Medium/high-risk postings always fall back to manual review.
+  /// instead of stopping at the review sheet — but only when bounded
+  /// auto-apply is enabled, the job is low risk, and the recipient is
+  /// confirmed/high-confidence (see `shouldAutoSendOutreach`). Off by default;
+  /// the user opts in from Profile. Medium/high-risk postings and guessed
+  /// recipients always fall back to manual review.
   final bool autoSendOutreach;
 
   AutoApplySettings copyWith({

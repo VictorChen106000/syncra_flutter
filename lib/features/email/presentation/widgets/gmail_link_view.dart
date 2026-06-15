@@ -57,40 +57,40 @@ class GmailLinkView extends StatelessWidget {
             ),
         const SizedBox(height: 34),
         Text.rich(
-          TextSpan(
-            children: [
-              const TextSpan(
-                text: 'link to\n',
-                style: TextStyle(color: _softInk),
-              ),
               TextSpan(
-                text: 'Gmail',
-                style: TextStyle(color: _brand.accent),
+                children: [
+                  const TextSpan(
+                    text: 'link to\n',
+                    style: TextStyle(color: _softInk),
+                  ),
+                  TextSpan(
+                    text: 'Gmail',
+                    style: TextStyle(color: _brand.accent),
+                  ),
+                ],
               ),
-            ],
-          ),
-          style: GoogleFonts.inter(
-            fontSize: 46,
-            fontWeight: FontWeight.w900,
-            height: 1.03,
-            letterSpacing: -1.6,
-          ),
-        )
+              style: GoogleFonts.inter(
+                fontSize: 46,
+                fontWeight: FontWeight.w900,
+                height: 1.03,
+                letterSpacing: -1.6,
+              ),
+            )
             .animate(delay: 140.ms)
             .fadeIn(duration: 460.ms)
             .moveY(begin: 12, end: 0, curve: Curves.easeOutCubic),
         const SizedBox(height: 16),
         Text(
-          'With this access, Syncra can draft and send your outreach '
-          'right from your own inbox — no copy-paste, no switching apps.',
-          style: TextStyle(
-            color: _softInk.withValues(alpha: 0.66),
-            fontSize: 15.5,
-            height: 1.5,
-            fontWeight: FontWeight.w500,
-            letterSpacing: -0.1,
-          ),
-        )
+              'With this access, Syncra can draft and send your outreach '
+              'right from your own inbox — no copy-paste, no switching apps.',
+              style: TextStyle(
+                color: _softInk.withValues(alpha: 0.66),
+                fontSize: 15.5,
+                height: 1.5,
+                fontWeight: FontWeight.w500,
+                letterSpacing: -0.1,
+              ),
+            )
             .animate(delay: 220.ms)
             .fadeIn(duration: 460.ms)
             .moveY(begin: 8, end: 0, curve: Curves.easeOutCubic),
@@ -208,15 +208,15 @@ class _LinkBadge extends StatelessWidget {
         // tiles it overlaps, so the join reads crisp rather than muddy.
         border: Border.all(color: _brand.bg, width: 3),
         boxShadow: const [
-          BoxShadow(color: Color(0x40000000), blurRadius: 8, offset: Offset(0, 3)),
+          BoxShadow(
+            color: Color(0x40000000),
+            blurRadius: 8,
+            offset: Offset(0, 3),
+          ),
         ],
       ),
       alignment: Alignment.center,
-      child: const Icon(
-        Icons.link_rounded,
-        size: 18,
-        color: _softInk,
-      ),
+      child: const Icon(Icons.link_rounded, size: 18, color: _softInk),
     );
   }
 }
@@ -228,10 +228,7 @@ class _GmailGlyph extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SvgPicture.asset(
-      AppAssets.gmailSvg,
-      semanticsLabel: 'Gmail',
-    );
+    return SvgPicture.asset(AppAssets.gmailSvg, semanticsLabel: 'Gmail');
   }
 }
 
@@ -331,13 +328,14 @@ class _SlideToConnectState extends State<_SlideToConnect> {
 
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onHorizontalDragStart:
-                locked ? null : (_) => setState(() => _dragging = true),
+            onHorizontalDragStart: locked
+                ? null
+                : (_) => setState(() => _dragging = true),
             onHorizontalDragUpdate: locked
                 ? null
                 : (d) => setState(
-                      () => _dragX = (_dragX + d.delta.dx).clamp(0.0, maxX),
-                    ),
+                    () => _dragX = (_dragX + d.delta.dx).clamp(0.0, maxX),
+                  ),
             onHorizontalDragEnd: locked ? null : (_) => _settle(maxX),
             child: Container(
               height: _height,
@@ -375,21 +373,22 @@ class _SlideToConnectState extends State<_SlideToConnect> {
                         child: Opacity(
                           opacity: (1 - progress * 1.4).clamp(0.0, 1.0),
                           child: Center(
-                            child: Text(
-                              'Slide to link Gmail',
-                              style: TextStyle(
-                                color: _softInk.withValues(alpha: 0.78),
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: -0.1,
-                              ),
-                            )
-                                .animate(onPlay: (c) => c.repeat())
-                                .shimmer(
-                                  delay: 900.ms,
-                                  duration: 1500.ms,
-                                  color: _softInk,
-                                ),
+                            child:
+                                Text(
+                                      'Slide to link Gmail',
+                                      style: TextStyle(
+                                        color: _softInk.withValues(alpha: 0.78),
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: -0.1,
+                                      ),
+                                    )
+                                    .animate(onPlay: (c) => c.repeat())
+                                    .shimmer(
+                                      delay: 900.ms,
+                                      duration: 1500.ms,
+                                      color: _softInk,
+                                    ),
                           ),
                         ),
                       ),
@@ -421,8 +420,9 @@ class _SlideToConnectState extends State<_SlideToConnect> {
                                 height: 22,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2.4,
-                                  valueColor:
-                                      AlwaysStoppedAnimation(_brand.onAccent),
+                                  valueColor: AlwaysStoppedAnimation(
+                                    _brand.onAccent,
+                                  ),
                                 ),
                               )
                             : Icon(

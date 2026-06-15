@@ -72,25 +72,29 @@ class AppPrimaryButton extends StatelessWidget {
       enabled: onPressed != null,
       child: FilledButton(
         onPressed: onPressed,
-        style: FilledButton.styleFrom(
-          minimumSize: const Size.fromHeight(56),
-          backgroundColor: bg,
-          foregroundColor: fg,
-          disabledBackgroundColor: brand.surfaceMuted,
-          disabledForegroundColor: brand.textSoft,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
-            side: BorderSide(color: brand.accent.withValues(alpha: 0.0)),
-          ),
-          textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-        ).copyWith(
-          side: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.focused)) {
-              return BorderSide(color: brand.accent, width: 2);
-            }
-            return BorderSide.none;
-          }),
-        ),
+        style:
+            FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(56),
+              backgroundColor: bg,
+              foregroundColor: fg,
+              disabledBackgroundColor: brand.surfaceMuted,
+              disabledForegroundColor: brand.textSoft,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
+                side: BorderSide(color: brand.accent.withValues(alpha: 0.0)),
+              ),
+              textStyle: const TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 14,
+              ),
+            ).copyWith(
+              side: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.focused)) {
+                  return BorderSide(color: brand.accent, width: 2);
+                }
+                return BorderSide.none;
+              }),
+            ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -129,30 +133,31 @@ class AppSecondaryButton extends StatelessWidget {
       enabled: onPressed != null,
       child: OutlinedButton(
         onPressed: onPressed,
-        style: OutlinedButton.styleFrom(
-          minimumSize: const Size.fromHeight(56),
-          foregroundColor: brand.ink,
-          backgroundColor: brand.surface,
-          side: BorderSide(color: brand.border),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
-          ),
-          textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-        ).copyWith(
-          side: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.focused)) {
-              return BorderSide(color: brand.accent, width: 2);
-            }
-            return BorderSide(color: brand.border);
-          }),
-        ),
+        style:
+            OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(56),
+              foregroundColor: brand.ink,
+              backgroundColor: brand.surface,
+              side: BorderSide(color: brand.border),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
+              ),
+              textStyle: const TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 14,
+              ),
+            ).copyWith(
+              side: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.focused)) {
+                  return BorderSide(color: brand.accent, width: 2);
+                }
+                return BorderSide(color: brand.border);
+              }),
+            ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            if (icon != null) ...[
-              icon!,
-              const SizedBox(width: 8),
-            ],
+            if (icon != null) ...[icon!, const SizedBox(width: 8)],
             Text(label),
           ],
         ),
@@ -181,29 +186,30 @@ class AppAccentButton extends StatelessWidget {
       enabled: onPressed != null,
       child: FilledButton(
         onPressed: onPressed,
-        style: FilledButton.styleFrom(
-          minimumSize: const Size.fromHeight(56),
-          backgroundColor: brand.accent,
-          foregroundColor: brand.onAccent,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
-          ),
-          textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-        ).copyWith(
-          side: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.focused)) {
-              return BorderSide(color: brand.ink, width: 2);
-            }
-            return BorderSide.none;
-          }),
-        ),
+        style:
+            FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(56),
+              backgroundColor: brand.accent,
+              foregroundColor: brand.onAccent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppConstants.buttonRadius),
+              ),
+              textStyle: const TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 14,
+              ),
+            ).copyWith(
+              side: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.focused)) {
+                  return BorderSide(color: brand.ink, width: 2);
+                }
+                return BorderSide.none;
+              }),
+            ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            if (icon != null) ...[
-              icon!,
-              const SizedBox(width: 8),
-            ],
+            if (icon != null) ...[icon!, const SizedBox(width: 8)],
             Text(label),
           ],
         ),

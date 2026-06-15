@@ -565,6 +565,7 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
         to: block.recipient,
         subject: block.subject,
         body: block.body,
+        recipientResolution: block.recipientResolution,
         uid: FirebaseAuth.instance.currentUser?.uid,
         attachments: attachments,
         company: company,

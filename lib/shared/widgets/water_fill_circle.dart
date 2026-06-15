@@ -114,7 +114,8 @@ class _WaterPainter extends CustomPainter {
     final r = size.width / 2;
     final center = Offset(r, r);
     final radius = r - 2;
-    final clip = Path()..addOval(Rect.fromCircle(center: center, radius: radius));
+    final clip = Path()
+      ..addOval(Rect.fromCircle(center: center, radius: radius));
 
     // Glow blooms as the vessel fills.
     if (level > 0.001) {
@@ -134,12 +135,19 @@ class _WaterPainter extends CustomPainter {
     final amp = level <= 0.01
         ? 0.0
         : level >= 0.99
-            ? 2.5
-            : (active ? 8.0 : 5.0);
+        ? 2.5
+        : (active ? 8.0 : 5.0);
 
     // Back wave — lighter and phase-shifted for depth.
-    _wave(canvas, size, waterY + 3, amp * 0.8, phase + 0.5, size.width / 1.05,
-        crest.withValues(alpha: 0.40));
+    _wave(
+      canvas,
+      size,
+      waterY + 3,
+      amp * 0.8,
+      phase + 0.5,
+      size.width / 1.05,
+      crest.withValues(alpha: 0.40),
+    );
     // Front wave — the solid body.
     _wave(canvas, size, waterY, amp, phase, size.width / 1.45, water);
 
@@ -149,9 +157,13 @@ class _WaterPainter extends CustomPainter {
       const step = 6.0;
       const wavelength = 1.45;
       for (var x = 0.0; x <= size.width; x += step) {
-        final y = waterY +
-            amp * math.sin((x / (size.width / wavelength)) * 2 * math.pi +
-                phase * 2 * math.pi);
+        final y =
+            waterY +
+            amp *
+                math.sin(
+                  (x / (size.width / wavelength)) * 2 * math.pi +
+                      phase * 2 * math.pi,
+                );
         if (x == 0) {
           crestPath.moveTo(x, y);
         } else {
@@ -180,15 +192,23 @@ class _WaterPainter extends CustomPainter {
     );
   }
 
-  void _wave(Canvas canvas, Size size, double baseY, double amp, double phase,
-      double wavelength, Color color) {
+  void _wave(
+    Canvas canvas,
+    Size size,
+    double baseY,
+    double amp,
+    double phase,
+    double wavelength,
+    Color color,
+  ) {
     final path = Path()
       ..moveTo(0, size.height)
       ..lineTo(0, baseY);
     const step = 6.0;
     for (var x = 0.0; x <= size.width; x += step) {
       final y =
-          baseY + amp * math.sin((x / wavelength) * 2 * math.pi + phase * 2 * math.pi);
+          baseY +
+          amp * math.sin((x / wavelength) * 2 * math.pi + phase * 2 * math.pi);
       path.lineTo(x, y);
     }
     path

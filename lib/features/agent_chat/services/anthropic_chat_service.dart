@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../../data/services/anthropic_client.dart';
 import '../../../data/models/job.dart';
+import '../../email/models/recipient_resolution.dart';
 import '../models/agent_block.dart';
 import '../models/chat_message.dart';
 import '../tools/tool_registry.dart';
@@ -112,8 +113,8 @@ Progressive autonomy / request scope:
 - If the user asks to match jobs, read the resume and call `match_jobs`.
 - If the user asks to save jobs, match them first when resume context is available, then call `save_to_pipeline`.
 - If the user asks to tailor a resume, call `tailor_resume` and stop for review.
-- If the user asks to draft outreach, draft only after the needed job/resume context exists and any required
-  approval gate has passed.
+- If the user asks to draft outreach, draft only after the needed job/resume context exists, any required
+  approval gate has passed, and you have called `resolve_company_contact` for that job/company.
 
 Standard job-search sequence — follow it, one gate at a time:
 1. `search_jobs` renders the roles as interactive cards. Add at most one short sentence introducing them.
@@ -130,7 +131,10 @@ Standard job-search sequence — follow it, one gate at a time:
 6. After the app tells you the user saved the tailored resume, continue toward the user's goal: the usual next
    step is to draft recruiter outreach for that role. Whether you draft it immediately or first offer it with
    `ask_user` is set by your active autonomy mode, not decided here.
-7. `draft_email` produces a draft only. The user reviews and sends it from the review screen. Never call
+7. Before `draft_email`, call `resolve_company_contact` for the job/company. If it returns confidence `low`
+   or `none`, you may still draft, but you must tell the user to verify or replace the recipient and stop
+   before sending.
+8. `draft_email` produces a draft only. The user reviews and sends it from the review screen. Never call
    `send_email` yourself.
 
 User gates:
@@ -141,6 +145,14 @@ User gates:
   salary, which resume, a recipient email you cannot look up, or a preference). Then call `ask_user`.
 - When required information is missing, call `ask_user` with 2-3 short suggestion chips unless the question is genuinely open-ended.
 - Do not insert extra approval asks between steps the user already requested. Never invent personal details, resume details, recipient details, or user preferences.
+
+Recipient Intelligence:
+- JSearch job data does not provide recruiter/company emails. Use `resolve_company_contact` before `draft_email`.
+- A `guessedPattern` recipient such as `careers@domain` is low confidence only. Never describe it as real,
+  confirmed, safe, verified, or guaranteed.
+- If recipient confidence is `low` or `none`, draft only and stop. Tell the user to verify or replace the
+  recipient in the review screen. Do not call `send_email`.
+- Never call `send_email` autonomously. The existing confirmation-token flow is the only send path.
 
 Job results:
 - The job cards are interactive (the user can swipe and tap). Do not re-list the jobs in prose — one short sentence is enough, then follow the sequence above and offer to tailor.
@@ -187,7 +199,7 @@ Job Trust Guard:
 Email and external actions:
 - Drafting an email is safe; sending an email is not.
 - Never call `send_email` unless the app provides an explicit user-confirmation token or says the user tapped Send.
-- If outreach is the next step and recipient information is missing, call `lookup_hiring_manager` or `ask_user`.
+- If outreach is the next step, call `resolve_company_contact` before `draft_email`; ask the user only when the recipient is still missing or needs information only they can provide.
 
 Progress and style:
 - Surface progress as you go. The UI shows each tool call live.
@@ -910,6 +922,18 @@ Progress and style:
       subject: subject,
       body: body,
       jobId: jobId.isEmpty ? null : jobId,
+      recipientDomain:
+          _cleanDataString(data['domain']) ??
+          _cleanDataString(data['recipientDomain']),
+      recipientConfidence: _recipientConfidenceFromData(data),
+      recipientSource: _recipientSourceFromData(data),
+      recipientSourceUrl:
+          _cleanDataString(data['recipientSourceUrl']) ??
+          _cleanDataString(data['sourceUrl']),
+      recipientReason:
+          _cleanDataString(data['recipientReason']) ??
+          _cleanDataString(data['reason']),
+      canAutoSend: data['canAutoSend'] == true,
       attachmentResumeId: (attachmentId == null || attachmentId.isEmpty)
           ? null
           : attachmentId,
@@ -920,6 +944,33 @@ Progress and style:
       // auto-send. Restored history (chat_snapshot_codec) leaves this false.
       autoSendPending: true,
     );
+  }
+
+  String? _cleanDataString(Object? value) {
+    final raw = value?.toString().trim();
+    return raw == null || raw.isEmpty ? null : raw;
+  }
+
+  RecipientConfidence _recipientConfidenceFromData(Map<dynamic, dynamic> data) {
+    final raw =
+        _cleanDataString(data['recipientConfidence']) ??
+        _cleanDataString(data['confidence']);
+    if (raw == null) return RecipientConfidence.low;
+    for (final confidence in RecipientConfidence.values) {
+      if (confidence.name == raw) return confidence;
+    }
+    return RecipientConfidence.low;
+  }
+
+  RecipientSource _recipientSourceFromData(Map<dynamic, dynamic> data) {
+    final raw =
+        _cleanDataString(data['recipientSource']) ??
+        _cleanDataString(data['source']);
+    if (raw == null) return RecipientSource.guessedPattern;
+    for (final source in RecipientSource.values) {
+      if (source.name == raw) return source;
+    }
+    return RecipientSource.guessedPattern;
   }
 
   String _tailorPauseMessage(Object? data) {

@@ -43,8 +43,9 @@ class _TailorEditSheetBody extends StatefulWidget {
 }
 
 class _TailorEditSheetBodyState extends State<_TailorEditSheetBody> {
-  late final TextEditingController _bodyCtrl =
-      TextEditingController(text: widget.initialBody);
+  late final TextEditingController _bodyCtrl = TextEditingController(
+    text: widget.initialBody,
+  );
   late final TextEditingController _keywordCtrl = TextEditingController();
   late final List<String> _keywords = List.of(widget.initialKeywords);
 
@@ -187,10 +188,7 @@ class _TailorEditSheetBodyState extends State<_TailorEditSheetBody> {
                           borderSide: BorderSide(color: brand.border),
                         ),
                       ),
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: brand.ink,
-                      ),
+                      style: TextStyle(fontSize: 14, color: brand.ink),
                     ),
                   ),
                   IconButton(
@@ -219,10 +217,7 @@ class _TailorEditSheetBodyState extends State<_TailorEditSheetBody> {
                   ),
                   child: const Text(
                     'Save edits',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 14,
-                    ),
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
                   ),
                 ),
               ),

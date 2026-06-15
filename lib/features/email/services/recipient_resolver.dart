@@ -1,25 +1,13 @@
 /// The single place that decides which email address an outreach draft is
 /// addressed to. Everything that needs a company recipient — the `draft_email`
 /// agent tool, `lookup_hiring_manager`, the job action sheet — funnels through
-/// here so the strategy can be swapped in one spot.
-///
-/// Today it is a deterministic *guess*: `careers@{domain}`. The job data
-/// (JSearch) carries no real contact email, so this is a best-effort starting
-/// point that the user is always expected to verify in the review sheet before
-/// a draft is created.
-///
-/// ## Upgrade path — Hunter.io (option 3)
-/// To return real verified addresses, add an async lookup *without* touching
-/// any caller:
-///   1. Add a `HunterService` (mirror `JSearchService`) reading its own
-///      `HUNTER_API_KEY` — unrelated to the Anthropic/Claude key.
-///   2. Add an async `resolveRecipientAsync(company, {website})` here that
-///      tries Hunter first and falls back to [resolveRecipient] below.
-///   3. Have callers `await` the async variant. The editable "To" field in the
-///      review sheet stays as the human safety net either way.
+/// here so Syncra can distinguish confirmed, found, guessed, and missing
+/// recipients instead of flattening them to plain strings.
 library;
 
 import '../../../data/firestore/company_contacts_repository.dart';
+import '../models/recipient_resolution.dart';
+import 'company_contact_discovery_service.dart';
 
 /// DEMO OVERRIDE — when non-empty, **every** outreach recipient is forced to
 /// this address. It short-circuits the contacts lookup and the `careers@` guess
@@ -28,33 +16,124 @@ import '../../../data/firestore/company_contacts_repository.dart';
 ///
 /// Set back to `''` to restore normal `careers@` / learned-contact resolution
 /// for production.
-const String demoRecipientOverride = 'pegatron.inc@gmail.com';
+///
+/// Off by default — every recipient is resolved dynamically per company
+/// (confirmed Firestore contact → `careers@{domain}` guess) so the demo isn't
+/// hardcoded to one inbox. Set a non-empty address only to force a safe
+/// catch-all during a live send.
+const String demoRecipientOverride = '';
 
-/// Recipient address for [company], preferring a **real** address learned from
-/// a previous confirmed send/draft over the `careers@{domain}` guess.
+/// Recipient metadata for [company], preferring confirmed contacts and safe
+/// official discovery over the low-confidence `careers@{domain}` guess.
 ///
 /// This is the Flutter + Firebase answer to "find the real receiver": it reads
 /// the shared [CompanyContactsRepository] directory (keyed by company domain).
-/// When a confirmed contact exists it is returned; otherwise it falls back to
-/// [resolveRecipient]. Reads never throw — a Firestore hiccup just yields the
-/// guess. Pass [contacts] to inject a fake in tests.
-Future<String> resolveRecipientAsync(
+/// Reads never throw — a Firestore hiccup just yields the next safest result.
+Future<RecipientResolution> resolveRecipientAsync(
   String company, {
   String? website,
+  String? applyLink,
   CompanyContactsRepository? contacts,
+  CompanyContactDiscoveryService? discovery,
 }) async {
-  if (demoRecipientOverride.isNotEmpty) return demoRecipientOverride;
-  final repo = contacts ?? CompanyContactsRepository();
-  final saved = await repo.lookupEmail(recipientDomain(company, website: website));
-  if (saved != null && saved.isNotEmpty) return saved;
-  return resolveRecipient(company, website: website);
+  final domain = recipientDomainOrNull(
+    company,
+    website: website,
+    applyLink: applyLink,
+  );
+
+  if (demoRecipientOverride.isNotEmpty) {
+    final overrideDomain =
+        _domainFromEmail(demoRecipientOverride) ?? domain ?? 'demo.local';
+    return RecipientResolution.confirmed(
+      email: demoRecipientOverride,
+      domain: overrideDomain,
+      source: RecipientSource.demoOverride,
+      reason: 'Controlled demo recipient override.',
+      canAutoSend: false,
+    );
+  }
+
+  if (domain == null) {
+    return RecipientResolution.none();
+  }
+
+  // 1. A real address confirmed for this company wins.
+  try {
+    final repo = contacts ?? CompanyContactsRepository();
+    final saved = await repo.lookupResolution(domain);
+    if (saved != null && saved.hasEmail) return saved;
+  } catch (_) {
+    // Missing Firebase setup in tests or a repository construction hiccup must
+    // not block drafting; fall through to discovery/guessing.
+  }
+
+  // 2. Future official-site discovery. The default shell returns null today so
+  //    the Flutter client never scrapes or uses browser automation.
+  try {
+    final discovered =
+        await (discovery ?? const CompanyContactDiscoveryService()).resolve(
+          company: company,
+          website: website,
+          applyLink: applyLink,
+        );
+    if (discovered != null && discovered.hasEmail) return discovered;
+  } catch (_) {
+    // Discovery is optional and best-effort.
+  }
+
+  // 3. Deterministic careers@{domain} guess. This is explicitly low
+  //    confidence and can never auto-send.
+  return RecipientResolution.guessed(
+    email: 'careers@$domain',
+    domain: domain,
+    sourceUrl: website,
+  );
+}
+
+/// Compatibility helper for older code that still needs a string.
+Future<String> resolveRecipientEmailOnly(
+  String company, {
+  String? website,
+  String? applyLink,
+  CompanyContactsRepository? contacts,
+  CompanyContactDiscoveryService? discovery,
+}) async {
+  final resolution = await resolveRecipientAsync(
+    company,
+    website: website,
+    applyLink: applyLink,
+    contacts: contacts,
+    discovery: discovery,
+  );
+  return resolution.email;
 }
 
 /// The bare company domain an outreach draft is keyed by — the same value the
 /// contacts directory and the `careers@` guess are built from. Exposed so the
 /// review sheet can save a confirmed address under the right key.
 String recipientDomain(String company, {String? website}) =>
-    _domainFor(company, website);
+    recipientDomainOrNull(company, website: website) ?? 'example.com';
+
+/// Nullable domain extraction used by recipient intelligence. Employer website
+/// wins, then apply link, then a company-name slug.
+String? recipientDomainOrNull(
+  String company, {
+  String? website,
+  String? applyLink,
+}) {
+  final fromWebsite = _domainFromWebsite(website);
+  if (fromWebsite != null) return fromWebsite;
+
+  final fromApplyLink = _domainFromWebsite(applyLink);
+  if (fromApplyLink != null) return fromApplyLink;
+
+  final slug = company
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]'), '')
+      .trim();
+  return slug.isEmpty ? null : '$slug.com';
+}
 
 /// Best-effort recipient address for [company].
 ///
@@ -66,18 +145,9 @@ String recipientDomain(String company, {String? website}) =>
 /// editable "To" field so the user has a sensible default to correct.
 String resolveRecipient(String company, {String? website}) {
   if (demoRecipientOverride.isNotEmpty) return demoRecipientOverride;
-  final domain = _domainFor(company, website);
+  final domain = recipientDomainOrNull(company, website: website);
+  if (domain == null) return '';
   return 'careers@$domain';
-}
-
-/// Resolves the bare domain — the part Hunter.io would also key off of.
-String _domainFor(String company, String? website) {
-  final fromWebsite = _domainFromWebsite(website);
-  if (fromWebsite != null) return fromWebsite;
-
-  final slug =
-      company.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '').trim();
-  return slug.isEmpty ? 'example.com' : '$slug.com';
 }
 
 /// Extracts a clean host from a website URL, stripping scheme, `www.`, paths,
@@ -87,11 +157,17 @@ String? _domainFromWebsite(String? website) {
   if (raw == null || raw.isEmpty) return null;
 
   // Uri.parse needs a scheme to populate `host`; add one if it's missing.
-  final withScheme =
-      raw.contains('://') ? raw : 'https://$raw';
+  final withScheme = raw.contains('://') ? raw : 'https://$raw';
   final host = Uri.tryParse(withScheme)?.host.toLowerCase();
   if (host == null || host.isEmpty) return null;
 
   final cleaned = host.startsWith('www.') ? host.substring(4) : host;
   return cleaned.isEmpty ? null : cleaned;
+}
+
+String? _domainFromEmail(String email) {
+  final at = email.lastIndexOf('@');
+  if (at < 0 || at == email.length - 1) return null;
+  final domain = email.substring(at + 1).trim().toLowerCase();
+  return domain.isEmpty ? null : domain;
 }

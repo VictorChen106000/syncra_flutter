@@ -37,9 +37,8 @@ class ResumeState {
       allResumes.where((r) => r.source == ResumeSource.manual).toList();
   List<ResumeFile> get tailoredResumes =>
       allResumes.where((r) => r.source == ResumeSource.tailored).toList();
-  List<ResumeFile> get selectedResumes => resumes
-      .where((resume) => selectedResumeIds.contains(resume.id))
-      .toList();
+  List<ResumeFile> get selectedResumes =>
+      resumes.where((resume) => selectedResumeIds.contains(resume.id)).toList();
 
   ResumeState copyWith({
     List<ResumeFile>? allResumes,
@@ -59,7 +58,7 @@ class ResumeState {
 
 class ResumeNotifier extends Notifier<ResumeState> {
   ResumeNotifier({ResumesRepository? repository})
-      : _repository = repository ?? ResumesRepository();
+    : _repository = repository ?? ResumesRepository();
 
   final ResumesRepository _repository;
 
@@ -108,14 +107,16 @@ class ResumeNotifier extends Notifier<ResumeState> {
     }
 
     _boundUid = uid;
-    _subscription = _repository.watchResumes(uid).listen(
-      (resumes) {
-        state = state.copyWith(allResumes: resumes);
-      },
-      onError: (Object e) {
-        debugPrint('resumes stream error: $e');
-      },
-    );
+    _subscription = _repository
+        .watchResumes(uid)
+        .listen(
+          (resumes) {
+            state = state.copyWith(allResumes: resumes);
+          },
+          onError: (Object e) {
+            debugPrint('resumes stream error: $e');
+          },
+        );
   }
 
   ResumeActionResult? consumeLastAction() {
@@ -141,11 +142,12 @@ class ResumeNotifier extends Notifier<ResumeState> {
     final future = _repository
         .downloadBytes(resume.storagePath!)
         .then((bytes) {
-      if (bytes != null) _bytesCache[resume.id] = bytes;
-      return bytes;
-    }).whenComplete(() {
-      _inflight.remove(resume.id);
-    });
+          if (bytes != null) _bytesCache[resume.id] = bytes;
+          return bytes;
+        })
+        .whenComplete(() {
+          _inflight.remove(resume.id);
+        });
 
     _inflight[resume.id] = future;
     return future;
@@ -195,13 +197,15 @@ class ResumeNotifier extends Notifier<ResumeState> {
         );
         continue;
       }
-      unawaited(_uploadFile(
-        uid: uid,
-        name: file.name,
-        size: file.size,
-        type: _typeFromExtension(file.extension),
-        bytes: bytes,
-      ));
+      unawaited(
+        _uploadFile(
+          uid: uid,
+          name: file.name,
+          size: file.size,
+          type: _typeFromExtension(file.extension),
+          bytes: bytes,
+        ),
+      );
     }
   }
 
@@ -259,10 +263,12 @@ class ResumeNotifier extends Notifier<ResumeState> {
     // that no longer exists.
     final children = target.source == ResumeSource.manual
         ? state.allResumes
-            .where((r) =>
-                r.source == ResumeSource.tailored &&
-                r.parentResumeId == resumeId)
-            .toList(growable: false)
+              .where(
+                (r) =>
+                    r.source == ResumeSource.tailored &&
+                    r.parentResumeId == resumeId,
+              )
+              .toList(growable: false)
         : const <ResumeFile>[];
 
     final removedIds = {resumeId, for (final c in children) c.id};
@@ -271,11 +277,12 @@ class ResumeNotifier extends Notifier<ResumeState> {
     final childNote = children.isEmpty
         ? ''
         : ' · ${children.length} tailored '
-            '${children.length == 1 ? 'copy' : 'copies'} removed';
+              '${children.length == 1 ? 'copy' : 'copies'} removed';
     state = state.copyWith(
       selectedResumeIds: nextSelected,
-      lastAction:
-          ResumeActionResult(message: '${target.name} deleted$childNote'),
+      lastAction: ResumeActionResult(
+        message: '${target.name} deleted$childNote',
+      ),
     );
 
     for (final id in removedIds) {
@@ -351,8 +358,9 @@ class ResumeNotifier extends Notifier<ResumeState> {
       _bytesCache[uploaded.id] = bytes;
 
       final currentResumes = [...state.allResumes];
-      final existingIndex =
-          currentResumes.indexWhere((resume) => resume.id == uploaded.id);
+      final existingIndex = currentResumes.indexWhere(
+        (resume) => resume.id == uploaded.id,
+      );
 
       if (existingIndex == -1) {
         currentResumes.insert(0, uploaded);
@@ -442,4 +450,6 @@ class ResumeNotifier extends Notifier<ResumeState> {
   }
 }
 
-final resumeProvider = NotifierProvider<ResumeNotifier, ResumeState>(ResumeNotifier.new);
+final resumeProvider = NotifierProvider<ResumeNotifier, ResumeState>(
+  ResumeNotifier.new,
+);

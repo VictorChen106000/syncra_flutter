@@ -130,10 +130,7 @@ class _SignUpPageState extends State<SignUpPage> {
                 children: [
                   Text(
                     AppStrings.alreadyHaveAccount,
-                    style: TextStyle(
-                      color: brand.textMuted,
-                      fontSize: 14,
-                    ),
+                    style: TextStyle(color: brand.textMuted, fontSize: 14),
                   ),
                   TextButton(
                     onPressed: () => context.go(RouteNames.login),
@@ -189,10 +186,7 @@ class _SoftInput extends StatelessWidget {
               controller: controller,
               obscureText: obscure,
               keyboardType: keyboardType,
-              style: TextStyle(
-                color: brand.ink,
-                fontWeight: FontWeight.w500,
-              ),
+              style: TextStyle(color: brand.ink, fontWeight: FontWeight.w500),
               decoration: InputDecoration(
                 hintText: hint,
                 hintStyle: TextStyle(

@@ -1,10 +1,7 @@
 import 'agent_block.dart';
 
 class ChatAttachment {
-  const ChatAttachment({
-    required this.id,
-    required this.name,
-  });
+  const ChatAttachment({required this.id, required this.name});
 
   final String id;
   final String name;
@@ -52,11 +49,12 @@ class AgentTurn extends ChatItem {
     AgentTurnStatus? status,
     bool? isStreaming,
     this.errorMessage,
-  })  : blocks = blocks ?? <AgentBlock>[],
-        status = status ??
-            ((isStreaming ?? true)
-                ? AgentTurnStatus.streaming
-                : AgentTurnStatus.done);
+  }) : blocks = blocks ?? <AgentBlock>[],
+       status =
+           status ??
+           ((isStreaming ?? true)
+               ? AgentTurnStatus.streaming
+               : AgentTurnStatus.done);
 
   final List<AgentBlock> blocks;
   AgentTurnStatus status;

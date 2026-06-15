@@ -12,5 +12,4 @@ class RouteNames {
   static const String agentChat = '/agent-chat';
   static const String jobs = '/jobs';
   static const String profile = '/profile';
-  static const String applications = '/applications';
 }

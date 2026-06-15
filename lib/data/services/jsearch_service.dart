@@ -23,9 +23,9 @@ class JSearchService {
     String? apiKey,
     http.Client? client,
     FirebaseFirestore? firestore,
-  })  : _apiKey = apiKey ?? const String.fromEnvironment('RAPIDAPI_KEY'),
-        _client = client ?? http.Client(),
-        _db = firestore ?? FirebaseFirestore.instance;
+  }) : _apiKey = apiKey ?? const String.fromEnvironment('RAPIDAPI_KEY'),
+       _client = client ?? http.Client(),
+       _db = firestore ?? FirebaseFirestore.instance;
 
   /// Legacy direct key — never sent (the proxy injects the real key). Kept only
   /// so a dart-define key still flips [hasApiKey].
@@ -99,12 +99,14 @@ class JSearchService {
     // Location rides inside the query text ("... in Singapore") rather than
     // the `country` param so non-US searches work — a deliberate change
     // from the Python port, which hardcoded country=us.
-    final uri = SyncraProxy.jsearch.replace(queryParameters: {
-      'query': loc.isEmpty ? query : '$query in $loc',
-      'page': '1',
-      'num_pages': '1',
-      'date_posted': 'week',
-    });
+    final uri = SyncraProxy.jsearch.replace(
+      queryParameters: {
+        'query': loc.isEmpty ? query : '$query in $loc',
+        'page': '1',
+        'num_pages': '1',
+        'date_posted': 'week',
+      },
+    );
 
     final http.Response response;
     try {
@@ -142,8 +144,8 @@ class JSearchService {
     final company = (raw['employer_name'] as String?)?.trim() ?? '';
     final sourceUrl =
         ((raw['job_apply_link'] ?? raw['job_google_link']) as String?)
-                ?.trim() ??
-            '';
+            ?.trim() ??
+        '';
     if (title.isEmpty || company.isEmpty || sourceUrl.isEmpty) return null;
 
     return Job(
@@ -159,6 +161,7 @@ class JSearchService {
       skills: const [],
       missingSkills: const [],
       why: _description(raw),
+      employerWebsite: (raw['employer_website'] as String?)?.trim() ?? '',
     );
   }
 
@@ -204,7 +207,8 @@ class JSearchService {
   /// onto one Firestore doc instead of duplicating. Mirrors the backend's
   /// `_job_id_for()` scheme.
   String _jobIdFor(String title, String company, String sourceUrl) {
-    final raw = '${title.toLowerCase().trim()}|'
+    final raw =
+        '${title.toLowerCase().trim()}|'
         '${company.toLowerCase().trim()}|'
         '${sourceUrl.toLowerCase().trim()}';
     final digest = sha256.convert(utf8.encode(raw)).toString();
@@ -212,7 +216,8 @@ class JSearchService {
   }
 
   String _cacheKey(String query, String? location, int limit) {
-    final raw = '${query.toLowerCase()}|'
+    final raw =
+        '${query.toLowerCase()}|'
         '${(location ?? '').toLowerCase().trim()}|$limit';
     return sha256.convert(utf8.encode(raw)).toString().substring(0, 16);
   }
@@ -226,19 +231,16 @@ class JSearchService {
     try {
       final batch = _db.batch();
       for (final job in jobs) {
-        batch.set(
-          _db.collection('jobs').doc(job.id),
-          {
-            'title': job.title,
-            'company': job.company,
-            'location': job.location,
-            'salary': job.salary,
-            'description': job.why,
-            'source': 'jsearch',
-            'discovered_at': FieldValue.serverTimestamp(),
-          },
-          SetOptions(merge: true),
-        );
+        batch.set(_db.collection('jobs').doc(job.id), {
+          'title': job.title,
+          'company': job.company,
+          'location': job.location,
+          'salary': job.salary,
+          'description': job.why,
+          'employer_website': job.employerWebsite,
+          'source': 'jsearch',
+          'discovered_at': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
       }
       await batch.commit();
     } catch (e) {

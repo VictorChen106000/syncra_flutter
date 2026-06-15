@@ -18,7 +18,6 @@ import '../../features/profile/presentation/profile_page.dart';
 import '../../features/resumes/models/resume_file.dart';
 import '../../features/resumes/presentation/resume_lists_page.dart';
 import '../../features/resumes/presentation/resume_preview_page.dart';
-import '../../features/applications/presentation/applications_page.dart';
 import '../../shared/widgets/app_shell_scaffold.dart';
 import 'route_names.dart';
 
@@ -55,7 +54,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isSignedIn = auth.isSignedIn;
       final isGuest = auth.appUser?.isGuest ?? false;
       final loc = state.matchedLocation;
-      final isAuthRoute = loc == RouteNames.login ||
+      final isAuthRoute =
+          loc == RouteNames.login ||
           loc == RouteNames.signup ||
           loc == RouteNames.splash ||
           loc == RouteNames.onboarding;
@@ -133,8 +133,7 @@ List<RouteBase> _routes(Page<void> Function(GoRouterState, Widget) fadePage) =>
       ),
       GoRoute(
         path: RouteNames.linkGmail,
-        pageBuilder: (context, state) =>
-            fadePage(state, const LinkGmailPage()),
+        pageBuilder: (context, state) => fadePage(state, const LinkGmailPage()),
       ),
       GoRoute(
         path: RouteNames.resumes,
@@ -144,8 +143,9 @@ List<RouteBase> _routes(Page<void> Function(GoRouterState, Widget) fadePage) =>
       GoRoute(
         path: RouteNames.resumePreview,
         pageBuilder: (context, state) {
-          final resume =
-              state.extra is ResumeFile ? state.extra as ResumeFile : null;
+          final resume = state.extra is ResumeFile
+              ? state.extra as ResumeFile
+              : null;
           return fadePage(state, ResumePreviewPage(resume: resume));
         },
       ),
@@ -190,10 +190,5 @@ List<RouteBase> _routes(Page<void> Function(GoRouterState, Widget) fadePage) =>
             ],
           ),
         ],
-      ),
-      GoRoute(
-        path: RouteNames.applications,
-        pageBuilder: (context, state) =>
-            fadePage(state, const ApplicationsPage()),
       ),
     ];

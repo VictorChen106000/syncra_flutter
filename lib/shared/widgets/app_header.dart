@@ -41,15 +41,22 @@ class AppHeader extends StatelessWidget {
     );
   }
 
-  /// Bottom-nav tab page — clean title with optional trailing widget.
+  /// Bottom-nav tab page — clean title with optional trailing widget. Pass
+  /// [titleWidget] to supply a custom title (e.g. a switchable Pipeline/History
+  /// title) instead of the plain [title]/[subtitle] pair.
   factory AppHeader.tab({
-    required String title,
+    String? title,
     String? subtitle,
+    Widget? titleWidget,
     Widget? trailing,
     Widget? bottom,
   }) {
+    assert(
+      title != null || titleWidget != null,
+      'AppHeader.tab needs a title or a titleWidget',
+    );
     return AppHeader._(
-      titleWidget: _TabTitle(title: title, subtitle: subtitle),
+      titleWidget: titleWidget ?? _TabTitle(title: title!, subtitle: subtitle),
       trailing: trailing,
       bottom: bottom,
       topPadding: 18,
@@ -106,10 +113,7 @@ class AppHeader extends StatelessWidget {
               ?trailing,
             ],
           ),
-          if (bottom != null) ...[
-            const SizedBox(height: 18),
-            bottom!,
-          ],
+          if (bottom != null) ...[const SizedBox(height: 18), bottom!],
         ],
       ),
     );

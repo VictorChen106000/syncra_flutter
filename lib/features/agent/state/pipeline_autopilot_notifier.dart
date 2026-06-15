@@ -242,12 +242,17 @@ class PipelineAutopilotNotifier extends Notifier<PipelineAutopilotState> {
     if (stopStage != PipelineStage.sent) return;
     if (subject.isEmpty || body.isEmpty) return;
 
-    // 3. Autopilot send. Recipient is the demo inbox when the override is set,
-    // otherwise the resolved company address. Never send to a non-email.
-    final recipient = demoRecipientOverride.isNotEmpty
-        ? demoRecipientOverride
-        : await resolveRecipientAsync(job.company);
+    // 3. Autopilot send. resolveRecipientAsync resolves the recipient (and
+    // handles the demo-inbox override internally). For that controlled override
+    // we force auto-send eligibility so Autopilot still delivers to it;
+    // otherwise autoSend's own eligibility floor decides. Never send to a
+    // non-email.
+    final resolution = await resolveRecipientAsync(job.company);
+    final recipient = resolution.email;
     if (!_looksLikeEmail(recipient)) return;
+    final sendResolution = demoRecipientOverride.isNotEmpty
+        ? resolution.copyWith(canAutoSend: true)
+        : resolution;
 
     final appId = await _applications.createApplication(
       uid: uid,
@@ -264,6 +269,7 @@ class PipelineAutopilotNotifier extends Notifier<PipelineAutopilotState> {
       to: recipient,
       subject: subject,
       body: body,
+      recipientResolution: sendResolution,
       uid: uid,
       applicationId: appId,
       company: job.company,

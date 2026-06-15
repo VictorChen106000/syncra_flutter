@@ -51,10 +51,7 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
   @override
   void initState() {
     super.initState();
-    _bounceController = AnimationController.unbounded(
-      vsync: this,
-      value: 1.0,
-    );
+    _bounceController = AnimationController.unbounded(vsync: this, value: 1.0);
     _focusNode.addListener(() {
       if (_focusNode.hasFocus != _focused) {
         setState(() => _focused = _focusNode.hasFocus);
@@ -96,9 +93,7 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
   void _bounce({required double from}) {
     _bounceController.stop();
     _bounceController.value = from;
-    _bounceController.animateWith(
-      SpringSimulation(_spring, from, 1.0, 0),
-    );
+    _bounceController.animateWith(SpringSimulation(_spring, from, 1.0, 0));
   }
 
   void _send() {
@@ -107,10 +102,9 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
         .map((resume) => ChatAttachment(id: resume.id, name: resume.name))
         .toList();
 
-    ref.read(agentChatProvider.notifier).sendPrompt(
-          prompt: _textController.text,
-          attachments: attachments,
-        );
+    ref
+        .read(agentChatProvider.notifier)
+        .sendPrompt(prompt: _textController.text, attachments: attachments);
     _textController.clear();
     _bounce(from: 1.06);
     setState(() {});
@@ -165,9 +159,7 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
             ),
             boxShadow: [
               BoxShadow(
-                color: brand.shadow.withValues(
-                  alpha: _focused ? 0.32 : 0.16,
-                ),
+                color: brand.shadow.withValues(alpha: _focused ? 0.32 : 0.16),
                 blurRadius: _focused ? 28 : 18,
                 offset: const Offset(0, 8),
               ),
@@ -191,8 +183,10 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar>
                 shortcuts: <ShortcutActivator, Intent>{
                   const SingleActivator(LogicalKeyboardKey.enter, meta: true):
                       const _SendIntent(),
-                  const SingleActivator(LogicalKeyboardKey.enter, control: true):
-                      const _SendIntent(),
+                  const SingleActivator(
+                    LogicalKeyboardKey.enter,
+                    control: true,
+                  ): const _SendIntent(),
                 },
                 child: Actions(
                   actions: <Type, Action<Intent>>{
@@ -307,40 +301,48 @@ List<_ChatSection> _collectSections(AgentChatState state) {
       switch (block) {
         case JobsBlock():
           final n = block.jobs.length;
-          sections.add(_ChatSection(
-            blockId: block.id,
-            icon: Icons.travel_explore_rounded,
-            label: 'Job matches',
-            subtitle: '$n role${n == 1 ? '' : 's'}',
-            ordinalFraction: fraction,
-          ));
+          sections.add(
+            _ChatSection(
+              blockId: block.id,
+              icon: Icons.travel_explore_rounded,
+              label: 'Job matches',
+              subtitle: '$n role${n == 1 ? '' : 's'}',
+              ordinalFraction: fraction,
+            ),
+          );
         case ProposedEditsBlock():
           final n = block.edits.length;
-          sections.add(_ChatSection(
-            blockId: block.id,
-            icon: Icons.auto_awesome_rounded,
-            label: 'Tailored resume',
-            subtitle: '$n edit${n == 1 ? '' : 's'}',
-            ordinalFraction: fraction,
-          ));
+          sections.add(
+            _ChatSection(
+              blockId: block.id,
+              icon: Icons.auto_awesome_rounded,
+              label: 'Tailored resume',
+              subtitle: '$n edit${n == 1 ? '' : 's'}',
+              ordinalFraction: fraction,
+            ),
+          );
         case ResumeDraftBlock():
-          sections.add(_ChatSection(
-            blockId: block.id,
-            icon: Icons.description_outlined,
-            label: 'Resume draft',
-            subtitle: block.fileName,
-            ordinalFraction: fraction,
-          ));
+          sections.add(
+            _ChatSection(
+              blockId: block.id,
+              icon: Icons.description_outlined,
+              label: 'Resume draft',
+              subtitle: block.fileName,
+              ordinalFraction: fraction,
+            ),
+          );
         case EmailDraftBlock():
-          sections.add(_ChatSection(
-            blockId: block.id,
-            icon: Icons.mail_outline_rounded,
-            label: 'Outreach email',
-            subtitle: block.subject.trim().isNotEmpty
-                ? block.subject.trim()
-                : block.recipient,
-            ordinalFraction: fraction,
-          ));
+          sections.add(
+            _ChatSection(
+              blockId: block.id,
+              icon: Icons.mail_outline_rounded,
+              label: 'Outreach email',
+              subtitle: block.subject.trim().isNotEmpty
+                  ? block.subject.trim()
+                  : block.recipient,
+              ordinalFraction: fraction,
+            ),
+          );
         default:
           break;
       }
@@ -380,11 +382,7 @@ class _JumpToSectionChip extends ConsumerWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    Icons.double_arrow_rounded,
-                    size: 16,
-                    color: brand.ink,
-                  ),
+                  Icon(Icons.double_arrow_rounded, size: 16, color: brand.ink),
                   const SizedBox(width: 6),
                   Text(
                     'Jump to',
@@ -468,8 +466,10 @@ class _JumpSectionsSheet extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               itemCount: sections.length,
               separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (_, i) =>
-                  _SectionTile(section: sections[i], onTap: () => onSelect(sections[i])),
+              itemBuilder: (_, i) => _SectionTile(
+                section: sections[i],
+                onTap: () => onSelect(sections[i]),
+              ),
             ),
           ),
         ],

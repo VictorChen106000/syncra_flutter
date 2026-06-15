@@ -74,15 +74,17 @@ class NotificationsNotifier extends Notifier<NotificationsState> {
     if (event is! BlockAdded) return;
     final block = event.block;
     if (block is! InputRequestBlock) return;
-    add(AppNotification(
-      id: 'n${_seq++}',
-      kind: NotificationKind.intercept,
-      title: 'Agent needs your input',
-      body: block.question,
-      timestamp: 'Just now',
-      actionLabel: 'Answer',
-      targetBlockId: block.id,
-    ));
+    add(
+      AppNotification(
+        id: 'n${_seq++}',
+        kind: NotificationKind.intercept,
+        title: 'Agent needs your input',
+        body: block.question,
+        timestamp: 'Just now',
+        actionLabel: 'Answer',
+        targetBlockId: block.id,
+      ),
+    );
   }
 
   String? consumeMessage() {
@@ -140,4 +142,6 @@ class NotificationsNotifier extends Notifier<NotificationsState> {
 }
 
 final notificationsProvider =
-    NotifierProvider<NotificationsNotifier, NotificationsState>(NotificationsNotifier.new);
+    NotifierProvider<NotificationsNotifier, NotificationsState>(
+      NotificationsNotifier.new,
+    );
