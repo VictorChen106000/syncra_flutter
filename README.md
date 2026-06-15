@@ -8,7 +8,10 @@ AI career agent — Flutter + Firebase + Anthropic. Scans roles, tailors resumes
 
 - **Flutter** `^3.11.0` (`flutter --version` to check)
 - **Xcode** for iOS, **Android Studio** SDK for Android
-- An **Anthropic API key** (`sk-ant-…`) — without it, the agent falls back to mock services and still runs.
+- **API keys are no longer needed at run time.** The Anthropic and RapidAPI keys
+  live server-side in the [Cloud Functions proxy](functions/README.md); the app
+  authenticates to it with the signed-in user's Firebase token. Deploy the
+  functions once (see below), then just `flutter run`.
 
 ## First-time setup
 
@@ -22,23 +25,26 @@ Firebase config (`lib/firebase_options.dart`, `ios/Runner/GoogleService-Info.pli
 
 ## Run
 
-```bash
-flutter run --dart-define=ANTHROPIC_API_KEY=sk-ant-...
-```
-
-Or, if you want to test the mock-only flow (no LLM calls, no token spend):
+Once the [Cloud Functions proxy](functions/README.md) is deployed, no keys are needed:
 
 ```bash
 flutter run
 ```
 
+To run the mock-only flow (no LLM calls, no network, no token spend):
+
+```bash
+flutter run --dart-define=SYNCRA_USE_MOCKS=true
+```
+
 ### `--dart-define` keys
 
-| Key | Required? | Source | Used by |
-|-----|-----------|--------|---------|
-| `ANTHROPIC_API_KEY` | optional (mocks if absent) | [console.anthropic.com](https://console.anthropic.com/) → API Keys | `AnthropicService`, `AnthropicChatService`, `ResumeTailorService`, `ResumeParserService` |
+| Key | Required? | Purpose |
+|-----|-----------|---------|
+| `SYNCRA_USE_MOCKS` | optional (default `false`) | `true` forces every service to fall back to mock/seeded data instead of the proxy |
+| `SYNCRA_PROXY_BASE` | optional | Override the Cloud Functions base URL (only if you deploy to a different project/region) |
 
-No other build-time env vars. Firebase project + Google Sign-In OAuth client IDs are baked into the committed Firebase config files.
+Secrets (`ANTHROPIC_API_KEY`, `RAPIDAPI_KEY`) are **not** build-time vars anymore — they live in Cloud Secret Manager, set via `firebase functions:secrets:set`. Firebase project + Google Sign-In OAuth client IDs are baked into the committed Firebase config files.
 
 ## Targets
 
