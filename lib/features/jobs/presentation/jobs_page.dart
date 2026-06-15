@@ -260,8 +260,15 @@ class _PipelineFeedState extends ConsumerState<_PipelineFeed> {
     final brand = context.brand;
     var animIndex = 0;
 
-    void goToThread(Job job) {
-      ref.read(agentChatProvider.notifier).openJobThread(job);
+    void goToThread(Job job, {PipelineStage stage = PipelineStage.matched}) {
+      // Is the background autopilot already on this job? If so the opener shows
+      // "preparing…" instead of a duplicate "Prepare draft".
+      final claimed = ref
+          .read(pipelineAutopilotProvider.notifier)
+          .isAutopilotHandling(job.id);
+      ref
+          .read(agentChatProvider.notifier)
+          .openJobThread(job, stage: stage, autopilotClaimed: claimed);
       context.go(RouteNames.agentChat);
     }
 
@@ -274,7 +281,7 @@ class _PipelineFeedState extends ConsumerState<_PipelineFeed> {
                 onDismissed: () => widget.onDismiss(card.job),
                 child: _PipelineCard(
                   card: card,
-                  onTap: () => goToThread(card.job),
+                  onTap: () => goToThread(card.job, stage: card.stage),
                 ),
               ),
             )
@@ -289,7 +296,7 @@ class _PipelineFeedState extends ConsumerState<_PipelineFeed> {
               padding: const EdgeInsets.only(bottom: 14),
               child: _PipelineCard(
                 card: _cardFromApplication(app),
-                onTap: () => goToThread(app.job),
+                onTap: () => goToThread(app.job, stage: PipelineStage.drafted),
                 onDetails: () => ApplicationDetailSheet.show(context, app),
               ),
             )
@@ -367,7 +374,9 @@ class _PipelineFeedState extends ConsumerState<_PipelineFeed> {
                 child: _PipelineCard(
                   card: _cardFromApplication(app),
                   onTap: () {
-                    ref.read(agentChatProvider.notifier).openJobThread(app.job);
+                    ref
+                        .read(agentChatProvider.notifier)
+                        .openJobThread(app.job, stage: PipelineStage.sent);
                     context.go(RouteNames.agentChat);
                   },
                   onDetails: () => ApplicationDetailSheet.show(context, app),

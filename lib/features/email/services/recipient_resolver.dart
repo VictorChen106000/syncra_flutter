@@ -14,14 +14,11 @@ import 'company_contact_discovery_service.dart';
 /// so live sends during a demo always reach a real inbox we control and never
 /// bounce on a made-up company address.
 ///
-/// Set back to `''` to restore normal `careers@` / learned-contact resolution
-/// for production.
-///
-/// Off by default — every recipient is resolved dynamically per company
-/// (confirmed Firestore contact → `careers@{domain}` guess) so the demo isn't
-/// hardcoded to one inbox. Set a non-empty address only to force a safe
-/// catch-all during a live send.
-const String demoRecipientOverride = 'pegatron.inc@gmail.com';
+/// Currently set to the demo inbox so Autopilot actually delivers during the
+/// graded demo. **Set back to `''` for production** to restore normal
+/// `careers@` / learned-contact resolution. A mutable top-level (not `const`)
+/// so tests that exercise real resolution can clear it in `setUp`.
+String demoRecipientOverride = 'pegatron.inc@gmail.com';
 
 /// Recipient metadata for [company], preferring confirmed contacts and safe
 /// official discovery over the low-confidence `careers@{domain}` guess.

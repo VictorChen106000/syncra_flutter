@@ -132,6 +132,12 @@ class PipelineAutopilotNotifier extends Notifier<PipelineAutopilotState> {
   @override
   PipelineAutopilotState build() => const PipelineAutopilotState();
 
+  /// Whether the autopilot has claimed [jobId] this session (processing it now
+  /// or already done). The chat reads this so tapping a card mid-run shows
+  /// "preparing…" instead of kicking off a duplicate tailor/draft on the same
+  /// job. Cleared only by a fresh session (the set is per-notifier).
+  bool isAutopilotHandling(String jobId) => _processedJobIds.contains(jobId);
+
   /// Kicks off a bounded auto-processing pass. Safe to call repeatedly — it
   /// no-ops while a run is in flight, on Assist, without an API key, or when
   /// there are no fresh candidates.
@@ -162,8 +168,14 @@ class PipelineAutopilotNotifier extends Notifier<PipelineAutopilotState> {
       final sourceResumeId = await _orchestrator.latestManualResumeId(uid);
       if (sourceResumeId == null || sourceResumeId.isEmpty) return;
 
+      // Claim every candidate up front so a tap into the chat mid-run sees the
+      // job as autopilot-owned ([isAutopilotHandling]) and the opener shows
+      // "preparing…" instead of offering a duplicate "Prepare draft".
       for (final card in candidates) {
         _processedJobIds.add(card.job.id);
+      }
+
+      for (final card in candidates) {
         try {
           await _processCard(
             uid: uid,
