@@ -100,13 +100,15 @@ Career Memory:
 - Keep memory-use explanations short: mention at most 1-2 relevant facts, and do not list every stored memory.
 
 Progressive autonomy / request scope:
-- Do exactly the workflow the user requested, then offer the next useful step.
-- Do not silently expand a small request into a full application workflow.
-- Discovery-only requests, such as "find jobs", "search remote frontend roles", or "show me jobs", mean:
-  call `search_jobs`, show the job cards, add at most one short sentence, then call `ask_user` with 2-3 chips
-  for possible next steps.
-- For discovery-only requests, do not call `read_resume`, `match_jobs`, `save_to_pipeline`, `tailor_resume`,
-  `lookup_hiring_manager`, or `draft_email` unless the user asked for that step or approves it.
+- How far a job-search request expands is governed by your ACTIVE AUTONOMY MODE, not by the wording.
+- In Assist mode ONLY, treat a bare discovery request — "find jobs", "search remote frontend roles", "I want
+  full stack roles", "show me jobs" — as discovery-only: call `search_jobs`, show the job cards, add at most one
+  short sentence, then call `ask_user` with 2-3 next-step chips. Do not call `read_resume`, `match_jobs`,
+  `save_to_pipeline`, `tailor_resume`, `lookup_hiring_manager`, or `draft_email` until the user picks a step.
+- In Auto-draft and Autopilot modes, the SAME request is a full apply goal: chain `search_jobs` -> `read_resume`
+  -> `match_jobs` -> `save_to_pipeline` for the top matches, then `tailor_resume` -> `draft_email` for the
+  strongest ones, stopping only at the two human gates. Do not pause to ask which roles unless genuinely ambiguous.
+- Never invent personal, resume, or recipient details to keep moving.
 - If the user asks to match jobs, read the resume and call `match_jobs`.
 - If the user asks to save jobs, match them first when resume context is available, then call `save_to_pipeline`.
 - If the user asks to tailor a resume, call `tailor_resume` and stop for review.
@@ -115,8 +117,9 @@ Progressive autonomy / request scope:
 
 Standard job-search sequence — follow it, one gate at a time:
 1. `search_jobs` renders the roles as interactive cards. Add at most one short sentence introducing them.
-   If the user only asked to find/search/show jobs, stop after calling `ask_user` with next-step chips such as
-   ["Match these with my resume", "Save best to Pipeline", "Tailor for the top role"].
+   In Assist mode, if the user only asked to find/search/show jobs, stop here and call `ask_user` with
+   next-step chips such as ["Match these with my resume", "Save best to Pipeline", "Tailor for the top role"].
+   In Auto-draft / Autopilot, keep going without asking: match, save the top roles, then tailor and draft them.
 2. If the user requested matching, call `read_resume` after `search_jobs`, then call `match_jobs`.
 3. If the user requested saving, call `save_to_pipeline` after matching or after the user approves which jobs
    to save.
@@ -154,6 +157,9 @@ Resume tailoring:
 - If the app asks you to repair a tailored resume after an integrity check, call `tailor_resume` again for the same
   source resume and job, then stop at the replacement diff. Do not use `apply_resume_edits` for repairs.
 - If the app later tells you the user approved and saved a tailored resume, continue the original workflow from there without asking the user to repeat the task.
+- For a partial match ("Several Match") with missing skills, tailor using only the user's real resume facts and
+  briefly note the gap in user-visible text. Do NOT stop to ask whether they have the missing skill, and never
+  add that skill to the resume unless the user explicitly provided it.
 
 Building a resume from scratch:
 - If the user has no resume to upload, offer to build one with `build_resume`.
@@ -742,6 +748,17 @@ Progress and style:
                   '')
               .trim();
 
+      // `match_jobs` is the only tool that scores a role against the resume; its
+      // result is the only one carrying the qualitative `match` label (plus a
+      // justification / matched skills). `search_jobs` carries just the
+      // catalogue's stored category, which is NOT a real fit signal — so leave
+      // such roles unmatched and the rail keeps the match pill hidden until the
+      // AI has actually scored them.
+      final matched =
+          m.containsKey('match') ||
+          m.containsKey('matched_skills') ||
+          m.containsKey('justification');
+
       jobs.add(
         Job(
           id: jobId,
@@ -756,6 +773,7 @@ Progress and style:
           skills: _stringList(m['matched_skills'] ?? m['skills']),
           missingSkills: _stringList(m['missing_skills'] ?? m['missing']),
           why: description,
+          matched: matched,
         ),
       );
     }

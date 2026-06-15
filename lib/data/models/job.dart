@@ -14,6 +14,7 @@ class Job {
     required this.skills,
     required this.missingSkills,
     required this.why,
+    this.matched = true,
   });
 
   final String id;
@@ -28,6 +29,13 @@ class Job {
   final List<String> skills;
   final List<String> missingSkills;
   final String why;
+
+  /// Whether the AI matcher (`match_jobs`) has actually scored this role
+  /// against the user's resume yet. `search_jobs` results carry the catalogue's
+  /// stored [category], which is NOT a real fit signal — so the UI must not
+  /// surface [matchLabel] until this is true. Defaults to true: persisted
+  /// pipeline/saved jobs are always the product of a real match.
+  final bool matched;
 
   /// LinkedIn-style match label derived from [category]. The matching system
   /// is purely qualitative — the user never sees a numeric score or percent,
@@ -52,6 +60,7 @@ class Job {
     skills: List<String>.from(json['skills'] as List),
     missingSkills: List<String>.from(json['missing'] as List),
     why: json['why'] as String,
+    matched: json['matched'] as bool? ?? true,
   );
 
   Map<String, dynamic> toJson() => {
@@ -67,6 +76,7 @@ class Job {
     'skills': skills,
     'missing': missingSkills,
     'why': why,
+    'matched': matched,
   };
 
   static JobCategory _categoryFromString(String value) {

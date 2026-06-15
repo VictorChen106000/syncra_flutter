@@ -141,16 +141,32 @@ void main() {
       expect(prompt, contains('user tapped send'));
     });
 
-    test('guards discovery-only job searches from overreach', () {
+    test('governs job-search scope by autonomy mode', () {
       expect(prompt, contains('progressive autonomy'));
-      expect(prompt, contains('discovery-only requests'));
-      expect(prompt, contains('do not silently expand'));
-      expect(prompt, contains('do exactly the workflow the user requested'));
+      expect(
+        prompt,
+        contains('governed by your active autonomy mode, not by the wording'),
+      );
+      // Assist mode keeps a bare "find jobs" request discovery-only.
+      expect(
+        prompt,
+        contains('in assist mode only, treat a bare discovery request'),
+      );
       expect(prompt, contains('do not call `read_resume`'));
+      // Auto-draft / Autopilot expand the same request into the full pipeline.
+      expect(prompt, contains('the same request is a full apply goal'));
       expect(prompt, contains('match_jobs'));
       expect(prompt, contains('save_to_pipeline'));
       expect(prompt, contains('tailor_resume'));
       expect(prompt, contains('draft_email'));
+    });
+
+    test('tailors partial matches without a forced question', () {
+      expect(prompt, contains('several match'));
+      expect(
+        prompt,
+        contains('do not stop to ask whether they have the missing skill'),
+      );
     });
   });
 

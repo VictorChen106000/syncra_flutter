@@ -674,7 +674,10 @@ class _PipelineCard extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  _Tag(label: _matchLabel(job.category), solid: isStrong),
+                  // Only show the match tier once the AI has actually scored
+                  // the role; an unmatched role carries no real fit signal.
+                  if (job.matched)
+                    _Tag(label: _matchLabel(job.category), solid: isStrong),
                   if (card.needsTrustReview)
                     _TrustGuardTag(
                       card: card,

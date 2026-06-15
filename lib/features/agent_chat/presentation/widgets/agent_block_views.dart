@@ -346,24 +346,30 @@ class _JobMatchCard extends StatelessWidget {
                     ),
                   ),
                   const Spacer(),
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: matchColor,
-                      shape: BoxShape.circle,
+                  // The match dot + label only appear once the AI matcher has
+                  // actually scored the role. Roles freshly surfaced by
+                  // search_jobs are unmatched, so the rail stays silent on fit
+                  // rather than showing a misleading "All Match".
+                  if (job.matched) ...[
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: matchColor,
+                        shape: BoxShape.circle,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    job.matchLabel.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.2,
-                      color: brand.textMuted,
+                    const SizedBox(width: 6),
+                    Text(
+                      job.matchLabel.toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.2,
+                        color: brand.textMuted,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
               const SizedBox(height: 12),

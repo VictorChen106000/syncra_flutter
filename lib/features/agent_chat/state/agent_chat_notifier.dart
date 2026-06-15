@@ -40,19 +40,24 @@ String _autonomyDirectiveFor(AutonomyLevel level) => switch (level) {
         'draft, or save without an explicit go-ahead for that step. Never call '
         '`send_email`.',
   AutonomyLevel.autoDraft =>
-    'ACTIVE AUTONOMY MODE: Auto-draft. Carry out the full stated goal in one '
-        'run (find -> match -> tailor -> draft) WITHOUT pausing to ask '
-        'permission between steps; narrate each decision in one short line '
-        'instead. Stop only at the two human gates handled by the app UI: the '
-        'user saves the tailored resume, then the user taps Send. Never call '
-        '`send_email` yourself.',
+    'ACTIVE AUTONOMY MODE: Auto-draft. Treat any request to find, search, or '
+        'show roles as a full apply goal, not just discovery: carry it out in '
+        'one run (find -> match -> save top matches -> tailor -> draft) WITHOUT '
+        'pausing to ask permission between steps; narrate each decision in one '
+        'short line instead. For a partial match with a missing skill, tailor '
+        'with the real resume and note the gap rather than asking. Stop only at '
+        'the two human gates handled by the app UI: the user saves the tailored '
+        'resume, then the user taps Send. Never call `send_email` yourself.',
   AutonomyLevel.autopilot =>
-    'ACTIVE AUTONOMY MODE: Autopilot. Carry out the full goal in one run '
-        '(find -> match -> tailor -> draft) without inter-step asks; narrate '
-        'decisions briefly. After you call `draft_email`, the app auto-sends '
-        'low-risk drafts after a short Undo window, so tell the user you will '
-        "send it automatically unless they tap Undo. Do NOT call `send_email` "
-        'yourself — the app performs the confirmed send.',
+    'ACTIVE AUTONOMY MODE: Autopilot. Treat any request to find, search, or '
+        'show roles as a full apply goal: carry it out in one run (find -> '
+        'match -> save top matches -> tailor -> draft) without inter-step asks; '
+        'narrate decisions briefly. For a partial match with a missing skill, '
+        'tailor with the real resume and note the gap rather than asking. After '
+        'you call `draft_email`, the app auto-sends low-risk drafts after a '
+        'short Undo window, so tell the user you will send it automatically '
+        "unless they tap Undo. Do NOT call `send_email` yourself — the app "
+        'performs the confirmed send.',
 };
 
 /// The active [AgentService] for the app — Claude via the tool-use loop.
@@ -451,32 +456,36 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
         );
         break;
       case JobCategory.inputNeeded:
-        blocks.add(
-          TextBlock(
-            id: 'opener-text-${job.id}',
-            text: "Before I can draft this one — ${job.agentJustification}",
-          ),
-        );
         final missingSkill = job.missingSkills.isEmpty
             ? 'the missing context'
             : job.missingSkills.first;
+        final gapNote = job.missingSkills.isEmpty
+            ? ''
+            : " One gap I spotted: your resume doesn't show $missingSkill, so "
+                  "I'll tailor with what you've got and flag it rather than "
+                  'invent it.';
 
         blocks.add(
-          InputRequestBlock(
-            id: 'opener-input-${job.id}',
-            question: job.missingSkills.isEmpty
-                ? 'Your answer'
-                : 'Do you have ${job.missingSkills.first} experience?',
-            suggestions: job.missingSkills.isEmpty
-                ? const ['Tell me more', "I'm interested", 'Skip this one']
-                : [
-                    'Yes, ${job.missingSkills.first} experience',
-                    "No, I haven't used ${job.missingSkills.first}",
-                    'Tell me more',
-                  ],
+          TextBlock(
+            id: 'opener-text-${job.id}',
+            text:
+                "I can prepare your application for ${job.title} at "
+                "${job.company} — ${job.matchLabel.toLowerCase()}. "
+                "${job.agentJustification}$gapNote",
+          ),
+        );
+        blocks.add(
+          ActionProposalBlock(
+            id: 'opener-action-${job.id}',
+            icon: Icons.send_rounded,
+            title: 'Prepare application for ${job.company}',
+            description:
+                'Tailored resume + outreach draft · user reviews before send',
+            acceptLabel: 'Prepare draft',
+            editLabel: 'Make changes',
             continuationPrompt:
                 '''
-        The user answered the missing-information question for this pipeline job.
+        The user approved preparing an application for this partial-match job.
 
         Job:
         - job_id: ${job.id}
@@ -487,10 +496,11 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
         - missing_skill: $missingSkill
         - agent_justification: ${job.agentJustification}
 
-        Use the user's answer to decide whether this job can move forward.
-        If the answer confirms relevant experience, continue the application workflow from here.
-        If the answer says they do not have the experience, explain the gap briefly and suggest a safer next step.
-        Do not call send_email. Sending still requires explicit user approval.
+        Continue the application workflow from here. Tailor the resume using ONLY
+        the user's real resume facts — do not add the missing skill or any
+        unsupported detail. Briefly note the gap in user-visible text, then draft
+        outreach. Do not stop to ask whether the user has the missing skill.
+        Do not call send_email. Sending still requires the email review UI and explicit confirmation token.
         ''',
           ),
         );

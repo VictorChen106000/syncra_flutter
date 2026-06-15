@@ -40,8 +40,8 @@ const Color _softInk = Color(0xFFF1F1F3);
 ///
 ///   1. **Upload** — a big circular vessel the user taps to drop a resume; it
 ///      fills bottom-up with lime "water" as the file uploads.
-///   2. **Prompt** — the parsed file surfaces and Syncra asks "What do you want
-///      me to do?", with a context composer for the user's goal.
+///   2. **Prompt** — the parsed file surfaces and Syncra asks the user to "Set
+///      your agent's goal", with a context composer for the user's goal.
 ///   3. **Setup** — a headless agent reads the resume, infers the target role,
 ///      and kicks off the first brief while a live checklist narrates the work.
 ///
@@ -838,7 +838,7 @@ class _BuildWithAiButton extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 2 — prompt ("What do you want me to do?")
+// Phase 2 — prompt ("Set your agent's goal")
 // ---------------------------------------------------------------------------
 
 class _PromptPhase extends ConsumerStatefulWidget {
@@ -905,9 +905,9 @@ class _PromptPhaseState extends ConsumerState<_PromptPhase> {
                 Text.rich(
                       TextSpan(
                         children: [
-                          const TextSpan(text: 'What do you want\nme to '),
+                          const TextSpan(text: "Set your\nagent's "),
                           TextSpan(
-                            text: 'do?',
+                            text: 'goal',
                             style: TextStyle(color: brand.accent),
                           ),
                         ],
@@ -923,18 +923,6 @@ class _PromptPhaseState extends ConsumerState<_PromptPhase> {
                     .animate(delay: 120.ms)
                     .fadeIn(duration: 460.ms)
                     .moveY(begin: 10, end: 0, curve: Curves.easeOutCubic),
-                const SizedBox(height: 14),
-                Text(
-                  "Tell me your goal and I'll get to work. Leave it blank and "
-                  "I'll plan from your resume.",
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: brand.textMuted,
-                    height: 1.5,
-                    letterSpacing: -0.1,
-                  ),
-                ).animate(delay: 200.ms).fadeIn(duration: 460.ms),
               ],
             ),
           ),
@@ -948,7 +936,7 @@ class _PromptPhaseState extends ConsumerState<_PromptPhase> {
           child: TextButton(
             onPressed: widget.onSkip,
             child: Text(
-              'Skip — just use my resume',
+              'Skip',
               style: TextStyle(
                 color: brand.textSoft,
                 fontWeight: FontWeight.w700,

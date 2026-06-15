@@ -531,24 +531,28 @@ class _ThreadHero extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 10),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                decoration: BoxDecoration(
-                  color: brand.accent,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-                child: Text(
-                  job.matchLabel,
-                  style: TextStyle(
-                    color: brand.onAccent,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.1,
+              // Only claim a match tier once the AI has actually scored this
+              // role; before that the label would be a misleading "All Match".
+              if (job.matched) ...[
+                const SizedBox(width: 10),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: brand.accent,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Text(
+                    job.matchLabel,
+                    style: TextStyle(
+                      color: brand.onAccent,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.1,
+                    ),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
           const SizedBox(height: 12),
