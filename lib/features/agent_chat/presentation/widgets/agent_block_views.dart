@@ -26,6 +26,7 @@ import '../../../../data/firestore/jobs_repository.dart';
 import '../../../auth/models/user_profile.dart';
 import '../../../auth/state/user_profile_notifier.dart';
 import '../../../email/services/email_send_service.dart';
+import '../../../email/services/recipient_confidence_gate.dart';
 
 class AgentBlockView extends StatelessWidget {
   const AgentBlockView({
@@ -494,12 +495,12 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
     super.dispose();
   }
 
-  /// In **Autopilot** ([AutonomyLevel.autopilot]) the agent's outreach is sent
-  /// for the user — but only when the recipient is a real address, and always
-  /// behind a brief [_undoWindow] so the user can catch it. Any miss — wrong
-  /// mode, missing job, bad recipient — falls back to the manual "Review & send"
-  /// card. Never fires for restored history: only blocks built live this session
-  /// carry [EmailDraftBlock.autoSendPending].
+  /// In **Autopilot** ([AutonomyLevel.autopilot]) the app may send the agent's
+  /// outreach after a brief [_undoWindow], but only when the recipient passes
+  /// the Recipient Confidence Gate. Confirmed/high recipients may continue;
+  /// guessed, medium, low, or missing recipients stay as manual review drafts.
+  /// Never fires for restored history: only live blocks carry
+  /// [EmailDraftBlock.autoSendPending].
   Future<void> _maybeAutoSend() async {
     if (_autoSendStarted) return;
     final block = widget.block;
@@ -507,9 +508,19 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
       return;
     }
     final level =
-        ref.read(userProfileProvider)?.autonomyLevel ?? AutonomyLevel.autopilot;
+        ref.read(userProfileProvider)?.autonomyLevel ?? AutonomyLevel.autoDraft;
     if (level != AutonomyLevel.autopilot) return;
-    if (!_looksLikeEmail(block.recipient)) return; // Guessed/blank → review.
+    if (!_looksLikeEmail(block.recipient)) return;
+
+    final recipientGate = evaluateRecipientGate(block.recipientResolution);
+    if (!recipientGate.canAutoSend) {
+      debugPrint(
+        'EmailDraftBlockView: auto-send blocked by recipient gate -> '
+        '${recipientGate.reason}',
+      );
+      return;
+    }
+
     final jobId = block.jobId;
     if (jobId == null || jobId.isEmpty) return;
 
