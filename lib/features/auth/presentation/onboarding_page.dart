@@ -291,12 +291,12 @@ class _UploadPhase extends ConsumerWidget {
     // beat. The live percentage lives inside the circle, so this just names the
     // state.
     final label = hasError
-        ? "That file didn't work — try again"
+        ? "That file didn't work"
         : busy
         ? 'Uploading…'
         : filled
         ? 'Tap to continue'
-        : 'Upload Your Resume';
+        : 'Upload your resume';
 
     // Key the line on its *state*, not its text, so cross-state changes fade
     // cleanly without re-firing on unrelated rebuilds.
@@ -311,9 +311,9 @@ class _UploadPhase extends ConsumerWidget {
     // A quiet supporting line under the headline so the beat reads as guided
     // rather than a bare title + circle. Adapts with the state.
     final subtitle = hasError
-        ? 'That didn’t read — try another file.'
+        ? 'Try another PDF — text-based files read best.'
         : busy
-        ? 'Reading your résumé…'
+        ? 'Reading your resume…'
         : filled
         ? 'Tap the circle to continue.'
         : 'Drop in a PDF and I’ll take it from here.';
@@ -326,7 +326,10 @@ class _UploadPhase extends ConsumerWidget {
             TextSpan(
               children: [
                 const TextSpan(text: 'Upload your '),
-                TextSpan(text: 'résumé', style: TextStyle(color: brand.accent)),
+                TextSpan(
+                  text: 'resume',
+                  style: TextStyle(color: brand.accent),
+                ),
               ],
             ),
             key: const ValueKey('empty'),
@@ -354,169 +357,190 @@ class _UploadPhase extends ConsumerWidget {
 
     final onTap = busy ? null : (hasResume ? onContinue : onPick);
 
-    return Column(
-      children: [
-        const Spacer(flex: 4),
-        // Headline + supporting line, sitting above the vessel so the words
-        // read as a prompt for the circle right beneath them.
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 260),
-          transitionBuilder: (child, anim) =>
-              FadeTransition(opacity: anim, child: child),
-          child: titleWidget,
-        ),
-        const SizedBox(height: 10),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 260),
-          child: Text(
-            subtitle,
-            key: ValueKey('sub-$labelKey'),
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: brand.textMuted,
-              height: 1.4,
-              letterSpacing: -0.1,
-            ),
-          ),
-        ),
-        const SizedBox(height: 30),
-        _BouncyTap(
-              onTap: onTap,
-              child: SizedBox(
-                width: 224,
-                height: 224,
-                // Bob the *whole* vessel — rings, glow, water and glyph — as one
-                // unit so the ripple rings ride with the circle instead of
-                // drifting out of sync with it.
-                child: _Bobbing(
-                  enabled: onTap != null && !busy,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    // Let the ripple rings bloom past the 224px vessel instead
-                    // of being clipped to it.
-                    clipBehavior: Clip.none,
-                    children: [
-                      // Ripple rings whenever the vessel is tappable (empty *or*
-                      // full) so it reads as "press me" — gone while a file is
-                      // in flight, where the water is the focus. Honours
-                      // reduce-motion (renders nothing).
-                      if (onTap != null && !busy)
-                        _VesselPulse(size: 224, color: brand.accent),
-                      // Glassy backdrop: a soft radial lime core + an ambient
-                      // outer bloom give the vessel depth so it reads as a
-                      // tappable orb, not a thin ring on black. The rising water
-                      // (opaque) sits over this, so it mostly shows through in
-                      // the empty / partial states.
-                      Container(
-                        width: 224,
-                        height: 224,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: RadialGradient(
-                            colors: [
-                              brand.accent.withValues(alpha: 0.16),
-                              brand.accent.withValues(alpha: 0.05),
-                              brand.accent.withValues(alpha: 0.0),
-                            ],
-                            stops: const [0.0, 0.62, 1.0],
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: brand.accent.withValues(alpha: 0.18),
-                              blurRadius: 34,
-                              spreadRadius: -6,
-                            ),
-                          ],
-                        ),
-                      ),
-                      WaterFillCircle(fill: fill, active: busy, size: 224),
-                      // A glossy lime orb for the "tap to continue" moment: a
-                      // vertical sheen (bright crown → deeper base) gives the
-                      // fill real dimension instead of a flat green, and a soft
-                      // top-left specular highlight lands the polished look.
-                      if (filled) ...[
-                        Container(
-                          width: 224,
-                          height: 224,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                brand.accentBright.withValues(alpha: 0.55),
-                                Colors.white.withValues(alpha: 0.0),
-                                Colors.black.withValues(alpha: 0.14),
-                              ],
-                              stops: const [0.0, 0.5, 1.0],
-                            ),
-                          ),
-                        ),
-                        Container(
-                          width: 224,
-                          height: 224,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: RadialGradient(
-                              center: const Alignment(-0.35, -0.5),
-                              radius: 0.9,
-                              colors: [
-                                Colors.white.withValues(alpha: 0.34),
-                                Colors.white.withValues(alpha: 0.0),
-                              ],
-                              stops: const [0.0, 0.6],
-                            ),
-                          ),
-                        ),
-                      ],
-                      _CircleContent(
-                        filled: filled,
-                        busy: busy,
-                        percent: percent,
-                        fill: fill,
-                        brand: brand,
-                      ),
-                    ],
+    // Spoken label for the (otherwise silent) vessel button, tracking its state.
+    final circleLabel = busy
+        ? 'Uploading your resume'
+        : hasError
+        ? 'Try uploading your resume again'
+        : filled
+        ? 'Continue'
+        : 'Upload your resume';
+
+    // The other beats scroll; the upload beat is a fixed, Spacer-centred
+    // Column. Wrap it so it stays centred when there's room but scrolls
+    // instead of overflowing on short screens / large OS font scaling.
+    // IntrinsicHeight lets the Spacers keep distributing the slack.
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: IntrinsicHeight(
+            child: Column(
+              children: [
+                const Spacer(flex: 4),
+                // Headline + supporting line, sitting above the vessel so the
+                // words read as a prompt for the circle right beneath them.
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 260),
+                  transitionBuilder: (child, anim) =>
+                      FadeTransition(opacity: anim, child: child),
+                  child: titleWidget,
+                ),
+                const SizedBox(height: 10),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 260),
+                  child: Text(
+                    subtitle,
+                    key: ValueKey('sub-$labelKey'),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: brand.textMuted,
+                      height: 1.4,
+                      letterSpacing: -0.1,
+                    ),
                   ),
                 ),
-              ),
-            )
-            .animate()
-            .fadeIn(duration: 460.ms)
-            .scale(begin: const Offset(0.9, 0.9), end: const Offset(1, 1)),
-        const SizedBox(height: 26),
-        // The uploaded file, below the vessel.
-        if (hasResume && !busy)
-          _UploadedResume(
-            resume: state.resumes.first,
-            onDelete: () => ref
-                .read(resumeProvider.notifier)
-                .deleteResume(state.resumes.first.id),
-          ).animate().fadeIn(duration: 320.ms).moveY(begin: 6, end: 0),
-        const Spacer(flex: 6),
-        if (hasResume && !busy)
-          TextButton(
-            onPressed: onPick,
-            child: Text(
-              'Upload a different resume',
-              style: TextStyle(
-                color: brand.textMuted,
-                fontWeight: FontWeight.w700,
-                fontSize: 13.5,
-              ),
+                const SizedBox(height: 30),
+                _BouncyTap(
+                  onTap: onTap,
+                  semanticLabel: circleLabel,
+                  child: SizedBox(
+                    width: 224,
+                    height: 224,
+                    // Bob the *whole* vessel — rings, glow, water and glyph — as one
+                    // unit so the ripple rings ride with the circle instead of
+                    // drifting out of sync with it.
+                    child: _Bobbing(
+                      enabled: onTap != null && !busy,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        // Let the ripple rings bloom past the 224px vessel instead
+                        // of being clipped to it.
+                        clipBehavior: Clip.none,
+                        children: [
+                          // Ripple rings whenever the vessel is tappable (empty *or*
+                          // full) so it reads as "press me" — gone while a file is
+                          // in flight, where the water is the focus. Honours
+                          // reduce-motion (renders nothing).
+                          if (onTap != null && !busy)
+                            _VesselPulse(size: 224, color: brand.accent),
+                          // Glassy backdrop: a soft radial lime core + an ambient
+                          // outer bloom give the vessel depth so it reads as a
+                          // tappable orb, not a thin ring on black. The rising water
+                          // (opaque) sits over this, so it mostly shows through in
+                          // the empty / partial states.
+                          Container(
+                            width: 224,
+                            height: 224,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: RadialGradient(
+                                colors: [
+                                  brand.accent.withValues(alpha: 0.16),
+                                  brand.accent.withValues(alpha: 0.05),
+                                  brand.accent.withValues(alpha: 0.0),
+                                ],
+                                stops: const [0.0, 0.62, 1.0],
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: brand.accent.withValues(alpha: 0.18),
+                                  blurRadius: 34,
+                                  spreadRadius: -6,
+                                ),
+                              ],
+                            ),
+                          ),
+                          WaterFillCircle(fill: fill, active: busy, size: 224),
+                          // A glossy lime orb for the "tap to continue" moment: a
+                          // vertical sheen (bright crown → deeper base) gives the
+                          // fill real dimension instead of a flat green, and a soft
+                          // top-left specular highlight lands the polished look.
+                          if (filled) ...[
+                            Container(
+                              width: 224,
+                              height: 224,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    brand.accentBright.withValues(alpha: 0.55),
+                                    Colors.white.withValues(alpha: 0.0),
+                                    Colors.black.withValues(alpha: 0.14),
+                                  ],
+                                  stops: const [0.0, 0.5, 1.0],
+                                ),
+                              ),
+                            ),
+                            Container(
+                              width: 224,
+                              height: 224,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: RadialGradient(
+                                  center: const Alignment(-0.35, -0.5),
+                                  radius: 0.9,
+                                  colors: [
+                                    Colors.white.withValues(alpha: 0.34),
+                                    Colors.white.withValues(alpha: 0.0),
+                                  ],
+                                  stops: const [0.0, 0.6],
+                                ),
+                              ),
+                            ),
+                          ],
+                          _CircleContent(
+                            filled: filled,
+                            busy: busy,
+                            percent: percent,
+                            fill: fill,
+                            brand: brand,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ).animate().fadeIn(duration: 460.ms).scale(begin: const Offset(0.9, 0.9), end: const Offset(1, 1)),
+                const SizedBox(height: 26),
+                // The uploaded file, below the vessel.
+                if (hasResume && !busy)
+                  _UploadedResume(
+                    resume: state.resumes.first,
+                    onDelete: () => ref
+                        .read(resumeProvider.notifier)
+                        .deleteResume(state.resumes.first.id),
+                  ).animate().fadeIn(duration: 320.ms).moveY(begin: 6, end: 0),
+                const Spacer(flex: 6),
+                if (hasResume && !busy)
+                  TextButton(
+                    onPressed: onPick,
+                    child: Text(
+                      'Upload a different resume',
+                      style: TextStyle(
+                        color: brand.textMuted,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.5,
+                      ),
+                    ),
+                  ),
+                // No resume yet → reframe the exit as a positive path: build one with
+                // the agent. Routes straight into the chatbot. Trampolines on tap.
+                if (!hasResume && !busy)
+                  _BuildWithAiButton(
+                    onTap: onBuildWithAi,
+                    brand: brand,
+                  ).animate().fadeIn(duration: 360.ms).moveY(begin: 8, end: 0),
+                const SizedBox(height: 2),
+              ],
             ),
           ),
-        // No resume yet → reframe the exit as a positive path: build one with
-        // the agent. Routes straight into the chatbot. Trampolines on tap.
-        if (!hasResume && !busy)
-          _BuildWithAiButton(onTap: onBuildWithAi, brand: brand)
-              .animate()
-              .fadeIn(duration: 360.ms)
-              .moveY(begin: 8, end: 0),
-        const SizedBox(height: 2),
-      ],
+        ),
+      ),
     );
   }
 }
@@ -658,10 +682,19 @@ class _WaterlineClipper extends CustomClipper<Rect> {
 /// Disabled — and rendered as a plain pass-through — when [onTap] is null.
 /// Honours reduce-motion by snapping instead of animating.
 class _BouncyTap extends StatefulWidget {
-  const _BouncyTap({required this.child, required this.onTap});
+  const _BouncyTap({
+    required this.child,
+    required this.onTap,
+    this.semanticLabel,
+  });
 
   final Widget child;
   final VoidCallback? onTap;
+
+  /// When set, exposes this otherwise semantics-free [GestureDetector] to
+  /// assistive tech as a button with this label (disabled when [onTap] is
+  /// null), so the primary actions are reachable by screen readers.
+  final String? semanticLabel;
 
   @override
   State<_BouncyTap> createState() => _BouncyTapState();
@@ -679,7 +712,7 @@ class _BouncyTapState extends State<_BouncyTap> {
   Widget build(BuildContext context) {
     final enabled = widget.onTap != null;
     final motion = shouldAnimate(context);
-    return GestureDetector(
+    final gesture = GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: widget.onTap,
       onTapDown: enabled ? (_) => _setDown(true) : null,
@@ -697,6 +730,14 @@ class _BouncyTapState extends State<_BouncyTap> {
         child: widget.child,
       ),
     );
+    if (widget.semanticLabel == null) return gesture;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: widget.semanticLabel,
+      excludeSemantics: true,
+      child: gesture,
+    );
   }
 }
 
@@ -713,12 +754,7 @@ class _Bobbing extends StatelessWidget {
     if (!enabled || !shouldAnimate(context)) return child;
     return child
         .animate(onPlay: (c) => c.repeat(reverse: true))
-        .moveY(
-          begin: 0,
-          end: -9,
-          duration: 1100.ms,
-          curve: Curves.easeInOut,
-        );
+        .moveY(begin: 0, end: -9, duration: 1100.ms, curve: Curves.easeInOut);
   }
 }
 
@@ -735,25 +771,29 @@ class _VesselPulse extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!shouldAnimate(context)) return const SizedBox.shrink();
 
-    Widget ring(int i) => Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: color.withValues(alpha: 0.45), width: 2),
-      ),
-    ).animate(onPlay: (c) => c.repeat(), delay: (i * 900).ms).scaleXY(
-      begin: 1.0,
-      end: 1.32,
-      duration: 1800.ms,
-      curve: Curves.easeOut,
-    ).fadeOut(duration: 1800.ms, curve: Curves.easeOut);
+    Widget ring(int i) =>
+        Container(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: color.withValues(alpha: 0.45),
+                  width: 2,
+                ),
+              ),
+            )
+            .animate(onPlay: (c) => c.repeat(), delay: (i * 900).ms)
+            .scaleXY(
+              begin: 1.0,
+              end: 1.32,
+              duration: 1800.ms,
+              curve: Curves.easeOut,
+            )
+            .fadeOut(duration: 1800.ms, curve: Curves.easeOut);
 
     return IgnorePointer(
-      child: Stack(
-        alignment: Alignment.center,
-        children: [ring(0), ring(1)],
-      ),
+      child: Stack(alignment: Alignment.center, children: [ring(0), ring(1)]),
     );
   }
 }
@@ -772,6 +812,7 @@ class _BuildWithAiButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return _BouncyTap(
       onTap: onTap,
+      semanticLabel: 'Build a resume with AI',
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 13),
         decoration: BoxDecoration(
@@ -907,7 +948,7 @@ class _PromptPhaseState extends ConsumerState<_PromptPhase> {
           child: TextButton(
             onPressed: widget.onSkip,
             child: Text(
-              'Skip',
+              'Skip — just use my resume',
               style: TextStyle(
                 color: brand.textSoft,
                 fontWeight: FontWeight.w700,
@@ -1147,9 +1188,7 @@ class _GmailPhaseState extends ConsumerState<_GmailPhase> {
       // Persist the connection so it sticks past onboarding — the dashboard and
       // the Profile › Connections toggle read this flag. Fire-and-forget: the
       // notifier flips its in-memory state synchronously.
-      unawaited(
-        ref.read(userProfileProvider.notifier).setGmailConnected(true),
-      );
+      unawaited(ref.read(userProfileProvider.notifier).setGmailConnected(true));
     }
     widget.onDone();
   }
@@ -1329,7 +1368,11 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     // beat) *first*, so everything after is read against it. It's already in
     // hand, so this step is short; the goal is rendered as a chip under the
     // step so the read is *visible*.
-    _set(_contextStep, _StepStatus.active, detail: 'Taking in what you told me…');
+    _set(
+      _contextStep,
+      _StepStatus.active,
+      detail: 'Taking in what you told me…',
+    );
     await Future<void>.delayed(const Duration(milliseconds: 750));
     _set(
       _contextStep,
@@ -1703,7 +1746,9 @@ class _ProcessStep extends StatelessWidget {
             bottom: 0,
             left: 0,
             width: _railWidth,
-            child: Center(child: _Connector(done: done, active: active)),
+            child: Center(
+              child: _Connector(done: done, active: active),
+            ),
           ),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
