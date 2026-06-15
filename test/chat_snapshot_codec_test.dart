@@ -11,6 +11,47 @@ import 'package:syncra/features/resumes/models/resume_json.dart';
 
 void main() {
   group('ChatSnapshotCodec', () {
+    test('round-trips email draft recipient evidence metadata', () {
+      final block = EmailDraftBlock(
+        id: 'email-verified',
+        recipient: 'careers@acme.io',
+        subject: 'Frontend Engineer application',
+        body: 'Hello, I am interested.',
+        jobId: 'job-1',
+        recipientDomain: 'acme.io',
+        recipientConfidence: RecipientConfidence.high,
+        recipientSource: RecipientSource.officialCompanyWebsite,
+        recipientSourceUrl: 'https://acme.io/careers',
+        recipientReason: 'Found careers@acme.io on an official company page.',
+        canAutoSend: true,
+        attachmentResumeId: 'resume-2',
+        attachmentFilename: 'Alex_Chen_Tailored.pdf',
+        autoSendPending: true,
+      );
+
+      final encoded = ChatSnapshotCodec.encodeBlock(block);
+      final decoded = ChatSnapshotCodec.decodeBlock(encoded);
+
+      expect(decoded, isA<EmailDraftBlock>());
+      final restored = decoded as EmailDraftBlock;
+
+      expect(restored.recipient, 'careers@acme.io');
+      expect(restored.recipientDomain, 'acme.io');
+      expect(restored.recipientConfidence, RecipientConfidence.high);
+      expect(restored.recipientSource, RecipientSource.officialCompanyWebsite);
+      expect(restored.recipientSourceUrl, 'https://acme.io/careers');
+      expect(
+        restored.recipientReason,
+        'Found careers@acme.io on an official company page.',
+      );
+      expect(restored.canAutoSend, isTrue);
+      expect(restored.recipientResolution.canAutoSend, isTrue);
+      expect(restored.recipientResolution.requiresUserConfirmation, isFalse);
+
+      // Important: autoSendPending is intentionally not persisted.
+      expect(restored.autoSendPending, isFalse);
+    });
+
     test('round-trips user messages with resume attachments', () {
       final original = UserMessage(
         id: 'user-1',

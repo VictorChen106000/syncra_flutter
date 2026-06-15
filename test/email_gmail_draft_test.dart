@@ -7,6 +7,8 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:syncra/features/email/services/email_send_service.dart';
 import 'package:syncra/features/email/services/gmail_service.dart';
+import 'package:syncra/data/firestore/company_contacts_repository.dart';
+import 'package:syncra/features/email/models/recipient_resolution.dart';
 
 void main() {
   test(
@@ -106,4 +108,113 @@ void main() {
       );
     }
   });
+
+  test(
+    'EmailSendService.createDraft learns user-reviewed recipients',
+    () async {
+      final contacts = _FakeCompanyContactsRepository();
+      final gmail = _mockDraftGmailService('draft-123');
+
+      final service = EmailSendService.instance;
+      service.debugOverrideDependencies(gmail: gmail, contacts: contacts);
+
+      addTearDown(() {
+        service.debugOverrideDependencies();
+        gmail.dispose();
+      });
+
+      final draftId = await service.createDraft(
+        to: 'talent@acme.io',
+        subject: 'Application',
+        body: 'Hello team.',
+        contactDomain: 'acme.io',
+        company: 'Acme',
+        uid: 'user-1',
+        learnRecipient: true,
+      );
+
+      expect(draftId, 'draft-123');
+      expect(contacts.saved, hasLength(1));
+      expect(contacts.saved.single.domain, 'acme.io');
+      expect(contacts.saved.single.email, 'talent@acme.io');
+      expect(contacts.saved.single.company, 'Acme');
+      expect(contacts.saved.single.uid, 'user-1');
+    },
+  );
+
+  test(
+    'EmailSendService.createDraft can skip learning uncertain recipients',
+    () async {
+      final contacts = _FakeCompanyContactsRepository();
+      final gmail = _mockDraftGmailService('draft-456');
+
+      final service = EmailSendService.instance;
+      service.debugOverrideDependencies(gmail: gmail, contacts: contacts);
+
+      addTearDown(() {
+        service.debugOverrideDependencies();
+        gmail.dispose();
+      });
+
+      final draftId = await service.createDraft(
+        to: 'careers@unknown-example.com',
+        subject: 'Application',
+        body: 'Hello team.',
+        contactDomain: 'unknown-example.com',
+        company: 'Unknown Example',
+        uid: 'user-1',
+        learnRecipient: false,
+      );
+
+      expect(draftId, 'draft-456');
+      expect(contacts.saved, isEmpty);
+    },
+  );
+}
+
+GmailService _mockDraftGmailService(String draftId) {
+  return GmailService(
+    client: MockClient((request) async {
+      return http.Response(jsonEncode({'id': draftId}), 200);
+    }),
+    accessTokenProvider: (_) async => 'test-access-token',
+  );
+}
+
+class _FakeCompanyContactsRepository implements CompanyContactsRepository {
+  final saved =
+      <({String domain, String email, String? company, String? uid})>[];
+
+  @override
+  Future<String?> lookupEmail(String domain) async => null;
+
+  @override
+  Future<RecipientResolution?> lookupResolution(String domain) async => null;
+
+  @override
+  Future<void> markRejected(String domain) async {}
+
+  @override
+  Future<void> saveConfirmedEmail({
+    required String domain,
+    required String email,
+    String? company,
+    String? uid,
+  }) async {
+    saved.add((domain: domain, email: email, company: company, uid: uid));
+  }
+
+  @override
+  Future<void> saveConfirmedResolution(
+    RecipientResolution resolution, {
+    String? company,
+    String? uid,
+  }) async {
+    saved.add((
+      domain: resolution.domain,
+      email: resolution.email,
+      company: company,
+      uid: uid,
+    ));
+  }
 }
