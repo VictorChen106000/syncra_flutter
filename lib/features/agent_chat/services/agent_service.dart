@@ -83,4 +83,10 @@ abstract class AgentService {
   /// a fresh context. Called when the user starts a new chat or switches job
   /// threads. Stateless implementations can no-op.
   void resetConversation() {}
+
+  /// Sets a per-turn directive describing the user's active autonomy level
+  /// (Assist / Auto-draft / Autopilot). Injected as a secondary system block
+  /// that overrides the static prompt's default chaining/gate behavior. The
+  /// controller sets this before each [runPrompt]. No-op by default.
+  void setAutonomyDirective(String directive) {}
 }

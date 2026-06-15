@@ -30,6 +30,7 @@ class UserRepository {
             'gmail_connected': false,
       'has_completed_onboarding': false,
       'auto_apply': const AutoApplySettings().toMap(),
+      'autonomy_level': AutonomyLevel.autoDraft.storageKey,
       'created_at': FieldValue.serverTimestamp(),
     });
   }
@@ -57,6 +58,7 @@ class UserRepository {
     ResumeFit? resumeFit,
     String? recommendation,
     AutoApplySettings? autoApplySettings,
+    AutonomyLevel? autonomyLevel,
   }) async {
     final patch = <String, dynamic>{};
     if (role != null) patch['role'] = role;
@@ -70,6 +72,7 @@ class UserRepository {
         if (autoApplySettings != null) {
       patch['auto_apply'] = autoApplySettings.toMap();
     }
+    if (autonomyLevel != null) patch['autonomy_level'] = autonomyLevel.storageKey;
     if (patch.isEmpty) return;
     await _paths.user(uid).update(patch);
   }
@@ -208,6 +211,7 @@ class UserRepository {
       'resume_fit': FieldValue.delete(),
       'recommendation': FieldValue.delete(),
             'auto_apply': const AutoApplySettings().toMap(),
+      'autonomy_level': AutonomyLevel.autoDraft.storageKey,
     });
   }
 

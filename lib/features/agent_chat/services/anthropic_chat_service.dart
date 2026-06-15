@@ -38,6 +38,17 @@ class AnthropicChatService implements AgentService {
   /// [systemPromptOverride] for a one-off session with different framing.
   final String _systemPrompt;
 
+  /// Per-turn autonomy directive (Assist / Auto-draft / Autopilot), set by the
+  /// chat controller before each [runPrompt]. Sent as a *second* system block
+  /// so the cacheable static prefix stays byte-identical while this small,
+  /// user-specific instruction overrides the default chaining/gate behavior.
+  /// Empty for the morning brief, which never sets it.
+  String _autonomyDirective = '';
+
+  @override
+  void setAutonomyDirective(String directive) =>
+      _autonomyDirective = directive.trim();
+
   static const _maxLoopIterations = 8;
 
   /// Upper bound on retained conversation messages for a threaded session.
@@ -75,6 +86,9 @@ step by calling `ask_user` with 2-3 tappable suggestion chips. Propose a specifi
 "what would you like to do next?". Do not call `ask_user` just to confirm a step the user already asked for.
 - Continue the workflow until you either finish the work the user's goal implies or reach a user gate.
 - Use tools to do the work. Do not just describe what you would do.
+- A separate system message states your ACTIVE AUTONOMY MODE (Assist / Auto-draft / Autopilot). It governs
+how far you advance before waiting for the user and OVERRIDES the chaining/gate guidance in this prompt where
+they differ. If none is given, behave as Auto-draft.
 
 Career Memory:
 - After `ask_user` returns an answer, inspect whether the answer contains a stable career fact.
@@ -681,6 +695,11 @@ Progress and style:
           'text': _systemPrompt,
           'cache_control': {'type': 'ephemeral'},
         },
+        // The active autonomy mode rides in a second, uncached block so it can
+        // change per user / per turn without invalidating the cached prefix
+        // above. Placed last so it wins over the static prompt's defaults.
+        if (_autonomyDirective.isNotEmpty)
+          {'type': 'text', 'text': _autonomyDirective},
       ],
       'tools': tools,
       // Second breakpoint: the top-level cache_control auto-places on the

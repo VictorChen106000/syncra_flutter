@@ -91,6 +91,46 @@ class AutoApplySettings {
   }
 }
 
+/// How far the chat agent advances on its own before it waits for the user.
+///
+/// A single, deterministic dial the agent reads from the profile instead of
+/// inferring scope from the user's wording. The levels escalate monotonically
+/// across the pipeline (find → match → tailor → draft → send):
+/// - [assist]: proposes each step, waits for approval before the next.
+/// - [autoDraft] (default): chains the full stated goal to a ready-to-send
+///   draft; stops only at the two human gates — Save résumé + tap Send.
+/// - [autopilot]: also auto-sends low-risk drafts, behind a brief undo window.
+///
+/// Only the level itself is trusted to the model; the irreversible send stays
+/// code-gated by the email confirmation token regardless of this setting.
+enum AutonomyLevel {
+  assist,
+  autoDraft,
+  autopilot;
+
+  /// Stable key persisted to Firestore (`autonomy_level`).
+  String get storageKey => switch (this) {
+    AutonomyLevel.assist => 'assist',
+    AutonomyLevel.autoDraft => 'auto_draft',
+    AutonomyLevel.autopilot => 'autopilot',
+  };
+
+  /// Short user-facing name for the settings dial.
+  String get label => switch (this) {
+    AutonomyLevel.assist => 'Assist',
+    AutonomyLevel.autoDraft => 'Auto-draft',
+    AutonomyLevel.autopilot => 'Autopilot',
+  };
+
+  /// Parses the persisted key, defaulting to [autoDraft] for legacy users and
+  /// any unrecognised value.
+  static AutonomyLevel fromStorage(Object? value) => switch (value) {
+    'assist' => AutonomyLevel.assist,
+    'autopilot' => AutonomyLevel.autopilot,
+    _ => AutonomyLevel.autoDraft,
+  };
+}
+
 /// Snapshot of `users/{uid}` — settings the user controls.
 ///
 /// Mirrors the user profile schema documented in `docs/ARCHITECTURE.md`.
@@ -109,6 +149,7 @@ class UserProfile {
     this.resumeFit,
     this.recommendation,
     this.autoApplySettings = const AutoApplySettings(),
+    this.autonomyLevel = AutonomyLevel.autoDraft,
   });
 
   final String name;
@@ -142,6 +183,10 @@ class UserProfile {
   /// boundaries the agent must obey later.
   final AutoApplySettings autoApplySettings;
 
+  /// How far the chat agent advances before it waits for the user. Defaults to
+  /// [AutonomyLevel.autoDraft] for new and legacy profiles.
+  final AutonomyLevel autonomyLevel;
+
   UserProfile copyWith({
     String? name,
     String? email,
@@ -153,6 +198,7 @@ class UserProfile {
     ResumeFit? resumeFit,
     String? recommendation,
     AutoApplySettings? autoApplySettings,
+    AutonomyLevel? autonomyLevel,
     bool clearResumeFit = false,
   }) {
     return UserProfile(
@@ -167,6 +213,7 @@ class UserProfile {
       resumeFit: clearResumeFit ? null : (resumeFit ?? this.resumeFit),
       recommendation: recommendation ?? this.recommendation,
       autoApplySettings: autoApplySettings ?? this.autoApplySettings,
+      autonomyLevel: autonomyLevel ?? this.autonomyLevel,
     );
   }
 
@@ -192,6 +239,7 @@ class UserProfile {
           ? null
           : (data['recommendation'] as String).trim(),
       autoApplySettings: AutoApplySettings.fromMap(data['auto_apply']),
+      autonomyLevel: AutonomyLevel.fromStorage(data['autonomy_level']),
     );
   }
 }

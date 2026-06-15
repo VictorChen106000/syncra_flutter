@@ -24,7 +24,6 @@ import '../../../jobs/presentation/widgets/job_action_sheet.dart';
 import '../../../jobs/services/job_trust_guard.dart';
 import '../../../jobs/state/jobs_notifier.dart';
 import '../../../../data/firestore/jobs_repository.dart';
-import '../../../applications/services/auto_apply_eligibility.dart';
 import '../../../auth/models/user_profile.dart';
 import '../../../auth/state/user_profile_notifier.dart';
 import '../../../email/services/email_send_service.dart';
@@ -458,6 +457,9 @@ class EmailDraftBlockView extends ConsumerStatefulWidget {
 }
 
 class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
+  /// Length of the Autopilot "Undo" window before the email actually sends.
+  static const _undoWindow = Duration(seconds: 5);
+
   /// True while an auto-send is in flight — drives the "Auto-sending…" footer.
   bool _autoSending = false;
 
@@ -468,17 +470,31 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
   /// True once this card actually auto-sent, so the settled state can say so.
   bool _autoSent = false;
 
+  /// Counts down the Autopilot undo window; non-null only while it's open.
+  Timer? _undoTimer;
+
+  /// Seconds left in the undo window — drives the "Sending in Ns… Undo" footer.
+  /// Zero means no window is open.
+  int _undoRemaining = 0;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAutoSend());
   }
 
-  /// Sends the drafted outreach automatically when the user opted in
-  /// ([AutoApplySettings.autoSendOutreach]) and the job clears the low-risk
-  /// trust floor ([shouldAutoSendOutreach]). Any miss — setting off, missing or
-  /// risky job, or a send error — falls back to the manual "Review & send" card.
-  /// Never sends for restored history: only blocks built live this session carry
+  @override
+  void dispose() {
+    _undoTimer?.cancel();
+    super.dispose();
+  }
+
+  /// In **Autopilot** ([AutonomyLevel.autopilot]) the agent's outreach is sent
+  /// for the user — but only when the job clears the low-risk trust floor and
+  /// the recipient is a real address, and always behind a brief [_undoWindow]
+  /// so the user can catch it. Any miss — wrong mode, missing/risky job, bad
+  /// recipient — falls back to the manual "Review & send" card. Never fires for
+  /// restored history: only blocks built live this session carry
   /// [EmailDraftBlock.autoSendPending].
   Future<void> _maybeAutoSend() async {
     if (_autoSendStarted) return;
@@ -486,10 +502,10 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
     if (!block.autoSendPending || block.status != EmailDraftStatus.reviewing) {
       return;
     }
-    final settings =
-        ref.read(userProfileProvider)?.autoApplySettings ??
-        const AutoApplySettings();
-    if (!settings.autoSendOutreach) return;
+    final level =
+        ref.read(userProfileProvider)?.autonomyLevel ?? AutonomyLevel.autoDraft;
+    if (level != AutonomyLevel.autopilot) return;
+    if (!_looksLikeEmail(block.recipient)) return; // Guessed/blank → review.
     final jobId = block.jobId;
     if (jobId == null || jobId.isEmpty) return;
 
@@ -497,15 +513,47 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
     try {
       final job = await JobsRepository().fetchById(jobId);
       if (job == null) return; // Can't assess risk → manual review.
-      if (!shouldAutoSendOutreach(
-        settings: settings,
-        trust: evaluateJobTrust(job),
-      )) {
+      if (evaluateJobTrust(job).riskLevel != 'low') {
         return; // Medium/high risk → manual review.
       }
       if (!mounted) return;
-      setState(() => _autoSending = true);
+      // Open the undo window. The actual send fires when it elapses.
+      setState(() => _undoRemaining = _undoWindow.inSeconds);
+      _undoTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        if (_undoRemaining <= 1) {
+          timer.cancel();
+          _undoTimer = null;
+          _performAutoSend(job.company);
+        } else {
+          setState(() => _undoRemaining -= 1);
+        }
+      });
+    } catch (e) {
+      debugPrint('EmailDraftBlockView: auto-send setup failed ($e)');
+    }
+  }
 
+  /// User caught the Autopilot send during the undo window: cancel it and drop
+  /// back to the manual "Review & send" card.
+  void _cancelAutoSend() {
+    _undoTimer?.cancel();
+    _undoTimer = null;
+    if (mounted) setState(() => _undoRemaining = 0);
+  }
+
+  /// Performs the confirmed Autopilot send once the undo window elapses.
+  Future<void> _performAutoSend(String company) async {
+    if (!mounted) return;
+    final block = widget.block;
+    setState(() {
+      _undoRemaining = 0;
+      _autoSending = true;
+    });
+    try {
       final attachments = await _loadAttachments();
       final result = await EmailSendService.instance.autoSend(
         to: block.recipient,
@@ -513,7 +561,7 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
         body: block.body,
         uid: FirebaseAuth.instance.currentUser?.uid,
         attachments: attachments,
-        company: job.company,
+        company: company,
       );
       if (!mounted) return;
       _autoSent = true;
@@ -526,6 +574,13 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
     } finally {
       if (mounted && _autoSending) setState(() => _autoSending = false);
     }
+  }
+
+  /// Light sanity check that a recipient is a real address, not a placeholder
+  /// the agent couldn't resolve — Autopilot won't auto-send to a guess.
+  static bool _looksLikeEmail(String value) {
+    final v = value.trim();
+    return v.contains('@') && v.contains('.') && !v.contains(' ');
   }
 
   Future<void> _review(BuildContext context) async {
@@ -700,12 +755,50 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
                     saved
                         ? 'Saved to Gmail Drafts — review and send it from Gmail.'
                         : _autoSent
-                        ? 'Auto-sent to ${block.recipient} (per your auto-send setting).'
+                        ? 'Auto-sent to ${block.recipient} on Autopilot.'
                         : 'Email sent to ${block.recipient}.',
                     style: TextStyle(
                       color: brand.ink,
                       fontSize: 12.5,
                       fontWeight: FontWeight.w700,
+                      letterSpacing: -0.1,
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else if (_undoRemaining > 0)
+            Row(
+              children: [
+                Icon(Icons.bolt_rounded, size: 15, color: brand.accent),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    'Autopilot — sending in ${_undoRemaining}s…',
+                    style: TextStyle(
+                      color: brand.ink,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.1,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _cancelAutoSend,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    'Undo',
+                    style: TextStyle(
+                      color: brand.ink,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
                       letterSpacing: -0.1,
                     ),
                   ),
