@@ -596,6 +596,18 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
     return v.contains('@') && v.contains('.') && !v.contains(' ');
   }
 
+  String _recipientEvidenceLine(EmailDraftBlock block) {
+    final resolution = block.recipientResolution;
+    final gate = evaluateRecipientGate(resolution);
+
+    if (!resolution.hasEmail) {
+      return 'No recipient found · review required';
+    }
+
+    final status = gate.canAutoSend ? 'verified enough' : 'review required';
+    return '$status · ${resolution.confidence.name} · ${resolution.source.name}';
+  }
+
   Future<void> _review(BuildContext context) async {
     final block = widget.block;
     // Pull the tailored resume PDF down before opening the sheet so it rides
@@ -611,6 +623,10 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
       body: block.body,
       mode: EmailReviewMode.send,
       attachments: attachments,
+      contactDomain: block.recipientResolution.domain.isNotEmpty
+          ? block.recipientResolution.domain
+          : null,
+      recipientResolution: block.recipientResolution,
     );
     if (!context.mounted) return;
     final notifier = ref.read(agentChatProvider.notifier);
@@ -728,6 +744,22 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
           const SizedBox(height: 12),
           _EmailMetaRow(label: 'TO', value: block.recipient),
           const SizedBox(height: 8),
+          _EmailMetaRow(
+            label: 'RECIPIENT',
+            value: _recipientEvidenceLine(block),
+          ),
+          if (block.recipientReason.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _EmailMetaRow(label: 'REASON', value: block.recipientReason),
+          ],
+          if (block.recipientSourceUrl?.trim().isNotEmpty == true) ...[
+            const SizedBox(height: 8),
+            _EmailMetaRow(
+              label: 'SOURCE',
+              value: block.recipientSourceUrl!.trim(),
+            ),
+          ],
+          const SizedBox(height: 8),
           _EmailMetaRow(label: 'SUBJECT', value: block.subject),
           const SizedBox(height: 10),
           Container(
@@ -839,7 +871,10 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
             )
           else
             _FooterButton(
-              label: 'Review & send',
+              label:
+                  evaluateRecipientGate(block.recipientResolution).canAutoSend
+                  ? 'Review & send'
+                  : 'Review recipient & email',
               filled: true,
               enabled: true,
               onTap: () => _review(context),

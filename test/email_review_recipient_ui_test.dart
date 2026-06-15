@@ -17,9 +17,12 @@ void main() {
 
     expect(find.text('Guessed address'), findsOneWidget);
     expect(
-      find.text(
-        'Syncra could not verify this inbox. Please confirm or replace it before sending.',
-      ),
+      find.textContaining('Syncra could not fully verify this recipient.'),
+      findsOneWidget,
+    );
+
+    expect(
+      find.textContaining('replace the recipient manually.'),
       findsOneWidget,
     );
   });
@@ -41,8 +44,8 @@ void main() {
     expect(find.text('Send email'), findsNothing);
     expect(_primaryInkWell(tester, 'Send now').onTap, isNull);
     expect(
-      find.text('I confirmed this guessed inbox is the right recipient.'),
-      findsOneWidget,
+      find.text('I reviewed this recipient and want to send anyway.'),
+      findsWidgets,
     );
 
     await tester.tap(find.byType(Checkbox));

@@ -6,6 +6,7 @@ import '../../../core/theme/brand_theme.dart';
 import '../models/recipient_resolution.dart';
 import '../services/email_send_service.dart';
 import '../services/gmail_service.dart';
+import '../services/recipient_confidence_gate.dart';
 
 /// Whether the review sheet sends the email outright or saves it as a Gmail
 /// draft the user finishes from Gmail.
@@ -178,20 +179,22 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
 
   bool get _recipientMissing => _recipientCtrl.text.trim().isEmpty;
 
-  bool get _isLowConfidenceGuessedRecipient {
+  bool get _recipientNeedsReview {
     final resolution = _effectiveResolution;
-    return resolution.confidence == RecipientConfidence.low &&
-        resolution.source == RecipientSource.guessedPattern;
+    return resolution.confidence == RecipientConfidence.medium ||
+        resolution.confidence == RecipientConfidence.low ||
+        resolution.confidence == RecipientConfidence.none ||
+        resolution.requiresUserConfirmation;
   }
 
-  bool _requiresLowConfidenceSendConfirmationFor(EmailReviewMode mode) {
-    return mode == EmailReviewMode.send && _isLowConfidenceGuessedRecipient;
+  bool _requiresRecipientSendConfirmationFor(EmailReviewMode mode) {
+    return mode == EmailReviewMode.send && _recipientNeedsReview;
   }
 
   bool _canSubmitFor(EmailReviewMode mode) {
     return !_busy &&
         !_recipientMissing &&
-        (!_requiresLowConfidenceSendConfirmationFor(mode) ||
+        (!_requiresRecipientSendConfirmationFor(mode) ||
             _lowConfidenceAccepted);
   }
 
@@ -260,11 +263,10 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
       setState(() => _error = 'Add a recipient address.');
       return;
     }
-    if (_requiresLowConfidenceSendConfirmationFor(mode) &&
+    if (_requiresRecipientSendConfirmationFor(mode) &&
         !_lowConfidenceAccepted) {
       setState(
-        () => _error =
-            'Confirm this guessed recipient or replace it before sending.',
+        () => _error = 'Review this recipient or replace it before sending.',
       );
       return;
     }
@@ -371,8 +373,8 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
     final viewport = MediaQuery.of(context);
     final resolution = _effectiveResolution;
     final warning = _recipientWarning(resolution);
-    final showLowConfidenceCheckbox =
-        _isLowConfidenceGuessedRecipient && _draftId == null;
+    final showRecipientReviewCheckbox =
+        _recipientNeedsReview && _draftId == null;
 
     return Padding(
       padding: EdgeInsets.only(bottom: viewport.viewInsets.bottom),
@@ -437,11 +439,13 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
                 enabled: !_busy && _draftId == null,
                 keyboardType: TextInputType.emailAddress,
               ),
+              const SizedBox(height: 8),
+              _RecipientEvidencePanel(resolution: resolution),
               if (warning != null) ...[
                 const SizedBox(height: 8),
                 _RecipientWarning(message: warning),
               ],
-              if (showLowConfidenceCheckbox) ...[
+              if (showRecipientReviewCheckbox) ...[
                 const SizedBox(height: 8),
                 _RecipientConfirmationCheckbox(
                   value: _lowConfidenceAccepted,
@@ -518,21 +522,99 @@ class _EmailReviewPageState extends State<EmailReviewPage> {
   }
 
   String? _recipientWarning(RecipientResolution resolution) {
+    if (!_recipientNeedsReview) return null;
+
     if (resolution.confidence == RecipientConfidence.none ||
         resolution.source == RecipientSource.none ||
         resolution.source == RecipientSource.applyLinkOnly) {
       return 'No public inbox was found. Add or replace the recipient before sending.';
     }
-    if (resolution.confidence == RecipientConfidence.low &&
-        resolution.source == RecipientSource.guessedPattern) {
-      return 'Syncra could not verify this inbox. Please confirm or replace it before sending.';
-    }
-    if (resolution.confidence == RecipientConfidence.medium) {
-      return resolution.reason.trim().isEmpty
-          ? 'Review this recipient before sending.'
-          : resolution.reason;
-    }
-    return null;
+
+    return 'Syncra could not fully verify this recipient. Review the address before sending. You can still save the email as a draft or replace the recipient manually.';
+  }
+}
+
+class _RecipientEvidencePanel extends StatelessWidget {
+  const _RecipientEvidencePanel({required this.resolution});
+
+  final RecipientResolution resolution;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final gate = evaluateRecipientGate(resolution);
+    final sourceUrl = resolution.sourceUrl?.trim();
+
+    final status = gate.canAutoSend ? 'Auto-send eligible' : 'Review required';
+    final email = resolution.hasEmail ? resolution.email : 'No recipient found';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: brand.surfaceMuted,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: brand.border.withValues(alpha: 0.7)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Recipient evidence',
+            style: TextStyle(
+              color: brand.ink,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.1,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            email,
+            style: TextStyle(
+              color: brand.ink,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '$status · confidence: ${resolution.confidence.name} · source: ${resolution.source.name}',
+            style: TextStyle(
+              color: brand.textMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              height: 1.35,
+            ),
+          ),
+          if (resolution.reason.trim().isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              resolution.reason,
+              style: TextStyle(
+                color: brand.textMuted,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                height: 1.35,
+              ),
+            ),
+          ],
+          if (sourceUrl != null && sourceUrl.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Source: $sourceUrl',
+              style: TextStyle(
+                color: brand.textMuted,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                height: 1.35,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
 
@@ -667,7 +749,7 @@ class _RecipientConfirmationCheckbox extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'I confirmed this guessed inbox is the right recipient.',
+                'I reviewed this recipient and want to send anyway.',
                 style: TextStyle(
                   color: brand.ink,
                   fontSize: 12.5,
