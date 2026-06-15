@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/brand_theme.dart';
+import '../../features/agent/state/pipeline_autopilot_notifier.dart';
+import '../../features/jobs/state/jobs_notifier.dart';
 import '../../features/notifications/presentation/notifications_drawer.dart';
 import 'agent_activity_banner.dart';
 import 'app_bottom_nav.dart';
@@ -33,6 +35,18 @@ class AppShellScaffold extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Background autopilot: the shell stays mounted across every tab, so as the
+    // brief queues matches (e.g. right after onboarding, while the user reads
+    // the dashboard) we kick the pipeline auto-processor here — not just on the
+    // Pipeline screen. By the time the user opens the Pipeline it's already
+    // tailoring/drafting/(sending). Idempotent and gated by autonomy inside the
+    // notifier, so repeated fires are safe.
+    ref.listen(jobsProvider.select((s) => s.cards.length), (prev, next) {
+      if (next > (prev ?? 0)) {
+        ref.read(pipelineAutopilotProvider.notifier).processNow();
+      }
+    });
+
     final brand = context.brand;
     final activeTab = _indexToTab[navigationShell.currentIndex];
     final drawerOpen = ref.watch(notificationsDrawerOpenProvider);

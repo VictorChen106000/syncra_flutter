@@ -1508,14 +1508,14 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     return ResumeFit(segments: segments, generatedAt: DateTime.now());
   }
 
-  /// Flips the onboarding gate and routes onward to the Pipeline — the final
-  /// beat. Landing on the Pipeline (not the dashboard) is what gives onboarding
-  /// "autopilot": the pipeline auto-processor runs there, so as the first brief
-  /// queues matches the user watches them tailor → draft → (on Autopilot) send
-  /// themselves, instead of sitting on a static dashboard. Gmail was already
-  /// handled before setup, so this is the last step. Setting the flag last
-  /// (rather than during step 3) keeps the router from redirecting away
-  /// mid-setup, so the user actually sees the checklist complete.
+  /// Flips the onboarding gate and routes onward to the dashboard — the final
+  /// beat (the agent's "read on you"). The first brief is already running in the
+  /// background; the app-shell autopilot trigger (AppShellScaffold) processes
+  /// its matches as they queue, so by the time the user opens the Pipeline it is
+  /// already tailoring → drafting → (on Autopilot) sending. Gmail was handled
+  /// before setup, so this is the last step. Setting the flag last (rather than
+  /// during step 3) keeps the router from redirecting away mid-setup, so the
+  /// user actually sees the checklist complete.
   Future<void> _finish({required bool roleSet}) async {
     await ref
         .read(userProfileProvider.notifier)
@@ -1525,7 +1525,7 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
       await ref.read(devFlagsProvider.notifier).setShowOnboarding(false);
     }
     if (!mounted) return;
-    context.go(RouteNames.jobs);
+    context.go(RouteNames.dashboard);
   }
 
   @override
