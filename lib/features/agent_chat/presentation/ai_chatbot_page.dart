@@ -486,14 +486,14 @@ class _ThreadHero extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: brand.ink,
+                  color: brand.accent,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 alignment: Alignment.center,
                 child: Text(
                   job.company.isNotEmpty ? job.company[0] : '?',
                   style: TextStyle(
-                    color: brand.accent,
+                    color: brand.onAccent,
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
                   ),
