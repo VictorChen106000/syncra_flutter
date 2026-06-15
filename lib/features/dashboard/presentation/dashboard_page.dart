@@ -339,9 +339,9 @@ class _PromptSuggestions extends StatelessWidget {
 
   static const _items = <_PromptSuggestionData>[
     _PromptSuggestionData(
-      icon: Icons.travel_explore_rounded,
-      kicker: 'DISCOVER',
-      prompt: AgentPromptSuggestions.discover,
+      icon: Icons.rocket_launch_rounded,
+      kicker: 'APPLY',
+      prompt: AgentPromptSuggestions.apply,
     ),
     _PromptSuggestionData(
       icon: Icons.auto_awesome_rounded,
@@ -352,11 +352,6 @@ class _PromptSuggestions extends StatelessWidget {
       icon: Icons.mail_outline_rounded,
       kicker: 'OUTREACH',
       prompt: AgentPromptSuggestions.outreach,
-    ),
-    _PromptSuggestionData(
-      icon: Icons.insights_rounded,
-      kicker: 'STRATEGY',
-      prompt: AgentPromptSuggestions.strategy,
     ),
   ];
 
