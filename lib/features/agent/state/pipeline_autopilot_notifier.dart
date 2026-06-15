@@ -11,6 +11,7 @@ import '../../auth/models/user_profile.dart';
 import '../../auth/state/auth_notifier.dart';
 import '../../auth/state/user_profile_notifier.dart';
 import '../../email/services/email_send_service.dart';
+import '../../email/services/recipient_confidence_gate.dart';
 import '../../email/services/recipient_resolver.dart';
 import '../../jobs/state/jobs_notifier.dart';
 import '../../resumes/models/proposed_edit.dart';
@@ -257,15 +258,24 @@ class PipelineAutopilotNotifier extends Notifier<PipelineAutopilotState> {
     if (stopStage != PipelineStage.sent) return;
     if (subject.isEmpty || body.isEmpty) return;
 
-    // 3. Autopilot send. resolveRecipientAsync resolves the recipient (and
-    // handles the demo-inbox override internally). For that controlled override
-    // we force auto-send eligibility so Autopilot still delivers to it;
-    // otherwise autoSend's own eligibility floor decides. Never send to a
-    // non-email.
-    final resolution = await resolveRecipientAsync(job.company);
+    // 3. Autopilot send. Resolve the recipient with the employer website when
+    // available, then enforce the Recipient Confidence Gate. Confirmed/high
+    // recipients may send; guessed/uncertain/missing recipients stop at the
+    // drafted stage for user review.
+    final resolution = await resolveRecipientAsync(
+      job.company,
+      website: job.employerWebsite,
+    );
     final recipient = resolution.email;
     if (!_looksLikeEmail(recipient)) return;
-    final sendResolution = resolution;
+
+    final gate = evaluateRecipientGate(resolution);
+    if (!gate.canAutoSend) {
+      debugPrint(
+        'pipeline autopilot: stopped at draft for ${job.id} → ${gate.reason}',
+      );
+      return;
+    }
 
     final appId = await _applications.createApplication(
       uid: uid,
@@ -277,7 +287,7 @@ class PipelineAutopilotNotifier extends Notifier<PipelineAutopilotState> {
       to: recipient,
       subject: subject,
       body: body,
-      recipientResolution: sendResolution,
+      recipientResolution: resolution,
       uid: uid,
       applicationId: appId,
       company: job.company,
