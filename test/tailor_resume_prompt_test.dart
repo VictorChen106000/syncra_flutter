@@ -57,16 +57,18 @@ void main() {
     test('treats user messages as workflow goals', () {
       expect(prompt, contains('goal'));
       expect(prompt, contains('drive the workflow forward yourself'));
-      expect(prompt, contains('offer the next concrete step'));
-      expect(prompt, contains('continue the workflow'));
+      expect(prompt, contains('continue until you finish'));
     });
 
-    test('defers to the active autonomy mode directive', () {
+    test('delegates pacing to the active autonomy mode directive', () {
       // The static prompt must point at the per-turn autonomy directive
-      // (Assist / Auto-draft / Autopilot) and let it override the defaults.
+      // (Assist / Auto-draft / Autopilot) and let it own pacing entirely —
+      // it must NOT hard-code a chaining/gate cadence of its own.
       expect(prompt, contains('active autonomy mode'));
       expect(prompt, contains('assist / auto-draft / autopilot'));
       expect(prompt, contains('behave as auto-draft'));
+      expect(prompt, contains('set entirely by your active autonomy mode'));
+      expect(prompt, contains('do not hard-code a pace'));
     });
 
     test('pauses only at user gates', () {
@@ -118,17 +120,13 @@ void main() {
       expect(prompt, contains('do not use `apply_resume_edits` for repairs'));
     });
 
-    test('drives the search → tailor → email sequence via ask_user offers', () {
+    test('drives the search → tailor → email sequence, pacing by mode', () {
       expect(prompt, contains('standard job-search sequence'));
-      // A stated multi-step goal must be chained, not stopped after each step.
-      expect(prompt, contains('carry out every step that goal implies'));
       expect(prompt, contains('tailor for the top role'));
-      // When tailoring was the whole request, it must still offer outreach.
+      // Drafting outreach is the step after a saved resume...
       expect(prompt, contains('draft recruiter outreach'));
-      expect(
-        prompt,
-        contains('only call `draft_email` after the user says yes'),
-      );
+      // ...but whether to draft immediately or ask first is left to the mode.
+      expect(prompt, contains('is set by your active autonomy mode'));
     });
 
     test('continues after saved tailored resume approval', () {

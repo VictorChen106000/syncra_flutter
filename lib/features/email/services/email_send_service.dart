@@ -142,17 +142,21 @@ class EmailSendService {
     return EmailSendResult(messageId: messageId, sentAt: sentAt);
   }
 
-  /// Sends an agent-drafted outreach email **without** a per-email tap, for the
-  /// app-wide "auto-send outreach" setting.
+  /// Sends an agent-drafted outreach email **without** a per-email tap, for
+  /// the **Autopilot** autonomy level.
   ///
   /// This is the *only* place outside the review sheet allowed to mint a
-  /// confirmation token. It is justified because the caller has already cleared
-  /// two explicit gates that together stand in for the per-email tap:
-  ///   1. the user opted in via `AutoApplySettings.autoSendOutreach`, and
-  ///   2. the job passed the low-risk trust floor (`shouldAutoSendOutreach`).
-  /// The caller (the draft card) must enforce both before calling this — this
-  /// method does not re-check them. Everything downstream (send, `markSent`,
-  /// recipient learning) is shared with [sendConfirmed].
+  /// confirmation token. It is justified because the caller (the draft card)
+  /// has already cleared the gates that together stand in for the per-email tap:
+  ///   1. the user chose `AutonomyLevel.autopilot`,
+  ///   2. the job passed the low-risk trust floor (`evaluateJobTrust`),
+  ///   3. the recipient is a real address, and
+  ///   4. the user let the on-card Undo window elapse without cancelling.
+  /// The caller must enforce all of these before calling this — this method
+  /// does not re-check them. Note this means the model can never send on its
+  /// own (it cannot mint a token); only this app-controlled path can. Everything
+  /// downstream (send, `markSent`, recipient learning) is shared with
+  /// [sendConfirmed].
   Future<EmailSendResult> autoSend({
     required String to,
     required String subject,
