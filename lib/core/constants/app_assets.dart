@@ -7,4 +7,6 @@ class AppAssets {
   static const String googleGSvg = 'assets/svg/google_g.svg';
   static const String gmailSvg = 'assets/svg/gmail.svg';
   static const String pdfSvg = 'assets/svg/pdf.svg';
+  static const String themeSunSvg = 'assets/svg/theme_sun.svg';
+  static const String themeMoonSvg = 'assets/svg/theme_moon.svg';
 }

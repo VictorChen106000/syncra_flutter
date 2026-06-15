@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../dev/dev_flags_notifier.dart';
 import '../../features/agent_chat/presentation/ai_chatbot_page.dart';
 import '../../features/auth/presentation/login_page.dart';
 import '../../features/auth/presentation/onboarding_page.dart';
@@ -28,7 +27,6 @@ class _AuthRefreshNotifier extends ChangeNotifier {
   _AuthRefreshNotifier(Ref ref) {
     ref.listen(authProvider, (_, _) => notifyListeners());
     ref.listen(userProfileProvider, (_, _) => notifyListeners());
-    ref.listen(devFlagsProvider, (_, _) => notifyListeners());
   }
 }
 
@@ -50,7 +48,6 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final auth = ref.read(authProvider);
       final profile = ref.read(userProfileProvider);
-      final dev = ref.read(devFlagsProvider);
       final isSignedIn = auth.isSignedIn;
       final isGuest = auth.appUser?.isGuest ?? false;
       final loc = state.matchedLocation;
@@ -65,13 +62,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
       if (!isSignedIn) return null;
 
-      // Dev: force-show toggles take priority over normal routing so devs
-      // can preview onboarding / morning brief at will. Each page's exit
-      // handler clears its flag so the user isn't trapped.
-      if (dev.showOnboarding && loc != RouteNames.onboarding) {
-        return RouteNames.onboarding;
-      }
-
       // Onboarding is gated on an explicit flag, not on `role` being empty —
       // the Skip path intentionally leaves the role blank but still marks the
       // user past first-run setup so they aren't bounced back here every load.
@@ -81,11 +71,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         return RouteNames.onboarding;
       }
 
-      // Boot the user off onboarding when it isn't needed AND a dev override
-      // isn't actively keeping them there.
-      if (!needsOnboarding &&
-          !dev.showOnboarding &&
-          loc == RouteNames.onboarding) {
+      // Boot the user off onboarding when it isn't needed.
+      if (!needsOnboarding && loc == RouteNames.onboarding) {
         return RouteNames.dashboard;
       }
 

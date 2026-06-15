@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -8,8 +7,6 @@ import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_strings.dart';
-import '../../../core/dev/demo_readiness.dart';
-import '../../../core/dev/dev_flags_notifier.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../core/theme/theme_mode_notifier.dart';
@@ -227,22 +224,14 @@ class ProfilePage extends StatelessWidget {
                 const SectionTitle(title: 'Connections'),
                 const _IntegrationSection(),
                 const SizedBox(height: 24),
-                const SectionTitle(title: 'Agent autonomy'),
+                const SectionTitle(title: 'Agent Autonomy'),
                 const _AutonomyDialSection(),
-                const SizedBox(height: 24),
-                const SectionTitle(title: 'Bounded Auto-Apply'),
-                const _BoundedAutoApplySection(),
                 const SizedBox(height: 24),
                 const SectionTitle(title: 'Appearance'),
                 const _AppearanceSection(),
                 const SizedBox(height: 24),
                 const SectionTitle(title: 'Account'),
                 const _AccountSection(),
-                if (kDebugMode) ...const [
-                  SizedBox(height: 24),
-                  SectionTitle(title: 'Developer'),
-                  _DevFlagsSection(),
-                ],
               ],
             ),
           ),
@@ -365,8 +354,10 @@ class _BrandLogoChip extends StatelessWidget {
   }
 }
 
-/// Tiny icon-only segmented selector — three choices in a single pill.
-/// Active option flips to a lime background with a near-black icon.
+/// Tiny segmented selector — a row of choices in a single pill. The active
+/// option flips to a lime background with a near-black glyph. Each option
+/// supplies a glyph builder that paints in the tint the control hands it, so
+/// callers can pass either an [Icon] or a tinted [SvgPicture].
 class _MiniSegmented<T> extends StatelessWidget {
   const _MiniSegmented({
     required this.options,
@@ -374,7 +365,7 @@ class _MiniSegmented<T> extends StatelessWidget {
     required this.onChanged,
   });
 
-  final List<(T, IconData)> options;
+  final List<(T, Widget Function(Color color))> options;
   final T selected;
   final ValueChanged<T> onChanged;
 
@@ -390,14 +381,14 @@ class _MiniSegmented<T> extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          for (final (value, icon) in options)
+          for (final (value, glyph) in options)
             GestureDetector(
               onTap: () => onChanged(value),
               behavior: HitTestBehavior.opaque,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 220),
                 curve: Curves.easeOutCubic,
-                width: 30,
+                width: 34,
                 height: 28,
                 margin: const EdgeInsets.symmetric(horizontal: 1),
                 decoration: BoxDecoration(
@@ -405,10 +396,8 @@ class _MiniSegmented<T> extends StatelessWidget {
                   borderRadius: BorderRadius.circular(99),
                 ),
                 alignment: Alignment.center,
-                child: Icon(
-                  icon,
-                  size: 14,
-                  color: value == selected ? brand.onAccent : brand.textMuted,
+                child: glyph(
+                  value == selected ? brand.onAccent : brand.textMuted,
                 ),
               ),
             ),
@@ -1421,65 +1410,66 @@ class _AutonomyOptionRow extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _IconChip(icon: icon),
               const SizedBox(width: 14),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
                   children: [
-                    Row(
-                      children: [
-                        Text(
-                          title,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15.5,
-                            height: 1.2,
-                            color: brand.ink,
-                            letterSpacing: -0.2,
-                          ),
+                    Flexible(
+                      child: Text(
+                        title,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15.5,
+                          height: 1.2,
+                          color: brand.ink,
+                          letterSpacing: -0.2,
                         ),
-                        if (recommended) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 7,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: brand.accent.withValues(alpha: 0.18),
-                              borderRadius: BorderRadius.circular(99),
-                            ),
-                            child: Text(
-                              'Recommended',
-                              style: TextStyle(
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 0.4,
-                                color: brand.ink,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      blurb,
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        height: 1.3,
-                        fontWeight: FontWeight.w500,
-                        color: brand.textMuted,
-                        letterSpacing: -0.1,
                       ),
                     ),
+                    if (recommended) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: brand.accent.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(99),
+                        ),
+                        child: Text(
+                          'Recommended',
+                          style: TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.4,
+                            color: brand.ink,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
+              // The one-line blurb now lives behind this ⓘ button so each row
+              // stays a clean title + selector. Tapping it opens a small popup;
+              // it handles its own tap, so it never triggers row selection.
+              IconButton(
+                tooltip: 'About $title',
+                onPressed: () => _showAutonomyInfo(context, title, blurb),
+                visualDensity: VisualDensity.compact,
+                style: IconButton.styleFrom(
+                  foregroundColor: brand.textMuted,
+                  minimumSize: const Size(36, 36),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                icon: const Icon(Icons.info_outline_rounded, size: 19),
+              ),
+              const SizedBox(width: 4),
               _AutonomyRadio(selected: selected),
             ],
           ),
@@ -1518,325 +1508,33 @@ class _AutonomyRadio extends StatelessWidget {
   }
 }
 
-enum _AutoApplyMenu { minimumQuality, dailyLimit, trustGate }
-
-class _BoundedAutoApplySection extends ConsumerStatefulWidget {
-  const _BoundedAutoApplySection();
-
-  @override
-  ConsumerState<_BoundedAutoApplySection> createState() =>
-      _BoundedAutoApplySectionState();
-}
-
-class _BoundedAutoApplySectionState
-    extends ConsumerState<_BoundedAutoApplySection> {
-  static const _qualityStops = [80, 85, 90, 95];
-  static const _dailyLimitStops = [1, 2, 3, 5, 10];
-
-  _AutoApplyMenu? _openMenu;
-
-  void _toggleMenu(_AutoApplyMenu menu) {
-    setState(() {
-      _openMenu = _openMenu == menu ? null : menu;
-    });
-  }
-
-  void _save(AutoApplySettings settings, String message) {
-    ref.read(userProfileProvider.notifier).setAutoApplySettings(settings);
-    setState(() => _openMenu = null);
-    _showSettingsSnack(context, message);
-  }
-
-  void _toggleEnabled(AutoApplySettings settings) {
-    final nextEnabled = !settings.enabled;
-    _save(
-      settings.copyWith(enabled: nextEnabled),
-      nextEnabled
-          ? 'Bounded Auto-Apply turned on.'
-          : 'Bounded Auto-Apply turned off.',
-    );
-  }
-
-  void _toggleAutoSend(AutoApplySettings settings) {
-    final next = !settings.autoSendOutreach;
-    _save(
-      settings.copyWith(autoSendOutreach: next),
-      next
-          ? 'Auto-send on — only low-risk jobs with confirmed recipients can send automatically.'
-          : 'Auto-send off — agent drafts wait for your review.',
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final profile = ref.watch(userProfileProvider);
-    final settings = profile?.autoApplySettings ?? const AutoApplySettings();
-    final canEdit = profile != null;
-
-    return _GroupedCard(
-      children: [
-        _PreferenceRow(
-          icon: Icons.auto_awesome_rounded,
-          title: 'Bounded Auto-Apply',
-          trailing: _LimeToggle(
-            active: settings.enabled,
-            onToggle: canEdit ? () => _toggleEnabled(settings) : null,
-          ),
-          onTap: canEdit ? () => _toggleEnabled(settings) : null,
-        ),
-        const _GroupedDivider(),
-        _PreferenceRow(
-          icon: Icons.speed_rounded,
-          title: 'Minimum quality',
-          trailing: _SettingsValueTrail(
-            value: '${settings.minQualityScore}%',
-            enabled: canEdit,
-            expanded: _openMenu == _AutoApplyMenu.minimumQuality,
-          ),
-          onTap: canEdit
-              ? () => _toggleMenu(_AutoApplyMenu.minimumQuality)
-              : null,
-        ),
-        if (_openMenu == _AutoApplyMenu.minimumQuality)
-          _AutoApplyChoiceList<int>(
-            values: _qualityStops,
-            selected: settings.minQualityScore,
-            labelFor: (value) => '$value%',
-            onSelected: (value) => _save(
-              settings.copyWith(minQualityScore: value),
-              'Minimum quality set to $value%.',
-            ),
-          ),
-        const _GroupedDivider(),
-        _PreferenceRow(
-          icon: Icons.today_rounded,
-          title: 'Daily limit',
-          trailing: _SettingsValueTrail(
-            value: '${settings.maxDailyApplications}/day',
-            enabled: canEdit,
-            expanded: _openMenu == _AutoApplyMenu.dailyLimit,
-          ),
-          onTap: canEdit ? () => _toggleMenu(_AutoApplyMenu.dailyLimit) : null,
-        ),
-        if (_openMenu == _AutoApplyMenu.dailyLimit)
-          _AutoApplyChoiceList<int>(
-            values: _dailyLimitStops,
-            selected: settings.maxDailyApplications,
-            labelFor: (value) => '$value/day',
-            onSelected: (value) => _save(
-              settings.copyWith(maxDailyApplications: value),
-              'Daily auto-apply limit set to $value.',
-            ),
-          ),
-        const _GroupedDivider(),
-        _PreferenceRow(
-          icon: Icons.verified_user_outlined,
-          title: 'Trust gate',
-          trailing: _SettingsValueTrail(
-            value: settings.requireLowTrust
-                ? 'Low-risk only'
-                : 'Bundle review decides',
-            enabled: canEdit,
-            expanded: _openMenu == _AutoApplyMenu.trustGate,
-          ),
-          onTap: canEdit ? () => _toggleMenu(_AutoApplyMenu.trustGate) : null,
-        ),
-        if (_openMenu == _AutoApplyMenu.trustGate)
-          _AutoApplyChoiceList<bool>(
-            values: const [true, false],
-            selected: settings.requireLowTrust,
-            labelFor: (value) =>
-                value ? 'Low-risk only' : 'Bundle review decides',
-            onSelected: (value) => _save(
-              settings.copyWith(requireLowTrust: value),
-              value
-                  ? 'Trust gate set to low-risk only.'
-                  : 'Trust gate set to bundle review.',
-            ),
-          ),
-        const _GroupedDivider(),
-        _PreferenceRow(
-          icon: Icons.send_rounded,
-          title: 'Auto-send outreach',
-          trailing: _LimeToggle(
-            active: settings.autoSendOutreach,
-            onToggle: canEdit ? () => _toggleAutoSend(settings) : null,
-          ),
-          onTap: canEdit ? () => _toggleAutoSend(settings) : null,
+/// Shows an autonomy option's description in a small popup. The rows keep only
+/// their title inline, so the full blurb lives behind the row's ⓘ button.
+Future<void> _showAutonomyInfo(
+  BuildContext context,
+  String title,
+  String blurb,
+) {
+  final brand = context.brand;
+  return showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      backgroundColor: brand.surface,
+      title: Text(
+        title,
+        style: TextStyle(color: brand.ink, fontWeight: FontWeight.w800),
+      ),
+      content: Text(
+        blurb,
+        style: TextStyle(color: brand.textMuted, height: 1.45),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: const Text('Got it'),
         ),
       ],
-    );
-  }
-}
-
-class _AutoApplyChoiceList<T> extends StatelessWidget {
-  const _AutoApplyChoiceList({
-    required this.values,
-    required this.selected,
-    required this.labelFor,
-    required this.onSelected,
-  });
-
-  final List<T> values;
-  final T selected;
-  final String Function(T value) labelFor;
-  final ValueChanged<T> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(72, 0, 16, 12),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
-        width: double.infinity,
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          color: brand.surfaceMuted.withValues(alpha: brand.isDark ? 0.86 : 1),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: brand.accent.withValues(alpha: brand.isDark ? 0.38 : 0.46),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: brand.shadow.withValues(alpha: brand.isDark ? 0.42 : 0.14),
-              blurRadius: 22,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final value in values)
-              _AutoApplyChoiceTile<T>(
-                value: value,
-                selected: value == selected,
-                label: labelFor(value),
-                onSelected: onSelected,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AutoApplyChoiceTile<T> extends StatefulWidget {
-  const _AutoApplyChoiceTile({
-    required this.value,
-    required this.selected,
-    required this.label,
-    required this.onSelected,
-  });
-
-  final T value;
-  final bool selected;
-  final String label;
-  final ValueChanged<T> onSelected;
-
-  @override
-  State<_AutoApplyChoiceTile<T>> createState() =>
-      _AutoApplyChoiceTileState<T>();
-}
-
-class _AutoApplyChoiceTileState<T> extends State<_AutoApplyChoiceTile<T>> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final active = widget.selected || _hovered;
-    final textColor = active ? brand.ink : brand.textMuted;
-    final rowColor = widget.selected
-        ? brand.accent.withValues(alpha: brand.isDark ? 0.16 : 0.13)
-        : _hovered
-        ? brand.surface.withValues(alpha: brand.isDark ? 0.10 : 0.72)
-        : Colors.transparent;
-
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: () => widget.onSelected(widget.value),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            curve: Curves.easeOutCubic,
-            margin: const EdgeInsets.symmetric(vertical: 1),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: rowColor,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.label,
-                    style: TextStyle(
-                      color: textColor,
-                      fontSize: 13,
-                      fontWeight: active ? FontWeight.w900 : FontWeight.w700,
-                      letterSpacing: -0.05,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 150),
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeOutCubic,
-                  child: widget.selected
-                      ? Container(
-                          key: const ValueKey('selected'),
-                          width: 18,
-                          height: 18,
-                          decoration: BoxDecoration(
-                            color: brand.accent,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.check_rounded,
-                            size: 13,
-                            color: brand.onAccent,
-                          ),
-                        )
-                      : Container(
-                          key: const ValueKey('unselected'),
-                          width: 18,
-                          height: 18,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: _hovered
-                                  ? brand.accent.withValues(alpha: 0.75)
-                                  : brand.textSoft.withValues(alpha: 0.78),
-                              width: 1.5,
-                            ),
-                          ),
-                        ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-TextStyle _settingsValueStyle(BuildContext context) {
-  final brand = context.brand;
-  return TextStyle(
-    color: brand.textMuted,
-    fontSize: 12.5,
-    fontWeight: FontWeight.w800,
-    letterSpacing: -0.05,
+    ),
   );
 }
 
@@ -1853,63 +1551,6 @@ void _showSettingsSnack(BuildContext context, String message) {
         duration: const Duration(milliseconds: 1800),
       ),
     );
-}
-
-class _SettingsValueTrail extends StatelessWidget {
-  const _SettingsValueTrail({
-    required this.value,
-    required this.enabled,
-    this.expanded = false,
-  });
-
-  final String value;
-  final bool enabled;
-  final bool expanded;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final tint = expanded ? brand.accent : brand.textMuted;
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOutCubic,
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: expanded
-            ? brand.accent.withValues(alpha: brand.isDark ? 0.13 : 0.10)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(99),
-        border: Border.all(
-          color: expanded
-              ? brand.accent.withValues(alpha: 0.45)
-              : Colors.transparent,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            value,
-            style: _settingsValueStyle(
-              context,
-            ).copyWith(color: enabled ? tint : brand.textSoft),
-          ),
-          const SizedBox(width: 4),
-          AnimatedRotation(
-            turns: expanded ? -0.5 : 0,
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            child: Icon(
-              Icons.expand_more_rounded,
-              size: 18,
-              color: enabled ? tint : brand.textSoft,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _IntegrationTile extends StatelessWidget {
@@ -2029,22 +1670,41 @@ class _ThemeModeTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final selected = ref.watch(themeModeProvider);
+    final mode = ref.watch(themeModeProvider);
+    // System is no longer user-selectable, but a fresh profile still starts on
+    // it — resolve to the live platform brightness so one pill is always lit.
+    // Tapping either pill commits an explicit light/dark choice.
+    final selected = switch (mode) {
+      ThemeMode.light => ThemeMode.light,
+      ThemeMode.dark => ThemeMode.dark,
+      ThemeMode.system =>
+        MediaQuery.platformBrightnessOf(context) == Brightness.dark
+            ? ThemeMode.dark
+            : ThemeMode.light,
+    };
     return _PreferenceRow(
       icon: Icons.contrast_rounded,
       title: 'Theme',
       trailing: _MiniSegmented<ThemeMode>(
         selected: selected,
         onChanged: (m) => ref.read(themeModeProvider.notifier).setMode(m),
-        options: const [
-          (ThemeMode.light, Icons.wb_sunny_outlined),
-          (ThemeMode.dark, Icons.dark_mode_outlined),
-          (ThemeMode.system, Icons.brightness_auto_outlined),
+        options: [
+          (ThemeMode.light, (c) => _themeGlyph(AppAssets.themeSunSvg, c)),
+          (ThemeMode.dark, (c) => _themeGlyph(AppAssets.themeMoonSvg, c)),
         ],
       ),
     );
   }
 }
+
+/// A theme-toggle glyph: the [asset] SVG tinted to [color] so it tracks the
+/// segmented control's selected (on-accent) / unselected (muted) state.
+Widget _themeGlyph(String asset, Color color) => SvgPicture.asset(
+  asset,
+  width: 16,
+  height: 16,
+  colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+);
 
 // ---------------------------------------------------------------------------
 // Account — reset (warning) and sign out (danger) grouped in one card so the
@@ -2135,159 +1795,6 @@ class _AccountSection extends ConsumerWidget {
               : () => ref.read(authProvider.notifier).signOut(),
         ),
       ],
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Developer toggles — only rendered when `kDebugMode == true`, so they're
-// stripped from release builds. Used to force onboarding and to force the
-// notification bell's unread dot while iterating on UI.
-// ---------------------------------------------------------------------------
-
-class _DevFlagsSection extends ConsumerWidget {
-  const _DevFlagsSection();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final flags = ref.watch(devFlagsProvider);
-    final notifier = ref.read(devFlagsProvider.notifier);
-    final readiness = evaluateDemoReadiness();
-    final brand = context.brand;
-
-    return _GroupedCard(
-      children: [
-        _PreferenceRow(
-          icon: Icons.flag_outlined,
-          title: 'Show onboarding',
-          trailing: Switch.adaptive(
-            value: flags.showOnboarding,
-            activeThumbColor: brand.onAccent,
-            activeTrackColor: brand.accent,
-            onChanged: notifier.setShowOnboarding,
-          ),
-        ),
-        const _GroupedDivider(),
-        _DemoReadinessSummary(readiness: readiness),
-        for (final item in readiness.items) ...[
-          const _GroupedDivider(),
-          _DemoReadinessRow(item: item),
-        ],
-      ],
-    );
-  }
-}
-
-class _DemoReadinessSummary extends StatelessWidget {
-  const _DemoReadinessSummary({required this.readiness});
-
-  final DemoReadiness readiness;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final color = readiness.isReady ? brand.success : brand.warning;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Row(
-        children: [
-          _IconChip(icon: Icons.rocket_launch_outlined, tint: color),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Demo readiness',
-                  style: TextStyle(
-                    color: brand.ink,
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.2,
-                    height: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  readiness.isReady
-                      ? 'Required demo keys are configured.'
-                      : 'Some required demo keys are missing.',
-                  style: TextStyle(
-                    color: brand.textMuted,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w500,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            '${readiness.readyCount}/${readiness.totalCount}',
-            style: TextStyle(
-              color: color,
-              fontSize: 12.5,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -0.05,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DemoReadinessRow extends StatelessWidget {
-  const _DemoReadinessRow({required this.item});
-
-  final DemoReadinessItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final color = item.isReady ? brand.success : brand.warning;
-    final icon = item.isReady
-        ? Icons.check_circle_rounded
-        : Icons.error_outline_rounded;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.label,
-                  style: TextStyle(
-                    color: brand.ink,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.1,
-                    height: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  item.detail,
-                  style: TextStyle(
-                    color: brand.textMuted,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

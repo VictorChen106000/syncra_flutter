@@ -45,8 +45,7 @@ There is **one** agent. "Passive" vs "active" is just two triggers for the same
 
 The brief is not a background daemon. Returning signed-in users may be routed to
 `MorningBriefPage` once per app session when `PassiveAgentState.morningBriefShown`
-is still false; devs can force-preview it with `DevFlags.showMorningBrief`.
-The actual brief only runs after an explicit page/CTA action calls
+is still false. The actual brief only runs after an explicit page/CTA action calls
 `PassiveAgentNotifier.runBrief()`.
 
 ```ff
@@ -217,7 +216,8 @@ and application tracker:
 | `gmail_connected` | bool | Records Gmail connection/intent state |
 | `has_completed_onboarding` | bool | Router gate for first-run onboarding |
 | `resume_fit` | map? | persisted onboarding fit chart snapshot |
-| `auto_apply` | map | bounded auto-apply guardrails; defaults disabled |
+| `autonomy_level` | string | Agent Autonomy control: `assist` / `auto_draft` / `autopilot`; default `autopilot`. User-facing dial that drives `auto_apply`. |
+| `auto_apply` | map | bounded auto-apply guardrails (internal safety backend); set via Agent Autonomy, not edited directly; defaults disabled |
 | `created_at` | Timestamp | |
 
 `auto_apply` map:
@@ -228,6 +228,14 @@ and application tracker:
 | `min_quality_score` | int | default `85`; clamped 60–100 |
 | `max_daily_applications` | int | default `3`; clamped 1–10 |
 | `require_low_trust` | bool | default `true`; requires Trust Guard `low` before eligibility |
+
+Agent Autonomy is the single user-facing control; **Bounded Auto-Apply remains
+the internal safety guardrail for Autopilot**, not a separately edited UI.
+Selecting Autopilot enables `auto_apply` + auto-send outreach (and forces
+`require_low_trust`); Assist / Auto-draft disable both and leave the other
+limits untouched. Autopilot can only send when the quality, Trust Guard,
+daily-limit, and recipient-confidence gates all pass (see
+`shouldAutoSendOutreach`); guessed or missing recipients never auto-send.
 
 **`users/{uid}/applications/{appId}` — activity log**
 

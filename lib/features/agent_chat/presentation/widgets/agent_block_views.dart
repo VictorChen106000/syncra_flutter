@@ -684,11 +684,7 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
                   border: Border.all(color: brand.border),
                 ),
                 alignment: Alignment.center,
-                child: Icon(
-                  Icons.drafts_rounded,
-                  color: brand.ink,
-                  size: 17,
-                ),
+                child: Icon(Icons.drafts_rounded, color: brand.ink, size: 17),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -1604,14 +1600,23 @@ class _InputRequestViewState extends ConsumerState<InputRequestView> {
         children: [
           Row(
             children: [
-              Icon(
-                answered
-                    ? Icons.check_circle_rounded
-                    : Icons.question_answer_rounded,
-                size: 16,
-                color: answered ? brand.textMuted : brand.ink,
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: answered ? brand.surfaceMuted : brand.accent,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  answered
+                      ? Icons.check_circle_rounded
+                      : Icons.question_answer_rounded,
+                  size: 16,
+                  color: answered ? brand.textMuted : brand.onAccent,
+                ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Text(
                 'AGENT NEEDS YOUR INPUT',
                 style: TextStyle(
@@ -2191,15 +2196,11 @@ class ActionProposalView extends StatelessWidget {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: accepted ? brand.accent : brand.surfaceMuted,
+                  color: brand.accent,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 alignment: Alignment.center,
-                child: Icon(
-                  block.icon,
-                  size: 18,
-                  color: accepted ? brand.onAccent : brand.ink,
-                ),
+                child: Icon(block.icon, size: 18, color: brand.onAccent),
               ),
               const SizedBox(width: 12),
               Expanded(

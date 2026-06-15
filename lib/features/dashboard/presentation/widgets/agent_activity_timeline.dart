@@ -140,9 +140,10 @@ class AgentActivityTimeline extends ConsumerWidget {
           // thought onboarding started. Otherwise fall back to the plain
           // "Here's what I did" header.
           if (recommendation.isNotEmpty)
-            _AgentRead(text: recommendation, isRunning: isRunning)
-                .animate()
-                .fadeIn(duration: 380.ms)
+            _AgentRead(
+              text: recommendation,
+              isRunning: isRunning,
+            ).animate().fadeIn(duration: 380.ms)
           else
             _Header(isRunning: isRunning, briefAt: briefAt),
           const SizedBox(height: 24),
@@ -337,10 +338,7 @@ class _Typewriter extends StatelessWidget {
       curve: Curves.easeOut,
       builder: (context, shown, _) {
         final done = shown >= text.length;
-        return Text(
-          done ? text : '${text.substring(0, shown)}▏',
-          style: style,
-        );
+        return Text(done ? text : '${text.substring(0, shown)}▏', style: style);
       },
     );
   }

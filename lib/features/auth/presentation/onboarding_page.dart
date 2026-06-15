@@ -8,7 +8,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_assets.dart';
-import '../../../core/dev/dev_flags_notifier.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/brand_theme.dart';
@@ -121,9 +120,6 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     unawaited(
       ref.read(userProfileProvider.notifier).setHasCompletedOnboarding(true),
     );
-    if (ref.read(devFlagsProvider).showOnboarding) {
-      unawaited(ref.read(devFlagsProvider.notifier).setShowOnboarding(false));
-    }
     context.go(RouteNames.dashboard);
   }
 
@@ -1520,10 +1516,6 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     await ref
         .read(userProfileProvider.notifier)
         .setHasCompletedOnboarding(true);
-    final dev = ref.read(devFlagsProvider);
-    if (dev.showOnboarding) {
-      await ref.read(devFlagsProvider.notifier).setShowOnboarding(false);
-    }
     if (!mounted) return;
     context.go(RouteNames.dashboard);
   }

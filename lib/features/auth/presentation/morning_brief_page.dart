@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/constants/app_strings.dart';
-import '../../../core/dev/dev_flags_notifier.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../data/models/job.dart';
@@ -53,12 +52,6 @@ class _MorningBriefPageState extends ConsumerState<MorningBriefPage> {
 
   void _continue() {
     ref.read(passiveAgentProvider.notifier).markMorningBriefShown();
-    // Auto-clear the dev "Show morning brief" toggle so the redirect doesn't
-    // bounce the user straight back here.
-    final dev = ref.read(devFlagsProvider);
-    if (dev.showMorningBrief) {
-      ref.read(devFlagsProvider.notifier).setShowMorningBrief(false);
-    }
     context.go(RouteNames.dashboard);
   }
 

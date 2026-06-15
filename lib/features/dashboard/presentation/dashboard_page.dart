@@ -555,7 +555,9 @@ class _AgentInputBarState extends ConsumerState<_AgentInputBar> {
 
   void _openChat({bool focus = true}) {
     if (!mounted) return;
-    context.go(focus ? '${RouteNames.agentChat}?focus=1' : RouteNames.agentChat);
+    context.go(
+      focus ? '${RouteNames.agentChat}?focus=1' : RouteNames.agentChat,
+    );
   }
 
   @override
@@ -623,13 +625,13 @@ class _AgentInputBarState extends ConsumerState<_AgentInputBar> {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: brand.ink,
+                      color: brand.accent,
                       borderRadius: BorderRadius.circular(14),
                     ),
                     alignment: Alignment.center,
                     child: Icon(
                       Icons.arrow_forward_rounded,
-                      color: brand.inkInverse,
+                      color: brand.onAccent,
                       size: 18,
                     ),
                   ),

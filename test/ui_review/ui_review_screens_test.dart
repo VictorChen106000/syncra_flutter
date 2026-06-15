@@ -33,6 +33,7 @@ import 'package:syncra/features/agent_chat/models/agent_block.dart';
 import 'package:syncra/features/agent_chat/models/chat_message.dart';
 import 'package:syncra/features/agent_chat/presentation/ai_chatbot_page.dart';
 import 'package:syncra/features/agent_chat/state/agent_chat_notifier.dart';
+import 'package:syncra/features/applications/state/applications_notifier.dart';
 import 'package:syncra/features/jobs/presentation/jobs_page.dart';
 import 'package:syncra/features/jobs/state/jobs_notifier.dart';
 import 'package:syncra/features/resumes/models/proposed_edit.dart';
@@ -57,6 +58,16 @@ class _FixedJobsNotifier extends JobsNotifier {
 
   @override
   JobsState build() => _fixed;
+}
+
+class _FixedApplicationsNotifier extends ApplicationsNotifier {
+  _FixedApplicationsNotifier([this._fixed = const ApplicationsState()])
+    : super(repository: ApplicationsRepository(db: _FakeFirestore()));
+
+  final ApplicationsState _fixed;
+
+  @override
+  ApplicationsState build() => _fixed;
 }
 
 class _FixedPipelineAutopilotNotifier extends PipelineAutopilotNotifier {
@@ -433,7 +444,9 @@ Widget _wrap(Widget child, List<Override> overrides, {bool dark = false}) {
     // The Pipeline screen kicks the auto-processor on first frame; stub it so
     // goldens never reach the real (Firebase-backed) run path.
     overrides: [
-      pipelineAutopilotProvider.overrideWith(_FixedPipelineAutopilotNotifier.new),
+      pipelineAutopilotProvider.overrideWith(
+        _FixedPipelineAutopilotNotifier.new,
+      ),
       ...overrides,
     ],
     child: MaterialApp(
@@ -524,6 +537,7 @@ void main() {
           () => _FixedJobsNotifier(JobsState(cards: _pipelineCards())),
         ),
         passiveAgentProvider.overrideWith(_FixedPassiveAgentNotifier.new),
+        applicationsProvider.overrideWith(_FixedApplicationsNotifier.new),
       ]),
       'jobs_pipeline_light',
     );
@@ -537,6 +551,7 @@ void main() {
           () => _FixedJobsNotifier(JobsState(cards: _pipelineCards())),
         ),
         passiveAgentProvider.overrideWith(_FixedPassiveAgentNotifier.new),
+        applicationsProvider.overrideWith(_FixedApplicationsNotifier.new),
       ]),
       'jobs_pipeline_tall',
       height: 2300,
@@ -551,6 +566,7 @@ void main() {
           () => _FixedJobsNotifier(JobsState(cards: _pipelineCards())),
         ),
         passiveAgentProvider.overrideWith(_FixedPassiveAgentNotifier.new),
+        applicationsProvider.overrideWith(_FixedApplicationsNotifier.new),
       ], dark: true),
       'jobs_pipeline_dark',
     );
@@ -562,6 +578,7 @@ void main() {
       () => _wrap(const JobsPage(), [
         jobsProvider.overrideWith(() => _FixedJobsNotifier(const JobsState())),
         passiveAgentProvider.overrideWith(_FixedPassiveAgentNotifier.new),
+        applicationsProvider.overrideWith(_FixedApplicationsNotifier.new),
       ]),
       'jobs_empty_light',
     );

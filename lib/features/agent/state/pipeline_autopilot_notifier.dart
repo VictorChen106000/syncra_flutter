@@ -22,11 +22,12 @@ import '../../resumes/services/resume_tailor_orchestrator.dart';
 /// - [AutonomyLevel.assist]: do nothing — the user drives every step.
 /// - [AutonomyLevel.autoDraft]: tailor + draft, stop at the Drafted stage.
 /// - [AutonomyLevel.autopilot]: also auto-send, advancing to Sent.
-PipelineStage? pipelineAutopilotStopStage(AutonomyLevel level) => switch (level) {
-  AutonomyLevel.assist => null,
-  AutonomyLevel.autoDraft => PipelineStage.drafted,
-  AutonomyLevel.autopilot => PipelineStage.sent,
-};
+PipelineStage? pipelineAutopilotStopStage(AutonomyLevel level) =>
+    switch (level) {
+      AutonomyLevel.assist => null,
+      AutonomyLevel.autoDraft => PipelineStage.drafted,
+      AutonomyLevel.autopilot => PipelineStage.sent,
+    };
 
 /// The cards the auto-processor is allowed to touch: a fresh `matched` Strong
 /// (`ready`) or Partial (`inputNeeded`) match. Only Stretch (`exploration`)
@@ -229,7 +230,10 @@ class PipelineAutopilotNotifier extends Notifier<PipelineAutopilotState> {
     );
 
     // 2. Draft outreach.
-    final draft = await _paraphrase.draftColdEmail(resumeJson: resumeJson, job: job);
+    final draft = await _paraphrase.draftColdEmail(
+      resumeJson: resumeJson,
+      job: job,
+    );
     final subject = (draft['subject'] as String?)?.trim() ?? '';
     final body = (draft['body'] as String?)?.trim() ?? '';
     await _pipeline.advanceStage(

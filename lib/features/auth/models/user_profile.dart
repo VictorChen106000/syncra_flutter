@@ -125,6 +125,32 @@ enum AutonomyLevel {
     AutonomyLevel.autopilot => 'Autopilot',
   };
 
+  /// Derives the bounded auto-apply guardrails this autonomy level implies,
+  /// starting from the user's [current] settings so customised quality / daily
+  /// limits are preserved. Agent Autonomy is the single user-facing control;
+  /// this keeps the internal [AutoApplySettings] in lockstep with it.
+  ///
+  /// Only [autopilot] enables auto-apply and auto-send; [assist] and
+  /// [autoDraft] keep the agent stopping at the human gates. This sets *intent*
+  /// only — the irreversible send stays gated by every check in
+  /// `shouldAutoSendOutreach` (Trust Guard low, confirmed recipient, quality,
+  /// daily limit), so guessed/medium-risk paths never auto-send regardless.
+  AutoApplySettings applyToAutoApply(AutoApplySettings current) =>
+      switch (this) {
+        AutonomyLevel.assist || AutonomyLevel.autoDraft => current.copyWith(
+          enabled: false,
+          autoSendOutreach: false,
+        ),
+        // minQualityScore / maxDailyApplications fall through copyWith
+        // unchanged — keeping any existing value, or the model defaults
+        // (85% / 3 a day) for a fresh profile.
+        AutonomyLevel.autopilot => current.copyWith(
+          enabled: true,
+          autoSendOutreach: true,
+          requireLowTrust: true,
+        ),
+      };
+
   /// Parses the persisted key, defaulting to [autopilot] for legacy users and
   /// any unrecognised value.
   static AutonomyLevel fromStorage(Object? value) => switch (value) {
@@ -238,7 +264,8 @@ class UserProfile {
       resumeFit: rawFit is Map
           ? ResumeFit.fromJson(rawFit.cast<String, dynamic>())
           : null,
-      recommendation: (data['recommendation'] as String?)?.trim().isEmpty ?? true
+      recommendation:
+          (data['recommendation'] as String?)?.trim().isEmpty ?? true
           ? null
           : (data['recommendation'] as String).trim(),
       autoApplySettings: AutoApplySettings.fromMap(data['auto_apply']),
