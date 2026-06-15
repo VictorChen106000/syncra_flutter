@@ -6,7 +6,9 @@ import '../../../data/firestore/jobs_repository.dart';
 import '../../../data/firestore/pipeline_repository.dart';
 import '../../../data/firestore/resumes_repository.dart';
 import '../../../data/models/job.dart';
+import '../../../data/models/tracked_application.dart';
 import '../../agent_chat/tools/anthropic_tool_calls.dart';
+import '../../applications/services/autopilot_safety_gate.dart';
 import '../../auth/models/user_profile.dart';
 import '../../auth/state/auth_notifier.dart';
 import '../../auth/state/user_profile_notifier.dart';
@@ -21,7 +23,7 @@ import '../../resumes/services/resume_tailor_orchestrator.dart';
 /// autonomy level. Pure so it can be unit-tested without Firestore/LLM.
 /// - [AutonomyLevel.assist]: do nothing — the user drives every step.
 /// - [AutonomyLevel.autoDraft]: tailor + draft, stop at the Drafted stage.
-/// - [AutonomyLevel.autopilot]: also auto-send, advancing to Sent.
+/// - [AutonomyLevel.autopilot]: may auto-send only after the safety gate passes.
 PipelineStage? pipelineAutopilotStopStage(AutonomyLevel level) =>
     switch (level) {
       AutonomyLevel.assist => null,
@@ -31,8 +33,8 @@ PipelineStage? pipelineAutopilotStopStage(AutonomyLevel level) =>
 
 /// The cards the auto-processor is allowed to touch: a fresh `matched` Strong
 /// (`ready`) or Partial (`inputNeeded`) match. Only Stretch (`exploration`)
-/// still waits for the user. (Sends go to the demo inbox via
-/// [demoRecipientOverride], so autopilot never reaches a real employer.)
+/// still waits for the user. Trust is enforced later by the Autopilot safety
+/// gate before any send; Auto-draft can still prepare a reviewable draft.
 /// Partial matches tailor on real résumé facts only — the missing skill is
 /// never invented. Pure + testable.
 @visibleForTesting
@@ -138,7 +140,7 @@ class PipelineAutopilotNotifier extends Notifier<PipelineAutopilotState> {
   /// job. Cleared only by a fresh session (the set is per-notifier).
   bool isAutopilotHandling(String jobId) => _processedJobIds.contains(jobId);
 
-  /// Kicks off a bounded auto-processing pass. Safe to call repeatedly — it
+  /// Kicks off an autonomy-guided auto-processing pass. Safe to call repeatedly — it
   /// no-ops while a run is in flight, on Assist, without an API key, or when
   /// there are no fresh candidates.
   Future<void> processNow() async {
@@ -149,8 +151,11 @@ class PipelineAutopilotNotifier extends Notifier<PipelineAutopilotState> {
     if (user == null || user.isGuest) return;
     final uid = user.uid;
 
-    final level =
-        ref.read(userProfileProvider)?.autonomyLevel ?? AutonomyLevel.autoDraft;
+    final profile = ref.read(userProfileProvider);
+    final level = profile?.autonomyLevel ?? AutonomyLevel.autoDraft;
+    final autoApplySettings = level.applyToAutoApply(
+      profile?.autoApplySettings ?? const AutoApplySettings(),
+    );
     final stopStage = pipelineAutopilotStopStage(level);
     if (stopStage == null) return; // Assist — user drives every step.
 
@@ -180,6 +185,8 @@ class PipelineAutopilotNotifier extends Notifier<PipelineAutopilotState> {
           await _processCard(
             uid: uid,
             card: card,
+            autonomyLevel: level,
+            autoApplySettings: autoApplySettings,
             stopStage: stopStage,
             sourceResumeId: sourceResumeId,
           );
@@ -200,10 +207,25 @@ class PipelineAutopilotNotifier extends Notifier<PipelineAutopilotState> {
   Future<void> _processCard({
     required String uid,
     required PipelineCard card,
+    required AutonomyLevel autonomyLevel,
+    required AutoApplySettings autoApplySettings,
     required PipelineStage stopStage,
     required String sourceResumeId,
   }) async {
     final job = card.job;
+    final existingDraft = await _applications.findOpenDraftByJobId(
+      uid: uid,
+      jobId: job.id,
+    );
+    if (existingDraft != null) {
+      await _pipeline.advanceStage(
+        uid: uid,
+        jobId: job.id,
+        stage: PipelineStage.drafted,
+      );
+      return;
+    }
+
     final resumeJson = (await _orchestrator.readResumeJson(
       uid: uid,
       resumeId: sourceResumeId,
@@ -253,33 +275,63 @@ class PipelineAutopilotNotifier extends Notifier<PipelineAutopilotState> {
       stage: PipelineStage.drafted,
     );
 
-    // Auto-draft stops here — the user reviews and taps Send.
-    if (stopStage != PipelineStage.sent) return;
     if (subject.isEmpty || body.isEmpty) return;
 
-    // 3. Autopilot send. resolveRecipientAsync resolves the recipient (and
-    // handles the demo-inbox override internally). For that controlled override
-    // we force auto-send eligibility so Autopilot still delivers to it;
-    // otherwise autoSend's own eligibility floor decides. Never send to a
-    // non-email.
-    final resolution = await resolveRecipientAsync(job.company);
-    final recipient = resolution.email;
-    if (!_looksLikeEmail(recipient)) return;
-    final sendResolution = demoRecipientOverride.isNotEmpty
-        ? resolution.copyWith(canAutoSend: true)
-        : resolution;
-
-    final appId = await _applications.createApplication(
+    final appId = await _applications.createOrReuseDraftApplication(
       uid: uid,
       job: job,
       resumeId: attachmentResumeId,
+      trustRiskLevel: card.trustRiskLevel,
+      trustRiskLabel: card.trustRiskLabel,
+      trustSignalsCount: card.trustSignalsCount,
+      trustSignals: card.trustSignals,
+      trustSafeNextStep: card.trustSafeNextStep,
     );
+    final application = TrackedApplication(
+      id: appId,
+      job: job,
+      resumeId: attachmentResumeId,
+      draftedAt: DateTime.now(),
+      trustRiskLevel: card.trustRiskLevel,
+      trustRiskLabel: card.trustRiskLabel,
+      trustSignalsCount: card.trustSignalsCount,
+      trustSignals: card.trustSignals,
+      trustSafeNextStep: card.trustSafeNextStep,
+    );
+
+    // Auto-draft stops here — the user reviews and taps Send.
+    if (stopStage != PipelineStage.sent) return;
+
+    // 3. Autopilot send. A confirmed recipient alone is not enough: the central
+    // gate also checks autonomy, hidden policy, daily cap, trust, quality, and
+    // bundle completeness before Gmail is touched.
+    final resolution = await resolveRecipientAsync(
+      job.company,
+      website: job.employerWebsite,
+    );
+    final recipient = resolution.email;
+    if (!_looksLikeEmail(recipient)) return;
+    final sentToday = await _applications.countSentToday(uid);
+    final decision = evaluateAutopilotSendSafety(
+      autonomyLevel: autonomyLevel,
+      settings: autoApplySettings,
+      application: application,
+      sentToday: sentToday,
+      recipient: resolution,
+    );
+    if (!decision.allowed) {
+      debugPrint(
+        'pipeline autopilot: send blocked for ${job.id} -> '
+        '${decision.reasons.join('; ')}',
+      );
+      return;
+    }
 
     await _emailSender.autoSend(
       to: recipient,
       subject: subject,
       body: body,
-      recipientResolution: sendResolution,
+      recipientResolution: resolution,
       uid: uid,
       applicationId: appId,
       company: job.company,

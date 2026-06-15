@@ -6,65 +6,96 @@ import 'package:syncra/features/jobs/services/application_quality_meter.dart';
 
 void main() {
   group('Application Quality Meter', () {
-    test('marks a drafted strong fit as ready', () {
+    test('marks a low-risk drafted strong fit as ready', () {
       final result = evaluateApplicationQuality(
         _card(
           category: JobCategory.ready,
+          trustRiskLevel: 'low',
           stage: PipelineStage.drafted,
         ),
       );
 
-      // base 35 + ready 25 + no-missing 15 + drafted 16 = 91
-      expect(result.score, 91);
+      // base 35 + ready 25 + low trust 20 + no-missing 15 + drafted 16 = 111 -> 100.
+      expect(result.score, 100);
       expect(result.label, 'Application quality · Ready');
-      expect(result.reasons, contains('All Match'));
+      expect(result.reasons, contains('Trust looks okay'));
+      expect(result.reasons, contains('Resume fit strong'));
       expect(result.reasons, contains('Draft ready'));
     });
 
-    test('scores a freshly matched strong fit below a drafted one', () {
+    test('caps unchecked jobs below ready even when otherwise strong', () {
+      final result = evaluateApplicationQuality(
+        _card(category: JobCategory.ready, stage: PipelineStage.drafted),
+      );
+
+      // Raw score is 99, but unchecked trust caps quality at 74.
+      expect(result.score, 74);
+      expect(result.label, 'Application quality · Needs polish');
+      expect(result.reasons, contains('Trust not checked'));
+    });
+
+    test('caps medium-risk jobs below the send threshold', () {
       final result = evaluateApplicationQuality(
         _card(
           category: JobCategory.ready,
-          stage: PipelineStage.matched,
+          trustRiskLevel: 'medium',
+          stage: PipelineStage.drafted,
         ),
       );
 
-      // base 35 + ready 25 + no-missing 15 + matched 0 = 75
-      expect(result.score, 75);
-      expect(result.label, 'Application quality · Needs polish');
+      expect(result.score, 59);
+      expect(result.label, 'Application quality · Needs info');
+      expect(result.reasons, contains('Verify trust first'));
+    });
+
+    test('caps high-risk jobs as blocked', () {
+      final result = evaluateApplicationQuality(
+        _card(
+          category: JobCategory.ready,
+          trustRiskLevel: 'high',
+          stage: PipelineStage.drafted,
+        ),
+      );
+
+      expect(result.score, 35);
+      expect(result.label, 'Application quality · Blocked');
+      expect(result.reasons, contains('Trust blocked'));
     });
 
     test('explains missing skills for incomplete matches', () {
       final result = evaluateApplicationQuality(
         _card(
           category: JobCategory.inputNeeded,
+          trustRiskLevel: 'low',
           stage: PipelineStage.drafted,
           missingSkills: const ['Web3', 'GraphQL'],
         ),
       );
 
-      // base 35 + inputNeeded 14 - missing(2*5=10) + drafted 16 = 55
-      expect(result.score, 55);
-      expect(result.label, 'Application quality · Needs info');
-      expect(result.reasons, contains('Several Match'));
+      // base 35 + inputNeeded 14 + low trust 20 - missing(2*5=10) + drafted 16 = 75.
+      expect(result.score, 75);
+      expect(result.label, 'Application quality · Needs polish');
+      expect(result.reasons, contains('Needs missing info'));
       expect(result.reasons, contains('Missing Web3, GraphQL'));
     });
   });
 
   test('evaluates tracked applications using their current phase', () {
     final result = evaluateTrackedApplicationQuality(
-      _trackedApplication(phase: ApplicationPhase.sent),
+      _trackedApplication(phase: ApplicationPhase.sent, trustRiskLevel: 'low'),
     );
 
-    // base 35 + ready 25 + no-missing 15 + sent 18 = 93
-    expect(result.score, 93);
+    // base 35 + ready 25 + low trust 20 + no-missing 15 + sent 18 = 113 -> 100.
+    expect(result.score, 100);
     expect(result.label, 'Application quality · Ready');
+    expect(result.reasons, contains('Trust looks okay'));
     expect(result.reasons, contains('Already sent'));
   });
 }
 
 PipelineCard _card({
   JobCategory category = JobCategory.ready,
+  String trustRiskLevel = 'unchecked',
   PipelineStage stage = PipelineStage.matched,
   List<String> missingSkills = const [],
 }) {
@@ -73,6 +104,7 @@ PipelineCard _card({
     status: PipelineCardStatus.pending,
     createdAt: DateTime(2026, 6, 5),
     stage: stage,
+    trustRiskLevel: trustRiskLevel,
     job: Job(
       id: 'job_1',
       title: 'Flutter Developer',
@@ -92,6 +124,7 @@ PipelineCard _card({
 
 TrackedApplication _trackedApplication({
   ApplicationPhase phase = ApplicationPhase.draft,
+  String trustRiskLevel = 'unchecked',
 }) {
   final draftedAt = DateTime(2026, 6, 5, 9);
   final sentAt = switch (phase) {
@@ -106,5 +139,16 @@ TrackedApplication _trackedApplication({
     draftedAt: draftedAt,
     sentAt: sentAt,
     gotReply: phase == ApplicationPhase.replied,
+    trustRiskLevel: trustRiskLevel,
+    trustRiskLabel: _trustLabel(trustRiskLevel),
   );
+}
+
+String _trustLabel(String riskLevel) {
+  return switch (riskLevel) {
+    'low' => 'Looks okay',
+    'medium' => 'Verify first',
+    'high' => 'Blocked',
+    _ => 'Not checked',
+  };
 }

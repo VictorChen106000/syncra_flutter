@@ -18,9 +18,10 @@ this file, fix the code (or change this file by PR). Product context is in
 | Job source | JSearch via RapidAPI, direct from Flutter |
 | Email | Gmail API — user's own account; `gmail.compose` for drafts, `gmail.send` for confirmed sends; never read scope |
 | Recipient lookup | Recipient Intelligence ranks confirmed cache, official-site discovery hooks, and low-confidence `careers@domain` guesses; Syncra never guarantees an inbox is valid |
+| Job Trust Guard | Heuristic red-flag screen only; never certifies a job as legitimate |
 | Secrets | `--dart-define=KEY=...` at build time; rotate after demo |
 | Agent paradigm | Tool use — Claude picks tools, client executes, loop continues |
-| Human-in-the-loop | Agent never sends external traffic without an explicit user tap |
+| Human-in-the-loop | Claude never sends external traffic directly; manual sends require a user tap, while Autopilot sends require the app safety gate |
 | Resume canonical form | `ResumeJSON` in Firestore, lazy-populated on first parse |
 | PDF template | One fixed single-column ATS-safe layout |
 | Resume integrity | Pure Dart check after accepted edits render, with deterministic skill cleanup and one guarded repair pass; no extra PDF editor |
@@ -62,7 +63,7 @@ from an approval UI instead of a typed answer:
 
 - `ProposedEditsBlock` — PR-style resume edits from `tailor_resume`; supports per-edit Accept/Reject decisions, Apply N edits, preview rendering, Resume Integrity Check status, save-to-library, and saved-resume continuation.
 - `ActionProposalBlock` — approval card for concrete next actions; may include a hidden `continuationPrompt` that resumes the threaded agent loop after user approval.
-- `send_email` remains gated. The agent may draft outreach, but sending requires the email review UI and an explicit user-confirmation token.
+- `send_email` remains gated. The agent may draft outreach, but Claude cannot send directly; manual sends require the email review UI token, and Autopilot sends require the app's central safety gate plus the same token path.
 
 **Extended thinking is enabled** (`budget_tokens: 2048`, `max_tokens: 4096`).
 Thinking blocks render as a collapsed "Thought for a moment" step and must be
@@ -115,15 +116,16 @@ Each tool is declared in `tool_registry.dart` (`name`, `description`,
 | `search_jobs` | Search live listings; returns ≤25 `Job`s | auto |
 | `read_resume` | Load the user's `ResumeJSON`; lazy-parses the PDF on first call | auto |
 | `match_jobs` | Score jobs vs resume → category, score, justification, missing skills | auto |
+| `check_job_risk` | Run a quick Trust Guard red-flag screen for a job | auto; asks before continuing on medium/high risk |
 | `tailor_resume` | **Propose** 3–8 targeted edits for a job. No PDF, no write. | auto, then pause |
 | `apply_resume_edits` | Apply the accepted edit subset → render PDF → new resume doc | **user-gated** — fired by the diff viewer, never by Claude |
 | `resolve_company_contact` | Resolve recipient metadata before outreach: email, domain, confidence, source, reason, auto-send eligibility | auto; must run before `draft_email` |
 | `draft_email` | Draft a cold-outreach email for a job, using a tailored resume | auto; user reviews before send |
 | `lookup_hiring_manager` | Legacy alias for recipient resolution; prefer `resolve_company_contact` | auto |
 | `remember_fact` | Persist a reusable fact about the user → `learned_facts` | auto |
-| `save_to_pipeline` | Write a scored match as a pipeline card | auto |
-| `save_to_tracker` | Persist an application record to the Applications page | auto; external sends still require the `send_email` user gate |
-| `send_email` | Send the drafted email via Gmail | **always requires a user tap** |
+| `save_to_pipeline` | Write a scored match as a pipeline card, including Trust Guard result | auto |
+| `save_to_tracker` | Persist an application record to the Applications page, including Trust Guard result | auto; external sends still require the `send_email` user gate |
+| `send_email` | Send the drafted email via Gmail | **never callable by Claude directly**; manual sends require a user tap, Autopilot sends require the central safety gate |
 | `ask_user` | Ask the user a question and pause; optional suggestion chips | pauses the loop |
 
 ### The resume diff flow — the core sequence
@@ -161,6 +163,28 @@ Each tool is declared in `tool_registry.dart` (`name`, `description`,
    saved resume id feeds back into the loop; Claude proceeds (typically to
    `draft_email`).
 
+### Trust Guard contract
+
+`check_job_risk` is a lightweight red-flag screen, not a background check or
+legitimacy certificate. It evaluates the saved job text for obvious signals such
+as missing company identity, thin descriptions, generic/confidential employers,
+money-transfer language, gift-card requests, crypto/payment wording, or moving
+communication to Telegram/WhatsApp.
+
+The result shape is reused by the agent tool, pipeline cards, job action sheet,
+and application tracker:
+
+```json
+{
+  "risk_level": "low | medium | high",
+  "risk_label": "Looks normal | Needs verification | High risk",
+  "signals": [
+    { "severity": "medium | high", "label": "...", "detail": "..." }
+  ],
+  "safe_next_step": "..."
+}
+```
+
 ### Tool input notes
 
 - **`resolve_company_contact`** — `{ job_id?, company?, website?, apply_link? }`.
@@ -192,24 +216,29 @@ Each tool is declared in `tool_registry.dart` (`name`, `description`,
 | `gmail_connected` | bool | Records Gmail connection/intent state |
 | `has_completed_onboarding` | bool | Router gate for first-run onboarding |
 | `resume_fit` | map? | persisted onboarding fit chart snapshot |
-| `autonomy_level` | string | Agent Autonomy control: `assist` / `auto_draft` / `autopilot`; default `autopilot`. User-facing dial that drives `auto_apply`. |
-| `auto_apply` | map | bounded auto-apply guardrails (internal safety backend); set via Agent Autonomy, not edited directly; defaults disabled |
+| `autonomy_level` | string | Agent Autonomy control: `assist` / `auto_draft` / `autopilot`; default `auto_draft`. User-facing dial that drives hidden Autopilot safety policy. |
+| `auto_apply` | map | Hidden Autopilot safety policy derived from Agent Autonomy; not edited directly; defaults to Auto-draft policy |
 | `created_at` | Timestamp | |
 
 `auto_apply` map:
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `enabled` | bool | default `false`; does not send/apply by itself |
-| `min_quality_score` | int | default `85`; clamped 60–100 |
-| `max_daily_applications` | int | default `3`; clamped 1–10 |
+| `enabled` | bool | derived from autonomy; only Autopilot sets `true` |
+| `min_quality_score` | int | fixed policy value; clamped 60–100 |
+| `max_daily_applications` | int | fixed policy value; clamped 0–10 |
+| `require_low_trust` | bool | fixed `true`; requires Trust Guard `low` before eligibility |
+| `auto_send_outreach` | bool | derived from autonomy; only Autopilot sets `true` |
 
-Agent Autonomy is the single user-facing control; **Bounded Auto-Apply remains
-the internal safety guardrail for Autopilot**, not a separately edited UI.
-Selecting Autopilot enables `auto_apply` + auto-send outreach; Assist /
-Auto-draft disable both and leave the other limits untouched. Autopilot can only
-send when the quality, daily-limit, and recipient-confidence gates all pass (see
-`shouldAutoSendOutreach`); guessed or missing recipients never auto-send.
+Agent Autonomy is the single user-facing control. `auto_apply` is hidden safety
+state, not a separately edited UI. Fixed mappings are:
+Assist = off / quality 100 / daily 0 / low-trust required; Auto-draft = off /
+quality 85 / daily 0 / low-trust required; Autopilot = on / auto-send outreach
+on / quality 85 / daily 3 / low-trust required. Autopilot can only send when
+the central safety gate passes: Autopilot mode, hidden settings on, draft phase,
+daily cap, low trust, 85%+ quality, no application-bundle blockers, and a
+confirmed/high-confidence recipient with `canAutoSend: true`. Guessed, missing,
+or confirmation-required recipients never auto-send.
 
 **`users/{uid}/applications/{appId}` — activity log**
 
@@ -223,6 +252,17 @@ send when the quality, daily-limit, and recipient-confidence gates all pass (see
 | `follow_up_at` | Timestamp? | optional reminder |
 | `notes` | array<{body, created_at}> | free-form |
 | `sent_email_id` | string? | Gmail message id |
+| `trust_risk_level` | `unchecked \| low \| medium \| high` | Trust Guard level captured when saved |
+| `trust_risk_label` | string | UI label: `Not checked`, `Looks normal`, `Needs verification`, `High risk` |
+| `trust_signals_count` | int | number of saved Trust Guard signals |
+| `trust_signals` | array<{severity, label, detail}> | signal details shown in the detail sheet |
+| `trust_safe_next_step` | string | recommended verification step |
+| `trust_checked_at` | Timestamp? | null when unchecked |
+
+Open draft writes are idempotent by exact `job.id`: when `sent_at == null`,
+agent/manual/autopilot flows reuse the existing draft instead of creating a
+second open application. Legacy duplicate open drafts are deduped for tracker
+filters and counts by keeping the newest `drafted_at` record.
 
 **`users/{uid}/resumes/{resumeId}` — resume metadata**
 
@@ -240,7 +280,9 @@ send when the quality, daily-limit, and recipient-confidence gates all pass (see
 `category` (`ready \| input_needed \| exploration`), `match_score`,
 `agent_action`, `agent_justification`, `matched_skills`, `missing_skills`,
 `stage` (`matched \| tailored \| drafted \| sent \| replied`), `status`
-(`pending \| approved \| dismissed`), `created_at`.
+(`pending \| approved \| dismissed`), Trust Guard fields
+(`trust_risk_level`, `trust_risk_label`, `trust_signals_count`,
+`trust_signals`, `trust_safe_next_step`, `trust_checked_at`), `created_at`.
 
 ### Pipeline lifecycle invariant
 
@@ -257,6 +299,8 @@ Important invariant:
 - `sent` and `replied` cards are handled work and must not appear in the active pipeline.
 - Advancing a card to `sent` or `replied` must also mark the card `status: approved`.
 - Legacy cards with `status: pending` but terminal stage `sent` or `replied` must still be hidden from the active pipeline.
+- Pipeline saves are idempotent by exact `job.id`: one unfinished pending card is reused and updated; legacy active duplicates are collapsed by keeping the highest-stage/newest card and marking the others approved.
+- Auto-draft/Autopilot skips a job that already has an open draft, advances its pipeline card to `drafted`, and does not auto-send that pre-existing draft.
 
 Do not remove or weaken this behavior without updating `test/pipeline_repository_test.dart`.
 
@@ -358,8 +402,8 @@ text, never touches layout. Don't change the template without a team vote.
 | `search_jobs` (JSearch) | cache `jobs/` for 1h — stay under 200/month |
 | `match_jobs` | ≤25 jobs per call |
 | `tailor_resume` | one in-flight per session |
-| `send_email` | hard-blocked without a user tap |
-| Bounded auto-apply / auto-send outreach | external send only when bounded auto-apply is enabled, auto-send outreach is enabled, recipient confidence is confirmed/high with `canAutoSend: true`, quality/daily/sent guards pass |
+| `send_email` | hard-blocked without a review token or Autopilot safety path |
+| Autopilot safety / auto-send outreach | external send only when Autopilot mode and hidden policy are enabled, Trust Guard is low, recipient confidence is confirmed/high with `canAutoSend: true`, and quality/daily/draft/bundle gates pass |
 | Anthropic | $5/month spend cap in the console |
 
 ## 9. Chat job-result persistence

@@ -62,6 +62,16 @@ void main() {
       }
     });
 
+    test('selects matched cards before send-time safety gates run', () {
+      for (final risk in ['low', 'medium', 'high', 'unchecked']) {
+        expect(
+          pipelineAutopilotCandidates([_card(trustRiskLevel: risk)]),
+          hasLength(1),
+          reason: 'risk $risk can still draft; send safety gates it later',
+        );
+      }
+    });
+
     test('skips approved / dismissed cards', () {
       expect(
         pipelineAutopilotCandidates([
@@ -78,14 +88,16 @@ PipelineCard _card({
   JobCategory category = JobCategory.ready,
   PipelineStage stage = PipelineStage.matched,
   PipelineCardStatus status = PipelineCardStatus.pending,
+  String trustRiskLevel = 'low',
 }) {
   return PipelineCard(
-    id: 'card_${category.name}_${stage.name}_${status.name}',
+    id: 'card_${category.name}_${stage.name}_${status.name}_$trustRiskLevel',
     status: status,
     stage: stage,
     createdAt: DateTime(2026, 6, 15),
+    trustRiskLevel: trustRiskLevel,
     job: Job(
-      id: 'job_${category.name}_${stage.name}',
+      id: 'job_$trustRiskLevel',
       title: 'Frontend Engineer',
       company: 'Syncra Test Co',
       location: 'Remote',

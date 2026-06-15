@@ -31,8 +31,8 @@ import 'dart:typed_data';
 /// Maps the user's autonomy dial to the system directive the agent reads each
 /// turn. Sent as a secondary system block (see [AgentService.setAutonomyDirective]).
 /// The irreversible send stays code-gated by the email confirmation token in
-/// every mode — Autopilot only changes who mints that token (the app, after an
-/// undo window) rather than removing the gate.
+/// every mode — Autopilot only lets the app mint that token after the safety
+/// gate passes and an undo window elapses.
 String _autonomyDirectiveFor(AutonomyLevel level) => switch (level) {
   AutonomyLevel.assist =>
     'ACTIVE AUTONOMY MODE: Assist. After each step, STOP and call `ask_user` '
@@ -55,10 +55,10 @@ String _autonomyDirectiveFor(AutonomyLevel level) => switch (level) {
         'match -> save top matches -> tailor -> draft) without inter-step asks; '
         'narrate decisions briefly. For a partial match with a missing skill, '
         'tailor with the real resume and note the gap rather than asking. After '
-        'you call `draft_email`, the app auto-sends low-risk drafts after a '
-        'short Undo window, so tell the user you will send it automatically '
-        "unless they tap Undo. Do NOT call `send_email` yourself — the app "
-        'performs the confirmed send.',
+        'you call `draft_email`, the app may auto-send only if every safety gate '
+        'passes: 85%+ quality, low-risk job, confirmed recipient, and under '
+        '3/day. Otherwise the draft stays for review. Do NOT call `send_email` '
+        'yourself — the app performs any confirmed send.',
 };
 
 /// The active [AgentService] for the app — Claude via the tool-use loop.
@@ -672,7 +672,9 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     _service.resetConversation();
     _threadPipelineMarkedComplete = false;
     state = AgentChatState(
-      items: [_buildOpener(job, stage: stage, autopilotClaimed: autopilotClaimed)],
+      items: [
+        _buildOpener(job, stage: stage, autopilotClaimed: autopilotClaimed),
+      ],
       conversationId: _newConversationId(),
       threadJob: job,
     );
@@ -910,7 +912,7 @@ Do not call send_email.
   /// fresh each turn so a mid-session change in Profile takes effect at once.
   void _syncAutonomyDirective() {
     final level =
-        ref.read(userProfileProvider)?.autonomyLevel ?? AutonomyLevel.autopilot;
+        ref.read(userProfileProvider)?.autonomyLevel ?? AutonomyLevel.autoDraft;
     _service.setAutonomyDirective(_autonomyDirectiveFor(level));
   }
 

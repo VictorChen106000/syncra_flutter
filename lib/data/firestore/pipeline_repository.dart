@@ -19,6 +19,11 @@ class PipelineCard {
     required this.status,
     required this.createdAt,
     this.stage = PipelineStage.matched,
+    this.trustRiskLevel = 'unchecked',
+    this.trustRiskLabel = 'Not checked',
+    this.trustSignalsCount = 0,
+    this.trustSignals = const [],
+    this.trustSafeNextStep = '',
   });
 
   final String id;
@@ -29,6 +34,17 @@ class PipelineCard {
   /// Current pipeline stage. Defaults to [PipelineStage.matched] for cards
   /// written before the `stage` field existed, so old data still renders.
   final PipelineStage stage;
+
+  /// Trust Guard result captured when this role was saved to the pipeline.
+  /// Values are "unchecked", "low", "medium", or "high".
+  final String trustRiskLevel;
+  final String trustRiskLabel;
+  final int trustSignalsCount;
+  final List<Map<String, String>> trustSignals;
+  final String trustSafeNextStep;
+
+  bool get needsTrustReview =>
+      trustRiskLevel == 'medium' || trustRiskLevel == 'high';
 
   /// Terminal stages — the agent (or user) already sent this one.
   bool get isSent =>
@@ -57,10 +73,12 @@ class PipelineRepository {
         .orderBy('created_at', descending: true)
         .snapshots()
         .map(
-          (snap) => snap.docs
-              .map(_fromDoc)
-              .where(shouldShowInActivePipeline)
-              .toList(growable: false),
+          (snap) => dedupePipelineCardsByJobId(
+            snap.docs
+                .map(_fromDoc)
+                .where(shouldShowInActivePipeline)
+                .toList(growable: false),
+          ),
         );
   }
 
@@ -71,14 +89,33 @@ class PipelineRepository {
         .limit(limit)
         .get();
 
-    return snap.docs
-        .map(_fromDoc)
-        .where(shouldShowInActivePipeline)
-        .toList(growable: false);
+    return dedupePipelineCardsByJobId(
+      snap.docs
+          .map(_fromDoc)
+          .where(shouldShowInActivePipeline)
+          .toList(growable: false),
+    );
   }
 
   Future<void> dismiss(String uid, String cardId) {
     return _paths.pipeline(uid).doc(cardId).update({'status': 'dismissed'});
+  }
+
+  Future<void> dismissByJobId({
+    required String uid,
+    required String jobId,
+  }) async {
+    final cleanJobId = jobId.trim();
+    if (cleanJobId.isEmpty) return;
+
+    final snap = await _paths
+        .pipeline(uid)
+        .where('job.id', isEqualTo: cleanJobId)
+        .get();
+
+    for (final doc in snap.docs) {
+      await doc.reference.update({'status': 'dismissed'});
+    }
   }
 
   Future<void> approve(String uid, String cardId) {
@@ -133,6 +170,27 @@ class PipelineRepository {
     }
   }
 
+  Future<PipelineCard?> findActiveByJobId({
+    required String uid,
+    required String jobId,
+  }) async {
+    final cleanJobId = jobId.trim();
+    if (cleanJobId.isEmpty) return null;
+
+    final snap = await _paths
+        .pipeline(uid)
+        .where('job.id', isEqualTo: cleanJobId)
+        .get();
+
+    final active = snap.docs
+        .map(_fromDoc)
+        .where(shouldShowInActivePipeline)
+        .toList(growable: false);
+    if (active.isEmpty) return null;
+
+    return pickBestPipelineCardForJob(active);
+  }
+
   Future<void> createCard({
     required String uid,
     required Job job,
@@ -142,25 +200,97 @@ class PipelineRepository {
     required String agentJustification,
     required List<String> matchedSkills,
     required List<String> missingSkills,
+    String trustRiskLevel = 'unchecked',
+    String trustRiskLabel = 'Not checked',
+    int trustSignalsCount = 0,
+    List<Map<String, String>> trustSignals = const [],
+    String trustSafeNextStep = '',
   }) async {
-    await _paths.pipeline(uid).doc().set({
-      'job': {
-        'id': job.id,
-        'title': job.title,
-        'company': job.company,
-        'location': job.location,
-        'salary': job.salary,
-      },
-      'category': _categoryToName(category),
-      'match_score': matchScore,
-      'agent_action': agentAction,
-      'agent_justification': agentJustification,
-      'matched_skills': matchedSkills,
-      'missing_skills': missingSkills,
-      'why': job.why,
+    await createOrUpdateCard(
+      uid: uid,
+      job: job,
+      category: category,
+      matchScore: matchScore,
+      agentAction: agentAction,
+      agentJustification: agentJustification,
+      matchedSkills: matchedSkills,
+      missingSkills: missingSkills,
+      trustRiskLevel: trustRiskLevel,
+      trustRiskLabel: trustRiskLabel,
+      trustSignalsCount: trustSignalsCount,
+      trustSignals: trustSignals,
+      trustSafeNextStep: trustSafeNextStep,
+    );
+  }
+
+  Future<String> createOrUpdateCard({
+    required String uid,
+    required Job job,
+    required JobCategory category,
+    required int matchScore,
+    required String agentAction,
+    required String agentJustification,
+    required List<String> matchedSkills,
+    required List<String> missingSkills,
+    String trustRiskLevel = 'unchecked',
+    String trustRiskLabel = 'Not checked',
+    int trustSignalsCount = 0,
+    List<Map<String, String>> trustSignals = const [],
+    String trustSafeNextStep = '',
+  }) async {
+    final cleanJobId = job.id.trim();
+    final data = _pipelineCardWriteData(
+      job: job,
+      jobId: cleanJobId.isEmpty ? job.id : cleanJobId,
+      category: category,
+      matchScore: matchScore,
+      agentAction: agentAction,
+      agentJustification: agentJustification,
+      matchedSkills: matchedSkills,
+      missingSkills: missingSkills,
+      trustRiskLevel: trustRiskLevel,
+      trustRiskLabel: trustRiskLabel,
+      trustSignalsCount: trustSignalsCount,
+      trustSignals: trustSignals,
+      trustSafeNextStep: trustSafeNextStep,
+    );
+
+    if (cleanJobId.isNotEmpty) {
+      final snap = await _paths
+          .pipeline(uid)
+          .where('job.id', isEqualTo: cleanJobId)
+          .get();
+      final active = snap.docs
+          .map(_fromDoc)
+          .where(shouldShowInActivePipeline)
+          .toList(growable: false);
+
+      if (active.isNotEmpty) {
+        final keep = pickBestPipelineCardForJob(active);
+        await _paths.pipeline(uid).doc(keep.id).update(data);
+
+        final duplicateIds = active
+            .where((card) => card.id != keep.id)
+            .map((card) => card.id)
+            .toList(growable: false);
+        for (final duplicateId in duplicateIds) {
+          await _paths.pipeline(uid).doc(duplicateId).update({
+            'status': 'approved',
+          });
+        }
+
+        return keep.id;
+      }
+    }
+
+    final ref = _paths.pipeline(uid).doc();
+    await ref.set({
+      ...data,
       'status': 'pending',
+      'stage': _stageToName(PipelineStage.matched),
       'created_at': FieldValue.serverTimestamp(),
     });
+    return ref.id;
   }
 }
 
@@ -177,6 +307,46 @@ class PipelineRepository {
 @visibleForTesting
 bool shouldShowInActivePipeline(PipelineCard card) {
   return card.status == PipelineCardStatus.pending && !card.isSent;
+}
+
+@visibleForTesting
+PipelineCard pickBestPipelineCardForJob(List<PipelineCard> cards) {
+  if (cards.isEmpty) {
+    throw ArgumentError.value(
+      cards,
+      'cards',
+      'Must contain at least one card.',
+    );
+  }
+
+  return cards.reduce((best, candidate) {
+    final stageCompare = _stageRank(
+      candidate.stage,
+    ).compareTo(_stageRank(best.stage));
+    if (stageCompare > 0) return candidate;
+    if (stageCompare < 0) return best;
+
+    final createdCompare = candidate.createdAt.compareTo(best.createdAt);
+    if (createdCompare > 0) return candidate;
+    if (createdCompare < 0) return best;
+
+    return candidate.id.compareTo(best.id) > 0 ? candidate : best;
+  });
+}
+
+@visibleForTesting
+List<PipelineCard> dedupePipelineCardsByJobId(List<PipelineCard> cards) {
+  final byJobId = <String, List<PipelineCard>>{};
+  for (final card in cards) {
+    final jobId = card.job.id.trim();
+    final key = jobId.isEmpty ? 'card:${card.id}' : 'job:$jobId';
+    byJobId.putIfAbsent(key, () => <PipelineCard>[]).add(card);
+  }
+
+  final deduped = byJobId.values
+      .map(pickBestPipelineCardForJob)
+      .toList(growable: false);
+  return deduped..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 }
 
 /// CRITICAL PIPELINE INVARIANT:
@@ -208,6 +378,47 @@ String _categoryToName(JobCategory c) => switch (c) {
   JobCategory.exploration => 'exploration',
 };
 
+Map<String, dynamic> _pipelineCardWriteData({
+  required Job job,
+  required String jobId,
+  required JobCategory category,
+  required int matchScore,
+  required String agentAction,
+  required String agentJustification,
+  required List<String> matchedSkills,
+  required List<String> missingSkills,
+  required String trustRiskLevel,
+  required String trustRiskLabel,
+  required int trustSignalsCount,
+  required List<Map<String, String>> trustSignals,
+  required String trustSafeNextStep,
+}) {
+  return {
+    'job': {
+      'id': jobId,
+      'title': job.title,
+      'company': job.company,
+      'location': job.location,
+      'salary': job.salary,
+    },
+    'category': _categoryToName(category),
+    'match_score': matchScore,
+    'agent_action': agentAction,
+    'agent_justification': agentJustification,
+    'matched_skills': matchedSkills,
+    'missing_skills': missingSkills,
+    'why': job.why,
+    'trust_risk_level': trustRiskLevel,
+    'trust_risk_label': trustRiskLabel,
+    'trust_signals_count': trustSignalsCount,
+    'trust_signals': trustSignals,
+    'trust_safe_next_step': trustSafeNextStep,
+    'trust_checked_at': trustRiskLevel == 'unchecked'
+        ? null
+        : FieldValue.serverTimestamp(),
+  };
+}
+
 PipelineCard _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
   final data = doc.data();
   final jobMap = Map<String, dynamic>.from((data['job'] as Map?) ?? const {});
@@ -232,7 +443,34 @@ PipelineCard _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     status: _statusFromName(data['status'] as String?),
     stage: _stageFromName(data['stage'] as String?),
     createdAt: _toDate(data['created_at']) ?? DateTime.now(),
+    trustRiskLevel: (data['trust_risk_level'] as String?) ?? 'unchecked',
+    trustRiskLabel: (data['trust_risk_label'] as String?) ?? 'Not checked',
+    trustSignalsCount: (data['trust_signals_count'] as num?)?.toInt() ?? 0,
+    trustSignals: _trustSignalsFrom(data['trust_signals']),
+    trustSafeNextStep: (data['trust_safe_next_step'] as String?) ?? '',
   );
+}
+
+List<Map<String, String>> _trustSignalsFrom(Object? value) {
+  if (value is! List) return const [];
+
+  final signals = <Map<String, String>>[];
+
+  for (final raw in value.whereType<Map>()) {
+    final severity = raw['severity']?.toString().trim() ?? '';
+    final label = raw['label']?.toString().trim() ?? '';
+    final detail = raw['detail']?.toString().trim() ?? '';
+
+    if (label.isEmpty && detail.isEmpty) continue;
+
+    signals.add({
+      'severity': severity.isEmpty ? 'medium' : severity,
+      'label': label.isEmpty ? 'Trust signal' : label,
+      'detail': detail,
+    });
+  }
+
+  return signals;
 }
 
 PipelineStage _stageFromName(String? name) => switch (name) {

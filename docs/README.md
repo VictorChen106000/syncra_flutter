@@ -38,8 +38,9 @@ tape between them. **Syncra is the duct tape, automated.**
    change log with the original text, rewrite, and one-line reason.
 6. Syncra renders an unsaved tailored PDF preview. You inspect the changes,
    then save the tailored resume or dismiss it.
-7. Agent resolves the best available recipient, then drafts a cold-outreach
-   email for the role.
+7. Agent runs Trust Guard for obvious job red flags, resolves the best available
+   recipient, then drafts a cold-outreach email if the role looks normal or you
+   approve continuing.
 8. You review the email and save it to Gmail Drafts on web or mobile. If using
    send mode, a separate explicit tap is still required before anything is
    delivered.
@@ -131,8 +132,8 @@ About one week before the demo, stop adding new product features. From that
 point on, only make changes that improve demo reliability:
 
 - Fix crashes, compile errors, failed tests, and broken navigation.
-- Fix demo-path bugs in resume upload, job search, tailoring, email review,
-  Applications, and Profile settings.
+- Fix demo-path bugs in resume upload, job search, Trust Guard, tailoring,
+  email review, Applications, and Profile settings.
 - Improve unclear error messages only when they unblock the demo.
 - Do not add new screens, new agent tools, new Firebase collections, or new
   flows unless the whole team agrees it is required for the demo.
@@ -145,10 +146,10 @@ Each teammate should run through:
 1. Sign in with Google or email/password.
 2. Upload a text-based resume PDF.
 3. Ask Syncra to find matching jobs.
-4. Open a role and save it.
+4. Open a role, run Trust Guard, and save it.
 5. Tailor a resume and preview the generated PDF.
 6. Draft outreach, save a Gmail draft, and confirm no email is sent without a tap.
-7. Check Applications for quality, bundle, and bounded auto-apply status.
+7. Check Applications for quality, bundle, trust, and Autopilot safety status.
 8. Reset account only after confirming the demo path works.
 
 ### Post-demo shutdown
@@ -173,6 +174,9 @@ After the live demo:
   changed before you save anything. Your original resume is never touched.
 - **The agent learns about you.** When you answer a follow-up question, the
   agent persists it as a learned fact, so it doesn't ask twice.
+- **Trust Guard before outreach.** Before saving or drafting for a role, Syncra
+  checks for obvious scam signals and shows the result on pipeline and
+  application cards. It never claims a job is guaranteed safe.
 - **Recipient Intelligence, not fake recruiter lookup.** JSearch does not
   provide recruiter emails. Syncra prefers confirmed `company_contacts` and a
   future Firebase-only official-site discovery hook, but `careers@domain` is
@@ -188,8 +192,9 @@ After the live demo:
   hidden / already-handled job results, proposal cards, resume preview cards,
   email draft cards, job-thread context, and compact model-side context so the
   next message can continue naturally.
-- **Human-in-the-loop.** The agent never sends external traffic without an
-  explicit user tap. Missing context → it pauses and asks.
+- **Human-in-the-loop.** Claude never sends external traffic directly. Manual
+  sends need an explicit tap; Autopilot sends only after the app's safety gate.
+  Missing context -> it pauses and asks.
 - **Honest scope.** The Applications page is an activity log (drafted / sent /
   user-flipped "got reply"), not a fake multi-stage CRM.
 - **Free to run.** Firebase Spark plan, no server. The only cost is Claude

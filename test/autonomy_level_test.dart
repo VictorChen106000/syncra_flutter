@@ -19,12 +19,12 @@ void main() {
     });
 
     test(
-      'fromStorage defaults to Autopilot for null / unknown / wrong type',
+      'fromStorage defaults to Auto-draft for null / unknown / wrong type',
       () {
-        expect(AutonomyLevel.fromStorage(null), AutonomyLevel.autopilot);
-        expect(AutonomyLevel.fromStorage(''), AutonomyLevel.autopilot);
-        expect(AutonomyLevel.fromStorage('nonsense'), AutonomyLevel.autopilot);
-        expect(AutonomyLevel.fromStorage(42), AutonomyLevel.autopilot);
+        expect(AutonomyLevel.fromStorage(null), AutonomyLevel.autoDraft);
+        expect(AutonomyLevel.fromStorage(''), AutonomyLevel.autoDraft);
+        expect(AutonomyLevel.fromStorage('nonsense'), AutonomyLevel.autoDraft);
+        expect(AutonomyLevel.fromStorage(42), AutonomyLevel.autoDraft);
       },
     );
 
@@ -36,9 +36,10 @@ void main() {
   });
 
   group('UserProfile autonomy persistence', () {
-    test('defaults to Autopilot when the field is absent (legacy users)', () {
+    test('defaults to Auto-draft when the field is absent (legacy users)', () {
       final profile = UserProfile.fromMap({'name': 'Ada', 'email': 'a@b.co'});
-      expect(profile.autonomyLevel, AutonomyLevel.autopilot);
+      expect(profile.autonomyLevel, AutonomyLevel.autoDraft);
+      expect(profile.autoApplySettings.maxDailyApplications, 0);
     });
 
     test('parses each stored autonomy_level value', () {
@@ -52,9 +53,10 @@ void main() {
       }
     });
 
-    test('default constructor is Autopilot', () {
+    test('default constructor is Auto-draft', () {
       const profile = UserProfile(name: 'Ada', email: 'a@b.co');
-      expect(profile.autonomyLevel, AutonomyLevel.autopilot);
+      expect(profile.autonomyLevel, AutonomyLevel.autoDraft);
+      expect(profile.autoApplySettings.maxDailyApplications, 0);
     });
 
     test('copyWith updates the autonomy level and leaves it otherwise', () {
@@ -68,25 +70,26 @@ void main() {
   });
 
   // Agent Autonomy is the single user-facing control; selecting a level
-  // re-derives the internal bounded auto-apply guardrails. Only Autopilot may
-  // enable auto-apply / auto-send — Assist and Auto-draft always disable both.
+  // re-derives fixed hidden safety policy. Only Autopilot may enable
+  // auto-apply / auto-send — Assist and Auto-draft always disable both.
   group('AutonomyLevel.applyToAutoApply', () {
-    test('Assist disables auto-apply and auto-send, keeps existing limits', () {
+    test('Assist maps to the fixed manual safety policy', () {
       const current = AutoApplySettings(
         enabled: true,
         autoSendOutreach: true,
         minQualityScore: 90,
         maxDailyApplications: 5,
+        requireLowTrust: false,
       );
       final mapped = AutonomyLevel.assist.applyToAutoApply(current);
       expect(mapped.enabled, isFalse);
       expect(mapped.autoSendOutreach, isFalse);
-      // Quality / daily values are left untouched.
-      expect(mapped.minQualityScore, 90);
-      expect(mapped.maxDailyApplications, 5);
+      expect(mapped.minQualityScore, 100);
+      expect(mapped.maxDailyApplications, 0);
+      expect(mapped.requireLowTrust, isTrue);
     });
 
-    test('Auto-draft disables auto-apply and auto-send, keeps limits', () {
+    test('Auto-draft maps to the fixed draft-only safety policy', () {
       const current = AutoApplySettings(
         enabled: true,
         autoSendOutreach: true,
@@ -96,36 +99,48 @@ void main() {
       final mapped = AutonomyLevel.autoDraft.applyToAutoApply(current);
       expect(mapped.enabled, isFalse);
       expect(mapped.autoSendOutreach, isFalse);
-      expect(mapped.minQualityScore, 80);
-      expect(mapped.maxDailyApplications, 2);
+      expect(mapped.minQualityScore, 85);
+      expect(mapped.maxDailyApplications, 0);
+      expect(mapped.requireLowTrust, isTrue);
     });
 
-    test('Autopilot enables auto-apply and auto-send', () {
+    test('Autopilot enables auto-apply, auto-send, and the low-trust gate', () {
       final mapped = AutonomyLevel.autopilot.applyToAutoApply(
         const AutoApplySettings(),
       );
       expect(mapped.enabled, isTrue);
       expect(mapped.autoSendOutreach, isTrue);
+      expect(mapped.requireLowTrust, isTrue);
     });
 
-    test('Autopilot defaults safety values to 85% / 3 a day', () {
+    test('Autopilot defaults safety values to 85% / 3 a day / low-risk', () {
       final mapped = AutonomyLevel.autopilot.applyToAutoApply(
         const AutoApplySettings(),
       );
       expect(mapped.minQualityScore, 85);
       expect(mapped.maxDailyApplications, 3);
+      expect(mapped.requireLowTrust, isTrue);
     });
 
-    test('Autopilot preserves a user\'s custom quality / daily-limit', () {
+    test('Autopilot ignores stale custom quality / daily-limit values', () {
       const current = AutoApplySettings(
         minQualityScore: 95,
         maxDailyApplications: 10,
       );
       final mapped = AutonomyLevel.autopilot.applyToAutoApply(current);
-      expect(mapped.minQualityScore, 95);
-      expect(mapped.maxDailyApplications, 10);
+      expect(mapped.minQualityScore, 85);
+      expect(mapped.maxDailyApplications, 3);
       expect(mapped.enabled, isTrue);
       expect(mapped.autoSendOutreach, isTrue);
+    });
+
+    test('fixedAutoApplySettingsFor matches applyToAutoApply', () {
+      for (final level in AutonomyLevel.values) {
+        expect(
+          fixedAutoApplySettingsFor(level).toMap(),
+          level.applyToAutoApply(const AutoApplySettings()).toMap(),
+        );
+      }
     });
   });
 }

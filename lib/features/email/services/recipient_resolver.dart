@@ -9,16 +9,43 @@ import '../../../data/firestore/company_contacts_repository.dart';
 import '../models/recipient_resolution.dart';
 import 'company_contact_discovery_service.dart';
 
-/// DEMO OVERRIDE — when non-empty, **every** outreach recipient is forced to
-/// this address. It short-circuits the contacts lookup and the `careers@` guess
-/// so live sends during a demo always reach a real inbox we control and never
-/// bounce on a made-up company address.
-///
-/// Currently set to the demo inbox so Autopilot actually delivers during the
-/// graded demo. **Set back to `''` for production** to restore normal
-/// `careers@` / learned-contact resolution. A mutable top-level (not `const`)
-/// so tests that exercise real resolution can clear it in `setUp`.
-String demoRecipientOverride = 'pegatron.inc@gmail.com';
+const demoEmailOverrideEnabled = bool.fromEnvironment(
+  'SYNCRA_DEMO_EMAIL_OVERRIDE_ENABLED',
+);
+const demoEmailOverride = String.fromEnvironment('SYNCRA_DEMO_EMAIL_OVERRIDE');
+
+String? activeDemoRecipientEmail({
+  bool enabled = demoEmailOverrideEnabled,
+  String overrideEmail = demoEmailOverride,
+}) {
+  final email = overrideEmail.trim();
+  if (!enabled || !_looksLikeEmail(email)) return null;
+  return email;
+}
+
+RecipientResolution? demoEmailOverrideResolution({
+  bool enabled = demoEmailOverrideEnabled,
+  String overrideEmail = demoEmailOverride,
+  String? fallbackDomain,
+}) {
+  final email = activeDemoRecipientEmail(
+    enabled: enabled,
+    overrideEmail: overrideEmail,
+  );
+  if (email == null) return null;
+  return RecipientResolution.confirmed(
+    email: email,
+    domain: _domainFromEmail(email) ?? fallbackDomain ?? 'demo.local',
+    source: RecipientSource.demoOverride,
+    reason: 'Controlled demo recipient override.',
+    canAutoSend: true,
+  );
+}
+
+bool isActiveDemoRecipient(String email) {
+  final active = activeDemoRecipientEmail();
+  return active != null && email.trim().toLowerCase() == active.toLowerCase();
+}
 
 /// Recipient metadata for [company], preferring confirmed contacts and safe
 /// official discovery over the low-confidence `careers@{domain}` guess.
@@ -39,19 +66,9 @@ Future<RecipientResolution> resolveRecipientAsync(
     applyLink: applyLink,
   );
 
-  if (demoRecipientOverride.isNotEmpty) {
-    final overrideDomain =
-        _domainFromEmail(demoRecipientOverride) ?? domain ?? 'demo.local';
-    return RecipientResolution.confirmed(
-      email: demoRecipientOverride,
-      domain: overrideDomain,
-      source: RecipientSource.demoOverride,
-      reason: 'Controlled demo recipient override.',
-      // Demo: force auto-send eligibility so Autopilot actually delivers to the
-      // controlled inbox (both the pipeline auto-processor and the on-screen
-      // draft card). Restore to false / clear the override for production.
-      canAutoSend: true,
-    );
+  final demoOverride = demoEmailOverrideResolution(fallbackDomain: domain);
+  if (demoOverride != null) {
+    return demoOverride;
   }
 
   if (domain == null) {
@@ -144,7 +161,8 @@ String? recipientDomainOrNull(
 /// This is never guaranteed to be a live inbox; it only pre-fills the
 /// editable "To" field so the user has a sensible default to correct.
 String resolveRecipient(String company, {String? website}) {
-  if (demoRecipientOverride.isNotEmpty) return demoRecipientOverride;
+  final demoOverride = activeDemoRecipientEmail();
+  if (demoOverride != null) return demoOverride;
   final domain = recipientDomainOrNull(company, website: website);
   if (domain == null) return '';
   return 'careers@$domain';
@@ -170,4 +188,9 @@ String? _domainFromEmail(String email) {
   if (at < 0 || at == email.length - 1) return null;
   final domain = email.substring(at + 1).trim().toLowerCase();
   return domain.isEmpty ? null : domain;
+}
+
+bool _looksLikeEmail(String value) {
+  final v = value.trim();
+  return v.contains('@') && v.contains('.') && !v.contains(' ');
 }

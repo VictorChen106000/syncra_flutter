@@ -61,6 +61,11 @@ class TrackedApplication {
     this.followUpAt,
     this.sentEmailId,
     this.notes = const [],
+    this.trustRiskLevel = 'unchecked',
+    this.trustRiskLabel = 'Not checked',
+    this.trustSignalsCount = 0,
+    this.trustSignals = const [],
+    this.trustSafeNextStep = '',
   });
 
   final String id;
@@ -72,6 +77,15 @@ class TrackedApplication {
   final DateTime? followUpAt;
   final String? sentEmailId;
   final List<TrackedApplicationNote> notes;
+
+  final String trustRiskLevel;
+  final String trustRiskLabel;
+  final int trustSignalsCount;
+  final List<Map<String, String>> trustSignals;
+  final String trustSafeNextStep;
+
+  bool get needsTrustReview =>
+      trustRiskLevel == 'medium' || trustRiskLevel == 'high';
 
   ApplicationPhase get phase {
     if (gotReply) return ApplicationPhase.replied;
@@ -91,6 +105,11 @@ class TrackedApplication {
     DateTime? followUpAt,
     String? sentEmailId,
     List<TrackedApplicationNote>? notes,
+    String? trustRiskLevel,
+    String? trustRiskLabel,
+    int? trustSignalsCount,
+    List<Map<String, String>>? trustSignals,
+    String? trustSafeNextStep,
     bool clearSentAt = false,
     bool clearFollowUpAt = false,
   }) {
@@ -104,6 +123,11 @@ class TrackedApplication {
       followUpAt: clearFollowUpAt ? null : (followUpAt ?? this.followUpAt),
       sentEmailId: sentEmailId ?? this.sentEmailId,
       notes: notes ?? this.notes,
+      trustRiskLevel: trustRiskLevel ?? this.trustRiskLevel,
+      trustRiskLabel: trustRiskLabel ?? this.trustRiskLabel,
+      trustSignalsCount: trustSignalsCount ?? this.trustSignalsCount,
+      trustSignals: trustSignals ?? this.trustSignals,
+      trustSafeNextStep: trustSafeNextStep ?? this.trustSafeNextStep,
     );
   }
 }

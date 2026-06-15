@@ -6,11 +6,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/firestore/applications_repository.dart';
 import '../../../data/models/tracked_application.dart';
 import '../../auth/state/auth_notifier.dart';
+import '../../jobs/services/job_trust_guard.dart';
 import '../services/application_bundle_summary.dart';
 
 enum ApplicationsFilter {
   all,
   bundleReview,
+  trustReview,
   drafts,
   sent,
   replied;
@@ -18,6 +20,7 @@ enum ApplicationsFilter {
   String get label => switch (this) {
     ApplicationsFilter.all => 'All',
     ApplicationsFilter.bundleReview => 'Bundle review',
+    ApplicationsFilter.trustReview => 'Trust review',
     ApplicationsFilter.drafts => 'Drafts',
     ApplicationsFilter.sent => 'Sent',
     ApplicationsFilter.replied => 'Replied',
@@ -38,22 +41,28 @@ class ApplicationsState {
 
   /// Items the filter accepts, already sorted newest-first by [TrackedApplication.sortAt].
   List<TrackedApplication> get filtered {
+    final uniqueItems = dedupeOpenDraftApplicationsByJobId(items);
     final base = switch (filter) {
-      ApplicationsFilter.all => items,
+      ApplicationsFilter.all => uniqueItems,
       ApplicationsFilter.bundleReview =>
-        items.where((a) => evaluateApplicationBundle(a).hasBlocker).toList(),
+        uniqueItems
+            .where((a) => evaluateApplicationBundle(a).hasBlocker)
+            .toList(),
+      ApplicationsFilter.trustReview =>
+        uniqueItems.where((a) => a.needsTrustReview).toList(),
       ApplicationsFilter.drafts =>
-        items.where((a) => a.phase == ApplicationPhase.draft).toList(),
+        uniqueItems.where((a) => a.phase == ApplicationPhase.draft).toList(),
       ApplicationsFilter.sent =>
-        items.where((a) => a.phase == ApplicationPhase.sent).toList(),
+        uniqueItems.where((a) => a.phase == ApplicationPhase.sent).toList(),
       ApplicationsFilter.replied =>
-        items.where((a) => a.phase == ApplicationPhase.replied).toList(),
+        uniqueItems.where((a) => a.phase == ApplicationPhase.replied).toList(),
     };
     return List.of(base)..sort((a, b) => b.sortAt.compareTo(a.sortAt));
   }
 
-  int countOf(ApplicationPhase phase) =>
-      items.where((a) => a.phase == phase).length;
+  int countOf(ApplicationPhase phase) => dedupeOpenDraftApplicationsByJobId(
+    items,
+  ).where((a) => a.phase == phase).length;
 
   ApplicationsState copyWith({
     List<TrackedApplication>? items,
@@ -199,6 +208,28 @@ class ApplicationsNotifier extends Notifier<ApplicationsState> {
 
     await _repository.deleteNote(uid, applicationId, app.notes, noteId);
     state = state.copyWith(lastMessage: 'Note deleted');
+  }
+
+  Future<void> runTrustGuard(String applicationId) async {
+    final uid = _boundUid;
+    final app = _find(applicationId);
+    if (uid == null || app == null) return;
+
+    final trust = evaluateJobTrust(app.job);
+
+    await _repository.setTrustGuard(
+      uid,
+      applicationId,
+      trustRiskLevel: trust.riskLevel,
+      trustRiskLabel: trust.riskLabel,
+      trustSignalsCount: trust.signalsCount,
+      trustSignals: trust.signals,
+      trustSafeNextStep: trust.safeNextStep,
+    );
+
+    state = state.copyWith(
+      lastMessage: '${app.job.company}: ${trust.riskLabel}',
+    );
   }
 }
 

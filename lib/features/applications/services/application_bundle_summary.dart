@@ -37,6 +37,7 @@ ApplicationBundleSummary evaluateApplicationBundle(TrackedApplication app) {
   final items = <ApplicationBundleItem>[
     _resumeItem(app),
     _emailItem(app),
+    _trustItem(app),
     _qualityItem(quality),
   ];
 
@@ -70,6 +71,34 @@ ApplicationBundleItem _emailItem(TrackedApplication app) {
       label: 'Email',
       detail: 'Reply received',
       isComplete: true,
+    ),
+  };
+}
+
+ApplicationBundleItem _trustItem(TrackedApplication app) {
+  return switch (app.trustRiskLevel) {
+    'low' => const ApplicationBundleItem(
+      label: 'Trust',
+      detail: 'Looks okay',
+      isComplete: true,
+    ),
+    'medium' => const ApplicationBundleItem(
+      label: 'Trust',
+      detail: 'Verify first',
+      isComplete: false,
+      isBlocking: true,
+    ),
+    'high' => const ApplicationBundleItem(
+      label: 'Trust',
+      detail: 'Blocked',
+      isComplete: false,
+      isBlocking: true,
+    ),
+    _ => const ApplicationBundleItem(
+      label: 'Trust',
+      detail: 'Not checked',
+      isComplete: false,
+      isBlocking: true,
     ),
   };
 }

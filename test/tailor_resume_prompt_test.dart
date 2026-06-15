@@ -66,7 +66,7 @@ void main() {
       // it must NOT hard-code a chaining/gate cadence of its own.
       expect(prompt, contains('active autonomy mode'));
       expect(prompt, contains('assist / auto-draft / autopilot'));
-      expect(prompt, contains('behave as autopilot'));
+      expect(prompt, contains('behave as auto-draft'));
       expect(prompt, contains('set entirely by your active autonomy mode'));
       expect(prompt, contains('do not hard-code a pace'));
     });
@@ -127,7 +127,7 @@ void main() {
 
     test('keeps send_email behind explicit approval', () {
       expect(prompt, contains('never call `send_email`'));
-      expect(prompt, contains('explicit user-confirmation token'));
+      expect(prompt, contains('explicit confirmation token'));
       expect(prompt, contains('user tapped send'));
     });
 

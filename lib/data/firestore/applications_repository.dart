@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/job.dart';
 import '../models/tracked_application.dart';
@@ -15,7 +16,29 @@ class ApplicationsRepository {
         .applications(uid)
         .orderBy('drafted_at', descending: true)
         .snapshots()
-        .map((snap) => snap.docs.map(_fromDoc).toList());
+        .map(
+          (snap) => dedupeOpenDraftApplicationsByJobId(
+            snap.docs.map(_fromDoc).toList(growable: false),
+          ),
+        );
+  }
+
+  Future<TrackedApplication?> findOpenDraftByJobId({
+    required String uid,
+    required String jobId,
+  }) async {
+    final cleanJobId = jobId.trim();
+    if (cleanJobId.isEmpty) return null;
+
+    final snap = await _paths
+        .applications(uid)
+        .where('job.id', isEqualTo: cleanJobId)
+        .get();
+
+    return selectNewestOpenDraftApplicationByJobId(
+      snap.docs.map(_fromDoc).toList(growable: false),
+      cleanJobId,
+    );
   }
 
   /// Agent creates a draft application. `sentAt` is null — the user must
@@ -24,6 +47,11 @@ class ApplicationsRepository {
     required String uid,
     required Job job,
     String? resumeId,
+    String trustRiskLevel = 'unchecked',
+    String trustRiskLabel = 'Not checked',
+    int trustSignalsCount = 0,
+    List<Map<String, String>> trustSignals = const [],
+    String trustSafeNextStep = '',
   }) async {
     final ref = _paths.applications(uid).doc();
     await ref.set({
@@ -34,9 +62,68 @@ class ApplicationsRepository {
       'got_reply': false,
       'follow_up_at': null,
       'sent_email_id': null,
+      'trust_risk_level': trustRiskLevel,
+      'trust_risk_label': trustRiskLabel,
+      'trust_signals_count': trustSignalsCount,
+      'trust_signals': trustSignals,
+      'trust_safe_next_step': trustSafeNextStep,
+      'trust_checked_at': trustRiskLevel == 'unchecked'
+          ? null
+          : FieldValue.serverTimestamp(),
       'notes': <Map<String, dynamic>>[],
     });
     return ref.id;
+  }
+
+  Future<String> createOrReuseDraftApplication({
+    required String uid,
+    required Job job,
+    String? resumeId,
+    String trustRiskLevel = 'unchecked',
+    String trustRiskLabel = 'Not checked',
+    int trustSignalsCount = 0,
+    List<Map<String, String>> trustSignals = const [],
+    String trustSafeNextStep = '',
+  }) async {
+    final existing = await findOpenDraftByJobId(uid: uid, jobId: job.id);
+    if (existing == null) {
+      return createApplication(
+        uid: uid,
+        job: job,
+        resumeId: resumeId,
+        trustRiskLevel: trustRiskLevel,
+        trustRiskLabel: trustRiskLabel,
+        trustSignalsCount: trustSignalsCount,
+        trustSignals: trustSignals,
+        trustSafeNextStep: trustSafeNextStep,
+      );
+    }
+
+    final cleanResumeId = resumeId?.trim();
+    final trustPatch = _hasTrustGuardUpdate(
+      trustRiskLevel: trustRiskLevel,
+      trustRiskLabel: trustRiskLabel,
+      trustSignalsCount: trustSignalsCount,
+      trustSignals: trustSignals,
+      trustSafeNextStep: trustSafeNextStep,
+    );
+
+    await _paths.applications(uid).doc(existing.id).update({
+      'job': _jobToMap(job),
+      if (cleanResumeId != null && cleanResumeId.isNotEmpty)
+        'resume_id': cleanResumeId,
+      if (trustPatch) ...{
+        'trust_risk_level': trustRiskLevel,
+        'trust_risk_label': trustRiskLabel,
+        'trust_signals_count': trustSignalsCount,
+        'trust_signals': trustSignals,
+        'trust_safe_next_step': trustSafeNextStep,
+        'trust_checked_at': trustRiskLevel == 'unchecked'
+            ? null
+            : FieldValue.serverTimestamp(),
+      },
+    });
+    return existing.id;
   }
 
   /// User tapped Send (or the agent's `send_email` tool succeeded). Stamps
@@ -50,6 +137,18 @@ class ApplicationsRepository {
       'sent_at': FieldValue.serverTimestamp(),
       'sent_email_id': ?sentEmailId,
     });
+  }
+
+  Future<int> countSentToday(String uid, {DateTime? now}) async {
+    final anchor = now ?? DateTime.now();
+    final start = DateTime(anchor.year, anchor.month, anchor.day);
+    final end = start.add(const Duration(days: 1));
+    final snap = await _paths
+        .applications(uid)
+        .where('sent_at', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .where('sent_at', isLessThan: Timestamp.fromDate(end))
+        .get();
+    return snap.docs.length;
   }
 
   Future<void> setGotReply(
@@ -124,6 +223,84 @@ class ApplicationsRepository {
 
     await _paths.applications(uid).doc(applicationId).update({'notes': next});
   }
+
+  Future<void> setTrustGuard(
+    String uid,
+    String applicationId, {
+    required String trustRiskLevel,
+    required String trustRiskLabel,
+    required int trustSignalsCount,
+    required List<Map<String, String>> trustSignals,
+    required String trustSafeNextStep,
+  }) async {
+    await _paths.applications(uid).doc(applicationId).update({
+      'trust_risk_level': trustRiskLevel,
+      'trust_risk_label': trustRiskLabel,
+      'trust_signals_count': trustSignalsCount,
+      'trust_signals': trustSignals,
+      'trust_safe_next_step': trustSafeNextStep,
+      'trust_checked_at': trustRiskLevel == 'unchecked'
+          ? null
+          : FieldValue.serverTimestamp(),
+    });
+  }
+}
+
+@visibleForTesting
+TrackedApplication? selectNewestOpenDraftApplicationByJobId(
+  List<TrackedApplication> applications,
+  String jobId,
+) {
+  final cleanJobId = jobId.trim();
+  if (cleanJobId.isEmpty) return null;
+
+  TrackedApplication? best;
+  for (final application in applications) {
+    if (application.job.id.trim() != cleanJobId || application.sentAt != null) {
+      continue;
+    }
+
+    if (best == null ||
+        application.draftedAt.isAfter(best.draftedAt) ||
+        (application.draftedAt == best.draftedAt &&
+            application.id.compareTo(best.id) > 0)) {
+      best = application;
+    }
+  }
+
+  return best;
+}
+
+List<TrackedApplication> dedupeOpenDraftApplicationsByJobId(
+  List<TrackedApplication> applications,
+) {
+  final result = <TrackedApplication>[];
+  final openDraftsByJobId = <String, List<TrackedApplication>>{};
+
+  for (final application in applications) {
+    final jobId = application.job.id.trim();
+    if (application.sentAt == null && jobId.isNotEmpty) {
+      openDraftsByJobId
+          .putIfAbsent(jobId, () => <TrackedApplication>[])
+          .add(application);
+    } else {
+      result.add(application);
+    }
+  }
+
+  for (final entry in openDraftsByJobId.entries) {
+    final newest = selectNewestOpenDraftApplicationByJobId(
+      entry.value,
+      entry.key,
+    );
+    if (newest != null) result.add(newest);
+  }
+
+  return result..sort((a, b) {
+    final byActivity = b.sortAt.compareTo(a.sortAt);
+    if (byActivity != 0) return byActivity;
+    return b.id.compareTo(a.id);
+  });
 }
 
 TrackedApplication _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
@@ -139,8 +316,35 @@ TrackedApplication _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     gotReply: (data['got_reply'] as bool?) ?? false,
     followUpAt: _toDate(data['follow_up_at']),
     sentEmailId: data['sent_email_id'] as String?,
+    trustRiskLevel: (data['trust_risk_level'] as String?) ?? 'unchecked',
+    trustRiskLabel: (data['trust_risk_label'] as String?) ?? 'Not checked',
+    trustSignalsCount: (data['trust_signals_count'] as num?)?.toInt() ?? 0,
+    trustSignals: _trustSignalsFrom(data['trust_signals']),
+    trustSafeNextStep: (data['trust_safe_next_step'] as String?) ?? '',
     notes: _notesFrom(data['notes']),
   );
+}
+
+List<Map<String, String>> _trustSignalsFrom(Object? value) {
+  if (value is! List) return const [];
+
+  final signals = <Map<String, String>>[];
+
+  for (final raw in value.whereType<Map>()) {
+    final severity = raw['severity']?.toString().trim() ?? '';
+    final label = raw['label']?.toString().trim() ?? '';
+    final detail = raw['detail']?.toString().trim() ?? '';
+
+    if (label.isEmpty && detail.isEmpty) continue;
+
+    signals.add({
+      'severity': severity.isEmpty ? 'medium' : severity,
+      'label': label.isEmpty ? 'Trust signal' : label,
+      'detail': detail,
+    });
+  }
+
+  return signals;
 }
 
 Job _jobFromMap(Map<String, dynamic> m) => Job(
@@ -172,6 +376,20 @@ Map<String, dynamic> _jobToMap(Job j) => {
   'missing_skills': j.missingSkills,
   'why': j.why,
 };
+
+bool _hasTrustGuardUpdate({
+  required String trustRiskLevel,
+  required String trustRiskLabel,
+  required int trustSignalsCount,
+  required List<Map<String, String>> trustSignals,
+  required String trustSafeNextStep,
+}) {
+  return trustRiskLevel != 'unchecked' ||
+      trustRiskLabel != 'Not checked' ||
+      trustSignalsCount > 0 ||
+      trustSignals.isNotEmpty ||
+      trustSafeNextStep.trim().isNotEmpty;
+}
 
 JobCategory _categoryFromName(String? name) {
   for (final c in JobCategory.values) {

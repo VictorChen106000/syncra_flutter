@@ -1,21 +1,24 @@
 import '../../../data/models/tracked_application.dart';
 import '../../email/models/recipient_resolution.dart';
 import '../../auth/models/user_profile.dart';
+import '../../jobs/services/job_trust_guard.dart';
 import 'application_bundle_summary.dart';
 
 /// Whether the agent may auto-send a drafted outreach email instead of stopping
 /// at the manual review sheet.
 ///
-/// Auto-send puts the user's real email address and resume in front of an
-/// employer with no human glance, so it only fires when bounded auto-apply is
-/// enabled and the recipient is a confirmed/high-confidence address. Guessed or
-/// missing recipients always fall back to manual review.
+/// The trust floor is deliberate: auto-send puts the user's real email address
+/// and resume in front of an employer with no human glance, so it only fires for
+/// `low`-risk jobs. Medium/high-risk postings (see [evaluateJobTrust]) always
+/// fall back to manual review even when the setting is on.
 bool shouldAutoSendOutreach({
   required AutoApplySettings settings,
+  required JobTrustGuardResult trust,
   required RecipientResolution recipient,
 }) {
   return settings.enabled &&
       settings.autoSendOutreach &&
+      trust.riskLevel == 'low' &&
       recipient.isAutoSendEligible;
 }
 
@@ -56,8 +59,12 @@ AutoApplyEligibilityResult evaluateAutoApplyEligibility({
     reasons.add('Daily limit reached');
   }
 
+  if (settings.requireLowTrust && app.trustRiskLevel != 'low') {
+    reasons.add('Trust is not low-risk');
+  }
+
   if (bundle.hasBlocker) {
-    reasons.add('Bundle needs review');
+    reasons.add('Application bundle needs review');
     reasons.addAll(
       bundle.items
           .where((item) => item.isBlocking)
@@ -77,7 +84,7 @@ AutoApplyEligibilityResult evaluateAutoApplyEligibility({
 
   return AutoApplyEligibilityResult(
     isEligible: isEligible,
-    statusLabel: isEligible ? 'Ready for bounded auto-apply' : reasons.first,
+    statusLabel: isEligible ? 'Ready for Autopilot safety' : reasons.first,
     reasons: List.unmodifiable(reasons),
     bundle: bundle,
   );
