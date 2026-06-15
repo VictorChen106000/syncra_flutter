@@ -6,7 +6,6 @@ class RouteNames {
   static const String signup = '/signup';
   static const String onboarding = '/onboarding';
   static const String linkGmail = '/link-gmail';
-  static const String morningBrief = '/morning-brief';
   static const String resumes = '/resumes';
   static const String resumePreview = '/resumes/preview';
   static const String dashboard = '/dashboard';

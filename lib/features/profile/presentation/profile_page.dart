@@ -2121,8 +2121,8 @@ class _AccountSection extends ConsumerWidget {
 
 // ---------------------------------------------------------------------------
 // Developer toggles — only rendered when `kDebugMode == true`, so they're
-// stripped from release builds. Used to skip onboarding / morning brief and
-// to force the notification bell's unread dot while iterating on UI.
+// stripped from release builds. Used to force onboarding and to force the
+// notification bell's unread dot while iterating on UI.
 // ---------------------------------------------------------------------------
 
 class _DevFlagsSection extends ConsumerWidget {
@@ -2145,17 +2145,6 @@ class _DevFlagsSection extends ConsumerWidget {
             activeThumbColor: brand.onAccent,
             activeTrackColor: brand.accent,
             onChanged: notifier.setShowOnboarding,
-          ),
-        ),
-        const _GroupedDivider(),
-        _PreferenceRow(
-          icon: Icons.wb_twilight_outlined,
-          title: 'Show morning brief',
-          trailing: Switch.adaptive(
-            value: flags.showMorningBrief,
-            activeThumbColor: brand.onAccent,
-            activeTrackColor: brand.accent,
-            onChanged: notifier.setShowMorningBrief,
           ),
         ),
         const _GroupedDivider(),
