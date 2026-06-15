@@ -31,8 +31,8 @@ PipelineStage? pipelineAutopilotStopStage(AutonomyLevel level) =>
 
 /// The cards the auto-processor is allowed to touch: a fresh `matched` Strong
 /// (`ready`) or Partial (`inputNeeded`) match. Only Stretch (`exploration`)
-/// still waits for the user. (Sends go to the demo inbox via
-/// [demoRecipientOverride], so autopilot never reaches a real employer.)
+/// still waits for the user. Demo inbox routing is handled by the configured
+/// demo email override inside the recipient resolver.
 /// Partial matches tailor on real résumé facts only — the missing skill is
 /// never invented. Pure + testable.
 @visibleForTesting
@@ -265,9 +265,7 @@ class PipelineAutopilotNotifier extends Notifier<PipelineAutopilotState> {
     final resolution = await resolveRecipientAsync(job.company);
     final recipient = resolution.email;
     if (!_looksLikeEmail(recipient)) return;
-    final sendResolution = demoRecipientOverride.isNotEmpty
-        ? resolution.copyWith(canAutoSend: true)
-        : resolution;
+    final sendResolution = resolution;
 
     final appId = await _applications.createApplication(
       uid: uid,

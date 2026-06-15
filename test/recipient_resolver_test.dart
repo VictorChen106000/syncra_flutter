@@ -7,7 +7,6 @@ import 'package:syncra/features/email/services/recipient_resolver.dart';
 void main() {
   // The app ships with a demo-inbox override (so Autopilot delivers live);
   // these tests exercise *real* per-company resolution, so clear it first.
-  setUp(() => demoRecipientOverride = '');
 
   group('resolveRecipientAsync', () {
     test(
@@ -91,6 +90,10 @@ void main() {
         expect(resolution.requiresUserConfirmation, isTrue);
       },
     );
+  });
+
+  test('demo override is disabled by default in normal test runs', () {
+    expect(activeDemoRecipientEmail(), isNull);
   });
 }
 

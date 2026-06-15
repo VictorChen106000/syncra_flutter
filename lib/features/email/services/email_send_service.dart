@@ -232,8 +232,7 @@ class EmailSendService {
   }) async {
     // Don't learn the demo override address — it isn't a real company contact,
     // and saving it would resurface as a bogus "learned" recipient later.
-    if (demoRecipientOverride.isNotEmpty &&
-        to.trim() == demoRecipientOverride) {
+    if (isActiveDemoRecipient(to)) {
       return;
     }
     // Wrap everything — including building the repository — so a missing
