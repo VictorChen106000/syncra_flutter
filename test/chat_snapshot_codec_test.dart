@@ -4,6 +4,7 @@ import 'package:syncra/data/models/job.dart';
 import 'package:syncra/features/agent_chat/models/agent_block.dart';
 import 'package:syncra/features/agent_chat/models/chat_message.dart';
 import 'package:syncra/features/agent_chat/services/chat_snapshot_codec.dart';
+import 'package:syncra/features/email/models/recipient_resolution.dart';
 import 'package:syncra/features/resumes/models/proposed_edit.dart';
 import 'package:syncra/features/resumes/models/resume_integrity_result.dart';
 import 'package:syncra/features/resumes/models/resume_json.dart';
@@ -263,6 +264,26 @@ void main() {
       expect(email.jobId, 'job-1');
       expect(email.attachmentResumeId, 'resume-2');
       expect(email.status, EmailDraftStatus.reviewing);
+      expect(email.recipientConfidence, RecipientConfidence.low);
+      expect(email.recipientSource, RecipientSource.guessedPattern);
+      expect(email.canAutoSend, isFalse);
+    });
+
+    test('decodes old email draft snapshots as low-confidence guesses', () {
+      final decoded = ChatSnapshotCodec.decodeBlock({
+        'kind': 'email_draft',
+        'id': 'email-old',
+        'recipient': 'careers@linear.app',
+        'subject': 'Application',
+        'body': 'Hello, I am interested.',
+      });
+
+      expect(decoded, isA<EmailDraftBlock>());
+      final email = decoded as EmailDraftBlock;
+      expect(email.recipientConfidence, RecipientConfidence.low);
+      expect(email.recipientSource, RecipientSource.guessedPattern);
+      expect(email.canAutoSend, isFalse);
+      expect(email.recipientResolution.requiresUserConfirmation, isTrue);
     });
 
     test('ignores malformed snapshots and downgrades running state safely', () {

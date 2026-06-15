@@ -10,11 +10,7 @@ import '../services/google_auth_service.dart';
 
 @immutable
 class AuthState {
-  const AuthState({
-    this.appUser,
-    this.isLoading = false,
-    this.error,
-  });
+  const AuthState({this.appUser, this.isLoading = false, this.error});
 
   final AppUser? appUser;
   final bool isLoading;
@@ -38,11 +34,9 @@ class AuthState {
 }
 
 class AuthNotifier extends Notifier<AuthState> {
-  AuthNotifier({
-    GoogleAuthService? authService,
-    UserRepository? userRepository,
-  })  : _injectedAuthService = authService,
-        _injectedUserRepository = userRepository;
+  AuthNotifier({GoogleAuthService? authService, UserRepository? userRepository})
+    : _injectedAuthService = authService,
+      _injectedUserRepository = userRepository;
 
   // Built lazily on first use, not in the field initializer, so a test
   // subclass that overrides `build()` never triggers `FirebaseAuth.instance`
@@ -61,9 +55,13 @@ class AuthNotifier extends Notifier<AuthState> {
 
   @override
   AuthState build() {
-    _authSubscription = _authService.authStateChanges.listen((firebaseUser) async {
+    _authSubscription = _authService.authStateChanges.listen((
+      firebaseUser,
+    ) async {
       if (firebaseUser != null) {
-        state = state.copyWith(appUser: _authService.userToAppUser(firebaseUser));
+        state = state.copyWith(
+          appUser: _authService.userToAppUser(firebaseUser),
+        );
         try {
           await _userRepository.ensureUserDoc(firebaseUser);
         } catch (e) {
@@ -80,7 +78,9 @@ class AuthNotifier extends Notifier<AuthState> {
 
     final existingUser = _authService.currentFirebaseUser;
     return AuthState(
-      appUser: existingUser != null ? _authService.userToAppUser(existingUser) : null,
+      appUser: existingUser != null
+          ? _authService.userToAppUser(existingUser)
+          : null,
     );
   }
 
@@ -90,9 +90,10 @@ class AuthNotifier extends Notifier<AuthState> {
     state = state.copyWith(isLoading: true, clearError: true);
 
     try {
-      final user = await _authService
-          .signInWithGoogle()
-          .timeout(const Duration(seconds: 8), onTimeout: () => null);
+      final user = await _authService.signInWithGoogle().timeout(
+        const Duration(seconds: 8),
+        onTimeout: () => null,
+      );
 
       if (user != null) {
         state = state.copyWith(appUser: user, isLoading: false);
@@ -116,15 +117,13 @@ class AuthNotifier extends Notifier<AuthState> {
   Future<void> signInWithEmail({
     required String email,
     required String password,
-  }) =>
-      _emailAuth(email: email, password: password, isCreate: false);
+  }) => _emailAuth(email: email, password: password, isCreate: false);
 
   /// Creates a new Firebase email/password account, then signs in.
   Future<void> signUpWithEmail({
     required String email,
     required String password,
-  }) =>
-      _emailAuth(email: email, password: password, isCreate: true);
+  }) => _emailAuth(email: email, password: password, isCreate: true);
 
   Future<void> _emailAuth({
     required String email,
@@ -142,9 +141,13 @@ class AuthNotifier extends Notifier<AuthState> {
     try {
       final user = isCreate
           ? await _authService.signUpWithEmail(
-              email: trimmedEmail, password: password)
+              email: trimmedEmail,
+              password: password,
+            )
           : await _authService.signInWithEmail(
-              email: trimmedEmail, password: password);
+              email: trimmedEmail,
+              password: password,
+            );
       // The authStateChanges listener also publishes the user and runs
       // ensureUserDoc; set it here too for immediate UI feedback.
       state = state.copyWith(appUser: user, isLoading: false);
@@ -190,7 +193,11 @@ class AuthNotifier extends Notifier<AuthState> {
       if (state.appUser != null && !state.appUser!.isGuest) {
         await _authService.signOut();
       }
-      state = state.copyWith(clearUser: true, isLoading: false, clearError: true);
+      state = state.copyWith(
+        clearUser: true,
+        isLoading: false,
+        clearError: true,
+      );
     } catch (e) {
       debugPrint('Sign-Out Error: $e');
       state = state.copyWith(
@@ -254,4 +261,6 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 }
 
-final authProvider = NotifierProvider<AuthNotifier, AuthState>(AuthNotifier.new);
+final authProvider = NotifierProvider<AuthNotifier, AuthState>(
+  AuthNotifier.new,
+);

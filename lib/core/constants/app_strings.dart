@@ -11,7 +11,8 @@ class AppStrings {
   static const String loginTerms =
       'By continuing, you accept our Terms, Privacy Policy, and chat guidelines.';
   static const String signUpTitle = 'Create your account';
-  static const String signUpSubtitle = 'Start building your AI-powered career profile';
+  static const String signUpSubtitle =
+      'Start building your AI-powered career profile';
   static const String createAccount = 'Create account';
   static const String alreadyHaveAccount = 'Already have an account?';
   static const String signIn = 'Sign in';
@@ -25,7 +26,8 @@ class AppStrings {
   static const String myUploads = 'My Uploads';
   static const String aiTailored = 'AI Tailored';
   static const String uploadResume = 'Tap to upload or drag & drop';
-  static const String uploadResumeHint = 'PDF, DOC, DOCX up to 5MB • Max 10 at once';
+  static const String uploadResumeHint =
+      'PDF, DOC, DOCX up to 5MB • Max 10 at once';
   static const String noResumesTitle = 'No resumes yet';
   static const String noResumesBody =
       'Upload a resume to use it for AI matching, tailoring, and applications.';
@@ -38,6 +40,9 @@ class AppStrings {
   static const String agentIdle = 'Agent Ready';
   static const String activeTask = 'Scraping LinkedIn for Senior UX roles...';
   static const String idleTask = "Tap below to run today's brief";
+  static const String goodMorning = 'Good morning';
+  static const String briefAutonomySubline =
+      'Syncra kept working while you were away.';
   static const String askSyncra = 'Ask Syncra anything...';
   static const String askAgentAboutContext = 'Ask agent about this context...';
   static const String approvalPipeline = 'Approval Pipeline';

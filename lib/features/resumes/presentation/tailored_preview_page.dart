@@ -48,15 +48,14 @@ class _TailoredPreviewPageState extends ConsumerState<TailoredPreviewPage> {
     if (!mounted) return;
     setState(() => _saving = false);
 
-    final block = ref.read(agentChatProvider.notifier)
+    final block = ref
+        .read(agentChatProvider.notifier)
         .proposedEditsBlock(widget.blockId);
     final messenger = ScaffoldMessenger.of(context);
     if (block != null && block.isSaved) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(
-          const SnackBar(content: Text('Saved to your resumes')),
-        );
+        ..showSnackBar(const SnackBar(content: Text('Saved to your resumes')));
       Navigator.of(context).maybePop();
     } else if (block?.applyError != null) {
       messenger
@@ -82,8 +81,9 @@ class _TailoredPreviewPageState extends ConsumerState<TailoredPreviewPage> {
     final brand = context.brand;
     // Watch chat state so a save elsewhere reflects here too.
     ref.watch(agentChatProvider);
-    final block =
-        ref.read(agentChatProvider.notifier).proposedEditsBlock(widget.blockId);
+    final block = ref
+        .read(agentChatProvider.notifier)
+        .proposedEditsBlock(widget.blockId);
     final bytes = block?.previewBytes;
     final isSaved = block?.isSaved ?? false;
     final previewResume = block?.previewResume;
@@ -344,11 +344,7 @@ class _FloatingActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (isSaved) {
-      return _PillButton(
-        label: 'Done',
-        filled: true,
-        onTap: onDone,
-      );
+      return _PillButton(label: 'Done', filled: true, onTap: onDone);
     }
     return Row(
       children: [
@@ -482,8 +478,11 @@ class _PreservationNote extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.check_circle_rounded,
-                    size: 14, color: brand.success),
+                Icon(
+                  Icons.check_circle_rounded,
+                  size: 14,
+                  color: brand.success,
+                ),
                 const SizedBox(width: 6),
                 Text(
                   label,

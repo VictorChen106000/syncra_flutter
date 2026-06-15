@@ -23,6 +23,7 @@ import '../../../email/services/gmail_service.dart';
 import '../../../jobs/presentation/widgets/job_action_sheet.dart';
 import '../../../jobs/services/job_trust_guard.dart';
 import '../../../jobs/state/jobs_notifier.dart';
+import '../../../applications/services/auto_apply_eligibility.dart';
 import '../../../../data/firestore/jobs_repository.dart';
 import '../../../auth/models/user_profile.dart';
 import '../../../auth/state/user_profile_notifier.dart';
@@ -495,12 +496,11 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
     super.dispose();
   }
 
-  /// In **Autopilot** ([AutonomyLevel.autopilot]) the agent's outreach is sent
-  /// for the user — but only when the job clears the low-risk trust floor and
-  /// the recipient is a real address, and always behind a brief [_undoWindow]
-  /// so the user can catch it. Any miss — wrong mode, missing/risky job, bad
-  /// recipient — falls back to the manual "Review & send" card. Never fires for
-  /// restored history: only blocks built live this session carry
+  /// When bounded auto-apply allows outreach, the agent's draft can be sent for
+  /// the user — but only when the job clears the low-risk trust floor and the
+  /// recipient is trusted, and always behind a brief [_undoWindow] so the user
+  /// can catch it. Any miss falls back to the manual "Review & send" card.
+  /// Never fires for restored history: only blocks built live this session carry
   /// [EmailDraftBlock.autoSendPending].
   Future<void> _maybeAutoSend() async {
     if (_autoSendStarted) return;
@@ -508,10 +508,10 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
     if (!block.autoSendPending || block.status != EmailDraftStatus.reviewing) {
       return;
     }
-    final level =
-        ref.read(userProfileProvider)?.autonomyLevel ?? AutonomyLevel.autoDraft;
-    if (level != AutonomyLevel.autopilot) return;
-    if (!_looksLikeEmail(block.recipient)) return; // Guessed/blank → review.
+    final settings =
+        ref.read(userProfileProvider)?.autoApplySettings ??
+        const AutoApplySettings();
+    if (!settings.enabled || !settings.autoSendOutreach) return;
     final jobId = block.jobId;
     if (jobId == null || jobId.isEmpty) return;
 
@@ -519,7 +519,11 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
     try {
       final job = await JobsRepository().fetchById(jobId);
       if (job == null) return; // Can't assess risk → manual review.
-      if (evaluateJobTrust(job).riskLevel != 'low') {
+      if (!shouldAutoSendOutreach(
+        settings: settings,
+        trust: evaluateJobTrust(job),
+        recipient: block.recipientResolution,
+      )) {
         return; // Medium/high risk → manual review.
       }
       if (!mounted) return;
@@ -543,7 +547,7 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
     }
   }
 
-  /// User caught the Autopilot send during the undo window: cancel it and drop
+  /// User caught the auto-send during the undo window: cancel it and drop
   /// back to the manual "Review & send" card.
   void _cancelAutoSend() {
     _undoTimer?.cancel();
@@ -551,7 +555,7 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
     if (mounted) setState(() => _undoRemaining = 0);
   }
 
-  /// Performs the confirmed Autopilot send once the undo window elapses.
+  /// Performs the confirmed auto-send once the undo window elapses.
   Future<void> _performAutoSend(String company) async {
     if (!mounted) return;
     final block = widget.block;
@@ -565,8 +569,10 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
         to: block.recipient,
         subject: block.subject,
         body: block.body,
+        recipientResolution: block.recipientResolution,
         uid: FirebaseAuth.instance.currentUser?.uid,
         attachments: attachments,
+        contactDomain: block.recipientResolution.domain,
         company: company,
       );
       if (!mounted) return;
@@ -580,13 +586,6 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
     } finally {
       if (mounted && _autoSending) setState(() => _autoSending = false);
     }
-  }
-
-  /// Light sanity check that a recipient is a real address, not a placeholder
-  /// the agent couldn't resolve — Autopilot won't auto-send to a guess.
-  static bool _looksLikeEmail(String value) {
-    final v = value.trim();
-    return v.contains('@') && v.contains('.') && !v.contains(' ');
   }
 
   Future<void> _review(BuildContext context) async {
@@ -604,6 +603,8 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
       body: block.body,
       mode: EmailReviewMode.send,
       attachments: attachments,
+      contactDomain: block.recipientResolution.domain,
+      recipientResolution: block.recipientResolution,
     );
     if (!context.mounted) return;
     final notifier = ref.read(agentChatProvider.notifier);
@@ -683,11 +684,7 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
                   border: Border.all(color: brand.border),
                 ),
                 alignment: Alignment.center,
-                child: Icon(
-                  Icons.drafts_rounded,
-                  color: brand.ink,
-                  size: 17,
-                ),
+                child: Icon(Icons.drafts_rounded, color: brand.ink, size: 17),
               ),
               const SizedBox(width: 10),
               Expanded(

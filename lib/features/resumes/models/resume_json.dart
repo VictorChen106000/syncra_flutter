@@ -182,8 +182,9 @@ class ResumeJson {
         .where((g) => g.items.isNotEmpty)
         .toList();
 
-    final flatSkills =
-        ((json['skills'] as List?) ?? const []).map((e) => e.toString()).toList();
+    final flatSkills = ((json['skills'] as List?) ?? const [])
+        .map((e) => e.toString())
+        .toList();
 
     return ResumeJson(
       header: ResumeHeader.fromJson(
@@ -217,15 +218,15 @@ class ResumeJson {
   }
 
   Map<String, dynamic> toJson() => {
-        'header': header.toJson(),
-        'summary': ?summary,
-        'experience': experience.map((e) => e.toJson()).toList(),
-        'education': education.map((e) => e.toJson()).toList(),
-        'skills': skills,
-        'skill_groups': skillGroups.map((g) => g.toJson()).toList(),
-        'projects': projects.map((p) => p.toJson()).toList(),
-        'certifications': certifications.map((c) => c.toJson()).toList(),
-      };
+    'header': header.toJson(),
+    'summary': ?summary,
+    'experience': experience.map((e) => e.toJson()).toList(),
+    'education': education.map((e) => e.toJson()).toList(),
+    'skills': skills,
+    'skill_groups': skillGroups.map((g) => g.toJson()).toList(),
+    'projects': projects.map((p) => p.toJson()).toList(),
+    'certifications': certifications.map((c) => c.toJson()).toList(),
+  };
 }
 
 class ResumeHeader {
@@ -250,26 +251,26 @@ class ResumeHeader {
   final String? twitter;
 
   factory ResumeHeader.fromJson(Map<String, dynamic> json) => ResumeHeader(
-        name: (json['name'] as String?) ?? '',
-        email: json['email'] as String?,
-        phone: json['phone'] as String?,
-        location: json['location'] as String?,
-        linkedin: json['linkedin'] as String?,
-        website: json['website'] as String?,
-        github: json['github'] as String?,
-        twitter: (json['twitter'] ?? json['x']) as String?,
-      );
+    name: (json['name'] as String?) ?? '',
+    email: json['email'] as String?,
+    phone: json['phone'] as String?,
+    location: json['location'] as String?,
+    linkedin: json['linkedin'] as String?,
+    website: json['website'] as String?,
+    github: json['github'] as String?,
+    twitter: (json['twitter'] ?? json['x']) as String?,
+  );
 
   Map<String, dynamic> toJson() => {
-        'name': name,
-        'email': ?email,
-        'phone': ?phone,
-        'location': ?location,
-        'linkedin': ?linkedin,
-        'website': ?website,
-        'github': ?github,
-        'twitter': ?twitter,
-      };
+    'name': name,
+    'email': ?email,
+    'phone': ?phone,
+    'location': ?location,
+    'linkedin': ?linkedin,
+    'website': ?website,
+    'github': ?github,
+    'twitter': ?twitter,
+  };
 }
 
 class ResumeExperience {
@@ -302,13 +303,13 @@ class ResumeExperience {
       );
 
   Map<String, dynamic> toJson() => {
-        'company': company,
-        'role': role,
-        'start': start,
-        'end': ?end,
-        'location': ?location,
-        'bullets': bullets,
-      };
+    'company': company,
+    'role': role,
+    'start': start,
+    'end': ?end,
+    'location': ?location,
+    'bullets': bullets,
+  };
 }
 
 class ResumeEducation {
@@ -345,13 +346,13 @@ class ResumeEducation {
       );
 
   Map<String, dynamic> toJson() => {
-        'school': school,
-        'degree': degree,
-        'start': ?start,
-        'end': ?end,
-        'details': ?details,
-        'bullets': bullets,
-      };
+    'school': school,
+    'degree': degree,
+    'start': ?start,
+    'end': ?end,
+    'details': ?details,
+    'bullets': bullets,
+  };
 }
 
 class ResumeProject {
@@ -373,22 +374,22 @@ class ResumeProject {
   final String? date;
 
   factory ResumeProject.fromJson(Map<String, dynamic> json) => ResumeProject(
-        name: (json['name'] as String?) ?? '',
-        description: json['description'] as String?,
-        bullets: ((json['bullets'] as List?) ?? const [])
-            .map((e) => e.toString())
-            .toList(),
-        link: json['link'] as String?,
-        date: json['date'] as String?,
-      );
+    name: (json['name'] as String?) ?? '',
+    description: json['description'] as String?,
+    bullets: ((json['bullets'] as List?) ?? const [])
+        .map((e) => e.toString())
+        .toList(),
+    link: json['link'] as String?,
+    date: json['date'] as String?,
+  );
 
   Map<String, dynamic> toJson() => {
-        'name': name,
-        'description': ?description,
-        'bullets': bullets,
-        'link': ?link,
-        'date': ?date,
-      };
+    'name': name,
+    'description': ?description,
+    'bullets': bullets,
+    'link': ?link,
+    'date': ?date,
+  };
 }
 
 /// A labeled group of skills, e.g. category "Languages" with items
@@ -397,10 +398,7 @@ class ResumeProject {
 /// might be "Tools": Microsoft Office, Slack, HubSpot). The parser infers the
 /// right categories from the resume's own wording.
 class ResumeSkillGroup {
-  const ResumeSkillGroup({
-    required this.category,
-    this.items = const [],
-  });
+  const ResumeSkillGroup({required this.category, this.items = const []});
 
   final String category;
   final List<String> items;
@@ -413,10 +411,7 @@ class ResumeSkillGroup {
             .toList(),
       );
 
-  Map<String, dynamic> toJson() => {
-        'category': category,
-        'items': items,
-      };
+  Map<String, dynamic> toJson() => {'category': category, 'items': items};
 }
 
 /// One achievement / certification entry. Covers certificates, scholarships,
@@ -446,9 +441,9 @@ class ResumeCertification {
       );
 
   Map<String, dynamic> toJson() => {
-        'name': name,
-        'issuer': ?issuer,
-        'date': ?date,
-        'bullets': bullets,
-      };
+    'name': name,
+    'issuer': ?issuer,
+    'date': ?date,
+    'bullets': bullets,
+  };
 }

@@ -5,8 +5,7 @@ class AgentPromptSuggestions {
 
   static const String discover =
       'Find roles that fit my resume and rank the best matches';
-  static const String tailor =
-      'Tailor my resume to the role that fits me best';
+  static const String tailor = 'Tailor my resume to the role that fits me best';
   static const String outreach =
       'Find a role I fit well and draft an outreach email';
   static const String strategy =

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syncra/features/applications/services/auto_apply_eligibility.dart';
 import 'package:syncra/features/auth/models/user_profile.dart';
+import 'package:syncra/features/email/models/recipient_resolution.dart';
 import 'package:syncra/features/jobs/services/job_trust_guard.dart';
 
 JobTrustGuardResult _trust(String level) => JobTrustGuardResult(
@@ -34,32 +35,66 @@ void main() {
         shouldAutoSendOutreach(
           settings: const AutoApplySettings(autoSendOutreach: false),
           trust: _trust('low'),
+          recipient: _confirmedRecipient(),
         ),
         isFalse,
       );
     });
 
-    test('true when on and the job is low risk', () {
-      expect(
-        shouldAutoSendOutreach(
-          settings: const AutoApplySettings(autoSendOutreach: true),
-          trust: _trust('low'),
-        ),
-        isTrue,
-      );
-    });
+    test(
+      'true when bounded auto-apply, auto-send, trust, and recipient pass',
+      () {
+        expect(
+          shouldAutoSendOutreach(
+            settings: const AutoApplySettings(
+              enabled: true,
+              autoSendOutreach: true,
+            ),
+            trust: _trust('low'),
+            recipient: _confirmedRecipient(),
+          ),
+          isTrue,
+        );
+      },
+    );
 
     test('false when on but the job is medium or high risk', () {
       for (final level in ['medium', 'high']) {
         expect(
           shouldAutoSendOutreach(
-            settings: const AutoApplySettings(autoSendOutreach: true),
+            settings: const AutoApplySettings(
+              enabled: true,
+              autoSendOutreach: true,
+            ),
             trust: _trust(level),
+            recipient: _confirmedRecipient(),
           ),
           isFalse,
           reason: '$level risk must fall back to manual review',
         );
       }
     });
+
+    test('false for guessed recipients even when other gates pass', () {
+      expect(
+        shouldAutoSendOutreach(
+          settings: const AutoApplySettings(
+            enabled: true,
+            autoSendOutreach: true,
+          ),
+          trust: _trust('low'),
+          recipient: RecipientResolution.guessed(
+            email: 'careers@example.com',
+            domain: 'example.com',
+          ),
+        ),
+        isFalse,
+      );
+    });
   });
 }
+
+RecipientResolution _confirmedRecipient() => RecipientResolution.confirmed(
+  email: 'talent@example.com',
+  domain: 'example.com',
+);

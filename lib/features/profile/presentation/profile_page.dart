@@ -1557,6 +1557,16 @@ class _BoundedAutoApplySectionState
     );
   }
 
+  void _toggleAutoSend(AutoApplySettings settings) {
+    final next = !settings.autoSendOutreach;
+    _save(
+      settings.copyWith(autoSendOutreach: next),
+      next
+          ? 'Auto-send on — only low-risk jobs with confirmed recipients can send automatically.'
+          : 'Auto-send off — agent drafts wait for your review.',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final profile = ref.watch(userProfileProvider);
@@ -1644,6 +1654,16 @@ class _BoundedAutoApplySectionState
                   : 'Trust gate set to bundle review.',
             ),
           ),
+        const _GroupedDivider(),
+        _PreferenceRow(
+          icon: Icons.send_rounded,
+          title: 'Auto-send outreach',
+          trailing: _LimeToggle(
+            active: settings.autoSendOutreach,
+            onToggle: canEdit ? () => _toggleAutoSend(settings) : null,
+          ),
+          onTap: canEdit ? () => _toggleAutoSend(settings) : null,
+        ),
       ],
     );
   }

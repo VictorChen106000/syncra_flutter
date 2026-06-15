@@ -1,7 +1,4 @@
-enum ResumeSource {
-  manual,
-  tailored,
-}
+enum ResumeSource { manual, tailored }
 
 class ResumeFile {
   const ResumeFile({

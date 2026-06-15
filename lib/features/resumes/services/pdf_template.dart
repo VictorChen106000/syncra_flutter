@@ -53,10 +53,7 @@ class ResumePdfTemplate {
       pw.MultiPage(
         pageFormat: PdfPageFormat.letter,
         margin: const pw.EdgeInsets.fromLTRB(44, 40, 44, 40),
-        build: (context) => [
-          _header(clean),
-          ..._sections(clean),
-        ],
+        build: (context) => [_header(clean), ..._sections(clean)],
       ),
     );
 
@@ -129,37 +126,47 @@ class ResumePdfTemplate {
     final out = <pw.Widget>[];
 
     if ((resume.summary ?? '').trim().isNotEmpty) {
-      out.add(_section('Summary', [
-        pw.Text(
-          resume.summary!.trim(),
-          style: _body,
-          textAlign: pw.TextAlign.justify,
-        ),
-      ]));
+      out.add(
+        _section('Summary', [
+          pw.Text(
+            resume.summary!.trim(),
+            style: _body,
+            textAlign: pw.TextAlign.justify,
+          ),
+        ]),
+      );
     }
 
     if (resume.education.isNotEmpty) {
-      out.add(_section('Education', [
-        for (final e in resume.education) _educationEntry(e),
-      ]));
+      out.add(
+        _section('Education', [
+          for (final e in resume.education) _educationEntry(e),
+        ]),
+      );
     }
 
     if (resume.experience.isNotEmpty) {
-      out.add(_section('Experience', [
-        for (final e in resume.experience) _experienceEntry(e),
-      ]));
+      out.add(
+        _section('Experience', [
+          for (final e in resume.experience) _experienceEntry(e),
+        ]),
+      );
     }
 
     if (resume.projects.isNotEmpty) {
-      out.add(_section('Projects', [
-        for (final p in resume.projects) _projectEntry(p),
-      ]));
+      out.add(
+        _section('Projects', [
+          for (final p in resume.projects) _projectEntry(p),
+        ]),
+      );
     }
 
     if (resume.certifications.isNotEmpty) {
-      out.add(_section('Achievements & Certifications', [
-        for (final c in resume.certifications) _certificationEntry(c),
-      ]));
+      out.add(
+        _section('Achievements & Certifications', [
+          for (final c in resume.certifications) _certificationEntry(c),
+        ]),
+      );
     }
 
     final skillLines = _skillLines(resume);
@@ -202,9 +209,10 @@ class ResumePdfTemplate {
   pw.Widget _experienceEntry(ResumeExperience e) {
     final end = (e.end ?? '').isEmpty ? 'Present' : e.end!;
     final dates = e.start.isEmpty ? '' : '${e.start} - $end';
-    final subtitle = [e.role, if ((e.location ?? '').isNotEmpty) e.location!]
-        .where((s) => s.isNotEmpty)
-        .join(', ');
+    final subtitle = [
+      e.role,
+      if ((e.location ?? '').isNotEmpty) e.location!,
+    ].where((s) => s.isNotEmpty).join(', ');
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -220,10 +228,10 @@ class ResumePdfTemplate {
   }
 
   pw.Widget _educationEntry(ResumeEducation e) {
-    final dates = [e.start, e.end]
-        .whereType<String>()
-        .where((s) => s.isNotEmpty)
-        .join(' - ');
+    final dates = [
+      e.start,
+      e.end,
+    ].whereType<String>().where((s) => s.isNotEmpty).join(' - ');
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -359,10 +367,7 @@ class ResumePdfTemplate {
                         fontWeight: pw.FontWeight.bold,
                       ),
                     ),
-                  pw.TextSpan(
-                    text: g.items.join(', '),
-                    style: _body,
-                  ),
+                  pw.TextSpan(text: g.items.join(', '), style: _body),
                 ],
               ),
             ),
@@ -378,10 +383,7 @@ class ResumePdfTemplate {
 
   List<pw.Widget> _bullets(List<String> bullets) {
     if (bullets.isEmpty) return const [];
-    return [
-      pw.SizedBox(height: 3),
-      for (final b in bullets) _bullet(b),
-    ];
+    return [pw.SizedBox(height: 3), for (final b in bullets) _bullet(b)];
   }
 
   pw.Widget _bullet(String text) {

@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import '../../../data/models/job.dart';
+import '../../email/models/recipient_resolution.dart';
 import '../../resumes/models/proposed_edit.dart';
 import '../../resumes/models/resume_integrity_result.dart';
 import '../../resumes/models/resume_json.dart';
@@ -367,16 +368,36 @@ class EmailDraftBlock extends AgentBlock {
     required this.subject,
     required this.body,
     this.jobId,
+    String? recipientDomain,
+    this.recipientConfidence = RecipientConfidence.low,
+    this.recipientSource = RecipientSource.guessedPattern,
+    this.recipientSourceUrl,
+    String? recipientReason,
+    this.canAutoSend = false,
     this.status = EmailDraftStatus.reviewing,
     this.savedDraftId,
     this.attachmentResumeId,
     this.attachmentFilename,
     this.autoSendPending = false,
-  });
+  }) : recipientDomain = recipientDomain?.trim().isNotEmpty == true
+           ? recipientDomain!.trim().toLowerCase()
+           : _domainFromEmail(recipient),
+       recipientReason = recipientReason?.trim().isNotEmpty == true
+           ? recipientReason!.trim()
+           : RecipientResolution.reasonFor(
+               source: recipientSource,
+               confidence: recipientConfidence,
+             );
 
   final String recipient;
   final String subject;
   final String body;
+  final String? recipientDomain;
+  final RecipientConfidence recipientConfidence;
+  final RecipientSource recipientSource;
+  final String? recipientSourceUrl;
+  final String recipientReason;
+  final bool canAutoSend;
 
   /// Job this outreach draft belongs to. Used to complete the matching
   /// pipeline card after the user reviews/saves the draft, even when the chat
@@ -405,4 +426,29 @@ class EmailDraftBlock extends AgentBlock {
   /// The Gmail id set once the review sheet resolves — the draft id when saved,
   /// or the sent message id when sent. While null, nothing has happened yet.
   String? savedDraftId;
+
+  RecipientResolution get recipientResolution => RecipientResolution(
+    email: recipient,
+    domain: recipientDomain ?? '',
+    confidence: recipientConfidence,
+    source: recipientSource,
+    label: RecipientResolution.labelFor(
+      source: recipientSource,
+      confidence: recipientConfidence,
+    ),
+    sourceUrl: recipientSourceUrl,
+    reason: recipientReason,
+    canAutoSend: canAutoSend,
+    requiresUserConfirmation:
+        recipientConfidence == RecipientConfidence.medium ||
+        recipientConfidence == RecipientConfidence.low ||
+        recipientConfidence == RecipientConfidence.none,
+  );
+}
+
+String? _domainFromEmail(String email) {
+  final at = email.lastIndexOf('@');
+  if (at < 0 || at == email.length - 1) return null;
+  final domain = email.substring(at + 1).trim().toLowerCase();
+  return domain.isEmpty ? null : domain;
 }

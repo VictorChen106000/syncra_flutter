@@ -113,10 +113,7 @@ class AppHeader extends StatelessWidget {
               ?trailing,
             ],
           ),
-          if (bottom != null) ...[
-            const SizedBox(height: 18),
-            bottom!,
-          ],
+          if (bottom != null) ...[const SizedBox(height: 18), bottom!],
         ],
       ),
     );

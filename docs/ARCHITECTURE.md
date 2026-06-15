@@ -17,7 +17,7 @@ this file, fix the code (or change this file by PR). Product context is in
 | LLM | Anthropic Claude (Haiku 4.5), called directly from Flutter |
 | Job source | JSearch via RapidAPI, direct from Flutter |
 | Email | Gmail API — user's own account; `gmail.compose` for drafts, `gmail.send` for confirmed sends; never read scope |
-| Hiring-manager lookup | None — outreach uses the company's generic `careers@` address |
+| Recipient lookup | Recipient Intelligence ranks confirmed cache, official-site discovery hooks, and low-confidence `careers@domain` guesses; Syncra never guarantees an inbox is valid |
 | Job Trust Guard | Heuristic red-flag screen only; never certifies a job as legitimate |
 | Secrets | `--dart-define=KEY=...` at build time; rotate after demo |
 | Agent paradigm | Tool use — Claude picks tools, client executes, loop continues |
@@ -120,8 +120,9 @@ Each tool is declared in `tool_registry.dart` (`name`, `description`,
 | `check_job_risk` | Run a quick Trust Guard red-flag screen for a job | auto; asks before continuing on medium/high risk |
 | `tailor_resume` | **Propose** 3–8 targeted edits for a job. No PDF, no write. | auto, then pause |
 | `apply_resume_edits` | Apply the accepted edit subset → render PDF → new resume doc | **user-gated** — fired by the diff viewer, never by Claude |
+| `resolve_company_contact` | Resolve recipient metadata before outreach: email, domain, confidence, source, reason, auto-send eligibility | auto; must run before `draft_email` |
 | `draft_email` | Draft a cold-outreach email for a job, using a tailored resume | auto; user reviews before send |
-| `lookup_hiring_manager` | The company's generic `careers@` address (no named-contact lookup) | auto |
+| `lookup_hiring_manager` | Legacy alias for recipient resolution; prefer `resolve_company_contact` | auto |
 | `remember_fact` | Persist a reusable fact about the user → `learned_facts` | auto |
 | `save_to_pipeline` | Write a scored match as a pipeline card, including Trust Guard result | auto |
 | `save_to_tracker` | Persist an application record to the Applications page, including Trust Guard result | auto; external sends still require the `send_email` user gate |
@@ -187,8 +188,17 @@ and application tracker:
 
 ### Tool input notes
 
+- **`resolve_company_contact`** — `{ job_id?, company?, website?, apply_link? }`.
+  Uses the employer website for domain extraction when available, then checks
+  `company_contacts`, then the safe discovery shell, then falls back to
+  `careers@domain` as `confidence: low`, `source: guessedPattern`,
+  `canAutoSend: false`. No LinkedIn, social-media, private-profile scraping, or
+  browser automation is allowed.
 - **`draft_email`** — `{ job_id, resume_id, recipient_email?, recipient_name?,
-  tone? }`. Drafts against the tailored resume identified by `resume_id`.
+  tone? }`. Drafts against the tailored resume identified by `resume_id` and
+  returns recipient metadata (`recipientConfidence`, `recipientSource`,
+  `recipientSourceUrl`, `recipientReason`, `canAutoSend`). The agent must stop
+  after drafting; the review UI is the send/draft gate.
 - **`save_to_tracker`** — `{ job_id, resume_id?, mark_sent? }`. `mark_sent` is a
   bool, default `false` (there is no `status` enum). In v1 this records prepared
   or sent work in the Applications activity log; actual external sending still
@@ -281,6 +291,13 @@ Do not remove or weaken this behavior without updating `test/pipeline_repository
 **`jobs/{jobId}`** — global job cache, upserted by `search_jobs`: title,
 company, location, salary, description, source, source_url.
 
+**`company_contacts/{domain}`** — shared confirmed recipient cache. JSearch does
+not provide recruiter/company emails, so this cache is the preferred source when
+a user has already confirmed an address. Docs may contain `email`, `domain`,
+`company`, `source`, `confidence`, `sourceUrl`, `reason`, `confirmedBy`,
+`confirmedCount`, `rejectedCount`, `updatedAt`, and `lastVerifiedAt`. Legacy
+docs with only `email` decode as confirmed cache hits.
+
 **`users/{uid}/conversations/{conversationId}`** — versioned chat workspace
 snapshot. Current writes use `schemaVersion: 2` and store `title`,
 `renamedTitle`, `lastPreview`, `pinned`, `updatedAt`, optional `threadJob`, and
@@ -330,7 +347,8 @@ Key: `ANTHROPIC_API_KEY`.
 
 **JSearch (RapidAPI)** — `GET https://jsearch.p.rapidapi.com/search`. Headers:
 `x-rapidapi-key`, `x-rapidapi-host: jsearch.p.rapidapi.com`. Key: `RAPIDAPI_KEY`.
-Free tier 200 req/month — cache results in `jobs/`.
+Free tier 200 req/month — cache results in `jobs/`. JSearch job payloads do not
+include verified recruiter or company inboxes.
 
 **Gmail** — creates drafts with
 `https://www.googleapis.com/auth/gmail.compose` on web and mobile after user
@@ -367,7 +385,7 @@ text, never touches layout. Don't change the template without a team vote.
 | `match_jobs` | ≤25 jobs per call |
 | `tailor_resume` | one in-flight per session |
 | `send_email` | hard-blocked without a user tap |
-| Bounded auto-apply | eligibility/settings only in v1; no autonomous external submit/send |
+| Bounded auto-apply / auto-send outreach | external send only when bounded auto-apply is enabled, auto-send outreach is enabled, Trust Guard is low, recipient confidence is confirmed/high with `canAutoSend: true`, quality/daily/sent guards pass |
 | Anthropic | $5/month spend cap in the console |
 
 ## 9. Chat job-result persistence
