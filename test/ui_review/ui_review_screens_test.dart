@@ -28,6 +28,7 @@ import 'package:syncra/data/firestore/resumes_repository.dart';
 import 'package:syncra/data/models/job.dart';
 import 'package:syncra/features/agent/services/anthropic_service.dart';
 import 'package:syncra/features/agent/state/passive_agent_notifier.dart';
+import 'package:syncra/features/agent/state/pipeline_autopilot_notifier.dart';
 import 'package:syncra/features/agent_chat/models/agent_block.dart';
 import 'package:syncra/features/agent_chat/models/chat_message.dart';
 import 'package:syncra/features/agent_chat/presentation/ai_chatbot_page.dart';
@@ -56,6 +57,11 @@ class _FixedJobsNotifier extends JobsNotifier {
 
   @override
   JobsState build() => _fixed;
+}
+
+class _FixedPipelineAutopilotNotifier extends PipelineAutopilotNotifier {
+  @override
+  Future<void> processNow() async {}
 }
 
 class _FixedPassiveAgentNotifier extends PassiveAgentNotifier {
@@ -379,7 +385,12 @@ void _installFontAssets(TestDefaultBinaryMessenger messenger) {
 
 Widget _wrap(Widget child, List<Override> overrides, {bool dark = false}) {
   return ProviderScope(
-    overrides: overrides,
+    // The Pipeline screen kicks the auto-processor on first frame; stub it so
+    // goldens never reach the real (Firebase-backed) run path.
+    overrides: [
+      pipelineAutopilotProvider.overrideWith(_FixedPipelineAutopilotNotifier.new),
+      ...overrides,
+    ],
     child: MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: dark ? AppTheme.darkTheme : AppTheme.lightTheme,

@@ -509,7 +509,7 @@ class _EmailDraftBlockViewState extends ConsumerState<EmailDraftBlockView> {
       return;
     }
     final level =
-        ref.read(userProfileProvider)?.autonomyLevel ?? AutonomyLevel.autoDraft;
+        ref.read(userProfileProvider)?.autonomyLevel ?? AutonomyLevel.autopilot;
     if (level != AutonomyLevel.autopilot) return;
     if (!_looksLikeEmail(block.recipient)) return; // Guessed/blank → review.
     final jobId = block.jobId;

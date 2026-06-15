@@ -97,9 +97,10 @@ class AutoApplySettings {
 /// inferring scope from the user's wording. The levels escalate monotonically
 /// across the pipeline (find → match → tailor → draft → send):
 /// - [assist]: proposes each step, waits for approval before the next.
-/// - [autoDraft] (default): chains the full stated goal to a ready-to-send
-///   draft; stops only at the two human gates — Save résumé + tap Send.
-/// - [autopilot]: also auto-sends low-risk drafts, behind a brief undo window.
+/// - [autoDraft]: chains the full stated goal to a ready-to-send draft; stops
+///   only at the two human gates — Save résumé + tap Send.
+/// - [autopilot] (default): also auto-sends low-risk drafts, behind a brief
+///   undo window.
 ///
 /// Only the level itself is trusted to the model; the irreversible send stays
 /// code-gated by the email confirmation token regardless of this setting.
@@ -122,12 +123,12 @@ enum AutonomyLevel {
     AutonomyLevel.autopilot => 'Autopilot',
   };
 
-  /// Parses the persisted key, defaulting to [autoDraft] for legacy users and
+  /// Parses the persisted key, defaulting to [autopilot] for legacy users and
   /// any unrecognised value.
   static AutonomyLevel fromStorage(Object? value) => switch (value) {
     'assist' => AutonomyLevel.assist,
-    'autopilot' => AutonomyLevel.autopilot,
-    _ => AutonomyLevel.autoDraft,
+    'auto_draft' => AutonomyLevel.autoDraft,
+    _ => AutonomyLevel.autopilot,
   };
 }
 
@@ -149,7 +150,7 @@ class UserProfile {
     this.resumeFit,
     this.recommendation,
     this.autoApplySettings = const AutoApplySettings(),
-    this.autonomyLevel = AutonomyLevel.autoDraft,
+    this.autonomyLevel = AutonomyLevel.autopilot,
   });
 
   final String name;
@@ -184,7 +185,7 @@ class UserProfile {
   final AutoApplySettings autoApplySettings;
 
   /// How far the chat agent advances before it waits for the user. Defaults to
-  /// [AutonomyLevel.autoDraft] for new and legacy profiles.
+  /// [AutonomyLevel.autopilot] for new and legacy profiles.
   final AutonomyLevel autonomyLevel;
 
   UserProfile copyWith({

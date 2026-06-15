@@ -806,7 +806,7 @@ Do not call send_email.
   /// fresh each turn so a mid-session change in Profile takes effect at once.
   void _syncAutonomyDirective() {
     final level =
-        ref.read(userProfileProvider)?.autonomyLevel ?? AutonomyLevel.autoDraft;
+        ref.read(userProfileProvider)?.autonomyLevel ?? AutonomyLevel.autopilot;
     _service.setAutonomyDirective(_autonomyDirectiveFor(level));
   }
 

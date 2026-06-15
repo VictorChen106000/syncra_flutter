@@ -66,7 +66,7 @@ void main() {
       // it must NOT hard-code a chaining/gate cadence of its own.
       expect(prompt, contains('active autonomy mode'));
       expect(prompt, contains('assist / auto-draft / autopilot'));
-      expect(prompt, contains('behave as auto-draft'));
+      expect(prompt, contains('behave as autopilot'));
       expect(prompt, contains('set entirely by your active autonomy mode'));
       expect(prompt, contains('do not hard-code a pace'));
     });

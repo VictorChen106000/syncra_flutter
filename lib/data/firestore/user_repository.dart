@@ -30,7 +30,7 @@ class UserRepository {
             'gmail_connected': false,
       'has_completed_onboarding': false,
       'auto_apply': const AutoApplySettings().toMap(),
-      'autonomy_level': AutonomyLevel.autoDraft.storageKey,
+      'autonomy_level': AutonomyLevel.autopilot.storageKey,
       'created_at': FieldValue.serverTimestamp(),
     });
   }
@@ -211,7 +211,7 @@ class UserRepository {
       'resume_fit': FieldValue.delete(),
       'recommendation': FieldValue.delete(),
             'auto_apply': const AutoApplySettings().toMap(),
-      'autonomy_level': AutonomyLevel.autoDraft.storageKey,
+      'autonomy_level': AutonomyLevel.autopilot.storageKey,
     });
   }
 

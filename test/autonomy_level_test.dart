@@ -18,11 +18,11 @@ void main() {
       }
     });
 
-    test('fromStorage defaults to Auto-draft for null / unknown / wrong type', () {
-      expect(AutonomyLevel.fromStorage(null), AutonomyLevel.autoDraft);
-      expect(AutonomyLevel.fromStorage(''), AutonomyLevel.autoDraft);
-      expect(AutonomyLevel.fromStorage('nonsense'), AutonomyLevel.autoDraft);
-      expect(AutonomyLevel.fromStorage(42), AutonomyLevel.autoDraft);
+    test('fromStorage defaults to Autopilot for null / unknown / wrong type', () {
+      expect(AutonomyLevel.fromStorage(null), AutonomyLevel.autopilot);
+      expect(AutonomyLevel.fromStorage(''), AutonomyLevel.autopilot);
+      expect(AutonomyLevel.fromStorage('nonsense'), AutonomyLevel.autopilot);
+      expect(AutonomyLevel.fromStorage(42), AutonomyLevel.autopilot);
     });
 
     test('exposes a human label for each level', () {
@@ -33,9 +33,9 @@ void main() {
   });
 
   group('UserProfile autonomy persistence', () {
-    test('defaults to Auto-draft when the field is absent (legacy users)', () {
+    test('defaults to Autopilot when the field is absent (legacy users)', () {
       final profile = UserProfile.fromMap({'name': 'Ada', 'email': 'a@b.co'});
-      expect(profile.autonomyLevel, AutonomyLevel.autoDraft);
+      expect(profile.autonomyLevel, AutonomyLevel.autopilot);
     });
 
     test('parses each stored autonomy_level value', () {
@@ -49,9 +49,9 @@ void main() {
       }
     });
 
-    test('default constructor is Auto-draft', () {
+    test('default constructor is Autopilot', () {
       const profile = UserProfile(name: 'Ada', email: 'a@b.co');
-      expect(profile.autonomyLevel, AutonomyLevel.autoDraft);
+      expect(profile.autonomyLevel, AutonomyLevel.autopilot);
     });
 
     test('copyWith updates the autonomy level and leaves it otherwise', () {

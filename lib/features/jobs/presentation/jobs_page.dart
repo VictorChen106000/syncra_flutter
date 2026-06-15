@@ -15,6 +15,7 @@ import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/gooey_orb.dart';
 import '../../agent/state/passive_agent_notifier.dart';
+import '../../agent/state/pipeline_autopilot_notifier.dart';
 import '../../agent_chat/state/agent_chat_notifier.dart';
 import '../state/jobs_notifier.dart';
 
@@ -26,6 +27,18 @@ class JobsPage extends ConsumerStatefulWidget {
 }
 
 class _JobsPageState extends ConsumerState<JobsPage> {
+  @override
+  void initState() {
+    super.initState();
+    // Kick the auto-processor once the first frame is up. It no-ops on Assist,
+    // without an API key, or when there are no fresh strong/low-risk matches —
+    // and is idempotent, so the re-trigger below is safe too.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(pipelineAutopilotProvider.notifier).processNow();
+    });
+  }
+
   void _dismiss(Job job) {
     final notifier = ref.read(jobsProvider.notifier);
     notifier.dismiss(job.id, label: job.company);
@@ -45,6 +58,14 @@ class _JobsPageState extends ConsumerState<JobsPage> {
 
   @override
   Widget build(BuildContext context) {
+    // When the brief streams in (or adds) pipeline cards, re-run the bounded
+    // auto-processor. Idempotent — already-handled jobs are skipped.
+    ref.listen(jobsProvider.select((s) => s.cards.length), (prev, next) {
+      if (next > (prev ?? 0)) {
+        ref.read(pipelineAutopilotProvider.notifier).processNow();
+      }
+    });
+
     ref.listen<JobsState>(jobsProvider, (prev, next) {
       if (next.lastMessage == null || next.lastMessage == prev?.lastMessage) {
         return;

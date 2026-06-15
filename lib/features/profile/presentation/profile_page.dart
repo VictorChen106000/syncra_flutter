@@ -1368,7 +1368,7 @@ class _AutonomyDialSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(userProfileProvider);
-    final current = profile?.autonomyLevel ?? AutonomyLevel.autoDraft;
+    final current = profile?.autonomyLevel ?? AutonomyLevel.autopilot;
     final canEdit = profile != null;
 
     return _GroupedCard(
@@ -1380,7 +1380,7 @@ class _AutonomyDialSection extends ConsumerWidget {
             title: _options[i].level.label,
             blurb: _options[i].blurb,
             selected: _options[i].level == current,
-            recommended: _options[i].level == AutonomyLevel.autoDraft,
+            recommended: _options[i].level == AutonomyLevel.autopilot,
             onTap: canEdit
                 ? () => _select(ref, context, _options[i].level)
                 : null,
