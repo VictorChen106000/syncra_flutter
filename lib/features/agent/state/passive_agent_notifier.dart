@@ -216,7 +216,7 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
     // a change in onboarding/Profile applies to the next brief.
     final region =
         ref.read(userProfileProvider)?.jobRegion ?? JobRegion.unitedStates;
-    service.setSearchCountry(region.code);
+    service.setSearchRegion(region.code, region.label);
     final effectiveQuery = (query == null || query.trim().isEmpty)
         ? _defaultBriefQuery
         : query.trim();

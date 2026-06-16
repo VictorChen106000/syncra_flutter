@@ -44,10 +44,14 @@ class AnthropicChatService implements AgentService {
   final JSearchService? _searchService;
 
   @override
-  void setSearchCountry(String countryCode) {
+  void setSearchRegion(String countryCode, String regionName) {
     final code = countryCode.trim().toLowerCase();
-    if (code.isEmpty) return;
-    _searchService?.defaultCountry = code;
+    final search = _searchService;
+    if (search == null || code.isEmpty) return;
+    search.defaultCountry = code;
+    // The region name is only folded into the query for non-US regions; the US
+    // ranks better on a clean query, so it carries no region term.
+    search.defaultRegionQuery = code == 'us' ? '' : regionName.trim();
   }
 
   /// The system prompt actually sent on every request. Defaults to the main

@@ -926,7 +926,7 @@ Do not call send_email.
   void _syncSearchRegion() {
     final region =
         ref.read(userProfileProvider)?.jobRegion ?? JobRegion.unitedStates;
-    _service.setSearchCountry(region.code);
+    _service.setSearchRegion(region.code, region.label);
   }
 
   void _startContinuationPrompt(String prompt) {

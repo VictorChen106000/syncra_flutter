@@ -40,6 +40,14 @@ class JSearchService {
   /// pre-region behaviour is unchanged until something sets it.
   String defaultCountry = 'us';
 
+  /// Human region name (e.g. "Taiwan") folded into the query for non-US
+  /// searches. JSearch's `country` param alone barely filters its sparse
+  /// non-US index — `"software engineer"` + `country=tw` returns nothing, but
+  /// `"software engineer taiwan"` returns real Taipei roles. Set together with
+  /// [defaultCountry]; empty (and ignored) for the US, whose clean queries rank
+  /// better without it. Only applied when no explicit per-call country is given.
+  String defaultRegionQuery = '';
+
   /// JSearch's free tier is 200 requests/month — cache aggressively so dev
   /// and the demo stay well under quota.
   static const Duration _cacheTtl = Duration(hours: 1);
@@ -78,15 +86,30 @@ class JSearchService {
     final explicit = country?.trim().toLowerCase() ?? '';
     final effectiveCountry = explicit.isNotEmpty ? explicit : defaultCountry;
 
-    final key = _cacheKey(cleanQuery, location, effectiveCountry, cappedLimit);
+    // For a non-US default region, fold the region name into the query so
+    // JSearch's thin non-US index actually returns local roles (see
+    // [defaultRegionQuery]). Skipped when the caller passed an explicit country
+    // (the model already names the place), for the US, or when the query
+    // already mentions the region.
+    final regionTerm = defaultRegionQuery.trim();
+    final effectiveQuery =
+        explicit.isEmpty &&
+            effectiveCountry.isNotEmpty &&
+            effectiveCountry != 'us' &&
+            regionTerm.isNotEmpty &&
+            !cleanQuery.toLowerCase().contains(regionTerm.toLowerCase())
+        ? '$cleanQuery $regionTerm'
+        : cleanQuery;
+
+    final key = _cacheKey(effectiveQuery, location, effectiveCountry, cappedLimit);
     final cached = _cache[key];
     if (cached != null && !cached.isStale) {
-      debugPrint('JSearchService: cache hit for "$cleanQuery"');
+      debugPrint('JSearchService: cache hit for "$effectiveQuery"');
       return cached.jobs;
     }
 
     final rawJobs = await _fetch(
-      cleanQuery,
+      effectiveQuery,
       location,
       effectiveCountry,
       cappedLimit,
