@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/job.dart';
 import '../models/tracked_application.dart';
@@ -143,6 +144,18 @@ TrackedApplication _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
   );
 }
 
+/// Rebuilds a [Job] from an application's nested `job` map. Public and
+/// `@visibleForTesting` so the provenance-field round-trip
+/// ([applicationJobToMap] → [applicationJobFromMap]) can be tested without a
+/// live Firestore.
+@visibleForTesting
+Job applicationJobFromMap(Map<String, dynamic> m) => _jobFromMap(m);
+
+/// Serialises a [Job] into an application's nested `job` map. See
+/// [applicationJobFromMap].
+@visibleForTesting
+Map<String, dynamic> applicationJobToMap(Job j) => _jobToMap(j);
+
 Job _jobFromMap(Map<String, dynamic> m) => Job(
   id: (m['id'] ?? '').toString(),
   title: (m['title'] as String?) ?? '',
@@ -156,6 +169,12 @@ Job _jobFromMap(Map<String, dynamic> m) => Job(
   skills: List<String>.from((m['skills'] as List?) ?? const []),
   missingSkills: List<String>.from((m['missing_skills'] as List?) ?? const []),
   why: (m['why'] as String?) ?? '',
+  employerWebsite: (m['employer_website'] as String?) ?? '',
+  applyLink: (m['apply_link'] as String?) ?? '',
+  googleJobLink: (m['google_job_link'] as String?) ?? '',
+  sourceUrl: (m['source_url'] as String?) ?? '',
+  publisher: (m['publisher'] as String?) ?? '',
+  providerSource: (m['provider_source'] as String?) ?? '',
 );
 
 Map<String, dynamic> _jobToMap(Job j) => {
@@ -171,6 +190,12 @@ Map<String, dynamic> _jobToMap(Job j) => {
   'skills': j.skills,
   'missing_skills': j.missingSkills,
   'why': j.why,
+  'employer_website': j.employerWebsite,
+  'apply_link': j.applyLink,
+  'google_job_link': j.googleJobLink,
+  'source_url': j.sourceUrl,
+  'publisher': j.publisher,
+  'provider_source': j.providerSource,
 };
 
 JobCategory _categoryFromName(String? name) {

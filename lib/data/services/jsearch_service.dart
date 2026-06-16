@@ -101,7 +101,12 @@ class JSearchService {
         ? '$cleanQuery $regionTerm'
         : cleanQuery;
 
-    final key = _cacheKey(effectiveQuery, location, effectiveCountry, cappedLimit);
+    final key = _cacheKey(
+      effectiveQuery,
+      location,
+      effectiveCountry,
+      cappedLimit,
+    );
     final cached = _cache[key];
     if (cached != null && !cached.isStale) {
       debugPrint('JSearchService: cache hit for "$effectiveQuery"');
@@ -120,7 +125,7 @@ class JSearchService {
     final seen = <String>{};
     final jobs = <Job>[];
     for (final raw in rawJobs) {
-      final job = _jsearchToJob(raw);
+      final job = jobFromJSearchRecord(raw);
       if (job == null || !seen.add(job.id)) continue;
       jobs.add(job);
     }
@@ -187,14 +192,19 @@ class JSearchService {
   }
 
   /// Maps one raw JSearch record to our [Job]. Returns null when it lacks
-  /// the fields we need to dedupe or display it.
-  Job? _jsearchToJob(Map<String, dynamic> raw) {
+  /// the fields we need to dedupe or display it. Static and `@visibleForTesting`
+  /// so the apply/source-link extraction can be exercised without a live HTTP
+  /// client, proxy, or Firestore.
+  @visibleForTesting
+  static Job? jobFromJSearchRecord(Map<String, dynamic> raw) {
     final title = (raw['job_title'] as String?)?.trim() ?? '';
     final company = (raw['employer_name'] as String?)?.trim() ?? '';
-    final sourceUrl =
-        ((raw['job_apply_link'] ?? raw['job_google_link']) as String?)
-            ?.trim() ??
-        '';
+    // Preserve the apply and Google links separately — the UI opens the direct
+    // apply link first and falls back to the Google listing. [sourceUrl] is the
+    // best of the two and still drives the deterministic id for dedupe.
+    final applyLink = (raw['job_apply_link'] as String?)?.trim() ?? '';
+    final googleJobLink = (raw['job_google_link'] as String?)?.trim() ?? '';
+    final sourceUrl = applyLink.isNotEmpty ? applyLink : googleJobLink;
     if (title.isEmpty || company.isEmpty || sourceUrl.isEmpty) return null;
 
     return Job(
@@ -211,10 +221,15 @@ class JSearchService {
       missingSkills: const [],
       why: _description(raw),
       employerWebsite: (raw['employer_website'] as String?)?.trim() ?? '',
+      applyLink: applyLink,
+      googleJobLink: googleJobLink,
+      sourceUrl: sourceUrl,
+      publisher: (raw['job_publisher'] as String?)?.trim() ?? '',
+      providerSource: 'jsearch',
     );
   }
 
-  String _location(Map<String, dynamic> raw) {
+  static String _location(Map<String, dynamic> raw) {
     final parts = [raw['job_city'], raw['job_state'], raw['job_country']]
         .whereType<String>()
         .map((p) => p.trim())
@@ -227,7 +242,7 @@ class JSearchService {
     return joined;
   }
 
-  String _salary(Map<String, dynamic> raw) {
+  static String _salary(Map<String, dynamic> raw) {
     final min = (raw['job_min_salary'] as num?)?.round();
     final max = (raw['job_max_salary'] as num?)?.round();
     if (min == null || max == null) return '';
@@ -236,7 +251,7 @@ class JSearchService {
     return (period == null || period.isEmpty) ? range : '$range/$period';
   }
 
-  String _thousands(int n) {
+  static String _thousands(int n) {
     final s = n.abs().toString();
     final buf = StringBuffer(n < 0 ? '-' : '');
     for (var i = 0; i < s.length; i++) {
@@ -246,7 +261,7 @@ class JSearchService {
     return buf.toString();
   }
 
-  String _description(Map<String, dynamic> raw) {
+  static String _description(Map<String, dynamic> raw) {
     final desc = (raw['job_description'] as String?)?.trim() ?? '';
     if (desc.length <= _maxDescriptionChars) return desc;
     return '${desc.substring(0, _maxDescriptionChars)}…';
@@ -255,7 +270,7 @@ class JSearchService {
   /// Deterministic id so the same posting re-discovered later collapses
   /// onto one Firestore doc instead of duplicating. Mirrors the backend's
   /// `_job_id_for()` scheme.
-  String _jobIdFor(String title, String company, String sourceUrl) {
+  static String _jobIdFor(String title, String company, String sourceUrl) {
     final raw =
         '${title.toLowerCase().trim()}|'
         '${company.toLowerCase().trim()}|'
@@ -288,6 +303,11 @@ class JSearchService {
           'salary': job.salary,
           'description': job.why,
           'employer_website': job.employerWebsite,
+          'apply_link': job.applyLink,
+          'google_job_link': job.googleJobLink,
+          'source_url': job.sourceUrl,
+          'publisher': job.publisher,
+          'provider_source': job.providerSource,
           'source': 'jsearch',
           'discovered_at': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));

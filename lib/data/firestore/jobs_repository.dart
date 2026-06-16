@@ -25,28 +25,18 @@ class JobsRepository {
 }
 
 Job _fromDocSnap(DocumentSnapshot<Map<String, dynamic>> doc) {
-  final m = doc.data() ?? const {};
-  return Job(
-    id: doc.id,
-    title: (m['title'] as String?) ?? '',
-    company: (m['company'] as String?) ?? '',
-    location: (m['location'] as String?) ?? '',
-    salary: (m['salary'] as String?) ?? '',
-    category: JobCategory.ready,
-    matchScore: 0,
-    agentAction: '',
-    agentJustification: '',
-    skills: const [],
-    missingSkills: const [],
-    why: (m['description'] as String?) ?? '',
-    employerWebsite: (m['employer_website'] as String?) ?? '',
-  );
+  return _jobFromJobsDoc(doc.id, doc.data() ?? const {});
 }
 
 Job _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
-  final m = doc.data();
+  return _jobFromJobsDoc(doc.id, doc.data());
+}
+
+/// Builds a [Job] from a global `jobs/` document. Old docs predate the
+/// apply/source provenance fields, so each defaults to `''`.
+Job _jobFromJobsDoc(String id, Map<String, dynamic> m) {
   return Job(
-    id: doc.id,
+    id: id,
     title: (m['title'] as String?) ?? '',
     company: (m['company'] as String?) ?? '',
     location: (m['location'] as String?) ?? '',
@@ -59,5 +49,10 @@ Job _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     missingSkills: const [],
     why: (m['description'] as String?) ?? '',
     employerWebsite: (m['employer_website'] as String?) ?? '',
+    applyLink: (m['apply_link'] as String?) ?? '',
+    googleJobLink: (m['google_job_link'] as String?) ?? '',
+    sourceUrl: (m['source_url'] as String?) ?? '',
+    publisher: (m['publisher'] as String?) ?? '',
+    providerSource: (m['provider_source'] as String?) ?? '',
   );
 }

@@ -16,6 +16,11 @@ class Job {
     required this.why,
     this.matched = true,
     this.employerWebsite = '',
+    this.applyLink = '',
+    this.googleJobLink = '',
+    this.sourceUrl = '',
+    this.publisher = '',
+    this.providerSource = '',
   });
 
   final String id;
@@ -43,6 +48,28 @@ class Job {
   /// domain slugged from the company name. Empty when unknown.
   final String employerWebsite;
 
+  /// Direct apply URL from JSearch (`job_apply_link`). The primary "Open
+  /// application" target. Empty when JSearch only returned a Google listing.
+  final String applyLink;
+
+  /// Google Jobs / source listing URL from JSearch (`job_google_link`). The
+  /// secondary "View Google listing" target. Empty when unknown.
+  final String googleJobLink;
+
+  /// Best available source URL: [applyLink] if set, otherwise [googleJobLink].
+  /// Used for provenance, dedupe (the deterministic job id), and as the
+  /// fallback link to open. Empty when neither exists.
+  final String sourceUrl;
+
+  /// The original listing's publisher (`job_publisher`), e.g. "LinkedIn" or
+  /// "Indeed", when JSearch provides it. Shown as a source label. Empty when
+  /// unknown.
+  final String publisher;
+
+  /// Which provider produced this job — `'jsearch'` for live JSearch results,
+  /// empty for legacy/seeded jobs. Shown as a provenance label.
+  final String providerSource;
+
   /// LinkedIn-style match label derived from [category]. The matching system
   /// is purely qualitative — the user never sees a numeric score or percent,
   /// only one of these three labels. [matchScore] is retained internally for
@@ -68,6 +95,11 @@ class Job {
     why: json['why'] as String,
     matched: json['matched'] as bool? ?? true,
     employerWebsite: (json['employer_website'] as String?) ?? '',
+    applyLink: (json['apply_link'] as String?) ?? '',
+    googleJobLink: (json['google_job_link'] as String?) ?? '',
+    sourceUrl: (json['source_url'] as String?) ?? '',
+    publisher: (json['publisher'] as String?) ?? '',
+    providerSource: (json['provider_source'] as String?) ?? '',
   );
 
   Map<String, dynamic> toJson() => {
@@ -85,6 +117,11 @@ class Job {
     'why': why,
     'matched': matched,
     'employer_website': employerWebsite,
+    'apply_link': applyLink,
+    'google_job_link': googleJobLink,
+    'source_url': sourceUrl,
+    'publisher': publisher,
+    'provider_source': providerSource,
   };
 
   static JobCategory _categoryFromString(String value) {

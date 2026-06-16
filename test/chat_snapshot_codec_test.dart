@@ -100,6 +100,41 @@ void main() {
       },
     );
 
+    test('round-trips application/source provenance on job-card blocks', () {
+      const job = Job(
+        id: 'job-prov',
+        title: 'Frontend Engineer',
+        company: 'Swiftlane',
+        location: 'Remote',
+        salary: r'$120k',
+        category: JobCategory.ready,
+        matchScore: 0,
+        agentAction: '',
+        agentJustification: '',
+        skills: [],
+        missingSkills: [],
+        why: 'Build dashboards.',
+        employerWebsite: 'https://swiftlane.com',
+        applyLink: 'https://swiftlane.com/apply/9',
+        googleJobLink: 'https://google.com/jobs/9',
+        sourceUrl: 'https://swiftlane.com/apply/9',
+        publisher: 'LinkedIn',
+        providerSource: 'jsearch',
+      );
+
+      final decoded = ChatSnapshotCodec.decodeBlock(
+        ChatSnapshotCodec.encodeBlock(JobsBlock(id: 'jobs-prov', jobs: [job])),
+      );
+
+      final restored = (decoded as JobsBlock).jobs.single;
+      expect(restored.applyLink, 'https://swiftlane.com/apply/9');
+      expect(restored.googleJobLink, 'https://google.com/jobs/9');
+      expect(restored.sourceUrl, 'https://swiftlane.com/apply/9');
+      expect(restored.publisher, 'LinkedIn');
+      expect(restored.providerSource, 'jsearch');
+      expect(restored.employerWebsite, 'https://swiftlane.com');
+    });
+
     test('round-trips proposed edits block state', () {
       final block =
           ProposedEditsBlock(

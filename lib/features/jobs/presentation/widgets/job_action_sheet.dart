@@ -87,7 +87,8 @@ class _JobActionSheetBody extends ConsumerWidget {
             _ActionTile(
               icon: Icons.drafts_outlined,
               label: 'Draft application email',
-              onTap: () => _draftEmail(context, ref, job, onDrafted: onDrafted),
+              onTap: () =>
+                  draftJobEmail(context, ref, job, onDrafted: onDrafted),
             ),
             _ActionTile(
               icon: isSaved
@@ -148,7 +149,10 @@ class _JobActionSheetBody extends ConsumerWidget {
 /// Opens the email review sheet pre-filled with a starter draft for [job],
 /// then saves it to the user's Gmail Drafts (nothing is sent). The recipient
 /// is a best-effort guess the user confirms in the sheet.
-Future<void> _draftEmail(
+///
+/// Shared by [JobActionSheet] and the application-link modal's email row so the
+/// "draft an application email" behaviour lives in exactly one place.
+Future<void> draftJobEmail(
   BuildContext context,
   WidgetRef ref,
   Job job, {
@@ -176,6 +180,7 @@ Future<void> _draftEmail(
   final recipientResolution = await resolveRecipientAsync(
     job.company,
     website: job.employerWebsite,
+    applyLink: job.applyLink,
   );
   if (!parentContext.mounted) return;
 

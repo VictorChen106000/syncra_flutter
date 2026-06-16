@@ -7,6 +7,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/brand_theme.dart';
 import '../../../core/utils/motion.dart';
+import '../../../core/utils/url_opener.dart';
 import '../../../data/firestore/pipeline_repository.dart';
 import '../../../data/models/job.dart';
 import '../../../data/models/tracked_application.dart';
@@ -16,9 +17,9 @@ import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/gooey_orb.dart';
 import '../../agent/state/pipeline_autopilot_notifier.dart';
 import '../../agent_chat/state/agent_chat_notifier.dart';
-import '../../applications/presentation/widgets/application_detail_sheet.dart';
 import '../../applications/state/applications_notifier.dart';
 import '../state/jobs_notifier.dart';
+import 'widgets/job_links_sheet.dart';
 
 class JobsPage extends ConsumerStatefulWidget {
   const JobsPage({super.key});
@@ -287,7 +288,7 @@ class _PipelineFeedState extends ConsumerState<_PipelineFeed> {
               child: _PipelineCard(
                 card: _cardFromApplication(app),
                 onTap: () => goToThread(app.job, stage: PipelineStage.drafted),
-                onDetails: () => ApplicationDetailSheet.show(context, app),
+                application: app,
               ),
             )
             .animate(delay: (animIndex++ * 55).ms)
@@ -369,7 +370,7 @@ class _PipelineFeedState extends ConsumerState<_PipelineFeed> {
                         .openJobThread(app.job, stage: PipelineStage.sent);
                     context.go(RouteNames.agentChat);
                   },
-                  onDetails: () => ApplicationDetailSheet.show(context, app),
+                  application: app,
                 ),
               )
               .animate(delay: (animIndex++ * 45).ms)
@@ -839,16 +840,17 @@ class _PipelineCard extends StatelessWidget {
   const _PipelineCard({
     required this.card,
     required this.onTap,
-    this.onDetails,
+    this.application,
   });
 
   final PipelineCard card;
   final VoidCallback onTap;
 
-  /// Optional record action. App-backed cards (History + unsent drafts) pass
-  /// this to show a small "details" button in the footer; tapping it opens the
-  /// record (status + notes). The card's main tap stays the agent handoff.
-  final VoidCallback? onDetails;
+  /// The backing application for app-backed cards (History + unsent drafts).
+  /// When set, the footer shows the link/resume/email action icons that open the
+  /// application-link modal ([JobLinksSheet]); live pipeline cards leave it null
+  /// and keep just the agent handoff on tap.
+  final TrackedApplication? application;
 
   /// The single status line under the stepper. Action-led for cards that need
   /// you, quiet and factual for the rest. The dots carry stage, so this never
@@ -859,7 +861,15 @@ class _PipelineCard extends StatelessWidget {
           ? 'Reply received'
           : 'Handled ${_timeAgo(card.createdAt)}';
     }
-    if (card.stage == PipelineStage.drafted) return 'Draft ready for review';
+    // Application-link-first: when a real apply/source link exists the visible
+    // win leads with it, so the user always has an "Open application" outcome
+    // even before any email is drafted. Falls back to the prior copy otherwise.
+    final hasLink = _hasOpenableLink(card.job);
+    if (card.stage == PipelineStage.drafted) {
+      return hasLink
+          ? 'Application link ready · Draft ready'
+          : 'Draft ready for review';
+    }
     if (card.job.missingSkills.isNotEmpty) {
       return 'Missing ${card.job.missingSkills.take(2).join(', ')}';
     }
@@ -869,8 +879,11 @@ class _PipelineCard extends StatelessWidget {
           : 'Needs your approval';
     }
     return switch (card.stage) {
-      PipelineStage.tailored => 'Tailored resume ready',
-      _ => 'Syncra queued this role',
+      PipelineStage.tailored =>
+        hasLink
+            ? 'Application link · Resume tailored'
+            : 'Tailored resume ready',
+      _ => hasLink ? 'Application link ready' : 'Syncra queued this role',
     };
   }
 
@@ -1000,9 +1013,9 @@ class _PipelineCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (onDetails != null) ...[
-                    const SizedBox(width: 10),
-                    _CardDetailsButton(onTap: onDetails!),
+                  if (application != null) ...[
+                    const SizedBox(width: 8),
+                    _JobActionIcons(job: job, application: application!),
                   ],
                 ],
               ),
@@ -1014,35 +1027,88 @@ class _PipelineCard extends StatelessWidget {
   }
 }
 
-/// Small footer affordance on app-backed cards — opens the record (status +
-/// notes). Quiet and circular so it sits under the status line without
-/// competing with the card's main tap.
-class _CardDetailsButton extends StatelessWidget {
-  const _CardDetailsButton({required this.onTap});
+/// The three compact action icons on app-backed cards (link · resume · email),
+/// lower-right. Each opens the application-link modal ([JobLinksSheet]); the
+/// icon's tint signals availability — active in ink, muted when that channel has
+/// nothing yet (no link, no tailored resume, no sent outreach).
+class _JobActionIcons extends StatelessWidget {
+  const _JobActionIcons({required this.job, required this.application});
 
+  final Job job;
+  final TrackedApplication application;
+
+  @override
+  Widget build(BuildContext context) {
+    final linkActive = _hasOpenableLink(job);
+    final resumeActive = application.resumeId != null;
+    final emailActive = application.sentEmailId != null;
+
+    void open() => JobLinksSheet.show(context, job, application: application);
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _MiniIconButton(
+          icon: Icons.link_rounded,
+          active: linkActive,
+          onTap: open,
+        ),
+        _MiniIconButton(
+          icon: Icons.description_outlined,
+          active: resumeActive,
+          onTap: open,
+        ),
+        _MiniIconButton(
+          icon: Icons.mail_outline_rounded,
+          active: emailActive,
+          onTap: open,
+        ),
+      ],
+    );
+  }
+}
+
+class _MiniIconButton extends StatelessWidget {
+  const _MiniIconButton({
+    required this.icon,
+    required this.active,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final bool active;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
     return Material(
-      color: brand.surfaceMuted,
+      color: Colors.transparent,
       shape: const CircleBorder(),
       child: InkWell(
         onTap: onTap,
         customBorder: const CircleBorder(),
         child: Padding(
-          padding: const EdgeInsets.all(7),
+          padding: const EdgeInsets.all(6),
           child: Icon(
-            Icons.more_horiz_rounded,
-            size: 18,
-            color: brand.textMuted,
+            icon,
+            size: 17,
+            color: active ? brand.ink : brand.textSoft,
           ),
         ),
       ),
     );
   }
 }
+
+/// True when [job] carries any apply/source/company link we'd be willing to
+/// open — drives the application-link-first status copy and the link icon's
+/// active tint.
+bool _hasOpenableLink(Job job) =>
+    UrlOpener.canOpen(job.applyLink) ||
+    UrlOpener.canOpen(job.sourceUrl) ||
+    UrlOpener.canOpen(job.googleJobLink) ||
+    UrlOpener.canOpen(job.employerWebsite);
 
 /// Company line under the logo: "Company · Location", or just the company when
 /// no location is known. Keeps location out of the pill row.
