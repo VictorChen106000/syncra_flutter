@@ -895,6 +895,27 @@ class _PromptPhaseState extends ConsumerState<_PromptPhase> {
     unawaited(ref.read(userProfileProvider.notifier).setJobRegion(picked));
   }
 
+  /// Opens the agent-autonomy picker and persists the choice. Read back live by
+  /// the pill above; `setAutonomyLevel` also re-derives the bounded auto-apply
+  /// guardrails, so the level the user picks here governs the chat agent and the
+  /// pipeline autopilot from the very first run.
+  Future<void> _pickAutonomy() async {
+    final current =
+        ref.read(userProfileProvider)?.autonomyLevel ??
+        AutonomyLevel.autopilot;
+    final picked = await showModalBottomSheet<AutonomyLevel>(
+      context: context,
+      backgroundColor: context.brand.surface,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (_) => _AutonomySheet(current: current),
+    );
+    if (picked == null || picked == current || !mounted) return;
+    unawaited(ref.read(userProfileProvider.notifier).setAutonomyLevel(picked));
+  }
+
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
@@ -941,17 +962,31 @@ class _PromptPhaseState extends ConsumerState<_PromptPhase> {
             ),
           ),
         ),
-        // Where to look — sits just above the composer so the user sets the
-        // search region alongside the goal. Defaults to their profile region
-        // (US for a fresh account); tapping opens a quick picker.
+        // Where to look + how far to run — sit just above the composer so the
+        // user sets the search region and the agent's autonomy alongside the
+        // goal. Both default to their profile values (US + Autopilot for a fresh
+        // account); tapping either opens a quick picker, persisted live and read
+        // by the brief and the agent on the very first run.
         Align(
           alignment: Alignment.centerLeft,
           child:
-              _RegionPill(
-                    region:
-                        ref.watch(userProfileProvider)?.jobRegion ??
-                        JobRegion.unitedStates,
-                    onTap: _pickRegion,
+              Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _RegionPill(
+                        region:
+                            ref.watch(userProfileProvider)?.jobRegion ??
+                            JobRegion.unitedStates,
+                        onTap: _pickRegion,
+                      ),
+                      _AutonomyPill(
+                        level:
+                            ref.watch(userProfileProvider)?.autonomyLevel ??
+                            AutonomyLevel.autopilot,
+                        onTap: _pickAutonomy,
+                      ),
+                    ],
                   )
                   .animate(delay: 240.ms)
                   .fadeIn(duration: 380.ms)
@@ -1177,7 +1212,7 @@ class _RegionSheet extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            _RegionCheck(selected: region == current),
+                            _SelectionCheck(selected: region == current),
                           ],
                         ),
                       ),
@@ -1192,10 +1227,193 @@ class _RegionSheet extends StatelessWidget {
   }
 }
 
-/// Radio-style marker for the region sheet: a filled lime disc with a check
+/// Glyph for an [AutonomyLevel] — mirrors the icons Profile's autonomy dial
+/// uses so the two surfaces read the same.
+IconData _autonomyIcon(AutonomyLevel level) => switch (level) {
+  AutonomyLevel.assist => Icons.tune_rounded,
+  AutonomyLevel.autoDraft => Icons.auto_awesome_rounded,
+  AutonomyLevel.autopilot => Icons.bolt_rounded,
+};
+
+/// One-line description of how far each [AutonomyLevel] lets the agent run.
+/// Kept in sync with Profile's autonomy dial blurbs.
+String _autonomyBlurb(AutonomyLevel level) => switch (level) {
+  AutonomyLevel.assist => 'Asks before each step — you approve every move.',
+  AutonomyLevel.autoDraft => 'Tailors and drafts on its own. You save, then tap Send.',
+  AutonomyLevel.autopilot => 'Also sends low-risk emails for you — 5 seconds to undo.',
+};
+
+/// A compact "agent autonomy" affordance on the prompt beat: a glyph for the
+/// current level, its name, and a chevron. Tapping opens [_AutonomySheet] so the
+/// user sets how far the agent runs on its own before onboarding even finishes.
+/// Mirrors [_RegionPill]; outlined to sit quietly above the lime composer.
+class _AutonomyPill extends StatelessWidget {
+  const _AutonomyPill({required this.level, required this.onTap});
+
+  final AutonomyLevel level;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Semantics(
+      button: true,
+      label: 'Agent autonomy: ${level.label}',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(99),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+            decoration: BoxDecoration(
+              color: brand.surface,
+              borderRadius: BorderRadius.circular(99),
+              border: Border.all(color: brand.border),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(_autonomyIcon(level), size: 16, color: brand.textMuted),
+                const SizedBox(width: 7),
+                Text(
+                  level.label,
+                  style: const TextStyle(
+                    color: _softInk,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+                const SizedBox(width: 2),
+                Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  size: 18,
+                  color: brand.textMuted,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The autonomy chooser sheet — one row per [AutonomyLevel] with its glyph,
+/// name, a one-line blurb, and a lime check on the active one. Shares the shape
+/// of [_RegionSheet] and pops the chosen level back to the caller.
+class _AutonomySheet extends StatelessWidget {
+  const _AutonomySheet({required this.current});
+
+  final AutonomyLevel current;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 4, 24, 4),
+            child: Text(
+              'Agent autonomy',
+              style: TextStyle(
+                color: brand.ink,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+            child: Text(
+              'How far your agent runs on its own before it waits for you. You '
+              'can change this anytime in Profile.',
+              style: TextStyle(
+                color: brand.textMuted,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                height: 1.4,
+              ),
+            ),
+          ),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.only(bottom: 8),
+              children: [
+                for (final level in AutonomyLevel.values)
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => Navigator.of(context).pop(level),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 13,
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              _autonomyIcon(level),
+                              size: 22,
+                              color: brand.accent,
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    level.label,
+                                    style: TextStyle(
+                                      color: brand.ink,
+                                      fontSize: 15.5,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: -0.2,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    _autonomyBlurb(level),
+                                    style: TextStyle(
+                                      color: brand.textMuted,
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w500,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: _SelectionCheck(selected: level == current),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Radio-style marker for the picker sheets: a filled lime disc with a check
 /// when active, a hairline ring otherwise. Mirrors Profile's selected marker.
-class _RegionCheck extends StatelessWidget {
-  const _RegionCheck({required this.selected});
+class _SelectionCheck extends StatelessWidget {
+  const _SelectionCheck({required this.selected});
 
   final bool selected;
 
