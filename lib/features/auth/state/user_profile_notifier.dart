@@ -130,6 +130,21 @@ class UserProfileNotifier extends Notifier<UserProfile?> {
     }
   }
 
+  /// Sets the country the agent searches for jobs in (JSearch's `country`
+  /// param). Read fresh before each chat turn and each brief, so a change in
+  /// Profile or onboarding takes effect on the next search. Optimistically
+  /// updates local state, then persists.
+  Future<void> setJobRegion(JobRegion region) async {
+    final uid = _boundUid;
+    if (uid == null) return;
+    state = state?.copyWith(jobRegion: region);
+    try {
+      await _repository.update(uid, jobRegion: region);
+    } catch (e) {
+      debugPrint('setJobRegion failed: $e');
+    }
+  }
+
   /// Flips the user past first-run setup. Called by the Skip button (which
   /// leaves `role` untouched). Used by the router redirect to decide whether
   /// the user still needs the onboarding surface.

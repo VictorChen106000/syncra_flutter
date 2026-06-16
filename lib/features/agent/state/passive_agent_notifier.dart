@@ -5,7 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/firestore/pipeline_repository.dart';
 import '../../../data/models/job.dart';
+import '../../../data/services/jsearch_service.dart';
+import '../../auth/models/user_profile.dart';
 import '../../auth/state/auth_notifier.dart';
+import '../../auth/state/user_profile_notifier.dart';
 import '../../jobs/state/jobs_notifier.dart';
 import '../services/anthropic_service.dart';
 import '../../agent_chat/models/agent_block.dart';
@@ -158,8 +161,14 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
     final existing = _briefService;
     if (existing != null) return existing;
     final registry = ToolRegistry();
-    registerBuiltinTools(registry);
-    return _briefService = AnthropicChatService(registry: registry);
+    // Share one JSearchService so the brief's job search honours the user's
+    // selected region too (set per run in [runBrief]).
+    final search = JSearchService();
+    registerBuiltinTools(registry, jsearch: search);
+    return _briefService = AnthropicChatService(
+      registry: registry,
+      searchService: search,
+    );
   }
 
   @override
@@ -203,6 +212,11 @@ class PassiveAgentNotifier extends Notifier<PassiveAgentState> {
     if (state.isRunning) return;
 
     final service = _ensureBriefService();
+    // Scope the brief's job search to the user's selected region, read fresh so
+    // a change in onboarding/Profile applies to the next brief.
+    final region =
+        ref.read(userProfileProvider)?.jobRegion ?? JobRegion.unitedStates;
+    service.setSearchCountry(region.code);
     final effectiveQuery = (query == null || query.trim().isEmpty)
         ? _defaultBriefQuery
         : query.trim();

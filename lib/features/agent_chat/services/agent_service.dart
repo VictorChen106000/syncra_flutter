@@ -89,4 +89,10 @@ abstract class AgentService {
   /// that overrides the static prompt's default chaining/gate behavior. The
   /// controller sets this before each [runPrompt]. No-op by default.
   void setAutonomyDirective(String directive) {}
+
+  /// Sets the country (ISO 3166-1 alpha-2 code) `search_jobs` scopes to by
+  /// default — the user's selected [JobRegion]. The controller pushes this
+  /// before each [runPrompt] so a region change in Profile or onboarding takes
+  /// effect on the next search. No-op for implementations without live search.
+  void setSearchCountry(String countryCode) {}
 }

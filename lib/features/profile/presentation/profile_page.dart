@@ -232,6 +232,9 @@ class ProfilePage extends StatelessWidget {
                       SectionTitle(title: 'Connections'),
                       _IntegrationSection(),
                       SizedBox(height: 24),
+                      SectionTitle(title: 'Job Search'),
+                      _JobRegionSection(),
+                      SizedBox(height: 24),
                       SectionTitle(title: 'Agent Autonomy'),
                       _AutonomyDialSection(),
                       SizedBox(height: 24),
@@ -1294,6 +1297,194 @@ class _IntegrationSection extends ConsumerWidget {
                     .setGmailConnected(!connected),
         ),
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Job Search — which country the agent searches for jobs in (JSearch's
+// `country` param). One tappable row that opens a region picker; the choice is
+// persisted to the profile and read before every chat search and brief.
+// ---------------------------------------------------------------------------
+
+class _JobRegionSection extends ConsumerWidget {
+  const _JobRegionSection();
+
+  Future<void> _pickRegion(
+    BuildContext context,
+    WidgetRef ref,
+    JobRegion current,
+  ) async {
+    final brand = context.brand;
+    final picked = await showModalBottomSheet<JobRegion>(
+      context: context,
+      backgroundColor: brand.surface,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (sheetContext) => _JobRegionPicker(current: current),
+    );
+    if (picked == null || picked == current) return;
+    if (!context.mounted) return;
+    ref.read(userProfileProvider.notifier).setJobRegion(picked);
+    _showSettingsSnack(context, 'Job search region set to ${picked.label}.');
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(userProfileProvider);
+    final region = profile?.jobRegion ?? JobRegion.unitedStates;
+    return _GroupedCard(
+      children: [
+        _PreferenceRow(
+          icon: Icons.public_rounded,
+          title: 'Search region',
+          trailing: _RegionValueChip(region: region),
+          onTap: profile == null
+              ? null
+              : () => _pickRegion(context, ref, region),
+        ),
+      ],
+    );
+  }
+}
+
+/// The current region as a compact flag + label pill with a chevron, shown as
+/// the trailing affordance on the Search region row.
+class _RegionValueChip extends StatelessWidget {
+  const _RegionValueChip({required this.region});
+
+  final JobRegion region;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: brand.surfaceMuted,
+            borderRadius: BorderRadius.circular(99),
+          ),
+          child: Text(
+            '${region.flag}  ${region.label}',
+            style: TextStyle(
+              color: brand.ink,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.1,
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Icon(Icons.chevron_right_rounded, color: brand.border, size: 18),
+      ],
+    );
+  }
+}
+
+/// The region chooser sheet: one row per [JobRegion], flag + name, with a lime
+/// check on the active one. Pops the chosen region back to the caller.
+class _JobRegionPicker extends StatelessWidget {
+  const _JobRegionPicker({required this.current});
+
+  final JobRegion current;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 4, 24, 4),
+            child: Text(
+              'Search jobs in',
+              style: TextStyle(
+                color: brand.ink,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+            child: Text(
+              "Where your agent looks for roles. You can change this anytime.",
+              style: TextStyle(
+                color: brand.textMuted,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                height: 1.4,
+              ),
+            ),
+          ),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.only(bottom: 8),
+              children: [
+                for (final region in JobRegion.values)
+                  _JobRegionRow(
+                    region: region,
+                    selected: region == current,
+                    onTap: () => Navigator.of(context).pop(region),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _JobRegionRow extends StatelessWidget {
+  const _JobRegionRow({
+    required this.region,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final JobRegion region;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
+          child: Row(
+            children: [
+              Text(region.flag, style: const TextStyle(fontSize: 22)),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  region.label,
+                  style: TextStyle(
+                    color: brand.ink,
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+              _AutonomyRadio(selected: selected),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

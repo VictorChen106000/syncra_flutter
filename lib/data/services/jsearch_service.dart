@@ -33,6 +33,13 @@ class JSearchService {
   final http.Client _client;
   final FirebaseFirestore _db;
 
+  /// ISO 3166-1 alpha-2 country the search defaults to when a call doesn't pass
+  /// an explicit `country` — the user's selected [JobRegion], pushed in before
+  /// each turn/brief so a region change in Profile or onboarding takes effect on
+  /// the next search. Defaults to `us`, matching JSearch's own default, so the
+  /// pre-region behaviour is unchanged until something sets it.
+  String defaultCountry = 'us';
+
   /// JSearch's free tier is 200 requests/month — cache aggressively so dev
   /// and the demo stay well under quota.
   static const Duration _cacheTtl = Duration(hours: 1);
@@ -56,6 +63,7 @@ class JSearchService {
   Future<List<Job>> search({
     required String query,
     String? location,
+    String? country,
     int limit = 10,
   }) async {
     final cleanQuery = query.trim();
@@ -65,14 +73,24 @@ class JSearchService {
     }
     final cappedLimit = limit.clamp(1, 25);
 
-    final key = _cacheKey(cleanQuery, location, cappedLimit);
+    // An explicit per-call country wins; otherwise fall back to the user's
+    // selected region. Empty means "let JSearch use its own default".
+    final explicit = country?.trim().toLowerCase() ?? '';
+    final effectiveCountry = explicit.isNotEmpty ? explicit : defaultCountry;
+
+    final key = _cacheKey(cleanQuery, location, effectiveCountry, cappedLimit);
     final cached = _cache[key];
     if (cached != null && !cached.isStale) {
       debugPrint('JSearchService: cache hit for "$cleanQuery"');
       return cached.jobs;
     }
 
-    final rawJobs = await _fetch(cleanQuery, location, cappedLimit);
+    final rawJobs = await _fetch(
+      cleanQuery,
+      location,
+      effectiveCountry,
+      cappedLimit,
+    );
 
     // Dedupe by deterministic id — JSearch occasionally returns the same
     // posting twice with different apply links.
@@ -93,20 +111,25 @@ class JSearchService {
   Future<List<Map<String, dynamic>>> _fetch(
     String query,
     String? location,
+    String country,
     int limit,
   ) async {
     // Location is no longer folded into the query text ("... in Remote" was an
     // unnatural phrase that collapsed JSearch relevance to a handful of hits).
     // A remote location maps to JSearch's dedicated `remote_jobs_only` flag;
-    // any other location is left to the catalogue fallback's local filtering.
+    // the [country] (the user's region) narrows results via JSearch's own
+    // `country` param; any other location text is left to the catalogue
+    // fallback's local filtering.
     final loc = location?.trim().toLowerCase() ?? '';
     final remoteOnly = loc.contains('remote');
+    final cleanCountry = country.trim().toLowerCase();
     final uri = SyncraProxy.jsearch.replace(
       queryParameters: {
         'query': query,
         'page': '1',
         'num_pages': '2',
         'date_posted': 'month',
+        if (cleanCountry.isNotEmpty) 'country': cleanCountry,
         if (remoteOnly) 'remote_jobs_only': 'true',
       },
     );
@@ -218,10 +241,11 @@ class JSearchService {
     return 'job_${digest.substring(0, 20)}';
   }
 
-  String _cacheKey(String query, String? location, int limit) {
+  String _cacheKey(String query, String? location, String country, int limit) {
     final raw =
         '${query.toLowerCase()}|'
-        '${(location ?? '').toLowerCase().trim()}|$limit';
+        '${(location ?? '').toLowerCase().trim()}|'
+        '${country.toLowerCase().trim()}|$limit';
     return sha256.convert(utf8.encode(raw)).toString().substring(0, 16);
   }
 

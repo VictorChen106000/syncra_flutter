@@ -29,9 +29,11 @@ import 'tool_registry.dart';
 /// for the chat UI to demo end-to-end.
 ///
 /// Replace stubs in-place as Tracks B, C, D land.
-void registerBuiltinTools(ToolRegistry registry) {
+void registerBuiltinTools(ToolRegistry registry, {JSearchService? jsearch}) {
   final jobs = JobsRepository();
-  final jsearch = JSearchService();
+  // Accept a caller-owned instance so the controller can push the user's
+  // search region (its `defaultCountry`) per turn; otherwise own a fresh one.
+  final search = jsearch ?? JSearchService();
   final applications = ApplicationsRepository();
   final pipeline = PipelineRepository();
   final resumes = ResumesRepository();
@@ -43,7 +45,7 @@ void registerBuiltinTools(ToolRegistry registry) {
     parser: ResumeParserService(),
   );
 
-  _registerSearchJobs(registry, jsearch, jobs);
+  _registerSearchJobs(registry, search, jobs);
   _registerReadResume(registry, orchestrator);
   _registerRememberFact(registry);
   _registerMatchJobs(registry, jobs, anthropic, orchestrator);
@@ -74,7 +76,9 @@ void _registerSearchJobs(
       description:
           'Search live job listings. Returns up to 10 normalized job '
           'records that match the query. Use this whenever the user '
-          "wants jobs — don't make them up.",
+          "wants jobs — don't make them up. Results are scoped to the user's "
+          'selected job region by default; only set `country` to override it '
+          'when the user explicitly names a different country to search in.',
       inputSchema: {
         'type': 'object',
         'properties': {
@@ -88,6 +92,13 @@ void _registerSearchJobs(
             'description':
                 'Optional location filter (e.g. "Remote", "Singapore").',
           },
+          'country': {
+            'type': 'string',
+            'description':
+                'Optional ISO 3166-1 alpha-2 country code (e.g. "tw", "us") '
+                "to override the user's default job region. Leave unset to use "
+                'their selected region.',
+          },
           'limit': {'type': 'integer', 'description': 'Default 10, max 25.'},
         },
         'required': ['query'],
@@ -99,6 +110,8 @@ void _registerSearchJobs(
       final query = (args['query'] as String? ?? '').trim();
       final locationRaw = (args['location'] as String? ?? '').trim();
       final location = locationRaw.isEmpty ? null : locationRaw;
+      final countryRaw = (args['country'] as String? ?? '').trim();
+      final country = countryRaw.isEmpty ? null : countryRaw;
       final limit = ((args['limit'] as num?)?.toInt() ?? 10).clamp(1, 25);
 
       // Live JSearch when a RapidAPI key is configured. On any failure
@@ -109,6 +122,7 @@ void _registerSearchJobs(
           final live = await jsearch.search(
             query: query,
             location: location,
+            country: country,
             limit: limit,
           );
           if (live.isNotEmpty) return _searchJobsResult(live);
