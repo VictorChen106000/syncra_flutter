@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 import '../../../core/constants/app_assets.dart';
 import '../../../core/router/route_names.dart';
@@ -507,6 +509,8 @@ class _UploadPhase extends ConsumerWidget {
                 if (hasResume && !busy)
                   _UploadedResume(
                     resume: state.resumes.first,
+                    onPreview: () =>
+                        _showResumePreview(context, state.resumes.first),
                     onDelete: () => ref
                         .read(resumeProvider.notifier)
                         .deleteResume(state.resumes.first.id),
@@ -935,6 +939,7 @@ class _PromptPhaseState extends ConsumerState<_PromptPhase> {
                 if (resume != null)
                   _UploadedResume(
                     resume: resume,
+                    onPreview: () => _showResumePreview(context, resume),
                   ).animate().fadeIn(duration: 380.ms).moveY(begin: 6, end: 0),
                 const SizedBox(height: 30),
                 Text.rich(
@@ -1476,9 +1481,13 @@ class _SendButton extends StatelessWidget {
 /// remove it. No card, no border: just the file, in keeping with the minimalist
 /// flow. Shared by the upload and prompt phases.
 class _UploadedResume extends StatelessWidget {
-  const _UploadedResume({required this.resume, this.onDelete});
+  const _UploadedResume({required this.resume, this.onPreview, this.onDelete});
 
   final ResumeFile resume;
+
+  /// When non-null, an eye icon sits beside the file and calls this to open a
+  /// full preview of the uploaded resume without leaving onboarding.
+  final VoidCallback? onPreview;
 
   /// When non-null, a trash icon sits beside the file and calls this to remove
   /// it. Omitted on the prompt phase, where the file is just being confirmed.
@@ -1527,6 +1536,24 @@ class _UploadedResume extends StatelessWidget {
               ],
             ),
           ),
+          if (onPreview != null) ...[
+            const SizedBox(width: 6),
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onPreview,
+                borderRadius: BorderRadius.circular(10),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Icon(
+                    Icons.visibility_outlined,
+                    size: 20,
+                    color: brand.textMuted,
+                  ),
+                ),
+              ),
+            ),
+          ],
           if (onDelete != null) ...[
             const SizedBox(width: 6),
             Material(
@@ -1546,6 +1573,155 @@ class _UploadedResume extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Opens a full preview of [resume] over a dark scrim, without leaving the
+/// onboarding flow. Reuses the same byte-fetch path as the standalone resume
+/// preview page; falls back to a short message for non-PDF files or a missing
+/// blob. (Standalone [ResumePreviewPage] can't be reused here — its chrome
+/// navigates to the resumes list, which would drop the user out of onboarding.)
+void _showResumePreview(BuildContext context, ResumeFile resume) {
+  showDialog<void>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.92),
+    builder: (_) => _ResumePreviewDialog(resume: resume),
+  );
+}
+
+class _ResumePreviewDialog extends ConsumerStatefulWidget {
+  const _ResumePreviewDialog({required this.resume});
+
+  final ResumeFile resume;
+
+  @override
+  ConsumerState<_ResumePreviewDialog> createState() =>
+      _ResumePreviewDialogState();
+}
+
+class _ResumePreviewDialogState extends ConsumerState<_ResumePreviewDialog> {
+  // Kicked off once and held so a rebuild doesn't re-download the blob.
+  late final Future<Uint8List?> _bytes = ref
+      .read(resumeProvider.notifier)
+      .bytesFor(widget.resume);
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final resume = widget.resume;
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.fromLTRB(16, 48, 16, 32),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  resume.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _softInk,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Material(
+                color: brand.surface,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  onTap: () => Navigator.of(context).pop(),
+                  customBorder: const CircleBorder(),
+                  child: const SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: Icon(
+                      Icons.close_rounded,
+                      color: _softInk,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: ColoredBox(
+                color: Colors.white,
+                child: SizedBox.expand(
+                  child: FutureBuilder<Uint8List?>(
+                    future: _bytes,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState != ConnectionState.done) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      final bytes = snapshot.data;
+                      if (!resume.isPdf || bytes == null) {
+                        return _PreviewUnavailable(resume: resume);
+                      }
+                      return SfPdfViewer.memory(
+                        bytes,
+                        key: ValueKey('${resume.id}-${bytes.length}'),
+                        canShowScrollHead: false,
+                        canShowScrollStatus: false,
+                        canShowPaginationDialog: false,
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shown inside the preview card when the file can't be rendered inline — a
+/// non-PDF (DOC/DOCX) or a resume whose Storage blob is missing.
+class _PreviewUnavailable extends StatelessWidget {
+  const _PreviewUnavailable({required this.resume});
+
+  final ResumeFile resume;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.description_outlined,
+              size: 40,
+              color: Color(0xFF9AA0A6),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              resume.isPdf
+                  ? "Couldn't load this file's preview."
+                  : 'Inline preview is only available for PDF files.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFF3C4043),
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
