@@ -206,32 +206,43 @@ class ProfilePage extends StatelessWidget {
           AppHeader.tab(title: AppStrings.profileTitle),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(
-                AppConstants.screenHorizontalPadding,
-                16,
-                AppConstants.screenHorizontalPadding,
-                140,
-              ),
+              // No horizontal padding on the list itself: the resume-fit chart
+              // runs nearly edge-to-edge (its own 12px inset) so the donut and
+              // its hanging labels get the full width of the phone. Every other
+              // section re-applies the standard screen padding below.
+              padding: const EdgeInsets.only(top: 8, bottom: 140),
               children: [
-                const _ProfileHeaderCard(),
-                const SizedBox(height: 24),
-                const SectionTitle(title: 'Career Memory'),
-                const _CareerMemorySection(),
-                const SizedBox(height: 24),
-                const SectionTitle(title: 'Resumes'),
-                const _ResumesSection(),
-                const SizedBox(height: 24),
-                const SectionTitle(title: 'Connections'),
-                const _IntegrationSection(),
-                const SizedBox(height: 24),
-                const SectionTitle(title: 'Agent Autonomy'),
-                const _AutonomyDialSection(),
-                const SizedBox(height: 24),
-                const SectionTitle(title: 'Appearance'),
-                const _AppearanceSection(),
-                const SizedBox(height: 24),
-                const SectionTitle(title: 'Account'),
-                const _AccountSection(),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12),
+                  child: _ProfileHeaderCard(),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppConstants.screenHorizontalPadding,
+                  ),
+                  child: Column(
+                    children: const [
+                      SizedBox(height: 32),
+                      SectionTitle(title: 'Career Memory'),
+                      _CareerMemorySection(),
+                      SizedBox(height: 24),
+                      SectionTitle(title: 'Resumes'),
+                      _ResumesSection(),
+                      SizedBox(height: 24),
+                      SectionTitle(title: 'Connections'),
+                      _IntegrationSection(),
+                      SizedBox(height: 24),
+                      SectionTitle(title: 'Agent Autonomy'),
+                      _AutonomyDialSection(),
+                      SizedBox(height: 24),
+                      SectionTitle(title: 'Appearance'),
+                      _AppearanceSection(),
+                      SizedBox(height: 24),
+                      SectionTitle(title: 'Account'),
+                      _AccountSection(),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -415,148 +426,95 @@ class _ProfileHeaderCard extends ConsumerWidget {
     final brand = context.brand;
     final user = ref.watch(authProvider).appUser;
     final profile = ref.watch(userProfileProvider);
-    final displayName = user?.displayName ?? 'there';
     final initial = user?.initial ?? 'D';
-    final email = user?.email ?? '';
     final photoUrl = user?.photoUrl;
     final role = (profile?.role ?? '').trim();
     final resumeFit = profile?.resumeFit;
     final hasFit = resumeFit != null && resumeFit.segments.isNotEmpty;
 
-    return Container(
-      padding: const EdgeInsets.all(AppConstants.cardPadding),
-      decoration: BoxDecoration(
-        color: brand.surface,
-        borderRadius: BorderRadius.circular(AppConstants.cardRadius),
-        border: Border.all(color: brand.border),
-        boxShadow: [
-          BoxShadow(
-            color: brand.shadow,
-            blurRadius: 20,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
+    final avatar = _FitCenterAvatar(photoUrl: photoUrl, initial: initial);
+
+    // No resume-fit yet → there's no chart to nest the avatar in. Fall back to
+    // a calm, card-less identity: the avatar alone with the target role beneath.
+    if (!hasFit) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8, bottom: 4),
+        child: Column(
+          children: [
+            SizedBox(width: 96, height: 96, child: avatar),
+            const SizedBox(height: 16),
+            _TargetRoleCaption(role: role),
+          ],
+        ),
+      );
+    }
+
+    // The agent's resume-fit read as an interactive donut. The avatar lives in
+    // the centre (no name/email needed), each strength's label + percent hangs
+    // off its own slice, and the dominant slice's rationale sits below. No card.
+    return Padding(
+      padding: const EdgeInsets.only(top: 16, bottom: 8),
       child: Column(
         children: [
-          Row(
-            children: [
-              _ProfileAvatar(photoUrl: photoUrl, initial: initial),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      displayName,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.2,
-                        height: 1.2,
-                        color: brand.ink,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (email.isNotEmpty) ...[
-                      const SizedBox(height: 3),
-                      Text(
-                        email,
-                        style: TextStyle(
-                          color: brand.textMuted,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: -0.1,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Divider(height: 1, color: brand.bg),
-          const SizedBox(height: 4),
-          // Real, agent-captured search context — the role onboarding set and
-          // the dominant strength the resume analysis read. No placeholders:
-          // rows only appear once there's actual data behind them.
-          _SearchCriteriaRow(
-            label: 'Target role',
-            value: role.isEmpty ? 'Not set yet' : role,
-          ),
-          // The agent's resume-fit read, rendered as the same interactive donut
-          // used in chat and the dashboard — the dominant strength is
-          // pre-focused, so the headline number reads at a glance.
-          if (hasFit) ...[
-            const SizedBox(height: 6),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Strengths',
-                style: TextStyle(
-                  color: brand.textMuted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.1,
-                ),
-              ),
+          Text(
+            'STRENGTHS',
+            style: TextStyle(
+              color: brand.textSoft,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.4,
             ),
-            const SizedBox(height: 8),
-            ResumeFitChart(fit: resumeFit),
-          ],
+          ),
+          const SizedBox(height: 8),
+          ResumeFitChart(fit: resumeFit, centerChild: avatar),
+          const SizedBox(height: 18),
+          _TargetRoleCaption(role: role),
         ],
       ),
     );
   }
 }
 
-/// Plain text row for the agent's search criteria, embedded inside the
-/// profile header card. No leading icon — the section frames itself.
-class _SearchCriteriaRow extends StatelessWidget {
-  const _SearchCriteriaRow({required this.label, required this.value});
+/// The agent's target role, shown as a quiet centred caption under the chart —
+/// no card, no leading label column. The flag glyph carries the meaning.
+class _TargetRoleCaption extends StatelessWidget {
+  const _TargetRoleCaption({required this.role});
 
-  final String label;
-  final String value;
+  final String role;
 
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
-    // Read-only summary of what the agent infers about the user's search.
-    // Editing happens via the agent thread, so these rows aren't tappable.
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          Text(
-            label,
+    final hasRole = role.isNotEmpty;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.flag_rounded, size: 14, color: brand.textSoft),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            hasRole ? role : 'No target role yet',
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: brand.textMuted,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.1,
-            ),
-          ),
-          const Spacer(),
-          Text(
-            value,
-            style: TextStyle(
-              color: brand.ink,
-              fontSize: 13,
+              color: hasRole ? brand.ink : brand.textMuted,
+              fontSize: 13.5,
               fontWeight: FontWeight.w700,
+              letterSpacing: -0.2,
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-class _ProfileAvatar extends StatelessWidget {
-  const _ProfileAvatar({required this.photoUrl, required this.initial});
+/// Avatar that fills whatever box it's given — used both in the donut hole
+/// (sized by [ResumeFitChart]) and as the standalone fallback identity. A
+/// surface-coloured ring lifts it off the chart's centre hole.
+class _FitCenterAvatar extends StatelessWidget {
+  const _FitCenterAvatar({required this.photoUrl, required this.initial});
 
   final String? photoUrl;
   final String initial;
@@ -570,20 +528,35 @@ class _ProfileAvatar extends StatelessWidget {
         : const AssetImage(AppAssets.profileImage);
 
     return Container(
-      width: 56,
-      height: 56,
-      decoration: BoxDecoration(color: brand.accent, shape: BoxShape.circle),
+      decoration: BoxDecoration(
+        color: brand.accent,
+        shape: BoxShape.circle,
+        border: Border.all(color: brand.surface, width: 3),
+        boxShadow: [
+          BoxShadow(
+            color: brand.shadow,
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: ClipOval(
         child: Stack(
           fit: StackFit.expand,
           children: [
             Center(
-              child: Text(
-                initial,
-                style: TextStyle(
-                  color: brand.onAccent,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 22,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Text(
+                    initial,
+                    style: TextStyle(
+                      color: brand.onAccent,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 28,
+                    ),
+                  ),
                 ),
               ),
             ),
