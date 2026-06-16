@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 import '../../../core/constants/app_assets.dart';
 import '../../../core/router/route_names.dart';
@@ -507,6 +509,8 @@ class _UploadPhase extends ConsumerWidget {
                 if (hasResume && !busy)
                   _UploadedResume(
                     resume: state.resumes.first,
+                    onPreview: () =>
+                        _showResumePreview(context, state.resumes.first),
                     onDelete: () => ref
                         .read(resumeProvider.notifier)
                         .deleteResume(state.resumes.first.id),
@@ -895,6 +899,27 @@ class _PromptPhaseState extends ConsumerState<_PromptPhase> {
     unawaited(ref.read(userProfileProvider.notifier).setJobRegion(picked));
   }
 
+  /// Opens the agent-autonomy picker and persists the choice. Read back live by
+  /// the pill above; `setAutonomyLevel` also re-derives the bounded auto-apply
+  /// guardrails, so the level the user picks here governs the chat agent and the
+  /// pipeline autopilot from the very first run.
+  Future<void> _pickAutonomy() async {
+    final current =
+        ref.read(userProfileProvider)?.autonomyLevel ??
+        AutonomyLevel.autopilot;
+    final picked = await showModalBottomSheet<AutonomyLevel>(
+      context: context,
+      backgroundColor: context.brand.surface,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (_) => _AutonomySheet(current: current),
+    );
+    if (picked == null || picked == current || !mounted) return;
+    unawaited(ref.read(userProfileProvider.notifier).setAutonomyLevel(picked));
+  }
+
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
@@ -914,6 +939,7 @@ class _PromptPhaseState extends ConsumerState<_PromptPhase> {
                 if (resume != null)
                   _UploadedResume(
                     resume: resume,
+                    onPreview: () => _showResumePreview(context, resume),
                   ).animate().fadeIn(duration: 380.ms).moveY(begin: 6, end: 0),
                 const SizedBox(height: 30),
                 Text.rich(
@@ -941,17 +967,31 @@ class _PromptPhaseState extends ConsumerState<_PromptPhase> {
             ),
           ),
         ),
-        // Where to look — sits just above the composer so the user sets the
-        // search region alongside the goal. Defaults to their profile region
-        // (US for a fresh account); tapping opens a quick picker.
+        // Where to look + how far to run — sit just above the composer so the
+        // user sets the search region and the agent's autonomy alongside the
+        // goal. Both default to their profile values (US + Autopilot for a fresh
+        // account); tapping either opens a quick picker, persisted live and read
+        // by the brief and the agent on the very first run.
         Align(
           alignment: Alignment.centerLeft,
           child:
-              _RegionPill(
-                    region:
-                        ref.watch(userProfileProvider)?.jobRegion ??
-                        JobRegion.unitedStates,
-                    onTap: _pickRegion,
+              Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _RegionPill(
+                        region:
+                            ref.watch(userProfileProvider)?.jobRegion ??
+                            JobRegion.unitedStates,
+                        onTap: _pickRegion,
+                      ),
+                      _AutonomyPill(
+                        level:
+                            ref.watch(userProfileProvider)?.autonomyLevel ??
+                            AutonomyLevel.autopilot,
+                        onTap: _pickAutonomy,
+                      ),
+                    ],
                   )
                   .animate(delay: 240.ms)
                   .fadeIn(duration: 380.ms)
@@ -1177,7 +1217,7 @@ class _RegionSheet extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            _RegionCheck(selected: region == current),
+                            _SelectionCheck(selected: region == current),
                           ],
                         ),
                       ),
@@ -1192,10 +1232,193 @@ class _RegionSheet extends StatelessWidget {
   }
 }
 
-/// Radio-style marker for the region sheet: a filled lime disc with a check
+/// Glyph for an [AutonomyLevel] — mirrors the icons Profile's autonomy dial
+/// uses so the two surfaces read the same.
+IconData _autonomyIcon(AutonomyLevel level) => switch (level) {
+  AutonomyLevel.assist => Icons.tune_rounded,
+  AutonomyLevel.autoDraft => Icons.auto_awesome_rounded,
+  AutonomyLevel.autopilot => Icons.bolt_rounded,
+};
+
+/// One-line description of how far each [AutonomyLevel] lets the agent run.
+/// Kept in sync with Profile's autonomy dial blurbs.
+String _autonomyBlurb(AutonomyLevel level) => switch (level) {
+  AutonomyLevel.assist => 'Asks before each step — you approve every move.',
+  AutonomyLevel.autoDraft => 'Tailors and drafts on its own. You save, then tap Send.',
+  AutonomyLevel.autopilot => 'Also sends low-risk emails for you — 5 seconds to undo.',
+};
+
+/// A compact "agent autonomy" affordance on the prompt beat: a glyph for the
+/// current level, its name, and a chevron. Tapping opens [_AutonomySheet] so the
+/// user sets how far the agent runs on its own before onboarding even finishes.
+/// Mirrors [_RegionPill]; outlined to sit quietly above the lime composer.
+class _AutonomyPill extends StatelessWidget {
+  const _AutonomyPill({required this.level, required this.onTap});
+
+  final AutonomyLevel level;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Semantics(
+      button: true,
+      label: 'Agent autonomy: ${level.label}',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(99),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+            decoration: BoxDecoration(
+              color: brand.surface,
+              borderRadius: BorderRadius.circular(99),
+              border: Border.all(color: brand.border),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(_autonomyIcon(level), size: 16, color: brand.textMuted),
+                const SizedBox(width: 7),
+                Text(
+                  level.label,
+                  style: const TextStyle(
+                    color: _softInk,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+                const SizedBox(width: 2),
+                Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  size: 18,
+                  color: brand.textMuted,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The autonomy chooser sheet — one row per [AutonomyLevel] with its glyph,
+/// name, a one-line blurb, and a lime check on the active one. Shares the shape
+/// of [_RegionSheet] and pops the chosen level back to the caller.
+class _AutonomySheet extends StatelessWidget {
+  const _AutonomySheet({required this.current});
+
+  final AutonomyLevel current;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 4, 24, 4),
+            child: Text(
+              'Agent autonomy',
+              style: TextStyle(
+                color: brand.ink,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+            child: Text(
+              'How far your agent runs on its own before it waits for you. You '
+              'can change this anytime in Profile.',
+              style: TextStyle(
+                color: brand.textMuted,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                height: 1.4,
+              ),
+            ),
+          ),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.only(bottom: 8),
+              children: [
+                for (final level in AutonomyLevel.values)
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => Navigator.of(context).pop(level),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 13,
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              _autonomyIcon(level),
+                              size: 22,
+                              color: brand.accent,
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    level.label,
+                                    style: TextStyle(
+                                      color: brand.ink,
+                                      fontSize: 15.5,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: -0.2,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    _autonomyBlurb(level),
+                                    style: TextStyle(
+                                      color: brand.textMuted,
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w500,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: _SelectionCheck(selected: level == current),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Radio-style marker for the picker sheets: a filled lime disc with a check
 /// when active, a hairline ring otherwise. Mirrors Profile's selected marker.
-class _RegionCheck extends StatelessWidget {
-  const _RegionCheck({required this.selected});
+class _SelectionCheck extends StatelessWidget {
+  const _SelectionCheck({required this.selected});
 
   final bool selected;
 
@@ -1258,9 +1481,13 @@ class _SendButton extends StatelessWidget {
 /// remove it. No card, no border: just the file, in keeping with the minimalist
 /// flow. Shared by the upload and prompt phases.
 class _UploadedResume extends StatelessWidget {
-  const _UploadedResume({required this.resume, this.onDelete});
+  const _UploadedResume({required this.resume, this.onPreview, this.onDelete});
 
   final ResumeFile resume;
+
+  /// When non-null, an eye icon sits beside the file and calls this to open a
+  /// full preview of the uploaded resume without leaving onboarding.
+  final VoidCallback? onPreview;
 
   /// When non-null, a trash icon sits beside the file and calls this to remove
   /// it. Omitted on the prompt phase, where the file is just being confirmed.
@@ -1309,6 +1536,24 @@ class _UploadedResume extends StatelessWidget {
               ],
             ),
           ),
+          if (onPreview != null) ...[
+            const SizedBox(width: 6),
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onPreview,
+                borderRadius: BorderRadius.circular(10),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Icon(
+                    Icons.visibility_outlined,
+                    size: 20,
+                    color: brand.textMuted,
+                  ),
+                ),
+              ),
+            ),
+          ],
           if (onDelete != null) ...[
             const SizedBox(width: 6),
             Material(
@@ -1328,6 +1573,155 @@ class _UploadedResume extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Opens a full preview of [resume] over a dark scrim, without leaving the
+/// onboarding flow. Reuses the same byte-fetch path as the standalone resume
+/// preview page; falls back to a short message for non-PDF files or a missing
+/// blob. (Standalone [ResumePreviewPage] can't be reused here — its chrome
+/// navigates to the resumes list, which would drop the user out of onboarding.)
+void _showResumePreview(BuildContext context, ResumeFile resume) {
+  showDialog<void>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.92),
+    builder: (_) => _ResumePreviewDialog(resume: resume),
+  );
+}
+
+class _ResumePreviewDialog extends ConsumerStatefulWidget {
+  const _ResumePreviewDialog({required this.resume});
+
+  final ResumeFile resume;
+
+  @override
+  ConsumerState<_ResumePreviewDialog> createState() =>
+      _ResumePreviewDialogState();
+}
+
+class _ResumePreviewDialogState extends ConsumerState<_ResumePreviewDialog> {
+  // Kicked off once and held so a rebuild doesn't re-download the blob.
+  late final Future<Uint8List?> _bytes = ref
+      .read(resumeProvider.notifier)
+      .bytesFor(widget.resume);
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    final resume = widget.resume;
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.fromLTRB(16, 48, 16, 32),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  resume.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _softInk,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Material(
+                color: brand.surface,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  onTap: () => Navigator.of(context).pop(),
+                  customBorder: const CircleBorder(),
+                  child: const SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: Icon(
+                      Icons.close_rounded,
+                      color: _softInk,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: ColoredBox(
+                color: Colors.white,
+                child: SizedBox.expand(
+                  child: FutureBuilder<Uint8List?>(
+                    future: _bytes,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState != ConnectionState.done) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      final bytes = snapshot.data;
+                      if (!resume.isPdf || bytes == null) {
+                        return _PreviewUnavailable(resume: resume);
+                      }
+                      return SfPdfViewer.memory(
+                        bytes,
+                        key: ValueKey('${resume.id}-${bytes.length}'),
+                        canShowScrollHead: false,
+                        canShowScrollStatus: false,
+                        canShowPaginationDialog: false,
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shown inside the preview card when the file can't be rendered inline — a
+/// non-PDF (DOC/DOCX) or a resume whose Storage blob is missing.
+class _PreviewUnavailable extends StatelessWidget {
+  const _PreviewUnavailable({required this.resume});
+
+  final ResumeFile resume;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.description_outlined,
+              size: 40,
+              color: Color(0xFF9AA0A6),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              resume.isPdf
+                  ? "Couldn't load this file's preview."
+                  : 'Inline preview is only available for PDF files.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFF3C4043),
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
