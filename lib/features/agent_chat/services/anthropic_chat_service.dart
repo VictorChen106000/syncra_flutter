@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../data/services/anthropic_client.dart';
+import '../../../data/services/jsearch_service.dart';
 import '../../../data/models/job.dart';
 import '../../email/models/recipient_resolution.dart';
 import '../models/agent_block.dart';
@@ -31,8 +32,27 @@ class AnthropicChatService implements AgentService {
     AnthropicClient? client,
     this.model = 'claude-haiku-4-5-20251001',
     String? systemPromptOverride,
+    JSearchService? searchService,
   }) : _client = client ?? AnthropicClient(),
+       _searchService = searchService,
        _systemPrompt = systemPromptOverride ?? systemPrompt;
+
+  /// The same [JSearchService] instance the registry's `search_jobs` tool uses,
+  /// when the caller shares one in. Holding it here lets [setSearchCountry]
+  /// push the user's region down to the tool per turn. Null for sessions
+  /// (e.g. an override-prompt one-off) that don't wire live search.
+  final JSearchService? _searchService;
+
+  @override
+  void setSearchRegion(String countryCode, String regionName) {
+    final code = countryCode.trim().toLowerCase();
+    final search = _searchService;
+    if (search == null || code.isEmpty) return;
+    search.defaultCountry = code;
+    // The region name is only folded into the query for non-US regions; the US
+    // ranks better on a clean query, so it carries no region term.
+    search.defaultRegionQuery = code == 'us' ? '' : regionName.trim();
+  }
 
   /// The system prompt actually sent on every request. Defaults to the main
   /// chatbot's [systemPrompt]; callers may override it via

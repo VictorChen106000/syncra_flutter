@@ -7,6 +7,7 @@ import '../../../data/firestore/jobs_repository.dart';
 import '../../../data/firestore/pipeline_repository.dart';
 import '../../../data/firestore/resumes_repository.dart';
 import '../../../data/models/job.dart';
+import '../../../data/services/jsearch_service.dart';
 import '../../../shared/state/running_task_notifier.dart';
 import '../../auth/models/user_profile.dart';
 import '../../auth/state/auth_notifier.dart';
@@ -66,8 +67,12 @@ String _autonomyDirectiveFor(AutonomyLevel level) => switch (level) {
 /// at call time rather than falling back to scripted responses.
 final agentServiceProvider = Provider<AgentService>((ref) {
   final registry = ToolRegistry();
-  registerBuiltinTools(registry);
-  return AnthropicChatService(registry: registry);
+  // One shared JSearchService so the controller can push the user's job region
+  // (its default search country) down to the `search_jobs` tool each turn via
+  // [AgentService.setSearchCountry].
+  final search = JSearchService();
+  registerBuiltinTools(registry, jsearch: search);
+  return AnthropicChatService(registry: registry, searchService: search);
 });
 
 /// Persists the recoverable full chat UI snapshot so chats survive app
@@ -908,6 +913,7 @@ Do not call send_email.
     );
 
     _syncAutonomyDirective();
+    _syncSearchRegion();
     _activeSub = _service
         .runPrompt(prompt: clean, attachments: attachments)
         .listen(
@@ -926,6 +932,15 @@ Do not call send_email.
     _service.setAutonomyDirective(_autonomyDirectiveFor(level));
   }
 
+  /// Pushes the user's selected job region down to the agent's live job search
+  /// before a turn runs, so `search_jobs` scopes to that country. Read fresh
+  /// each turn so a mid-session change in Profile takes effect at once.
+  void _syncSearchRegion() {
+    final region =
+        ref.read(userProfileProvider)?.jobRegion ?? JobRegion.unitedStates;
+    _service.setSearchRegion(region.code, region.label);
+  }
+
   void _startContinuationPrompt(String prompt) {
     final clean = prompt.trim();
     if (clean.isEmpty) return;
@@ -939,6 +954,7 @@ Do not call send_email.
     _persistNow();
 
     _syncAutonomyDirective();
+    _syncSearchRegion();
     _activeSub = _service
         .runPrompt(prompt: clean, threaded: true)
         .listen(

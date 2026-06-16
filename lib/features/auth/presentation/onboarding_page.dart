@@ -27,6 +27,7 @@ import '../../resumes/models/resume_json.dart';
 import '../../resumes/services/resume_parser_service.dart';
 import '../../resumes/services/resume_tailor_orchestrator.dart';
 import '../../resumes/state/resume_notifier.dart';
+import '../models/user_profile.dart';
 import '../state/auth_notifier.dart';
 import '../state/user_profile_notifier.dart';
 
@@ -876,6 +877,24 @@ class _PromptPhaseState extends ConsumerState<_PromptPhase> {
 
   void _submit() => widget.onSend(_controller.text);
 
+  /// Opens the region picker and persists the choice. Read back live by the
+  /// pill above, and used by the brief once setup runs.
+  Future<void> _pickRegion() async {
+    final current =
+        ref.read(userProfileProvider)?.jobRegion ?? JobRegion.unitedStates;
+    final picked = await showModalBottomSheet<JobRegion>(
+      context: context,
+      backgroundColor: context.brand.surface,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (_) => _RegionSheet(current: current),
+    );
+    if (picked == null || picked == current || !mounted) return;
+    unawaited(ref.read(userProfileProvider.notifier).setJobRegion(picked));
+  }
+
   @override
   Widget build(BuildContext context) {
     final brand = context.brand;
@@ -922,6 +941,23 @@ class _PromptPhaseState extends ConsumerState<_PromptPhase> {
             ),
           ),
         ),
+        // Where to look — sits just above the composer so the user sets the
+        // search region alongside the goal. Defaults to their profile region
+        // (US for a fresh account); tapping opens a quick picker.
+        Align(
+          alignment: Alignment.centerLeft,
+          child:
+              _RegionPill(
+                    region:
+                        ref.watch(userProfileProvider)?.jobRegion ??
+                        JobRegion.unitedStates,
+                    onTap: _pickRegion,
+                  )
+                  .animate(delay: 240.ms)
+                  .fadeIn(duration: 380.ms)
+                  .moveY(begin: 10, end: 0),
+        ),
+        const SizedBox(height: 10),
         _Composer(controller: _controller, focus: _focus, onSend: _submit)
             .animate(delay: 280.ms)
             .fadeIn(duration: 380.ms)
@@ -1007,6 +1043,180 @@ class _Composer extends StatelessWidget {
           _SendButton(onTap: onSend),
         ],
       ),
+    );
+  }
+}
+
+/// A compact "search region" affordance on the prompt beat: a globe glyph, the
+/// current region's flag + name, and a chevron. Tapping opens [_RegionSheet].
+/// Outlined to sit quietly above the lime composer.
+class _RegionPill extends StatelessWidget {
+  const _RegionPill({required this.region, required this.onTap});
+
+  final JobRegion region;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Semantics(
+      button: true,
+      label: 'Search region: ${region.label}',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(99),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+            decoration: BoxDecoration(
+              color: brand.surface,
+              borderRadius: BorderRadius.circular(99),
+              border: Border.all(color: brand.border),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.public_rounded, size: 16, color: brand.textMuted),
+                const SizedBox(width: 7),
+                Text(
+                  '${region.flag}  ${region.label}',
+                  style: const TextStyle(
+                    color: _softInk,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+                const SizedBox(width: 2),
+                Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  size: 18,
+                  color: brand.textMuted,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The region chooser sheet shared shape with Profile's picker: one row per
+/// [JobRegion], flag + name, a lime check on the active one. Pops the chosen
+/// region back to the caller.
+class _RegionSheet extends StatelessWidget {
+  const _RegionSheet({required this.current});
+
+  final JobRegion current;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 4, 24, 4),
+            child: Text(
+              'Search jobs in',
+              style: TextStyle(
+                color: brand.ink,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+            child: Text(
+              'Where your agent looks for roles. You can change this anytime '
+              'in Profile.',
+              style: TextStyle(
+                color: brand.textMuted,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                height: 1.4,
+              ),
+            ),
+          ),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.only(bottom: 8),
+              children: [
+                for (final region in JobRegion.values)
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => Navigator.of(context).pop(region),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 13,
+                        ),
+                        child: Row(
+                          children: [
+                            Text(
+                              region.flag,
+                              style: const TextStyle(fontSize: 22),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Text(
+                                region.label,
+                                style: TextStyle(
+                                  color: brand.ink,
+                                  fontSize: 15.5,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: -0.2,
+                                ),
+                              ),
+                            ),
+                            _RegionCheck(selected: region == current),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Radio-style marker for the region sheet: a filled lime disc with a check
+/// when active, a hairline ring otherwise. Mirrors Profile's selected marker.
+class _RegionCheck extends StatelessWidget {
+  const _RegionCheck({required this.selected});
+
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = context.brand;
+    return Container(
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        color: selected ? brand.accent : Colors.transparent,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: selected ? brand.accent : brand.border,
+          width: 2,
+        ),
+      ),
+      alignment: Alignment.center,
+      child: selected
+          ? Icon(Icons.check_rounded, size: 14, color: brand.onAccent)
+          : null,
     );
   }
 }

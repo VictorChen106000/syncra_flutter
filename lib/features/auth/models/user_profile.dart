@@ -150,6 +150,47 @@ enum AutonomyLevel {
   };
 }
 
+/// Where the agent looks for jobs — maps directly to JSearch's `country`
+/// query parameter (an ISO 3166-1 alpha-2 code). JSearch itself defaults to
+/// the United States when no country is sent, so [unitedStates] keeps the
+/// pre-region behaviour unchanged; the user picks another region from
+/// onboarding or Profile to search there instead.
+///
+/// A curated, demo-friendly set rather than every country JSearch supports —
+/// enough breadth to be useful without turning the picker into a 200-row list.
+enum JobRegion {
+  unitedStates('us', 'United States', '🇺🇸'),
+  taiwan('tw', 'Taiwan', '🇹🇼'),
+  singapore('sg', 'Singapore', '🇸🇬'),
+  hongKong('hk', 'Hong Kong', '🇭🇰'),
+  japan('jp', 'Japan', '🇯🇵'),
+  unitedKingdom('gb', 'United Kingdom', '🇬🇧'),
+  canada('ca', 'Canada', '🇨🇦'),
+  australia('au', 'Australia', '🇦🇺');
+
+  const JobRegion(this.code, this.label, this.flag);
+
+  /// ISO 3166-1 alpha-2 code, lowercased — sent verbatim as JSearch's
+  /// `country` param and persisted to Firestore (`job_region`).
+  final String code;
+
+  /// Short user-facing name for the picker.
+  final String label;
+
+  /// Flag emoji shown beside the label so the choice reads at a glance.
+  final String flag;
+
+  /// Parses the persisted code, defaulting to [unitedStates] for new and
+  /// legacy profiles and any unrecognised value.
+  static JobRegion fromStorage(Object? value) {
+    final code = value is String ? value.trim().toLowerCase() : '';
+    for (final region in JobRegion.values) {
+      if (region.code == code) return region;
+    }
+    return JobRegion.unitedStates;
+  }
+}
+
 /// Snapshot of `users/{uid}` — settings the user controls.
 ///
 /// Mirrors the user profile schema documented in `docs/ARCHITECTURE.md`.
@@ -169,6 +210,7 @@ class UserProfile {
     this.recommendation,
     this.autoApplySettings = const AutoApplySettings(),
     this.autonomyLevel = AutonomyLevel.autopilot,
+    this.jobRegion = JobRegion.unitedStates,
   });
 
   final String name;
@@ -206,6 +248,11 @@ class UserProfile {
   /// [AutonomyLevel.autopilot] for new and legacy profiles.
   final AutonomyLevel autonomyLevel;
 
+  /// Which country the agent searches for jobs in (JSearch's `country` param).
+  /// Defaults to [JobRegion.unitedStates], matching JSearch's own default, so
+  /// legacy profiles behave exactly as before until the user picks a region.
+  final JobRegion jobRegion;
+
   UserProfile copyWith({
     String? name,
     String? email,
@@ -218,6 +265,7 @@ class UserProfile {
     String? recommendation,
     AutoApplySettings? autoApplySettings,
     AutonomyLevel? autonomyLevel,
+    JobRegion? jobRegion,
     bool clearResumeFit = false,
   }) {
     return UserProfile(
@@ -233,6 +281,7 @@ class UserProfile {
       recommendation: recommendation ?? this.recommendation,
       autoApplySettings: autoApplySettings ?? this.autoApplySettings,
       autonomyLevel: autonomyLevel ?? this.autonomyLevel,
+      jobRegion: jobRegion ?? this.jobRegion,
     );
   }
 
@@ -260,6 +309,7 @@ class UserProfile {
           : (data['recommendation'] as String).trim(),
       autoApplySettings: AutoApplySettings.fromMap(data['auto_apply']),
       autonomyLevel: AutonomyLevel.fromStorage(data['autonomy_level']),
+      jobRegion: JobRegion.fromStorage(data['job_region']),
     );
   }
 }

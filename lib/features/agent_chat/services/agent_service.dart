@@ -102,4 +102,13 @@ abstract class AgentService {
   /// that overrides the static prompt's default chaining/gate behavior. The
   /// controller sets this before each [runPrompt]. No-op by default.
   void setAutonomyDirective(String directive) {}
+
+  /// Sets the region `search_jobs` scopes to by default — the user's selected
+  /// [JobRegion]. [countryCode] is the ISO 3166-1 alpha-2 code (JSearch's
+  /// `country`); [regionName] is the human name (e.g. "Taiwan") folded into the
+  /// query for non-US regions so JSearch's sparse non-US index returns local
+  /// roles. The controller pushes this before each [runPrompt] so a region
+  /// change in Profile or onboarding takes effect on the next search. No-op for
+  /// implementations without live search.
+  void setSearchRegion(String countryCode, String regionName) {}
 }

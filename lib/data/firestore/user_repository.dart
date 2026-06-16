@@ -31,6 +31,7 @@ class UserRepository {
       'has_completed_onboarding': false,
       'auto_apply': const AutoApplySettings().toMap(),
       'autonomy_level': AutonomyLevel.autopilot.storageKey,
+      'job_region': JobRegion.unitedStates.code,
       'created_at': FieldValue.serverTimestamp(),
     });
   }
@@ -59,6 +60,7 @@ class UserRepository {
     String? recommendation,
     AutoApplySettings? autoApplySettings,
     AutonomyLevel? autonomyLevel,
+    JobRegion? jobRegion,
   }) async {
     final patch = <String, dynamic>{};
     if (role != null) patch['role'] = role;
@@ -75,6 +77,7 @@ class UserRepository {
     if (autonomyLevel != null) {
       patch['autonomy_level'] = autonomyLevel.storageKey;
     }
+    if (jobRegion != null) patch['job_region'] = jobRegion.code;
     if (patch.isEmpty) return;
     await _paths.user(uid).update(patch);
   }
@@ -214,6 +217,7 @@ class UserRepository {
       'recommendation': FieldValue.delete(),
       'auto_apply': const AutoApplySettings().toMap(),
       'autonomy_level': AutonomyLevel.autopilot.storageKey,
+      'job_region': JobRegion.unitedStates.code,
     });
   }
 

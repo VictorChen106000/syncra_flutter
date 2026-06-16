@@ -29,9 +29,11 @@ import 'tool_registry.dart';
 /// for the chat UI to demo end-to-end.
 ///
 /// Replace stubs in-place as Tracks B, C, D land.
-void registerBuiltinTools(ToolRegistry registry) {
+void registerBuiltinTools(ToolRegistry registry, {JSearchService? jsearch}) {
   final jobs = JobsRepository();
-  final jsearch = JSearchService();
+  // Accept a caller-owned instance so the controller can push the user's
+  // search region (its `defaultCountry`) per turn; otherwise own a fresh one.
+  final search = jsearch ?? JSearchService();
   final applications = ApplicationsRepository();
   final pipeline = PipelineRepository();
   final resumes = ResumesRepository();
@@ -43,7 +45,7 @@ void registerBuiltinTools(ToolRegistry registry) {
     parser: ResumeParserService(),
   );
 
-  _registerSearchJobs(registry, jsearch, jobs);
+  _registerSearchJobs(registry, search, jobs);
   _registerReadResume(registry, orchestrator);
   _registerRememberFact(registry);
   _registerMatchJobs(registry, jobs, anthropic, orchestrator);
@@ -74,7 +76,9 @@ void _registerSearchJobs(
       description:
           'Search live job listings. Returns up to 10 normalized job '
           'records that match the query. Use this whenever the user '
-          "wants jobs — don't make them up.",
+          "wants jobs — don't make them up. Results are scoped to the user's "
+          'selected job region by default; only set `country` to override it '
+          'when the user explicitly names a different country to search in.',
       inputSchema: {
         'type': 'object',
         'properties': {
@@ -88,6 +92,13 @@ void _registerSearchJobs(
             'description':
                 'Optional location filter (e.g. "Remote", "Singapore").',
           },
+          'country': {
+            'type': 'string',
+            'description':
+                'Optional ISO 3166-1 alpha-2 country code (e.g. "tw", "us") '
+                "to override the user's default job region. Leave unset to use "
+                'their selected region.',
+          },
           'limit': {'type': 'integer', 'description': 'Default 10, max 25.'},
         },
         'required': ['query'],
@@ -99,22 +110,43 @@ void _registerSearchJobs(
       final query = (args['query'] as String? ?? '').trim();
       final locationRaw = (args['location'] as String? ?? '').trim();
       final location = locationRaw.isEmpty ? null : locationRaw;
+      final countryRaw = (args['country'] as String? ?? '').trim();
+      final country = countryRaw.isEmpty ? null : countryRaw;
       final limit = ((args['limit'] as num?)?.toInt() ?? 10).clamp(1, 25);
+
+      // The country this search resolves to (explicit arg, else the user's
+      // region). When it's a non-US region, the seeded jobs/ catalogue (all
+      // US roles) is the wrong fallback — showing US jobs to a Taiwan user is
+      // exactly the confusion we're fixing — so we report "none found" instead.
+      final effectiveCountry = (country ?? jsearch.defaultCountry)
+          .trim()
+          .toLowerCase();
+      final regionScoped =
+          effectiveCountry.isNotEmpty && effectiveCountry != 'us';
+      final regionName = (country == null || country.isEmpty)
+          ? (jsearch.defaultRegionQuery.trim().isEmpty
+                ? effectiveCountry.toUpperCase()
+                : jsearch.defaultRegionQuery.trim())
+          : effectiveCountry.toUpperCase();
 
       // Live JSearch when a RapidAPI key is configured. On any failure
       // (no key, network error, quota exhausted) fall back to the seeded
-      // jobs/ collection so the chat still returns something.
+      // jobs/ collection so the chat still returns something — except for a
+      // non-US region, where US seed jobs would be misleading.
       if (jsearch.hasApiKey && query.isNotEmpty) {
         try {
           final live = await jsearch.search(
             query: query,
             location: location,
+            country: country,
             limit: limit,
           );
           if (live.isNotEmpty) return _searchJobsResult(live);
-          // Empty live result → fall through to the catalogue.
+          if (regionScoped) return _noLiveRegionResult(regionName);
+          // US/default → fall through to the catalogue.
         } catch (e) {
           debugPrint('search_jobs: JSearch failed, using catalogue: $e');
+          if (regionScoped) return _noLiveRegionResult(regionName);
         }
       }
 
@@ -163,6 +195,25 @@ void _registerSearchJobs(
       }
 
       return _searchJobsResult(filtered);
+    },
+  );
+}
+
+/// Result for a non-US region search that found no live roles. Returns zero
+/// jobs plus a note so Claude tells the user plainly there were none in their
+/// region — instead of falling back to the US-only seed catalogue, which would
+/// show irrelevant US jobs to (e.g.) a Taiwan user.
+ToolResult _noLiveRegionResult(String region) {
+  return ToolResult(
+    summary: 'No live roles in $region',
+    data: {
+      'jobs': const <Map<String, dynamic>>[],
+      'count': 0,
+      'region': region,
+      'note':
+          'No live job postings were found in $region for this search. Tell '
+          'the user plainly and offer to broaden the role or keywords. Do NOT '
+          'show or invent roles from other countries.',
     },
   );
 }
