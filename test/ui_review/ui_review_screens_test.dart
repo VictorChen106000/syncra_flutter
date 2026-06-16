@@ -156,8 +156,6 @@ List<PipelineCard> _pipelineCards() {
       status: PipelineCardStatus.pending,
       createdAt: now.subtract(const Duration(minutes: 18)),
       stage: PipelineStage.drafted,
-      trustRiskLevel: 'low',
-      trustRiskLabel: 'Looks safe',
     ),
     PipelineCard(
       id: 'p2',
@@ -173,9 +171,6 @@ List<PipelineCard> _pipelineCards() {
       status: PipelineCardStatus.pending,
       createdAt: now.subtract(const Duration(hours: 1)),
       stage: PipelineStage.matched,
-      trustRiskLevel: 'medium',
-      trustRiskLabel: 'Verify first',
-      trustSignalsCount: 2,
     ),
     PipelineCard(
       id: 'p3',
@@ -191,8 +186,6 @@ List<PipelineCard> _pipelineCards() {
       status: PipelineCardStatus.pending,
       createdAt: now.subtract(const Duration(hours: 3)),
       stage: PipelineStage.tailored,
-      trustRiskLevel: 'low',
-      trustRiskLabel: 'Looks safe',
     ),
     PipelineCard(
       id: 'p4',
@@ -207,8 +200,6 @@ List<PipelineCard> _pipelineCards() {
       status: PipelineCardStatus.pending,
       createdAt: now.subtract(const Duration(hours: 26)),
       stage: PipelineStage.sent,
-      trustRiskLevel: 'low',
-      trustRiskLabel: 'Looks safe',
     ),
   ];
 }

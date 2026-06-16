@@ -1,3 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <defs>
+    <linearGradient id="syncraMoon" x1="4" y1="3" x2="20" y2="22" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#AEB8FF"/>
+      <stop offset="1" stop-color="#6E7BFF"/>
+    </linearGradient>
+  </defs>
+  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="url(#syncraMoon)"/>
+  <path d="M17.2 3.1l.66 1.55 1.55.66-1.55.66-.66 1.55-.66-1.55-1.55-.66 1.55-.66z" fill="#FFD45E"/>
+  <circle cx="14.1" cy="6" r="0.85" fill="#FFE9A8"/>
 </svg>

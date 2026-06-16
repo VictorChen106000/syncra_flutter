@@ -44,12 +44,21 @@ class AgentActivityBanner extends ConsumerWidget {
           : _BannerCard(
               key: ValueKey(active.id),
               notification: active,
+              onOpen: () => _onOpen(ref, active),
               onPrimary: () => _onPrimary(ref, active),
               onSecondary: () => _onSecondary(ref, active),
               onDismiss: () =>
                   ref.read(notificationsProvider.notifier).markRead(active.id),
             ),
     );
+  }
+
+  /// Tapping the banner body opens the chat, where the surfaced block is
+  /// rendered inline with its full affordances, and marks the notification
+  /// read so the banner yields once the user is viewing it in context.
+  void _onOpen(WidgetRef ref, AppNotification n) {
+    ref.read(notificationsProvider.notifier).markRead(n.id);
+    ref.read(routerProvider).go(RouteNames.agentChat);
   }
 
   /// Primary action: for a proposal, accept the underlying chat block; for
@@ -108,12 +117,16 @@ class _BannerCard extends StatelessWidget {
   const _BannerCard({
     super.key,
     required this.notification,
+    required this.onOpen,
     required this.onPrimary,
     required this.onSecondary,
     required this.onDismiss,
   });
 
   final AppNotification notification;
+
+  /// Tapping the card body opens the chat where the surfaced block lives.
+  final VoidCallback onOpen;
   final VoidCallback onPrimary;
 
   /// Secondary action — used by [NotificationKind.proposal] to expose
@@ -132,98 +145,102 @@ class _BannerCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
             child: Material(
               color: Colors.transparent,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? brand.surface.withValues(alpha: 0.96)
-                      : brand.surface,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: brand.border),
-                  boxShadow: [
-                    BoxShadow(
-                      color: brand.shadow,
-                      blurRadius: 24,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const _PulsingAgentDot(),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Text(
-                                    'AGENT',
-                                    style: TextStyle(
-                                      color: brand.accent,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: 1.4,
+              child: InkWell(
+                onTap: onOpen,
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? brand.surface.withValues(alpha: 0.96)
+                        : brand.surface,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: brand.border),
+                    boxShadow: [
+                      BoxShadow(
+                        color: brand.shadow,
+                        blurRadius: 24,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const _PulsingAgentDot(),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      'AGENT',
+                                      style: TextStyle(
+                                        color: brand.accent,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 1.4,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    _kindLabel(notification.kind),
-                                    style: TextStyle(
-                                      color: brand.textMuted,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: 1.0,
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _kindLabel(notification.kind),
+                                      style: TextStyle(
+                                        color: brand.textMuted,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 1.0,
+                                      ),
                                     ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  notification.title,
+                                  style: TextStyle(
+                                    color: brand.ink,
+                                    fontSize: 14.5,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: -0.2,
+                                    height: 1.25,
                                   ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                notification.title,
-                                style: TextStyle(
-                                  color: brand.ink,
-                                  fontSize: 14.5,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.2,
-                                  height: 1.25,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                notification.body,
-                                style: TextStyle(
-                                  color: brand.textMuted,
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w500,
-                                  height: 1.45,
+                                const SizedBox(height: 4),
+                                Text(
+                                  notification.body,
+                                  style: TextStyle(
+                                    color: brand.textMuted,
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.45,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 6),
-                        _DismissChip(onTap: onDismiss),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    _BannerActions(
-                      notification: notification,
-                      onPrimary: onPrimary,
-                      onSecondary: onSecondary,
-                      onDismiss: onDismiss,
-                    ),
-                  ],
+                          const SizedBox(width: 6),
+                          _DismissChip(onTap: onDismiss),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _BannerActions(
+                        notification: notification,
+                        onPrimary: onPrimary,
+                        onSecondary: onSecondary,
+                        onDismiss: onDismiss,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

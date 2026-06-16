@@ -689,11 +689,6 @@ PipelineCard _cardFromApplication(TrackedApplication app) {
     status: PipelineCardStatus.approved,
     createdAt: app.sortAt,
     stage: stage,
-    trustRiskLevel: app.trustRiskLevel,
-    trustRiskLabel: app.trustRiskLabel,
-    trustSignalsCount: app.trustSignalsCount,
-    trustSignals: app.trustSignals,
-    trustSafeNextStep: app.trustSafeNextStep,
   );
 }
 
@@ -869,13 +864,6 @@ class _PipelineCard extends StatelessWidget {
   /// you, quiet and factual for the rest. The dots carry stage, so this never
   /// repeats it.
   String _phrase() {
-    if (card.trustRiskLevel == 'high') {
-      return 'High-risk signals found';
-    }
-    if (card.trustRiskLevel == 'medium') {
-      return 'Needs trust verification';
-    }
-
     if (card.isSent) {
       return card.stage == PipelineStage.replied
           ? 'Reply received'
@@ -900,18 +888,13 @@ class _PipelineCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final brand = context.brand;
     final job = card.job;
-    // Cards that need you or need trust review weight their status line in ink.
-    final actionable = card.needsYou || card.needsTrustReview;
+    // Cards that need you weight their status line in ink.
+    final actionable = card.needsYou;
     // A strong match is the one positive signal worth the lime accent; the rest
     // of the card stays monochrome.
     final isStrong = job.category == JobCategory.ready;
-    // The single status line is the only place an alert can shout: high-risk
-    // postings turn red, real actions weight to ink, everything else is muted.
-    final phraseColor = card.trustRiskLevel == 'high'
-        ? brand.danger
-        : actionable
-        ? brand.ink
-        : brand.textMuted;
+    // The single status line weights to ink for real actions, muted otherwise.
+    final phraseColor = actionable ? brand.ink : brand.textMuted;
 
     return Material(
       color: Colors.transparent,
@@ -998,24 +981,15 @@ class _PipelineCard extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 12),
-              // Two pills at most: match quality leads (lime when strong); a
-              // trust pill appears only when the role needs verification — a
-              // clean card is itself the "looks safe" signal.
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  // Only show the match tier once the AI has actually scored
-                  // the role; an unmatched role carries no real fit signal.
-                  if (job.matched)
-                    _Tag(label: _matchLabel(job.category), solid: isStrong),
-                  if (card.needsTrustReview)
-                    _TrustGuardTag(
-                      card: card,
-                      onTap: () => _showTrustGuardDetails(context, card),
-                    ),
-                ],
-              ),
+              // The match-quality pill (lime when strong) — shown only once the
+              // AI has actually scored the role; an unmatched role carries no
+              // real fit signal.
+              if (job.matched)
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [_Tag(label: job.matchLabel, solid: isStrong)],
+                ),
               const SizedBox(height: 13),
               // Agentic footer — the progress stepper plus the single status
               // line, which doubles as the application's verdict.
@@ -1088,68 +1062,6 @@ String _companyLine(Job job) {
   return '${job.company}  ·  $location';
 }
 
-/// Short, human match label for the lead pill. Mirrors the filter-tab wording
-/// (Strong / Partial / Stretch) — never "No match", which reads as a mistake
-/// for a role the agent chose to pipeline.
-String _matchLabel(JobCategory category) => switch (category) {
-  JobCategory.ready => 'Strong match',
-  JobCategory.inputNeeded => 'Partial match',
-  JobCategory.exploration => 'Stretch',
-};
-
-Color _trustRiskColor(String level, BrandTheme brand) => switch (level) {
-  'high' => brand.danger,
-  'medium' => brand.warning,
-  'low' => brand.success,
-  _ => brand.textSoft,
-};
-
-IconData _trustRiskIcon(String level) => switch (level) {
-  'high' => Icons.warning_amber_rounded,
-  'medium' => Icons.verified_user_outlined,
-  'low' => Icons.shield_outlined,
-  _ => Icons.shield_outlined,
-};
-
-String _trustRiskLabel(PipelineCard card) {
-  final label = card.trustRiskLabel.trim().isEmpty
-      ? 'Not checked'
-      : card.trustRiskLabel.trim();
-
-  if (card.trustSignalsCount <= 0) return 'Trust: $label';
-  return 'Trust: $label · ${card.trustSignalsCount}';
-}
-
-String _trustSafeNextStep(PipelineCard card) {
-  final saved = card.trustSafeNextStep.trim();
-  if (saved.isNotEmpty) return saved;
-
-  return switch (card.trustRiskLevel) {
-    'high' =>
-      'Do not send personal documents or payment. Verify the company and posting first.',
-    'medium' =>
-      'Verify the company site, recruiter identity, and application link before outreach.',
-    _ =>
-      'No obvious red flags found. Still verify the official posting before applying.',
-  };
-}
-
-Color _signalSeverityColor(String severity, BrandTheme brand) {
-  return switch (severity) {
-    'high' => brand.danger,
-    'medium' => brand.warning,
-    _ => brand.textSoft,
-  };
-}
-
-String _signalSeverityLabel(String severity) {
-  return switch (severity) {
-    'high' => 'High',
-    'medium' => 'Medium',
-    _ => 'Note',
-  };
-}
-
 /// A company "logo" stand-in — the first initial on a lime tile with a black
 /// glyph: the brand's signature mark. A slow sheen sweeps across it so the feed
 /// feels alive without leaning on per-company rainbow colours.
@@ -1198,266 +1110,6 @@ class _LogoMark extends StatelessWidget {
           color: Colors.white.withValues(alpha: 0.55),
           angle: 0.4,
         );
-  }
-}
-
-void _showTrustGuardDetails(BuildContext context, PipelineCard card) {
-  showModalBottomSheet<void>(
-    context: context,
-    backgroundColor: Colors.transparent,
-    builder: (_) => _TrustGuardDetailsSheet(card: card),
-  );
-}
-
-class _TrustGuardDetailsSheet extends StatelessWidget {
-  const _TrustGuardDetailsSheet({required this.card});
-
-  final PipelineCard card;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final color = _trustRiskColor(card.trustRiskLevel, brand);
-    final icon = _trustRiskIcon(card.trustRiskLevel);
-    final signals = card.trustSignals;
-    final safeNextStep = _trustSafeNextStep(card);
-
-    return SafeArea(
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(12, 12, 12, 16),
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: brand.surface,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: brand.border),
-          boxShadow: [
-            BoxShadow(
-              color: brand.shadow.withValues(alpha: 0.22),
-              blurRadius: 28,
-              offset: const Offset(0, 14),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: brand.isDark ? 0.2 : 0.12),
-                    borderRadius: BorderRadius.circular(13),
-                    border: Border.all(color: color.withValues(alpha: 0.34)),
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(icon, size: 19, color: color),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Trust Guard · ${card.trustRiskLabel}',
-                    style: TextStyle(
-                      color: brand.ink,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.3,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Quick red-flag screen only. This does not certify the job as legitimate.',
-              style: TextStyle(
-                color: brand.textMuted,
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-                height: 1.45,
-              ),
-            ),
-            const SizedBox(height: 16),
-            if (signals.isEmpty)
-              _TrustGuardEmptySignals(color: color)
-            else
-              for (final signal in signals) ...[
-                _TrustSignalRow(signal: signal),
-                const SizedBox(height: 9),
-              ],
-            const SizedBox(height: 6),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(13),
-              decoration: BoxDecoration(
-                color: brand.surfaceMuted,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: brand.border.withValues(alpha: 0.7)),
-              ),
-              child: Text(
-                safeNextStep,
-                style: TextStyle(
-                  color: brand.ink,
-                  fontSize: 12.8,
-                  fontWeight: FontWeight.w700,
-                  height: 1.4,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _TrustGuardEmptySignals extends StatelessWidget {
-  const _TrustGuardEmptySignals({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: brand.isDark ? 0.16 : 0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.28)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.check_circle_outline_rounded, size: 17, color: color),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Text(
-              'No obvious red flags were found in the saved posting text.',
-              style: TextStyle(
-                color: brand.ink,
-                fontSize: 12.8,
-                fontWeight: FontWeight.w700,
-                height: 1.35,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TrustSignalRow extends StatelessWidget {
-  const _TrustSignalRow({required this.signal});
-
-  final Map<String, String> signal;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final severity = signal['severity'] ?? 'medium';
-    final color = _signalSeverityColor(severity, brand);
-    final label = signal['label'] ?? 'Trust signal';
-    final detail = signal['detail'] ?? '';
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(
-        color: brand.surfaceMuted,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: brand.border.withValues(alpha: 0.7)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.error_outline_rounded, size: 17, color: color),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${_signalSeverityLabel(severity)} · $label',
-                  style: TextStyle(
-                    color: brand.ink,
-                    fontSize: 12.8,
-                    fontWeight: FontWeight.w900,
-                    height: 1.25,
-                  ),
-                ),
-                if (detail.trim().isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    detail,
-                    style: TextStyle(
-                      color: brand.textMuted,
-                      fontSize: 12.3,
-                      fontWeight: FontWeight.w600,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TrustGuardTag extends StatelessWidget {
-  const _TrustGuardTag({required this.card, required this.onTap});
-
-  final PipelineCard card;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = context.brand;
-    final level = card.trustRiskLevel;
-    final color = _trustRiskColor(level, brand);
-    final icon = _trustRiskIcon(level);
-    final label = _trustRiskLabel(card);
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppConstants.pillRadius),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: brand.isDark ? 0.18 : 0.12),
-            borderRadius: BorderRadius.circular(AppConstants.pillRadius),
-            border: Border.all(color: color.withValues(alpha: 0.34)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 12.5, color: color),
-              const SizedBox(width: 5),
-              Text(
-                label.toUpperCase(),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.45,
-                  color: color,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }
 

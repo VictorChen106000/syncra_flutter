@@ -100,16 +100,6 @@ void main() {
       expect(prompt, contains('mention at most 1-2 relevant facts'));
     });
 
-    test('checks job trust before outreach or application actions', () {
-      expect(prompt, contains('job trust guard'));
-      expect(prompt, contains('check_job_risk'));
-      expect(prompt, contains('before `draft_email`'));
-      expect(prompt, contains('save_to_pipeline'));
-      expect(prompt, contains('save_to_tracker'));
-      expect(prompt, contains('high risk'));
-      expect(prompt, contains('never mark a job as safe'));
-    });
-
     test('blocks unsupported claims and duplicate skill artifacts', () {
       expect(prompt, contains('preserve supported resume facts only'));
       expect(prompt, contains('do not add unsupported employers'));

@@ -17,6 +17,7 @@ import '../../../auth/state/auth_notifier.dart';
 import '../../../auth/state/user_profile_notifier.dart';
 import '../../../jobs/state/jobs_notifier.dart';
 import '../../../resumes/state/resume_notifier.dart';
+import '../../state/agent_read_intro_notifier.dart';
 
 /// Count of facts the agent has learned about the user (Career Memory). Backed
 /// by the same `learned_facts` collection the Profile page reads, so the
@@ -169,34 +170,55 @@ class AgentActivityTimeline extends ConsumerWidget {
 /// eyebrow always stays put with a chevron, so a tap drops the full read back
 /// down. Honors reduce-motion by skipping the type-out and the roll, opening
 /// collapsed so the timeline is the first thing in view.
-class _AgentRead extends StatefulWidget {
+class _AgentRead extends ConsumerStatefulWidget {
   const _AgentRead({required this.text, required this.isRunning});
 
   final String text;
   final bool isRunning;
 
   @override
-  State<_AgentRead> createState() => _AgentReadState();
+  ConsumerState<_AgentRead> createState() => _AgentReadState();
 }
 
-class _AgentReadState extends State<_AgentRead> {
-  bool _expanded = true;
+class _AgentReadState extends ConsumerState<_AgentRead> {
+  bool _expanded = false;
   bool _userToggled = false;
-  bool _ready = false;
+
+  /// True only for the one-time entrance: drives the type-out and the
+  /// auto roll-up. False on every later visit (and under reduce-motion), where
+  /// the read simply renders in place.
+  bool _playIntro = false;
+
+  /// Set once we've resolved the persisted "intro played" flag and locked in
+  /// whether this mount animates. Until then we render collapsed so a genuine
+  /// first-run entrance still gets to drop down from a clean start.
+  bool _decided = false;
   Timer? _autoCollapse;
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_ready) return;
-    _ready = true;
+  /// Locks in the entrance behaviour the first time the persisted flag is
+  /// known. [alreadyPlayed] true (or reduce-motion) means the welcome reveal is
+  /// spent: open collapsed, no type-out, no roll. Otherwise play it once and
+  /// mark it spent so it never replays on a later dashboard visit.
+  void _decide({required bool alreadyPlayed}) {
+    if (_decided) return;
+    _decided = true;
 
-    if (!shouldAnimate(context)) {
-      // Reduce-motion: no type-out and no roll — open collapsed so the read is
-      // a quiet, opt-in disclosure and the timeline leads.
+    if (alreadyPlayed || !shouldAnimate(context)) {
       _expanded = false;
+      _playIntro = false;
       return;
     }
+
+    _expanded = true;
+    _playIntro = true;
+    // Persist immediately — the entrance is one-shot whether the user lets it
+    // auto-roll or taps to keep it open. Deferred off the build frame so we
+    // don't mutate the provider mid-build.
+    Future.microtask(() {
+      if (mounted) {
+        ref.read(agentReadIntroPlayedProvider.notifier).markPlayed();
+      }
+    });
 
     // Let the read type out and breathe, then roll it up to reveal the
     // timeline. Mirrors _Typewriter's own duration so the hold starts once the
@@ -225,6 +247,10 @@ class _AgentReadState extends State<_AgentRead> {
   Widget build(BuildContext context) {
     final brand = context.brand;
     final motion = shouldAnimate(context);
+    // Resolve the one-time "intro played" flag, then lock in our behaviour.
+    // Null while the persisted value loads — render collapsed until then.
+    final played = ref.watch(agentReadIntroPlayedProvider).value;
+    if (played != null) _decide(alreadyPlayed: played);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -298,6 +324,9 @@ class _AgentReadState extends State<_AgentRead> {
                 padding: const EdgeInsets.only(top: 10, bottom: 2),
                 child: _Typewriter(
                   text: widget.text,
+                  // Only type out on the one-time entrance; later visits show
+                  // the read in full immediately.
+                  animate: _playIntro,
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
@@ -321,14 +350,22 @@ class _AgentReadState extends State<_AgentRead> {
 /// rendering the full text immediately, and never replays on a rebuild because
 /// the tween target stays fixed at the text length.
 class _Typewriter extends StatelessWidget {
-  const _Typewriter({required this.text, required this.style});
+  const _Typewriter({
+    required this.text,
+    required this.style,
+    this.animate = true,
+  });
 
   final String text;
   final TextStyle style;
 
+  /// When false the full text renders at once — used on every visit after the
+  /// one-time entrance so the read never re-types.
+  final bool animate;
+
   @override
   Widget build(BuildContext context) {
-    if (!shouldAnimate(context) || text.isEmpty) {
+    if (!animate || !shouldAnimate(context) || text.isEmpty) {
       return Text(text, style: style);
     }
     final ms = (text.length * 16).clamp(450, 2000).toInt();

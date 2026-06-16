@@ -19,7 +19,6 @@ import '../../resumes/models/proposed_edit.dart';
 import '../../resumes/models/resume_json.dart';
 import '../../resumes/services/resume_parser_service.dart';
 import '../../resumes/services/resume_tailor_orchestrator.dart';
-import '../../jobs/services/job_trust_guard.dart';
 import 'anthropic_tool_calls.dart';
 import 'tool.dart';
 import 'tool_registry.dart';
@@ -48,7 +47,6 @@ void registerBuiltinTools(ToolRegistry registry) {
   _registerReadResume(registry, orchestrator);
   _registerRememberFact(registry);
   _registerMatchJobs(registry, jobs, anthropic, orchestrator);
-  _registerCheckJobRisk(registry, jobs);
   _registerSaveToPipeline(registry, jobs, pipeline);
   _registerTailorResume(registry, jobs, paraphrase, orchestrator);
   _registerApplyResumeEdits(registry, orchestrator, pipeline);
@@ -226,63 +224,6 @@ List<String> _searchTokens(String query) {
       .where((token) => !stopWords.contains(token))
       .toSet()
       .toList(growable: false);
-}
-
-// ---------------------------------------------------------------------------
-// check_job_risk — quick trust screen before outreach/application actions.
-// This is not a certification system; it only flags obvious red signals.
-// ---------------------------------------------------------------------------
-
-void _registerCheckJobRisk(ToolRegistry registry, JobsRepository jobsRepo) {
-  registry.register(
-    tool: const Tool(
-      name: 'check_job_risk',
-      description:
-          'Run a quick trust/risk screen for a specific job_id. Use before '
-          'drafting outreach, saving to pipeline, saving to tracker, or any '
-          'apply/send step; also use when the user asks whether a role looks '
-          'safe. This checks obvious red flags only and does not certify a job '
-          'as legitimate.',
-      inputSchema: {
-        'type': 'object',
-        'properties': {
-          'job_id': {
-            'type': 'string',
-            'description': 'The job id returned by search_jobs or match_jobs.',
-          },
-        },
-        'required': ['job_id'],
-      },
-      uiLabel: 'Checking job trust…',
-      uiIcon: Icons.verified_user_outlined,
-    ),
-    handler: (args) async {
-      final jobId = (args['job_id'] as String? ?? '').trim();
-      if (jobId.isEmpty) {
-        return ToolResult.error('job_id is required.');
-      }
-
-      final job = await jobsRepo.fetchById(jobId);
-      if (job == null) {
-        return ToolResult.error('Job not found.');
-      }
-
-      final trust = evaluateJobTrust(job);
-
-      return ToolResult(
-        summary: trust.summary,
-        data: {
-          'job_id': job.id,
-          'title': job.title,
-          'company': job.company,
-          'risk_level': trust.riskLevel,
-          'risk_label': trust.riskLabel,
-          'signals': trust.signals,
-          'safe_next_step': trust.safeNextStep,
-        },
-      );
-    },
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -713,8 +654,6 @@ void _registerSaveToPipeline(
         (args['missing_skills'] as List?) ?? job.missingSkills,
       );
 
-      final trust = evaluateJobTrust(job);
-
       await pipelineRepo.createCard(
         uid: uid,
         job: job,
@@ -726,24 +665,14 @@ void _registerSaveToPipeline(
             : agentJustification,
         matchedSkills: matchedSkills,
         missingSkills: missingSkills,
-        trustRiskLevel: trust.riskLevel,
-        trustRiskLabel: trust.riskLabel,
-        trustSignalsCount: trust.signalsCount,
-        trustSignals: trust.signals,
-        trustSafeNextStep: trust.safeNextStep,
       );
 
       return ToolResult(
-        summary: 'Saved ${job.company} to pipeline · ${trust.riskLabel}',
+        summary: 'Saved ${job.company} to pipeline',
         data: {
           'saved': true,
           'job_id': job.id,
           'category': category.name,
-          'trust_risk_level': trust.riskLevel,
-          'trust_risk_label': trust.riskLabel,
-          'trust_signals_count': trust.signalsCount,
-          'trust_signals': trust.signals,
-          'trust_safe_next_step': trust.safeNextStep,
         },
       );
     },
@@ -1680,17 +1609,10 @@ void _registerSaveToTracker(
       final job = await jobsRepo.fetchById(jobId);
       if (job == null) return ToolResult.error('Job not found.');
 
-      final trust = evaluateJobTrust(job);
-
       final appId = await applicationsRepo.createApplication(
         uid: uid,
         job: job,
         resumeId: args['resume_id'] as String?,
-        trustRiskLevel: trust.riskLevel,
-        trustRiskLabel: trust.riskLabel,
-        trustSignalsCount: trust.signalsCount,
-        trustSignals: trust.signals,
-        trustSafeNextStep: trust.safeNextStep,
       );
       if (args['mark_sent'] == true) {
         await applicationsRepo.markSent(uid, appId);
@@ -1703,14 +1625,9 @@ void _registerSaveToTracker(
       }
 
       return ToolResult(
-        summary: 'Saved ${job.company} to tracker · ${trust.riskLabel}',
+        summary: 'Saved ${job.company} to tracker',
         data: {
           'application_id': appId,
-          'trust_risk_level': trust.riskLevel,
-          'trust_risk_label': trust.riskLabel,
-          'trust_signals_count': trust.signalsCount,
-          'trust_signals': trust.signals,
-          'trust_safe_next_step': trust.safeNextStep,
         },
       );
     },

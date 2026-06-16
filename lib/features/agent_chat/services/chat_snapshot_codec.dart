@@ -691,7 +691,6 @@ class ChatSnapshotCodec {
       'search_jobs' => 'travel_explore',
       'read_resume' => 'description',
       'match_jobs' => 'analytics',
-      'check_job_risk' => 'verified_user',
       'save_to_pipeline' => 'playlist_add_check',
       'tailor_resume' => 'auto_fix_high',
       'apply_resume_edits' => 'difference',

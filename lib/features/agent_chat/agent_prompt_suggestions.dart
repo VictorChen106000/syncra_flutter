@@ -19,10 +19,10 @@ class AgentPromptSuggestions {
   static const String tailor =
       'Tailor my resume to my best-matched role and show me what changed and why';
 
-  /// Trust Guard → outreach: verify the role looks legit, then draft (and, on
-  /// Autopilot, send) the email. Closes the loop with the safety story.
+  /// Outreach: find a fitting role, then draft (and, on Autopilot, send) the
+  /// email. Closes the loop end-to-end.
   static const String outreach =
-      'Find a role I fit well, check it looks legit, then draft my outreach email';
+      'Find a role I fit well, then draft my outreach email';
 
   /// All three, in the order they appear on the dashboard.
   static const List<String> all = [apply, tailor, outreach];

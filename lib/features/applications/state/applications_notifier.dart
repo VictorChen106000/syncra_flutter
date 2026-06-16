@@ -6,13 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/firestore/applications_repository.dart';
 import '../../../data/models/tracked_application.dart';
 import '../../auth/state/auth_notifier.dart';
-import '../../jobs/services/job_trust_guard.dart';
 import '../services/application_bundle_summary.dart';
 
 enum ApplicationsFilter {
   all,
   bundleReview,
-  trustReview,
   drafts,
   sent,
   replied;
@@ -20,7 +18,6 @@ enum ApplicationsFilter {
   String get label => switch (this) {
     ApplicationsFilter.all => 'All',
     ApplicationsFilter.bundleReview => 'Bundle review',
-    ApplicationsFilter.trustReview => 'Trust review',
     ApplicationsFilter.drafts => 'Drafts',
     ApplicationsFilter.sent => 'Sent',
     ApplicationsFilter.replied => 'Replied',
@@ -45,8 +42,6 @@ class ApplicationsState {
       ApplicationsFilter.all => items,
       ApplicationsFilter.bundleReview =>
         items.where((a) => evaluateApplicationBundle(a).hasBlocker).toList(),
-      ApplicationsFilter.trustReview =>
-        items.where((a) => a.needsTrustReview).toList(),
       ApplicationsFilter.drafts =>
         items.where((a) => a.phase == ApplicationPhase.draft).toList(),
       ApplicationsFilter.sent =>
@@ -204,28 +199,6 @@ class ApplicationsNotifier extends Notifier<ApplicationsState> {
 
     await _repository.deleteNote(uid, applicationId, app.notes, noteId);
     state = state.copyWith(lastMessage: 'Note deleted');
-  }
-
-  Future<void> runTrustGuard(String applicationId) async {
-    final uid = _boundUid;
-    final app = _find(applicationId);
-    if (uid == null || app == null) return;
-
-    final trust = evaluateJobTrust(app.job);
-
-    await _repository.setTrustGuard(
-      uid,
-      applicationId,
-      trustRiskLevel: trust.riskLevel,
-      trustRiskLabel: trust.riskLabel,
-      trustSignalsCount: trust.signalsCount,
-      trustSignals: trust.signals,
-      trustSafeNextStep: trust.safeNextStep,
-    );
-
-    state = state.copyWith(
-      lastMessage: '${app.job.company}: ${trust.riskLabel}',
-    );
   }
 }
 

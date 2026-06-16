@@ -430,17 +430,26 @@ class _PromptSuggestionCard extends ConsumerWidget {
               Row(
                 children: [
                   Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      // Lime box + black glyph: reads as a bright chip in both
-                      // modes, and in dark mode it pops off the black backdrop.
-                      color: brand.accent,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(data.icon, color: brand.onAccent, size: 18),
-                  ),
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          // Lime box + black glyph: reads as a bright chip in both
+                          // modes, and in dark mode it pops off the black backdrop.
+                          color: brand.accent,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        alignment: Alignment.center,
+                        child: Icon(data.icon, color: brand.onAccent, size: 18),
+                      )
+                      // A slow white sheen sweeps across the lime tile — the same
+                      // premium "shiny" mark the pipeline's company logos carry
+                      // (see _LogoMark in jobs_page.dart). Gated on reduce-motion.
+                      .animate(onPlay: repeatIfMotion(context))
+                      .shimmer(
+                        duration: 2200.ms,
+                        color: Colors.white.withValues(alpha: 0.55),
+                        angle: 0.4,
+                      ),
                   const Spacer(),
                   Container(
                     width: 26,

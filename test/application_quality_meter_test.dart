@@ -6,85 +6,58 @@ import 'package:syncra/features/jobs/services/application_quality_meter.dart';
 
 void main() {
   group('Application Quality Meter', () {
-    test('marks a low-risk drafted strong fit as ready', () {
+    test('marks a drafted strong fit as ready', () {
       final result = evaluateApplicationQuality(
         _card(
           category: JobCategory.ready,
-          trustRiskLevel: 'low',
           stage: PipelineStage.drafted,
         ),
       );
 
-      expect(result.score, 100);
+      // base 35 + ready 25 + no-missing 15 + drafted 16 = 91
+      expect(result.score, 91);
       expect(result.label, 'Application quality · Ready');
-      expect(result.reasons, contains('Trust looks okay'));
-      expect(result.reasons, contains('Resume fit strong'));
+      expect(result.reasons, contains('All Match'));
       expect(result.reasons, contains('Draft ready'));
     });
 
-    test('caps unchecked legacy cards below ready', () {
+    test('scores a freshly matched strong fit below a drafted one', () {
       final result = evaluateApplicationQuality(
         _card(
           category: JobCategory.ready,
-          trustRiskLevel: 'unchecked',
-          stage: PipelineStage.drafted,
+          stage: PipelineStage.matched,
         ),
       );
 
-      expect(result.score, 74);
+      // base 35 + ready 25 + no-missing 15 + matched 0 = 75
+      expect(result.score, 75);
       expect(result.label, 'Application quality · Needs polish');
-      expect(result.reasons, contains('Trust not checked'));
-    });
-
-    test('caps medium-risk cards below polish even with a strong fit', () {
-      final result = evaluateApplicationQuality(
-        _card(
-          category: JobCategory.ready,
-          trustRiskLevel: 'medium',
-          stage: PipelineStage.drafted,
-        ),
-      );
-
-      expect(result.score, 59);
-      expect(result.label, 'Application quality · Needs info');
-      expect(result.reasons, contains('Verify trust first'));
-    });
-
-    test('blocks high-risk cards even when the resume fit is strong', () {
-      final result = evaluateApplicationQuality(
-        _card(
-          category: JobCategory.ready,
-          trustRiskLevel: 'high',
-          stage: PipelineStage.drafted,
-        ),
-      );
-
-      expect(result.score, 35);
-      expect(result.label, 'Application quality · Blocked');
-      expect(result.reasons, contains('Trust blocked'));
     });
 
     test('explains missing skills for incomplete matches', () {
       final result = evaluateApplicationQuality(
         _card(
           category: JobCategory.inputNeeded,
-          trustRiskLevel: 'low',
-          missingSkills: const ['Web3', 'GraphQL', 'Kubernetes'],
+          stage: PipelineStage.drafted,
+          missingSkills: const ['Web3', 'GraphQL'],
         ),
       );
 
+      // base 35 + inputNeeded 14 - missing(2*5=10) + drafted 16 = 55
+      expect(result.score, 55);
       expect(result.label, 'Application quality · Needs info');
-      expect(result.reasons, contains('Needs missing info'));
+      expect(result.reasons, contains('Several Match'));
       expect(result.reasons, contains('Missing Web3, GraphQL'));
     });
   });
 
   test('evaluates tracked applications using their current phase', () {
     final result = evaluateTrackedApplicationQuality(
-      _trackedApplication(phase: ApplicationPhase.sent, trustRiskLevel: 'low'),
+      _trackedApplication(phase: ApplicationPhase.sent),
     );
 
-    expect(result.score, 100);
+    // base 35 + ready 25 + no-missing 15 + sent 18 = 93
+    expect(result.score, 93);
     expect(result.label, 'Application quality · Ready');
     expect(result.reasons, contains('Already sent'));
   });
@@ -93,7 +66,6 @@ void main() {
 PipelineCard _card({
   JobCategory category = JobCategory.ready,
   PipelineStage stage = PipelineStage.matched,
-  String trustRiskLevel = 'low',
   List<String> missingSkills = const [],
 }) {
   return PipelineCard(
@@ -101,8 +73,6 @@ PipelineCard _card({
     status: PipelineCardStatus.pending,
     createdAt: DateTime(2026, 6, 5),
     stage: stage,
-    trustRiskLevel: trustRiskLevel,
-    trustRiskLabel: _trustLabel(trustRiskLevel),
     job: Job(
       id: 'job_1',
       title: 'Flutter Developer',
@@ -122,7 +92,6 @@ PipelineCard _card({
 
 TrackedApplication _trackedApplication({
   ApplicationPhase phase = ApplicationPhase.draft,
-  String trustRiskLevel = 'low',
 }) {
   final draftedAt = DateTime(2026, 6, 5, 9);
   final sentAt = switch (phase) {
@@ -133,18 +102,9 @@ TrackedApplication _trackedApplication({
 
   return TrackedApplication(
     id: 'app_1',
-    job: _card(trustRiskLevel: trustRiskLevel).job,
+    job: _card().job,
     draftedAt: draftedAt,
     sentAt: sentAt,
     gotReply: phase == ApplicationPhase.replied,
-    trustRiskLevel: trustRiskLevel,
-    trustRiskLabel: _trustLabel(trustRiskLevel),
   );
 }
-
-String _trustLabel(String level) => switch (level) {
-  'high' => 'High risk',
-  'medium' => 'Needs verification',
-  'low' => 'Looks normal',
-  _ => 'Not checked',
-};

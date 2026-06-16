@@ -18,7 +18,6 @@ this file, fix the code (or change this file by PR). Product context is in
 | Job source | JSearch via RapidAPI, direct from Flutter |
 | Email | Gmail API — user's own account; `gmail.compose` for drafts, `gmail.send` for confirmed sends; never read scope |
 | Recipient lookup | Recipient Intelligence ranks confirmed cache, official-site discovery hooks, and low-confidence `careers@domain` guesses; Syncra never guarantees an inbox is valid |
-| Job Trust Guard | Heuristic red-flag screen only; never certifies a job as legitimate |
 | Secrets | `--dart-define=KEY=...` at build time; rotate after demo |
 | Agent paradigm | Tool use — Claude picks tools, client executes, loop continues |
 | Human-in-the-loop | Agent never sends external traffic without an explicit user tap |
@@ -116,15 +115,14 @@ Each tool is declared in `tool_registry.dart` (`name`, `description`,
 | `search_jobs` | Search live listings; returns ≤25 `Job`s | auto |
 | `read_resume` | Load the user's `ResumeJSON`; lazy-parses the PDF on first call | auto |
 | `match_jobs` | Score jobs vs resume → category, score, justification, missing skills | auto |
-| `check_job_risk` | Run a quick Trust Guard red-flag screen for a job | auto; asks before continuing on medium/high risk |
 | `tailor_resume` | **Propose** 3–8 targeted edits for a job. No PDF, no write. | auto, then pause |
 | `apply_resume_edits` | Apply the accepted edit subset → render PDF → new resume doc | **user-gated** — fired by the diff viewer, never by Claude |
 | `resolve_company_contact` | Resolve recipient metadata before outreach: email, domain, confidence, source, reason, auto-send eligibility | auto; must run before `draft_email` |
 | `draft_email` | Draft a cold-outreach email for a job, using a tailored resume | auto; user reviews before send |
 | `lookup_hiring_manager` | Legacy alias for recipient resolution; prefer `resolve_company_contact` | auto |
 | `remember_fact` | Persist a reusable fact about the user → `learned_facts` | auto |
-| `save_to_pipeline` | Write a scored match as a pipeline card, including Trust Guard result | auto |
-| `save_to_tracker` | Persist an application record to the Applications page, including Trust Guard result | auto; external sends still require the `send_email` user gate |
+| `save_to_pipeline` | Write a scored match as a pipeline card | auto |
+| `save_to_tracker` | Persist an application record to the Applications page | auto; external sends still require the `send_email` user gate |
 | `send_email` | Send the drafted email via Gmail | **always requires a user tap** |
 | `ask_user` | Ask the user a question and pause; optional suggestion chips | pauses the loop |
 
@@ -162,28 +160,6 @@ Each tool is declared in `tool_registry.dart` (`name`, `description`,
    (`source: 'tailored'`, `parent_resume_id`, `tailored_for_job_id`) and the
    saved resume id feeds back into the loop; Claude proceeds (typically to
    `draft_email`).
-
-### Trust Guard contract
-
-`check_job_risk` is a lightweight red-flag screen, not a background check or
-legitimacy certificate. It evaluates the saved job text for obvious signals such
-as missing company identity, thin descriptions, generic/confidential employers,
-money-transfer language, gift-card requests, crypto/payment wording, or moving
-communication to Telegram/WhatsApp.
-
-The result shape is reused by the agent tool, pipeline cards, job action sheet,
-and application tracker:
-
-```json
-{
-  "risk_level": "low | medium | high",
-  "risk_label": "Looks normal | Needs verification | High risk",
-  "signals": [
-    { "severity": "medium | high", "label": "...", "detail": "..." }
-  ],
-  "safe_next_step": "..."
-}
-```
 
 ### Tool input notes
 
@@ -227,14 +203,12 @@ and application tracker:
 | `enabled` | bool | default `false`; does not send/apply by itself |
 | `min_quality_score` | int | default `85`; clamped 60–100 |
 | `max_daily_applications` | int | default `3`; clamped 1–10 |
-| `require_low_trust` | bool | default `true`; requires Trust Guard `low` before eligibility |
 
 Agent Autonomy is the single user-facing control; **Bounded Auto-Apply remains
 the internal safety guardrail for Autopilot**, not a separately edited UI.
-Selecting Autopilot enables `auto_apply` + auto-send outreach (and forces
-`require_low_trust`); Assist / Auto-draft disable both and leave the other
-limits untouched. Autopilot can only send when the quality, Trust Guard,
-daily-limit, and recipient-confidence gates all pass (see
+Selecting Autopilot enables `auto_apply` + auto-send outreach; Assist /
+Auto-draft disable both and leave the other limits untouched. Autopilot can only
+send when the quality, daily-limit, and recipient-confidence gates all pass (see
 `shouldAutoSendOutreach`); guessed or missing recipients never auto-send.
 
 **`users/{uid}/applications/{appId}` — activity log**
@@ -249,12 +223,6 @@ daily-limit, and recipient-confidence gates all pass (see
 | `follow_up_at` | Timestamp? | optional reminder |
 | `notes` | array<{body, created_at}> | free-form |
 | `sent_email_id` | string? | Gmail message id |
-| `trust_risk_level` | `unchecked \| low \| medium \| high` | Trust Guard level captured when saved |
-| `trust_risk_label` | string | UI label: `Not checked`, `Looks normal`, `Needs verification`, `High risk` |
-| `trust_signals_count` | int | number of saved Trust Guard signals |
-| `trust_signals` | array<{severity, label, detail}> | signal details shown in the detail sheet |
-| `trust_safe_next_step` | string | recommended verification step |
-| `trust_checked_at` | Timestamp? | null when unchecked |
 
 **`users/{uid}/resumes/{resumeId}` — resume metadata**
 
@@ -272,9 +240,7 @@ daily-limit, and recipient-confidence gates all pass (see
 `category` (`ready \| input_needed \| exploration`), `match_score`,
 `agent_action`, `agent_justification`, `matched_skills`, `missing_skills`,
 `stage` (`matched \| tailored \| drafted \| sent \| replied`), `status`
-(`pending \| approved \| dismissed`), Trust Guard fields
-(`trust_risk_level`, `trust_risk_label`, `trust_signals_count`,
-`trust_signals`, `trust_safe_next_step`, `trust_checked_at`), `created_at`.
+(`pending \| approved \| dismissed`), `created_at`.
 
 ### Pipeline lifecycle invariant
 
@@ -393,7 +359,7 @@ text, never touches layout. Don't change the template without a team vote.
 | `match_jobs` | ≤25 jobs per call |
 | `tailor_resume` | one in-flight per session |
 | `send_email` | hard-blocked without a user tap |
-| Bounded auto-apply / auto-send outreach | external send only when bounded auto-apply is enabled, auto-send outreach is enabled, Trust Guard is low, recipient confidence is confirmed/high with `canAutoSend: true`, quality/daily/sent guards pass |
+| Bounded auto-apply / auto-send outreach | external send only when bounded auto-apply is enabled, auto-send outreach is enabled, recipient confidence is confirmed/high with `canAutoSend: true`, quality/daily/sent guards pass |
 | Anthropic | $5/month spend cap in the console |
 
 ## 9. Chat job-result persistence

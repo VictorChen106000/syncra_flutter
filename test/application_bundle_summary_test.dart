@@ -5,12 +5,11 @@ import 'package:syncra/features/applications/services/application_bundle_summary
 
 void main() {
   group('Application bundle summary', () {
-    test('marks a low-risk sent application with a resume as ready', () {
+    test('marks a sent application with a resume as ready', () {
       final bundle = evaluateApplicationBundle(
         _application(
           resumeId: 'resume_1',
           sentAt: DateTime(2026, 6, 5, 10),
-          trustRiskLevel: 'low',
         ),
       );
 
@@ -19,7 +18,7 @@ void main() {
       expect(bundle.statusLabel, 'Ready bundle');
       expect(
         bundle.items.map((item) => item.label),
-        containsAll(['Resume', 'Email', 'Trust', 'Quality']),
+        containsAll(['Resume', 'Email', 'Quality']),
       );
     });
 
@@ -28,7 +27,6 @@ void main() {
         _application(
           resumeId: null,
           sentAt: DateTime(2026, 6, 5, 10),
-          trustRiskLevel: 'low',
         ),
       );
 
@@ -41,27 +39,9 @@ void main() {
       expect(resume.detail, 'Attach a resume');
     });
 
-    test('blocks the bundle for high-risk applications', () {
-      final bundle = evaluateApplicationBundle(
-        _application(
-          resumeId: 'resume_1',
-          sentAt: DateTime(2026, 6, 5, 10),
-          trustRiskLevel: 'high',
-        ),
-      );
-
-      expect(bundle.hasBlocker, isTrue);
-      expect(bundle.statusLabel, 'Needs review');
-
-      final trust = bundle.items.firstWhere((item) => item.label == 'Trust');
-      expect(trust.isComplete, isFalse);
-      expect(trust.isBlocking, isTrue);
-      expect(trust.detail, 'Blocked');
-    });
-
     test('keeps drafted applications in the email bundle item', () {
       final bundle = evaluateApplicationBundle(
-        _application(resumeId: 'resume_1', trustRiskLevel: 'low'),
+        _application(resumeId: 'resume_1'),
       );
 
       final email = bundle.items.firstWhere((item) => item.label == 'Email');
@@ -74,7 +54,6 @@ void main() {
 TrackedApplication _application({
   String? resumeId = 'resume_1',
   DateTime? sentAt,
-  String trustRiskLevel = 'low',
 }) {
   return TrackedApplication(
     id: 'app_1',
@@ -95,14 +74,5 @@ TrackedApplication _application({
     resumeId: resumeId,
     draftedAt: DateTime(2026, 6, 5, 9),
     sentAt: sentAt,
-    trustRiskLevel: trustRiskLevel,
-    trustRiskLabel: _trustLabel(trustRiskLevel),
   );
 }
-
-String _trustLabel(String level) => switch (level) {
-  'high' => 'High risk',
-  'medium' => 'Needs verification',
-  'low' => 'Looks normal',
-  _ => 'Not checked',
-};

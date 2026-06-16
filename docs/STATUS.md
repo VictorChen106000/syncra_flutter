@@ -25,13 +25,12 @@ Foundation, verified in code:
 - Google Sign-In · Firestore + owner-only rules · Firebase Storage for resume blobs
 - Riverpod migration — all controllers are immutable `Notifier`s
 - Agent chat with the full tool-use loop · `ask_user` mid-flow input · extended thinking
-- Tool registry with real job-search, resume, memory, Trust Guard, pipeline, tracker, and email tools
+- Tool registry with real job-search, resume, memory, pipeline, tracker, and email tools
 - Resume upload (Storage blob + Firestore metadata) · PDF text extraction · lazy resume parser → `ResumeJSON`
 - Fixed PDF template · resume tailor orchestrator
 - Resume Integrity Check for tailored previews — pure Dart, no external PDF editor, deterministic skill cleanup before render, one guarded repair pass for warnings/blocks, blocks saving on serious unsupported changes
 - `tailor_resume` proposes edits and the loop pauses · read-only `ProposedEditsBlock` preview in chat
-- `read_resume`, `match_jobs`, `check_job_risk`, `save_to_pipeline`, `save_to_tracker`, `remember_fact` — real implementations
-- Trust Guard checks obvious job red flags, persists results on pipeline/application records, surfaces badges/details in UI, and has unit tests
+- `read_resume`, `match_jobs`, `save_to_pipeline`, `save_to_tracker`, `remember_fact` — real implementations
 - Applications activity-log (drafted / sent / "got reply") · pipeline approve → application · editable application notes
 - Dashboard prompt entry + "Run today's brief" CTA · Settings (autonomy, brief toggle, delete account) · onboarding role capture · router redirects
 - Live notifications inbox subscribed to agent events
@@ -90,7 +89,7 @@ Loop, prompts, and tools are in place. Current status:
 - [x] `ActionProposalBlock` approvals now carry a hidden continuation prompt and resume the agent loop after the user taps Accept.
 - [x] Main agent prompt is regression-tested for goal-oriented workflow behavior, approval gates, saved-resume continuation, and `send_email` safety.
 - [x] `tailor_resume` prompt is regression-tested: no full-section rewrites, every `original_text` must be verbatim, no invented experience, no unsupported claims, and no duplicate skill artifacts.
-- [x] Morning brief Trust Guard prompt is regression-tested: `check_job_risk` runs before `save_to_pipeline`, medium/high-risk jobs are skipped, no outreach is attempted, no user questions are asked, and the no-resume fallback still runs Trust Guard.
+- [x] Morning brief prompt is regression-tested: `search_jobs` runs per-role before `save_to_pipeline`, the brief caps at five saves, no outreach is attempted, no user questions are asked, and the no-resume fallback is handled.
 - [x] `draft_email` uses real selected/uploaded resume context through `_loadResumeContextForAgent`, defaults to the latest manual resume, attaches the chosen or tailored PDF, and carries recipient confidence/source metadata into the review card.
 
 Remaining / delegated:
