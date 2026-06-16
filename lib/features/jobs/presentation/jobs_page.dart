@@ -1107,7 +1107,6 @@ class _MiniIconButton extends StatelessWidget {
 bool _hasOpenableLink(Job job) =>
     UrlOpener.canOpen(job.applyLink) ||
     UrlOpener.canOpen(job.sourceUrl) ||
-    UrlOpener.canOpen(job.googleJobLink) ||
     UrlOpener.canOpen(job.employerWebsite);
 
 /// Company line under the logo: "Company · Location", or just the company when

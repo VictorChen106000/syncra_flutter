@@ -190,7 +190,6 @@ class _ApplicationLinksRow extends StatelessWidget {
       Icons.open_in_new_rounded,
       primary: true,
     );
-    add(job.googleJobLink, 'View Google listing', Icons.travel_explore_rounded);
     add(job.sourceUrl, 'View source', Icons.link_rounded);
     add(job.employerWebsite, 'Company website', Icons.language_rounded);
 
