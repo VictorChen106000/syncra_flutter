@@ -82,7 +82,7 @@ final conversationListProvider =
     StreamProvider.autoDispose<List<ConversationSummary>>((ref) {
       final repo = ref.watch(chatHistoryRepositoryProvider);
       final user = ref.watch(authProvider).appUser;
-      if (user == null || user.isGuest) {
+      if (user == null) {
         return Stream.value(const <ConversationSummary>[]);
       }
       return repo.watchConversations(user.uid);
@@ -199,7 +199,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
 
   String? get _uid {
     final user = ref.read(authProvider).appUser;
-    if (user == null || user.isGuest) return null;
+    if (user == null) return null;
     return user.uid;
   }
 
@@ -236,10 +236,7 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
       ref
           .read(resumeProvider.notifier)
           .setSelectedResumes(_resumeIdsFromHistory(saved.items));
-      _service.restoreConversationContext(
-        saved.items,
-        threadJob: saved.threadJob,
-      );
+      _restoreServiceContext(saved);
       unawaited(_restorePreviewBytesFromStorage());
     } catch (_) {
       // Best-effort hydration; failures are silent so a flaky network never
@@ -270,7 +267,9 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     final items = _itemsForHistory(state.items);
     if (items.isEmpty) return;
 
-    // Fire-and-forget; UI doesn't wait on persistence.
+    // Fire-and-forget; UI doesn't wait on persistence. The verbatim Anthropic
+    // history rides alongside the UI snapshot so a later session can replay the
+    // exact turns (full fidelity) rather than a lossy text summary.
     unawaited(
       _history.save(
         uid,
@@ -278,8 +277,24 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
         items: items,
         title: _deriveTitle(items, fallbackJob: state.threadJob),
         threadJob: state.threadJob,
+        agentMessages: _service.exportConversation(),
       ),
     );
+  }
+
+  /// Restores the agent's working memory from a loaded snapshot — preferring
+  /// the verbatim Anthropic history (full fidelity) and falling back to the
+  /// lossy UI-snapshot summary only for legacy/oversized transcripts that
+  /// never saved one.
+  void _restoreServiceContext(SavedConversation saved) {
+    if (saved.agentMessages.isNotEmpty) {
+      _service.importConversation(saved.agentMessages);
+    } else {
+      _service.restoreConversationContext(
+        saved.items,
+        threadJob: saved.threadJob,
+      );
+    }
   }
 
   Future<void> _storePreviewBytes(AgentBlock block, List<int> bytes) async {
@@ -812,10 +827,7 @@ Do not call send_email.
     ref
         .read(resumeProvider.notifier)
         .setSelectedResumes(_resumeIdsFromHistory(saved.items));
-    _service.restoreConversationContext(
-      saved.items,
-      threadJob: saved.threadJob,
-    );
+    _restoreServiceContext(saved);
     unawaited(_restorePreviewBytesFromStorage());
   }
 

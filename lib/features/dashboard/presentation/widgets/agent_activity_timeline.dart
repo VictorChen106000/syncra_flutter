@@ -11,7 +11,7 @@ import '../../../../core/theme/brand_theme.dart';
 import '../../../../core/utils/motion.dart';
 import '../../../../data/firestore/firestore_paths.dart';
 import '../../../../data/models/tracked_application.dart';
-import '../../../agent/state/passive_agent_notifier.dart';
+import '../../../agent_chat/state/agent_chat_notifier.dart';
 import '../../../applications/state/applications_notifier.dart';
 import '../../../auth/state/auth_notifier.dart';
 import '../../../auth/state/user_profile_notifier.dart';
@@ -25,7 +25,7 @@ import '../../state/agent_read_intro_notifier.dart';
 /// Returns 0 for guests / signed-out (no per-user collection to read).
 final _learnedFactsCountProvider = StreamProvider.autoDispose<int>((ref) {
   final user = ref.watch(authProvider.select((s) => s.appUser));
-  if (user == null || user.isGuest) return Stream.value(0);
+  if (user == null) return Stream.value(0);
   return FirestorePaths(
     FirebaseFirestore.instance,
   ).learnedFacts(user.uid).snapshots().map((snap) => snap.docs.length);
@@ -69,37 +69,30 @@ class AgentActivityTimeline extends ConsumerWidget {
         (ref.watch(userProfileProvider.select((p) => p?.recommendation)) ?? '')
             .trim();
 
-    final status = ref.watch(passiveAgentProvider.select((s) => s.status));
+    // "Working now" is driven by the one Syncra agent's live turn — the same
+    // chat agent that does discovery (search → match → save) now that the
+    // separate brief is gone.
     final isRunning = ref.watch(
-      passiveAgentProvider.select((s) => s.isRunning),
+      agentChatProvider.select((s) => s.isStreaming),
     );
-    final briefAt = ref.watch(
-      passiveAgentProvider.select((s) => s.lastBriefAt),
-    );
-    final liveLabel = ref.watch(passiveAgentProvider.select(_liveLabelFor));
 
     final milestones = <_Milestone>[
       _Milestone(
         title: role.isEmpty
             ? 'Scanned the market for you'
             : 'Scanned the market for $role roles',
-        time: briefAt,
-        active: status == AgentBriefStatus.scanning,
       ),
       if (matchCount > 0)
         _Milestone(
           title:
               'Found ${_plural(matchCount, 'strong match', 'strong matches')}',
           subtitle: 'Review your pipeline',
-          time: briefAt,
-          active: status == AgentBriefStatus.matching,
           route: RouteNames.jobs,
         ),
       if (tailoredCount > 0)
         _Milestone(
           title: 'Tailored your résumé',
           subtitle: _plural(tailoredCount, 'version ready', 'versions ready'),
-          time: briefAt,
           route: RouteNames.resumes,
         ),
       if (learnedCount > 0)
@@ -107,7 +100,6 @@ class AgentActivityTimeline extends ConsumerWidget {
           title:
               'Learned ${_plural(learnedCount, 'thing', 'things')} about you',
           subtitle: 'Saved to Career Memory',
-          time: briefAt,
           route: RouteNames.profile,
         ),
       if (applicationCount > 0)
@@ -123,12 +115,11 @@ class AgentActivityTimeline extends ConsumerWidget {
             sent: sentCount,
             replied: repliedCount,
           ),
-          time: briefAt,
           // The standalone tracker is gone — applications now live as the
           // History lane inside the pipeline.
           route: RouteNames.jobs,
         ),
-      if (isRunning) _Milestone(title: liveLabel, active: true),
+      if (isRunning) const _Milestone(title: 'Working…', active: true),
     ];
 
     return Padding(
@@ -146,7 +137,7 @@ class AgentActivityTimeline extends ConsumerWidget {
               isRunning: isRunning,
             ).animate().fadeIn(duration: 380.ms)
           else
-            _Header(isRunning: isRunning, briefAt: briefAt),
+            _Header(isRunning: isRunning),
           const SizedBox(height: 24),
           for (var i = 0; i < milestones.length; i++)
             _TimelineRow(
@@ -384,10 +375,9 @@ class _Typewriter extends StatelessWidget {
 /// Quiet header: a title and, only while a brief runs, a "Working now"
 /// indicator. Per-step times live on the rows, so the header stays bare.
 class _Header extends StatelessWidget {
-  const _Header({required this.isRunning, required this.briefAt});
+  const _Header({required this.isRunning});
 
   final bool isRunning;
-  final DateTime? briefAt;
 
   @override
   Widget build(BuildContext context) {
@@ -444,9 +434,7 @@ class _TimelineRow extends StatelessWidget {
     final brand = context.brand;
     final m = milestone;
     final tappable = m.route != null;
-    final eyebrow = m.active
-        ? 'NOW'
-        : (m.time != null ? _relativeTime(m.time!).toUpperCase() : null);
+    final eyebrow = m.active ? 'NOW' : null;
 
     final content = Padding(
       padding: EdgeInsets.only(bottom: isLast ? 0 : 26),
@@ -673,7 +661,6 @@ class _Milestone {
   const _Milestone({
     required this.title,
     this.subtitle,
-    this.time,
     this.active = false,
     this.route,
   });
@@ -681,27 +668,10 @@ class _Milestone {
   final String title;
   final String? subtitle;
 
-  /// When this work happened — rendered as the time eyebrow. Null hides it.
-  final DateTime? time;
-
   /// The step the agent is on right now: drives the "NOW" eyebrow and the lime
   /// pulsing dot.
   final bool active;
   final String? route;
-}
-
-/// Live one-liner for the in-progress dot, preferring the agent's own last
-/// message over a generic stage label.
-String _liveLabelFor(PassiveAgentState s) {
-  final msg = s.lastMessage?.trim();
-  if (msg != null && msg.isNotEmpty) {
-    return msg.length > 80 ? '${msg.substring(0, 80)}…' : msg;
-  }
-  return switch (s.status) {
-    AgentBriefStatus.scanning => 'Scanning roles…',
-    AgentBriefStatus.matching => 'Matching against your résumé…',
-    _ => 'Working…',
-  };
 }
 
 String _plural(int n, String one, String many) => '$n ${n == 1 ? one : many}';
@@ -737,13 +707,4 @@ String _applicationsSubtitle({
 
   if (parts.isEmpty) return 'Open Application Tracker';
   return '${parts.join(' · ')} · Open tracker';
-}
-
-String _relativeTime(DateTime t) {
-  final d = DateTime.now().difference(t);
-  if (d.inMinutes < 1) return 'just now';
-  if (d.inMinutes < 60) return '${d.inMinutes}m ago';
-  if (d.inHours < 24) return '${d.inHours}h ago';
-  if (d.inDays == 1) return 'yesterday';
-  return '${d.inDays}d ago';
 }

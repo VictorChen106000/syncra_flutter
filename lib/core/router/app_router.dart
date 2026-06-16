@@ -7,7 +7,6 @@ import '../../features/auth/presentation/login_page.dart';
 import '../../features/auth/presentation/onboarding_page.dart';
 import '../../features/auth/presentation/signup_page.dart';
 import '../../features/auth/presentation/splash_page.dart';
-import '../../features/agent/state/passive_agent_notifier.dart';
 import '../../features/auth/state/auth_notifier.dart';
 import '../../features/auth/state/user_profile_notifier.dart';
 import '../../features/dashboard/presentation/dashboard_page.dart';
@@ -32,7 +31,6 @@ class _AuthRefreshNotifier extends ChangeNotifier {
 
 final routerProvider = Provider<GoRouter>((ref) {
   ref.read(authProvider.notifier);
-  ref.read(passiveAgentProvider.notifier);
   ref.read(userProfileProvider.notifier);
 
   final refresh = _AuthRefreshNotifier(ref);
@@ -49,7 +47,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       final auth = ref.read(authProvider);
       final profile = ref.read(userProfileProvider);
       final isSignedIn = auth.isSignedIn;
-      final isGuest = auth.appUser?.isGuest ?? false;
       final loc = state.matchedLocation;
       final isAuthRoute =
           loc == RouteNames.login ||
@@ -66,7 +63,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // the Skip path intentionally leaves the role blank but still marks the
       // user past first-run setup so they aren't bounced back here every load.
       final needsOnboarding =
-          !isGuest && profile != null && !profile.hasCompletedOnboarding;
+          profile != null && !profile.hasCompletedOnboarding;
       if (needsOnboarding && loc != RouteNames.onboarding) {
         return RouteNames.onboarding;
       }
@@ -79,10 +76,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // After sign-in, send users to the dashboard. New accounts are caught by
       // the `needsOnboarding` check above and routed to onboarding instead.
       if (loc == RouteNames.login || loc == RouteNames.signup) {
-        // Guests have no profile — straight to the dashboard.
-        if (isGuest) return RouteNames.dashboard;
-
-        // Non-guest: wait for the `users/{uid}` stream before deciding.
+        // Wait for the `users/{uid}` stream before deciding.
         // Routing on a still-loading (null) profile would drop a brand-new
         // account on the dashboard before we know it still needs onboarding —
         // the user would never see first-run setup. Staying put lets the

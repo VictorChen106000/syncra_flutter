@@ -14,7 +14,6 @@ import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/gooey_orb.dart';
-import '../../agent/state/passive_agent_notifier.dart';
 import '../../agent/state/pipeline_autopilot_notifier.dart';
 import '../../agent_chat/state/agent_chat_notifier.dart';
 import '../../applications/presentation/widgets/application_detail_sheet.dart';
@@ -60,7 +59,7 @@ class _JobsPageState extends ConsumerState<JobsPage> {
 
   @override
   Widget build(BuildContext context) {
-    // When the brief streams in (or adds) pipeline cards, re-run the bounded
+    // When the agent saves new pipeline cards, re-run the bounded
     // auto-processor. Idempotent — already-handled jobs are skipped.
     ref.listen(jobsProvider.select((s) => s.cards.length), (prev, next) {
       if (next > (prev ?? 0)) {
@@ -87,9 +86,6 @@ class _JobsPageState extends ConsumerState<JobsPage> {
     final visible = state.pendingCards
         .where((c) => !state.isDismissed(c.job.id))
         .toList();
-    final agentHasRun = ref.watch(
-      passiveAgentProvider.select((s) => s.lastBriefAt != null),
-    );
 
     return AppScreen(
       showBottomNav: false,
@@ -98,9 +94,8 @@ class _JobsPageState extends ConsumerState<JobsPage> {
       child: _PipelineFeed(
         cards: visible,
         // There were cards once but they've all been dismissed → distinguishes
-        // "all caught up" from "the agent found nothing".
+        // "all caught up" from "the agent hasn't found anything yet".
         hadAnyPipeline: state.pendingCards.isNotEmpty,
-        agentHasRun: agentHasRun,
         onDismiss: _dismiss,
       ),
     );
@@ -126,13 +121,11 @@ class _PipelineFeed extends ConsumerStatefulWidget {
   const _PipelineFeed({
     required this.cards,
     required this.hadAnyPipeline,
-    required this.agentHasRun,
     required this.onDismiss,
   });
 
   final List<PipelineCard> cards;
   final bool hadAnyPipeline;
-  final bool agentHasRun;
   final ValueChanged<Job> onDismiss;
 
   @override
@@ -248,10 +241,7 @@ class _PipelineFeedState extends ConsumerState<_PipelineFeed> {
     List<TrackedApplication> draftApps,
   ) {
     if (cards.isEmpty && draftApps.isEmpty) {
-      return _GooeyEmptyState(
-        agentHasRun: widget.agentHasRun,
-        hadAnyPipeline: widget.hadAnyPipeline,
-      );
+      return _GooeyEmptyState(hadAnyPipeline: widget.hadAnyPipeline);
     }
     if (filtered.isEmpty && draftApps.isEmpty) {
       return _EmptyFilter(filter: _filter);
@@ -1253,12 +1243,8 @@ class _Connector extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _GooeyEmptyState extends StatelessWidget {
-  const _GooeyEmptyState({
-    required this.agentHasRun,
-    required this.hadAnyPipeline,
-  });
+  const _GooeyEmptyState({required this.hadAnyPipeline});
 
-  final bool agentHasRun;
   final bool hadAnyPipeline;
 
   @override
@@ -1270,27 +1256,20 @@ class _GooeyEmptyState extends StatelessWidget {
     final String actionLabel;
     final String route;
 
-    if (!agentHasRun) {
+    if (!hadAnyPipeline) {
       title = 'Your pipeline is empty';
       body =
-          'Enable "Today\'s brief" in Settings, then run it from the '
-          'dashboard. Syncra will line up new roles here.';
-      actionLabel = 'Open dashboard';
-      route = RouteNames.dashboard;
-    } else if (!hadAnyPipeline) {
-      title = 'No roles queued right now';
-      body =
-          'Syncra scanned but found no strong matches. Broaden your '
-          'criteria, or ask the agent to explore a new direction.';
-      actionLabel = 'Ask the agent';
+          'Ask Syncra to find roles for you — it will search, match them to '
+          'your résumé, and line up the strongest ones here.';
+      actionLabel = 'Ask Syncra';
       route = RouteNames.agentChat;
     } else {
       title = 'All caught up';
       body =
-          'Every role Syncra surfaced has been handled. The next brief '
-          'will refill your pipeline.';
-      actionLabel = 'Back to dashboard';
-      route = RouteNames.dashboard;
+          'Every role Syncra surfaced has been handled. Ask Syncra to find '
+          'more roles whenever you want to refill your pipeline.';
+      actionLabel = 'Ask Syncra';
+      route = RouteNames.agentChat;
     }
 
     return Center(

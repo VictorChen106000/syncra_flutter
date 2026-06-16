@@ -77,7 +77,7 @@ class ResumeNotifier extends Notifier<ResumeState> {
   @override
   ResumeState build() {
     final auth = ref.watch(authProvider);
-    _bindTo(auth.appUser?.uid, auth.appUser?.isGuest ?? true);
+    _bindTo(auth.appUser?.uid);
 
     ref.onDispose(() {
       _subscription?.cancel();
@@ -87,13 +87,13 @@ class ResumeNotifier extends Notifier<ResumeState> {
     return const ResumeState();
   }
 
-  void _bindTo(String? uid, bool isGuest) {
+  void _bindTo(String? uid) {
     if (uid == _boundUid && _subscription != null) return;
 
     _subscription?.cancel();
     _subscription = null;
 
-    if (uid == null || isGuest) {
+    if (uid == null) {
       _boundUid = null;
       _bytesCache.clear();
       _inflight.clear();
@@ -154,9 +154,8 @@ class ResumeNotifier extends Notifier<ResumeState> {
   }
 
   Future<void> pickAndUploadResumes() async {
-    final user = ref.read(authProvider).appUser;
-    final uid = user?.uid;
-    if (uid == null || user!.isGuest) {
+    final uid = ref.read(authProvider).appUser?.uid;
+    if (uid == null) {
       state = state.copyWith(
         lastAction: const ResumeActionResult(
           message: 'Sign in to upload resumes.',
@@ -245,9 +244,8 @@ class ResumeNotifier extends Notifier<ResumeState> {
   }
 
   Future<void> deleteResume(String resumeId) async {
-    final user = ref.read(authProvider).appUser;
-    final uid = user?.uid;
-    if (uid == null || user!.isGuest) return;
+    final uid = ref.read(authProvider).appUser?.uid;
+    if (uid == null) return;
 
     ResumeFile? target;
     for (final r in state.allResumes) {

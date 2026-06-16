@@ -17,7 +17,6 @@ import '../../../shared/widgets/app_bottom_nav.dart';
 import '../../../shared/widgets/app_header.dart';
 import '../../../shared/widgets/app_screen.dart';
 import '../../../shared/widgets/gooey_orb.dart';
-import '../../agent/state/passive_agent_notifier.dart';
 import '../../applications/state/applications_notifier.dart';
 import '../../agent_chat/state/agent_chat_notifier.dart';
 import '../../jobs/state/jobs_notifier.dart';
@@ -208,13 +207,13 @@ class _AgentSection extends ConsumerWidget {
     final hasApplications = ref.watch(
       applicationsProvider.select((s) => s.items.isNotEmpty),
     );
-    final agentActive = ref.watch(
-      passiveAgentProvider.select(
-        (s) => s.isRunning || s.lastBriefAt != null || s.activity.isNotEmpty,
-      ),
+    // The one Syncra agent does discovery now (the separate brief is gone), so
+    // a live chat turn is the "agent is working" signal for the dashboard hero.
+    final agentRunning = ref.watch(
+      agentChatProvider.select((s) => s.isStreaming),
     );
 
-    if (hasMatches || hasApplications || agentActive) {
+    if (hasMatches || hasApplications || agentRunning) {
       return const AgentActivityTimeline();
     }
 
@@ -235,31 +234,12 @@ class _DashboardAgentEmptyState extends ConsumerWidget {
     final firstName = fullName.isEmpty
         ? ''
         : fullName.split(RegExp(r'\s+')).first;
-    // When the passive agent is mid-brief (most likely the first one auto-
-    // fired by onboarding), swap the generic greeting for a live status that
-    // names the target role. This is the UX bridge between onboarding's
-    // "I'll find roles for you" promise and the dashboard's empty state —
-    // the user lands on visible activity, not stillness.
-    final isRunning = ref.watch(
-      passiveAgentProvider.select((s) => s.isRunning),
-    );
-    final role = (ref.watch(userProfileProvider)?.role ?? '').trim();
-
-    final String headline;
-    final String? subline;
-    if (isRunning && role.isNotEmpty) {
-      headline = 'Looking for $role roles…';
-      subline = "I'll drop matches here as I find them.";
-    } else if (isRunning) {
-      headline = 'Scanning roles…';
-      subline = "I'll drop matches here as I find them.";
-    } else if (firstName.isEmpty) {
-      headline = 'How can I help you?';
-      subline = null;
-    } else {
-      headline = 'How can I help you, $firstName?';
-      subline = null;
-    }
+    // A live discovery turn promotes this whole section to the activity
+    // timeline (see [_AgentSection]), so the empty state is only ever the calm
+    // "how can I help" greeting — no separate brief status to mirror anymore.
+    final headline = firstName.isEmpty
+        ? 'How can I help you?'
+        : 'How can I help you, $firstName?';
 
     return Padding(
       padding: const EdgeInsets.only(top: 44, bottom: 8),
@@ -288,20 +268,6 @@ class _DashboardAgentEmptyState extends ConsumerWidget {
               .animate(delay: 120.ms)
               .fadeIn(duration: 420.ms)
               .moveY(begin: 8, end: 0, curve: Curves.easeOutCubic),
-          if (subline != null) ...[
-            const SizedBox(height: 10),
-            Text(
-              subline,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: brand.textMuted,
-                height: 1.4,
-                letterSpacing: -0.1,
-              ),
-            ).animate(delay: 220.ms).fadeIn(duration: 420.ms),
-          ],
         ],
       ),
     );

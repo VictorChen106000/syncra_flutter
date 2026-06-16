@@ -26,8 +26,6 @@ import 'package:syncra/data/firestore/applications_repository.dart';
 import 'package:syncra/data/firestore/pipeline_repository.dart';
 import 'package:syncra/data/firestore/resumes_repository.dart';
 import 'package:syncra/data/models/job.dart';
-import 'package:syncra/features/agent/services/anthropic_service.dart';
-import 'package:syncra/features/agent/state/passive_agent_notifier.dart';
 import 'package:syncra/features/agent/state/pipeline_autopilot_notifier.dart';
 import 'package:syncra/features/agent_chat/models/agent_block.dart';
 import 'package:syncra/features/agent_chat/models/chat_message.dart';
@@ -73,20 +71,6 @@ class _FixedApplicationsNotifier extends ApplicationsNotifier {
 class _FixedPipelineAutopilotNotifier extends PipelineAutopilotNotifier {
   @override
   Future<void> processNow() async {}
-}
-
-class _FixedPassiveAgentNotifier extends PassiveAgentNotifier {
-  _FixedPassiveAgentNotifier()
-    : super(
-        service: AnthropicService(apiKey: 'test-key'),
-        pipelineRepository: PipelineRepository(db: _FakeFirestore()),
-      );
-
-  @override
-  PassiveAgentState build() => PassiveAgentState(
-    status: AgentBriefStatus.done,
-    lastBriefAt: DateTime.now().subtract(const Duration(hours: 2)),
-  );
 }
 
 class _FixedChatNotifier extends AgentChatNotifier {
@@ -527,9 +511,7 @@ void main() {
       () => _wrap(const JobsPage(), [
         jobsProvider.overrideWith(
           () => _FixedJobsNotifier(JobsState(cards: _pipelineCards())),
-        ),
-        passiveAgentProvider.overrideWith(_FixedPassiveAgentNotifier.new),
-      ]),
+        ),      ]),
       'jobs_pipeline_light',
     );
   });
@@ -540,9 +522,7 @@ void main() {
       () => _wrap(const JobsPage(), [
         jobsProvider.overrideWith(
           () => _FixedJobsNotifier(JobsState(cards: _pipelineCards())),
-        ),
-        passiveAgentProvider.overrideWith(_FixedPassiveAgentNotifier.new),
-      ]),
+        ),      ]),
       'jobs_pipeline_tall',
       height: 2300,
     );
@@ -554,9 +534,7 @@ void main() {
       () => _wrap(const JobsPage(), [
         jobsProvider.overrideWith(
           () => _FixedJobsNotifier(JobsState(cards: _pipelineCards())),
-        ),
-        passiveAgentProvider.overrideWith(_FixedPassiveAgentNotifier.new),
-      ], dark: true),
+        ),      ], dark: true),
       'jobs_pipeline_dark',
     );
   });
@@ -565,9 +543,7 @@ void main() {
     await capture(
       tester,
       () => _wrap(const JobsPage(), [
-        jobsProvider.overrideWith(() => _FixedJobsNotifier(const JobsState())),
-        passiveAgentProvider.overrideWith(_FixedPassiveAgentNotifier.new),
-      ]),
+        jobsProvider.overrideWith(() => _FixedJobsNotifier(const JobsState())),      ]),
       'jobs_empty_light',
     );
   });

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../data/firestore/firestore_paths.dart';
@@ -218,6 +220,7 @@ class ChatHistoryRepository {
     required List<ChatItem> items,
     required String title,
     Job? threadJob,
+    List<Map<String, dynamic>> agentMessages = const [],
   }) async {
     final payload = _encode(items);
     if (payload.isEmpty) return;
@@ -230,8 +233,48 @@ class ChatHistoryRepository {
       'threadJob': threadJob == null
           ? FieldValue.delete()
           : _encodeThreadJob(threadJob),
+      'agentContext': _encodeAgentContext(agentMessages),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+  }
+
+  /// Firestore document hard-caps at ~1 MB. The verbatim Anthropic history can
+  /// carry full job/resume JSON in its tool_results, so cap the serialized
+  /// blob well under that; over the cap (or on encode failure) we store nothing
+  /// and the loader falls back to the lossy UI-snapshot summary.
+  static const int _maxAgentContextChars = 700000;
+
+  /// Serializes the verbatim Anthropic message history to a JSON string. Stored
+  /// as a string rather than a structured field to sidestep Firestore's
+  /// no-nested-arrays limit (assistant turns are arrays of content blocks).
+  /// Returns a [FieldValue.delete] sentinel when there's nothing safe to store
+  /// so a stale blob never lingers on the doc.
+  static Object _encodeAgentContext(List<Map<String, dynamic>> messages) {
+    if (messages.isEmpty) return FieldValue.delete();
+    try {
+      final encoded = jsonEncode(messages);
+      if (encoded.length > _maxAgentContextChars) return FieldValue.delete();
+      return encoded;
+    } catch (_) {
+      return FieldValue.delete();
+    }
+  }
+
+  /// Decodes the verbatim Anthropic history saved by [_encodeAgentContext].
+  /// Returns an empty list for legacy docs (no `agentContext`) or anything
+  /// unparseable, signalling the caller to fall back to the summary restore.
+  static List<Map<String, dynamic>> _decodeAgentContext(Object? raw) {
+    if (raw is! String || raw.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      return decoded
+          .whereType<Map>()
+          .map((m) => Map<String, dynamic>.from(m))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
   }
 
   Future<void> rename(
@@ -305,7 +348,11 @@ class ChatHistoryRepository {
 }
 
 class SavedConversation {
-  const SavedConversation({required this.items, this.threadJob});
+  const SavedConversation({
+    required this.items,
+    this.threadJob,
+    this.agentMessages = const [],
+  });
 
   factory SavedConversation.fromMap(Map<String, dynamic>? data) {
     if (data == null) return const SavedConversation(items: []);
@@ -315,9 +362,17 @@ class SavedConversation {
         ChatHistoryRepository._listValue(data, 'items'),
       ),
       threadJob: ChatHistoryRepository._decodeThreadJob(data['threadJob']),
+      agentMessages: ChatHistoryRepository._decodeAgentContext(
+        data['agentContext'],
+      ),
     );
   }
 
   final List<ChatItem> items;
   final Job? threadJob;
+
+  /// The verbatim Anthropic message history, when the snapshot saved one.
+  /// Empty for legacy/oversized transcripts — callers fall back to rebuilding
+  /// a summary context from [items].
+  final List<Map<String, dynamic>> agentMessages;
 }

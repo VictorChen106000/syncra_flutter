@@ -146,7 +146,7 @@ class PipelineAutopilotNotifier extends Notifier<PipelineAutopilotState> {
 
     final auth = ref.read(authProvider);
     final user = auth.appUser;
-    if (user == null || user.isGuest) return;
+    if (user == null) return;
     final uid = user.uid;
 
     final level =

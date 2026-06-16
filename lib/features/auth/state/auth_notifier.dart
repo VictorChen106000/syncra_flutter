@@ -67,7 +67,7 @@ class AuthNotifier extends Notifier<AuthState> {
         } catch (e) {
           debugPrint('ensureUserDoc failed: $e');
         }
-      } else if (state.appUser != null && !state.appUser!.isGuest) {
+      } else if (state.appUser != null) {
         state = state.copyWith(clearUser: true);
       }
     });
@@ -107,10 +107,6 @@ class AuthNotifier extends Notifier<AuthState> {
         error: 'Sign-in failed. Please try again.',
       );
     }
-  }
-
-  void continueAsGuest() {
-    state = state.copyWith(appUser: AppUser.guest(), clearError: true);
   }
 
   /// Signs in an existing account with Firebase email/password auth.
@@ -190,7 +186,7 @@ class AuthNotifier extends Notifier<AuthState> {
     state = state.copyWith(isLoading: true);
 
     try {
-      if (state.appUser != null && !state.appUser!.isGuest) {
+      if (state.appUser != null) {
         await _authService.signOut();
       }
       state = state.copyWith(
@@ -213,7 +209,7 @@ class AuthNotifier extends Notifier<AuthState> {
   /// onboarding again — a true "start over". See [UserRepository.resetUserData].
   Future<void> resetAccountData() async {
     final user = state.appUser;
-    if (user == null || user.isGuest) return;
+    if (user == null) return;
 
     state = state.copyWith(isLoading: true, clearError: true);
     try {
@@ -238,7 +234,7 @@ class AuthNotifier extends Notifier<AuthState> {
   /// May fail with `requires-recent-login`. Caller can sign in again and retry.
   Future<void> deleteAccount() async {
     final user = state.appUser;
-    if (user == null || user.isGuest) return;
+    if (user == null) return;
 
     state = state.copyWith(isLoading: true, clearError: true);
     try {

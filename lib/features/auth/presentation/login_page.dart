@@ -94,32 +94,7 @@ class LoginPage extends ConsumerWidget {
                     loading: false,
                     onTap: disabled ? null : () => _showEmailSheet(context),
                   ),
-                  const SizedBox(height: 18),
-                  Center(
-                    child: TextButton(
-                      onPressed: disabled
-                          ? null
-                          : () => notifier.continueAsGuest(),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 10,
-                        ),
-                        minimumSize: const Size(0, 44),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: Text(
-                        AppStrings.continueAsGuest,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.75),
-                          fontWeight: FontWeight.w900,
-                          fontSize: 14,
-                          letterSpacing: -0.1,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 20),
                   Text(
                     AppStrings.loginTerms,
                     textAlign: TextAlign.center,

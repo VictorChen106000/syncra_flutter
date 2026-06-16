@@ -50,7 +50,7 @@ final _careerMemoryProvider =
     StreamProvider.autoDispose<List<_CareerMemoryFact>>((ref) {
       final user = ref.watch(authProvider.select((state) => state.appUser));
 
-      if (user == null || user.isGuest) {
+      if (user == null) {
         return Stream.value(const <_CareerMemoryFact>[]);
       }
 
@@ -618,7 +618,7 @@ class _CareerMemorySection extends ConsumerWidget {
     if (confirmed != true) return;
 
     final user = ref.read(authProvider).appUser;
-    if (user == null || user.isGuest) return;
+    if (user == null) return;
 
     try {
       await UserRepository().clearLearnedFacts(user.uid);
@@ -677,7 +677,7 @@ class _CareerMemorySection extends ConsumerWidget {
     if (confirmed != true) return;
 
     final user = ref.read(authProvider).appUser;
-    if (user == null || user.isGuest) return;
+    if (user == null) return;
 
     try {
       await UserRepository().deleteLearnedFact(user.uid, fact.id);
@@ -785,7 +785,7 @@ class _CareerMemorySection extends ConsumerWidget {
       if (confirmed != true) return;
 
       final user = ref.read(authProvider).appUser;
-      if (user == null || user.isGuest) return;
+      if (user == null) return;
 
       final topic = _normalizeMemoryTopic(topicController.text);
       final detail = detailController.text.trim();

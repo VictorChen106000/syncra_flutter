@@ -17,7 +17,6 @@ import '../../../data/firestore/resumes_repository.dart';
 import '../../../data/firestore/user_repository.dart';
 import '../../../shared/widgets/app_back_button.dart';
 import '../../../shared/widgets/water_fill_circle.dart';
-import '../../agent/state/passive_agent_notifier.dart';
 import '../../agent_chat/state/agent_chat_notifier.dart';
 import '../../agent_chat/tools/anthropic_tool_calls.dart';
 import '../../email/presentation/widgets/gmail_link_view.dart';
@@ -1341,6 +1340,23 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
     return parts.isEmpty ? null : parts.join('. ');
   }
 
+  /// First-run discovery prompt handed to the one Syncra agent right after
+  /// onboarding (the separate brief is gone). Scoped to discovery only —
+  /// search, match, save to the Pipeline, then stop — so the background
+  /// pipeline autopilot owns the tailor → draft → (send) fulfillment rather
+  /// than the chat agent racing it.
+  String _discoveryPrompt() {
+    final query = _query();
+    final target = (query == null || query.isEmpty)
+        ? 'roles that fit my résumé'
+        : query;
+    return 'Find me jobs to apply to. My target: $target. '
+        'Search live roles (Remote where possible), match them against my '
+        'résumé, and save the best matches (up to 5) to my Pipeline. '
+        "Stop after saving — don't tailor or draft anything yet; "
+        "I'll take it from the Pipeline.";
+  }
+
   Future<void> _runSetup() async {
     final uid = ref.read(authProvider).appUser?.uid;
     if (uid == null) {
@@ -1475,13 +1491,15 @@ class _SetupPhaseState extends ConsumerState<_SetupPhase> {
           ? 'On it — searching live roles…'
           : 'Searching live roles for you…',
     );
-    unawaited(
-      ref.read(passiveAgentProvider.notifier).runBrief(query: _query()),
-    );
-    // Brief stays running in the background — give it a beat so the handoff to
-    // the dashboard reads as continuous motion, not a hard cut.
+    // Hand discovery to the one Syncra agent: it searches, matches against the
+    // résumé, and saves the best roles to the Pipeline. The app-shell autopilot
+    // trigger then tailors/drafts/(sends) those cards. Runs in the background
+    // so the handoff to the dashboard reads as continuous motion, not a cut.
+    ref
+        .read(agentChatProvider.notifier)
+        .startFreshPrompt(prompt: _discoveryPrompt());
     await Future<void>.delayed(const Duration(milliseconds: 900));
-    _set(4, _StepStatus.done, detail: 'Your first brief is on the way.');
+    _set(4, _StepStatus.done, detail: 'Your first matches are on the way.');
     await _finish(roleSet: role.isNotEmpty);
   }
 

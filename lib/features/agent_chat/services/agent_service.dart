@@ -76,8 +76,21 @@ abstract class AgentService {
   ///
   /// This does not replay exact Anthropic tool-use messages. It gives the
   /// next prompt enough context to continue naturally after an app restart or
-  /// history switch.
+  /// history switch. Used as the FALLBACK when no verbatim history was saved
+  /// (older transcripts) — see [importConversation] for full-fidelity restore.
   void restoreConversationContext(List<ChatItem> items, {Job? threadJob}) {}
+
+  /// The verbatim Anthropic message history retained for the active threaded
+  /// session, suitable for persistence. Empty for stateless implementations.
+  /// The controller saves this alongside the UI snapshot so a later session can
+  /// replay the EXACT tool_use / tool_result / thinking turns rather than a
+  /// lossy text summary.
+  List<Map<String, dynamic>> exportConversation() => const [];
+
+  /// Replaces the retained conversation with a previously [exportConversation]
+  /// history, so the next [runPrompt] continues the full, verbatim chat after
+  /// an app restart or history switch. Stateless implementations can no-op.
+  void importConversation(List<Map<String, dynamic>> messages) {}
 
   /// Clears any retained conversation history so the next [runPrompt] starts
   /// a fresh context. Called when the user starts a new chat or switches job

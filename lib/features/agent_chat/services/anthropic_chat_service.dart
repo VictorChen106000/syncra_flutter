@@ -604,6 +604,40 @@ Progress and style:
     _conversation.clear();
   }
 
+  @override
+  List<Map<String, dynamic>> exportConversation() {
+    final copy = List<Map<String, dynamic>>.from(_conversation);
+    // A debounced persist can snapshot the history mid-loop — right after an
+    // assistant `tool_use` turn but before its `tool_result` is appended.
+    // Replaying a tool_use with no matching tool_result is an Anthropic 400,
+    // so drop any such trailing turn(s); the conversation then ends on a safe
+    // boundary (a tool_result that answers the prior call, or assistant text).
+    while (copy.isNotEmpty && _endsOnUnansweredToolUse(copy)) {
+      copy.removeLast();
+    }
+    return copy;
+  }
+
+  static bool _endsOnUnansweredToolUse(List<Map<String, dynamic>> messages) {
+    final last = messages.last;
+    if (last['role'] != 'assistant') return false;
+    final content = last['content'];
+    return content is List &&
+        content.any((b) => b is Map && b['type'] == 'tool_use');
+  }
+
+  @override
+  void importConversation(List<Map<String, dynamic>> messages) {
+    _pendingAsks.clear();
+    _conversation
+      ..clear()
+      ..addAll(messages);
+    // Re-apply the same cap the live loop uses so a restored long session
+    // can't exceed the request budget, and never starts on an orphaned
+    // tool_result whose tool_use parent was trimmed away.
+    _trimConversation();
+  }
+
   /// Closes the underlying Anthropic client (and its HTTP connection pool).
   /// Call when the owning notifier is disposed. Not part of the
   /// [AgentService] interface — hence no `@override`.

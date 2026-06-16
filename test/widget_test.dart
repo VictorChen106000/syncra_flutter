@@ -27,6 +27,7 @@ void main() {
 
     expect(find.text(AppStrings.continueWithGoogle), findsOneWidget);
     expect(find.text('Continue with Email'), findsOneWidget);
-    expect(find.text(AppStrings.continueAsGuest), findsOneWidget);
+    // Guest mode was removed — everyone signs in.
+    expect(find.text('Continue as Guest'), findsNothing);
   });
 }

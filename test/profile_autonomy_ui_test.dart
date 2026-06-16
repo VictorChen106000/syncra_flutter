@@ -15,7 +15,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:syncra/core/theme/app_theme.dart';
 import 'package:syncra/data/firestore/resumes_repository.dart';
 import 'package:syncra/data/firestore/user_repository.dart';
-import 'package:syncra/features/auth/models/app_user.dart';
 import 'package:syncra/features/auth/state/auth_notifier.dart';
 import 'package:syncra/features/auth/state/user_profile_notifier.dart';
 import 'package:syncra/features/profile/presentation/profile_page.dart';
@@ -28,11 +27,12 @@ class _FakeFirestore extends Fake implements FirebaseFirestore {}
 
 class _FakeStorage extends Fake implements FirebaseStorage {}
 
-// Overriding build() returns a guest directly, so no FirebaseAuth.instance and
-// the profile / resume / career-memory streams all short-circuit for guests.
-class _GuestAuthNotifier extends AuthNotifier {
+// Overriding build() returns a signed-out state directly, so no
+// FirebaseAuth.instance and the profile / resume / career-memory streams all
+// short-circuit on the null user.
+class _SignedOutAuthNotifier extends AuthNotifier {
   @override
-  AuthState build() => AuthState(appUser: AppUser.guest());
+  AuthState build() => const AuthState();
 }
 
 Future<void> _pumpProfile(WidgetTester tester) async {
@@ -47,7 +47,7 @@ Future<void> _pumpProfile(WidgetTester tester) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        authProvider.overrideWith(_GuestAuthNotifier.new),
+        authProvider.overrideWith(_SignedOutAuthNotifier.new),
         userProfileProvider.overrideWith(
           () => UserProfileNotifier(
             repository: UserRepository(db: fakeDb, storage: fakeStorage),

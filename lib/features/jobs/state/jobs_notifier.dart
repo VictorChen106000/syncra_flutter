@@ -66,8 +66,7 @@ class JobsNotifier extends Notifier<JobsState> {
   JobsState build() {
     final auth = ref.watch(authProvider);
     final uid = auth.appUser?.uid;
-    final isGuest = auth.appUser?.isGuest ?? true;
-    _bindTo(uid, isGuest);
+    _bindTo(uid);
 
     ref.onDispose(() {
       _subscription?.cancel();
@@ -75,18 +74,18 @@ class JobsNotifier extends Notifier<JobsState> {
     });
 
     // Empty until the Firestore pipeline stream emits its first snapshot.
-    // Guests and signed-out users have no pipeline; for signed-in users
-    // the agent's brief populates it.
+    // Signed-out users have no pipeline; for signed-in users the agent
+    // populates it as it saves matches.
     return const JobsState();
   }
 
-  void _bindTo(String? uid, bool isGuest) {
+  void _bindTo(String? uid) {
     if (uid == _boundUid && _subscription != null) return;
 
     _subscription?.cancel();
     _subscription = null;
 
-    if (uid == null || isGuest) {
+    if (uid == null) {
       _boundUid = null;
       // Don't read/write `state` here — this is called from build() before
       // the initial state is published. build()'s return value resets state.
@@ -141,7 +140,7 @@ class JobsNotifier extends Notifier<JobsState> {
 
     final user = ref.read(authProvider).appUser;
     final uid = user?.uid;
-    if (uid == null || user!.isGuest) return;
+    if (uid == null) return;
 
     final alreadyInPipeline = state.cards.any((c) => c.job.id == id);
     if (alreadyInPipeline) return;
@@ -186,7 +185,7 @@ class JobsNotifier extends Notifier<JobsState> {
     );
     final user = ref.read(authProvider).appUser;
     final uid = user?.uid;
-    if (uid == null || user!.isGuest) return;
+    if (uid == null) return;
     final card = state.cards.where((c) => c.job.id == id).firstOrNull;
     if (card == null) return;
 
@@ -214,7 +213,7 @@ class JobsNotifier extends Notifier<JobsState> {
 
     final user = ref.read(authProvider).appUser;
     final uid = user?.uid;
-    if (uid == null || user!.isGuest) return;
+    if (uid == null) return;
 
     try {
       await _applications.createApplication(
@@ -238,7 +237,7 @@ class JobsNotifier extends Notifier<JobsState> {
   Future<void> markDraftedByJobId(String jobId, {String? resumeId}) async {
     final user = ref.read(authProvider).appUser;
     final uid = user?.uid;
-    if (uid == null || user!.isGuest) return;
+    if (uid == null) return;
 
     final card = state.cards.where((c) => c.job.id == jobId).firstOrNull;
     if (card == null) return;
@@ -265,7 +264,7 @@ class JobsNotifier extends Notifier<JobsState> {
   Future<void> approveByJobId(String jobId) async {
     final user = ref.read(authProvider).appUser;
     final uid = user?.uid;
-    if (uid == null || user!.isGuest) return;
+    if (uid == null) return;
     final card = state.cards.where((c) => c.job.id == jobId).firstOrNull;
     if (card == null) return;
     try {
