@@ -59,6 +59,35 @@ void main() {
       );
     });
 
+    test('official discovery beats guessed fallback', () async {
+      final discovered = RecipientResolution(
+        email: 'jobs@acme.io',
+        domain: 'acme.io',
+        confidence: RecipientConfidence.high,
+        source: RecipientSource.officialCompanyWebsite,
+        label: 'Found on official site',
+        sourceUrl: 'https://acme.io/careers',
+        reason: 'Found jobs@acme.io on an official company page.',
+        canAutoSend: true,
+        requiresUserConfirmation: false,
+      );
+
+      final resolution = await resolveRecipientAsync(
+        'Acme',
+        website: 'https://www.acme.io',
+        contacts: _FakeContacts(),
+        discovery: _FakeDiscovery(discovered),
+      );
+
+      expect(resolution.email, 'jobs@acme.io');
+      expect(resolution.confidence, RecipientConfidence.high);
+      expect(resolution.source, RecipientSource.officialCompanyWebsite);
+      expect(resolution.sourceUrl, 'https://acme.io/careers');
+      expect(resolution.canAutoSend, isTrue);
+      expect(resolution.requiresUserConfirmation, isFalse);
+      expect(resolution.isAutoSendEligible, isTrue);
+    });
+
     test('guessed fallback is low confidence and cannot auto-send', () async {
       final resolution = await resolveRecipientAsync(
         'Linear',
@@ -72,7 +101,25 @@ void main() {
       expect(resolution.source, RecipientSource.guessedPattern);
       expect(resolution.canAutoSend, isFalse);
       expect(resolution.requiresUserConfirmation, isTrue);
+      expect(resolution.isAutoSendEligible, isFalse);
     });
+
+    test(
+      'job-board apply link is not used as guessed fallback domain',
+      () async {
+        final resolution = await resolveRecipientAsync(
+          'Acme',
+          applyLink: 'https://greenhouse.io/acme/jobs/123',
+          contacts: _FakeContacts(),
+          discovery: const CompanyContactDiscoveryService(),
+        );
+
+        expect(resolution.email, 'careers@acme.com');
+        expect(resolution.domain, 'acme.com');
+        expect(resolution.confidence, RecipientConfidence.low);
+        expect(resolution.canAutoSend, isFalse);
+      },
+    );
 
     test(
       'missing company and website returns none with direct send disabled',

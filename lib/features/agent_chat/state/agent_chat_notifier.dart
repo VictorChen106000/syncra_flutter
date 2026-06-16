@@ -672,7 +672,9 @@ class AgentChatNotifier extends Notifier<AgentChatState> {
     _service.resetConversation();
     _threadPipelineMarkedComplete = false;
     state = AgentChatState(
-      items: [_buildOpener(job, stage: stage, autopilotClaimed: autopilotClaimed)],
+      items: [
+        _buildOpener(job, stage: stage, autopilotClaimed: autopilotClaimed),
+      ],
       conversationId: _newConversationId(),
       threadJob: job,
     );

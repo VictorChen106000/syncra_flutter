@@ -1,13 +1,25 @@
-const functions = require("firebase-functions");
+const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 
 if (admin.apps.length === 0) {
   admin.initializeApp();
 }
 
-const MAX_PAGES = 8;
-const MAX_BODY_CHARS = 500000;
-const FETCH_TIMEOUT_MS = 8000;
+const MAX_BODY_CHARS = 120000;
+const FETCH_TIMEOUT_MS = 2500;
+const MAX_REDIRECTS = 2;
+
+const DISCOVERY_PATHS = [
+  "/",
+  "/careers",
+  "/jobs",
+  "/contact",
+  "/contact-us",
+  "/about",
+  "/team",
+  "/recruiting",
+  "/join-us",
+];
 
 const BLOCKED_HOST_PARTS = [
   "linkedin.com",
@@ -15,43 +27,58 @@ const BLOCKED_HOST_PARTS = [
   "instagram.com",
   "twitter.com",
   "x.com",
+  "tiktok.com",
+  "youtube.com",
   "indeed.com",
   "glassdoor.com",
   "monster.com",
   "ziprecruiter.com",
+  "greenhouse.io",
+  "lever.co",
+  "ashbyhq.com",
+  "workable.com",
+  "smartrecruiters.com",
+  "myworkdayjobs.com",
+  "workdayjobs.com",
+  "jobvite.com",
+  "icims.com",
+  "bamboohr.com",
+  "breezy.hr",
+  "comeet.co",
+  "recruitee.com",
+  "wellfound.com",
+  "angel.co",
   "reddit.com",
   "medium.com",
 ];
 
-const HIGH_LOCAL_PARTS = [
+const ROLE_INBOX_PARTS = [
   "careers",
   "jobs",
+  "talent",
   "recruiting",
   "recruitment",
-  "talent",
-  "join",
-];
-
-const MEDIUM_LOCAL_PARTS = [
   "hr",
   "people",
-  "work",
-  "contact",
-  "hiring",
 ];
 
-const LOW_LOCAL_PARTS = [
+const GENERIC_INBOX_PARTS = [
+  "contact",
   "info",
   "hello",
-  "support",
 ];
 
 const BAD_LOCAL_PARTS = [
   "noreply",
   "no-reply",
   "privacy",
-  "abuse",
+  "legal",
+  "press",
+  "media",
+  "sales",
+  "billing",
   "security",
+  "abuse",
   "admin",
   "webmaster",
   "postmaster",
@@ -88,8 +115,16 @@ function isBlockedHost(hostname) {
 }
 
 function safeUrl(raw) {
+  const clean = cleanString(raw);
+  if (!clean) {
+    return null;
+  }
+
   try {
-    const url = new URL(raw);
+    const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(clean)
+      ? clean
+      : `https://${clean}`;
+    const url = new URL(withScheme);
     if (url.protocol !== "https:" && url.protocol !== "http:") {
       return null;
     }
@@ -138,45 +173,35 @@ function sameRegisteredDomain(a, b) {
   return registeredDomain(a.hostname) === registeredDomain(b.hostname);
 }
 
-function candidateUrls(website, applyLink) {
-  const seeds = [];
-
+function officialBaseUrl(website, applyLink) {
   const websiteUrl = safeUrl(website);
-  const applyUrl = safeUrl(applyLink);
-
   if (websiteUrl) {
-    seeds.push(websiteUrl);
+    return websiteUrl;
   }
 
-  if (applyUrl && (!websiteUrl || sameRegisteredDomain(applyUrl, websiteUrl))) {
-    seeds.push(applyUrl);
-  }
+  return safeUrl(applyLink);
+}
 
-  const base = websiteUrl || applyUrl;
+function isOfficialUrl(url, officialDomain) {
+  return (
+    url &&
+    !isBlockedHost(url.hostname) &&
+    registeredDomain(url.hostname) === officialDomain
+  );
+}
+
+function discoveryPlan(website, applyLink) {
+  const base = officialBaseUrl(website, applyLink);
   if (!base) {
-    return [];
+    return { urls: [], officialDomain: "" };
   }
 
-  const paths = [
-    "/",
-    "/careers",
-    "/jobs",
-    "/contact",
-    "/about",
-    "/company",
-    "/team",
-    "/people",
-    "/press",
-  ];
-
-  for (const path of paths) {
-    seeds.push(new URL(path, `${base.protocol}//${base.hostname}`));
-  }
-
+  const officialDomain = registeredDomain(base.hostname);
+  const origin = `${base.protocol}//${base.hostname}`;
   const seen = new Set();
 
-  return seeds
-    .filter((url) => sameRegisteredDomain(url, base))
+  const urls = DISCOVERY_PATHS.map((path) => new URL(path, origin))
+    .filter((url) => isOfficialUrl(url, officialDomain))
     .filter((url) => {
       const key = url.toString().replace(/\/$/, "");
       if (seen.has(key)) {
@@ -184,41 +209,97 @@ function candidateUrls(website, applyLink) {
       }
       seen.add(key);
       return true;
-    })
-    .slice(0, MAX_PAGES);
-}
-
-async function fetchText(url) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(url, {
-      method: "GET",
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "SyncraRecipientDiscovery/1.0",
-        Accept: "text/html,text/plain;q=0.8,*/*;q=0.2",
-      },
     });
 
-    if (!response.ok) {
-      return "";
-    }
+  return { urls, officialDomain };
+}
 
-    const contentType = response.headers.get("content-type") || "";
-    if (
-      !contentType.includes("text/html") &&
-      !contentType.includes("text/plain")
-    ) {
-      return "";
-    }
-
+async function readLimitedText(response) {
+  if (!response.body || typeof response.body.getReader !== "function") {
     const text = await response.text();
     return text.slice(0, MAX_BODY_CHARS);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+
+  try {
+    while (text.length < MAX_BODY_CHARS) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+      text += decoder.decode(value, { stream: true });
+      if (text.length >= MAX_BODY_CHARS) {
+        await reader.cancel();
+        break;
+      }
+    }
+
+    text += decoder.decode();
+    return text.slice(0, MAX_BODY_CHARS);
   } catch (_) {
-    return "";
+    return text.slice(0, MAX_BODY_CHARS);
+  }
+}
+
+async function fetchOfficialPage(url, officialDomain) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  let current = url;
+
+  try {
+    for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount++) {
+      if (!isOfficialUrl(current, officialDomain)) {
+        return null;
+      }
+
+      const response = await fetch(current, {
+        method: "GET",
+        redirect: "manual",
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "SyncraRecipientDiscovery/1.0",
+          Accept: "text/html,text/plain;q=0.8,*/*;q=0.2",
+        },
+      });
+
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get("location");
+        if (!location) {
+          return null;
+        }
+        const next = safeUrl(new URL(location, current).toString());
+        if (!isOfficialUrl(next, officialDomain)) {
+          return null;
+        }
+        current = next;
+        continue;
+      }
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const contentType = response.headers.get("content-type") || "";
+      if (
+        contentType &&
+        !contentType.includes("text/html") &&
+        !contentType.includes("text/plain")
+      ) {
+        return null;
+      }
+
+      return {
+        text: await readLimitedText(response),
+        sourceUrl: current,
+      };
+    }
+
+    return null;
+  } catch (_) {
+    return null;
   } finally {
     clearTimeout(timer);
   }
@@ -251,6 +332,10 @@ function extractEmails(text) {
   return [...new Set(matches.map((email) => email.toLowerCase()))];
 }
 
+function localHasPart(local, part) {
+  return local === part || local.includes(part);
+}
+
 function classifyEmail(email, sourceUrl, baseDomain) {
   const parts = email.split("@");
   const local = String(parts[0] || "").toLowerCase();
@@ -268,22 +353,15 @@ function classifyEmail(email, sourceUrl, baseDomain) {
     return null;
   }
 
-  let confidence = "low";
+  let confidence = "medium";
   let score = 10;
 
-  if (HIGH_LOCAL_PARTS.some((part) => local === part || local.includes(part))) {
+  if (ROLE_INBOX_PARTS.some((part) => localHasPart(local, part))) {
     confidence = "high";
     score = 100;
-  } else if (
-    MEDIUM_LOCAL_PARTS.some((part) => local === part || local.includes(part))
-  ) {
+  } else if (GENERIC_INBOX_PARTS.some((part) => localHasPart(local, part))) {
     confidence = "medium";
-    score = 70;
-  } else if (
-    LOW_LOCAL_PARTS.some((part) => local === part || local.includes(part))
-  ) {
-    confidence = "low";
-    score = 35;
+    score = 60;
   } else {
     return null;
   }
@@ -293,6 +371,7 @@ function classifyEmail(email, sourceUrl, baseDomain) {
   if (
     path.includes("career") ||
     path.includes("job") ||
+    path.includes("recruit") ||
     path.includes("join")
   ) {
     score += 15;
@@ -310,6 +389,10 @@ function classifyEmail(email, sourceUrl, baseDomain) {
     sourceUrl: sourceUrl.toString(),
     score,
   };
+}
+
+function rankCandidates(candidates) {
+  return [...candidates].sort((a, b) => b.score - a.score);
 }
 
 function responseFor(candidate, fallbackDomain) {
@@ -376,32 +459,47 @@ exports.companyContactDiscovery = functions
       return;
     }
 
-    const urls = candidateUrls(website, applyLink);
-    const base = urls[0];
+    const { urls, officialDomain } = discoveryPlan(website, applyLink);
 
-    if (!base) {
+    if (urls.length === 0 || !officialDomain) {
       sendJson(res, 200, responseFor(null));
       return;
     }
 
-    const baseDomain = registeredDomain(base.hostname);
     const candidates = [];
 
     for (const url of urls) {
-      const text = await fetchText(url);
-      if (!text) {
+      const page = await fetchOfficialPage(url, officialDomain);
+      if (!page || !page.text) {
         continue;
       }
 
-      for (const email of extractEmails(text)) {
-        const candidate = classifyEmail(email, url, baseDomain);
+      for (const email of extractEmails(page.text)) {
+        const candidate = classifyEmail(email, page.sourceUrl, officialDomain);
         if (candidate) {
           candidates.push(candidate);
         }
       }
     }
 
-    candidates.sort((a, b) => b.score - a.score);
+    const ranked = rankCandidates(candidates);
 
-    sendJson(res, 200, responseFor(candidates[0] || null, baseDomain));
+    sendJson(res, 200, responseFor(ranked[0] || null, officialDomain));
   });
+
+exports.__testables = {
+  DISCOVERY_PATHS,
+  BLOCKED_HOST_PARTS,
+  safeUrl,
+  registeredDomain,
+  sameRegisteredDomain,
+  officialBaseUrl,
+  isOfficialUrl,
+  discoveryPlan,
+  decodeHtmlLite,
+  normalizeObfuscatedEmails,
+  extractEmails,
+  classifyEmail,
+  rankCandidates,
+  responseFor,
+};

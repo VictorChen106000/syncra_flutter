@@ -15,10 +15,7 @@ class ApplicationQualityResult {
 }
 
 ApplicationQualityResult evaluateApplicationQuality(PipelineCard card) {
-  return evaluateApplicationQualityFor(
-    job: card.job,
-    stage: card.stage,
-  );
+  return evaluateApplicationQualityFor(job: card.job, stage: card.stage);
 }
 
 ApplicationQualityResult evaluateTrackedApplicationQuality(
@@ -42,10 +39,7 @@ ApplicationQualityResult evaluateApplicationQualityFor({
   return ApplicationQualityResult(
     score: score,
     label: _applicationQualityLabel(score),
-    reasons: _applicationQualityReasons(
-      job: job,
-      stage: stage,
-    ),
+    reasons: _applicationQualityReasons(job: job, stage: stage),
   );
 }
 

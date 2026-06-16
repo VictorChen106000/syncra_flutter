@@ -15,6 +15,37 @@ const demoEmailOverrideEnabled = bool.fromEnvironment(
 
 const demoEmailOverride = String.fromEnvironment('SYNCRA_DEMO_EMAIL_OVERRIDE');
 
+const _blockedRecipientHostParts = [
+  'linkedin.com',
+  'facebook.com',
+  'instagram.com',
+  'twitter.com',
+  'x.com',
+  'tiktok.com',
+  'youtube.com',
+  'indeed.com',
+  'glassdoor.com',
+  'monster.com',
+  'ziprecruiter.com',
+  'greenhouse.io',
+  'lever.co',
+  'ashbyhq.com',
+  'workable.com',
+  'smartrecruiters.com',
+  'myworkdayjobs.com',
+  'workdayjobs.com',
+  'jobvite.com',
+  'icims.com',
+  'bamboohr.com',
+  'breezy.hr',
+  'comeet.co',
+  'recruitee.com',
+  'wellfound.com',
+  'angel.co',
+  'reddit.com',
+  'medium.com',
+];
+
 String? activeDemoRecipientEmail({
   bool enabled = demoEmailOverrideEnabled,
   String overrideEmail = demoEmailOverride,
@@ -188,9 +219,17 @@ String? _domainFromWebsite(String? website) {
   final withScheme = raw.contains('://') ? raw : 'https://$raw';
   final host = Uri.tryParse(withScheme)?.host.toLowerCase();
   if (host == null || host.isEmpty) return null;
+  if (_isBlockedRecipientHost(host)) return null;
 
   final cleaned = host.startsWith('www.') ? host.substring(4) : host;
   return cleaned.isEmpty ? null : cleaned;
+}
+
+bool _isBlockedRecipientHost(String hostname) {
+  final host = hostname.toLowerCase();
+  return _blockedRecipientHostParts.any(
+    (blocked) => host == blocked || host.endsWith('.$blocked'),
+  );
 }
 
 String? _domainFromEmail(String email) {

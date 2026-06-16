@@ -6,12 +6,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../../data/firestore/applications_repository.dart';
+import '../../../data/firestore/company_contacts_repository.dart';
 import '../../../data/firestore/firestore_paths.dart';
 import '../../../data/firestore/jobs_repository.dart';
 import '../../../data/firestore/resumes_repository.dart';
 import '../../../data/models/job.dart';
 import '../../../data/services/jsearch_service.dart';
 import '../../email/models/recipient_resolution.dart';
+import '../../email/services/company_contact_discovery_service.dart';
 import '../../email/services/email_send_service.dart';
 import '../../email/services/recipient_resolver.dart';
 import '../../agent/services/anthropic_service.dart';
@@ -1107,11 +1109,15 @@ Future<ToolResult> resolveCompanyContactToolResult(
   String company, {
   String? website,
   String? applyLink,
+  CompanyContactsRepository? contacts,
+  CompanyContactDiscoveryService? discovery,
 }) async {
   final resolution = await resolveRecipientAsync(
     company,
     website: website,
     applyLink: applyLink,
+    contacts: contacts,
+    discovery: discovery,
   );
   return ToolResult(
     summary: _recipientResolutionSummary(company, resolution),
